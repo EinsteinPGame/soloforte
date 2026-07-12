@@ -298,6 +298,22 @@ const DEATH_MSGS = [
   "That's {n} deaths. You should be ashamed.",
 ];
 
+// Level 5 illusion death messages
+const ILLUSION_DEATH_MSGS = [
+  "Which one was real again?",
+  "7 fakes, 1 real, 0 brain cells.",
+  "The illusions are laughing at you.",
+  "You killed the wrong one. Again.",
+  "Mirror mirror on the wall, you can't tell them apart at all.",
+  "They're multiplying. Your failures, that is.",
+  "That was definitely not the real one. How did you even mix that up?",
+  "The illusion outlasted your patience. Impressive.",
+  "{n} deaths and you still can't tell a copy from the original.",
+  "You keep killing the fakes. The real one is watching. Judging.",
+  "Every time you fail, the real one respawns. It's been watching you.",
+  "Nice shard collection. Oh wait, you died before you collected anything.",
+];
+
 // Level 4 arena death messages
 const ARENA_DEATH_MSGS = [
   "A spike. A single spike. You died to one spike.",
@@ -724,11 +740,187 @@ function buildLevel4() {
   };
 }
 
+// Level 5 - The Illusion
+// Phase 1: 8 arenas in 4x2 grid, all characters controlled simultaneously.
+//          Illusions die once and stay dead. Real one respawns. Last standing = real.
+// Phase 2: 7 shard-collection run across connected arenas.
+function buildLevel5() {
+  // Arena layout: 4 columns x 2 rows
+  // Canvas: 900x500. Margins: 10px outer, 4px gaps
+  // ArenaW = (900 - 20 - 3*4) / 4 = (880-12)/4 = 217, ArenaH = (500 - 20 - 4) / 2 = 238
+  const COLS = 4, ROWS = 2;
+  const MARGIN = 10, GAP = 4;
+  const AW = Math.floor((CANVAS_W - MARGIN * 2 - GAP * (COLS - 1)) / COLS); // 217
+  const AH = Math.floor((CANVAS_H - MARGIN * 2 - GAP * (ROWS - 1)) / ROWS); // 238
+
+  function arenaX(col) { return MARGIN + col * (AW + GAP); }
+  function arenaY(row) { return MARGIN + row * (AH + GAP); }
+
+  // 8 arena designs — ground is always bottom 20px of each arena
+  // Positions are arena-local (0..AW, 0..AH), stored as offsets
+  // We'll translate during render using the arena's origin
+  const GY = AH - 20; // local ground Y (top of ground platform)
+  const GH = 20;
+
+  function mkFloor(col, row) {
+    const ox = arenaX(col), oy = arenaY(row);
+    return { x: ox, y: oy + GY, w: AW, h: GH, type: 'normal', color: '#3a3a5a' };
+  }
+
+  // Build each arena's platforms array (in world coordinates)
+  function arenaPlats(col, row, localPlats) {
+    const ox = arenaX(col), oy = arenaY(row);
+    return localPlats.map(p => ({
+      ...p,
+      x: ox + p.x,
+      y: oy + p.y,
+    }));
+  }
+
+  // Arena 0 (col0,row0): flat ground, spike pit on the right
+  const a0plats = arenaPlats(0, 0, [
+    { x: 0, y: GY, w: AW, h: GH, type: 'normal', color: '#3a3a5a' },
+    { x: AW - 60, y: GY - SPIKE_H, w: 60, h: SPIKE_H, type: 'spike_zone', color: '#cc3333', isSpike: true },
+    { x: 30, y: GY - 60, w: 90, h: 14, type: 'normal', color: '#556688' },
+  ]);
+
+  // Arena 1 (col1,row0): flat ground, spike pit on the LEFT
+  const a1plats = arenaPlats(1, 0, [
+    { x: 0, y: GY, w: AW, h: GH, type: 'normal', color: '#3a4a3a' },
+    { x: 0, y: GY - SPIKE_H, w: 60, h: SPIKE_H, type: 'spike_zone', color: '#cc3333', isSpike: true },
+    { x: AW - 120, y: GY - 60, w: 90, h: 14, type: 'normal', color: '#446655' },
+  ]);
+
+  // Arena 2 (col2,row0): two platforms with gap in middle
+  const a2plats = arenaPlats(2, 0, [
+    { x: 0, y: GY, w: 80, h: GH, type: 'normal', color: '#4a3a3a' },
+    { x: AW - 80, y: GY, w: 80, h: GH, type: 'normal', color: '#4a3a3a' },
+    // gap in center = death pit (fall off)
+    { x: 10, y: GY - 50, w: 60, h: 14, type: 'normal', color: '#664444' },
+    { x: AW - 70, y: GY - 80, w: 60, h: 14, type: 'normal', color: '#664444' },
+  ]);
+
+  // Arena 3 (col3,row0): single narrow high platform
+  const a3plats = arenaPlats(3, 0, [
+    { x: 0, y: GY, w: AW, h: GH, type: 'normal', color: '#3a3a4a' },
+    { x: AW / 2 - 25, y: GY - 100, w: 50, h: 14, type: 'normal', color: '#445577' },
+    // Spikes on both sides of the high platform
+    { x: AW / 2 - 70, y: GY - SPIKE_H, w: 45, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
+    { x: AW / 2 + 25, y: GY - SPIKE_H, w: 45, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
+  ]);
+
+  // Arena 4 (col0,row1): ground with low ceiling of spikes (tight corridor)
+  const a4plats = arenaPlats(0, 1, [
+    { x: 0, y: GY, w: AW, h: GH, type: 'normal', color: '#3a4a4a' },
+    { x: 0, y: 0, w: AW, h: SPIKE_H, type: 'spike_zone', isSpike: true, ceilSpike: true, color: '#cc3333' },
+    // Mid platforms to force jumping (into ceiling spikes)
+    { x: 40, y: GY - 55, w: 60, h: 14, type: 'normal', color: '#447766' },
+    { x: AW - 100, y: GY - 55, w: 60, h: 14, type: 'normal', color: '#447766' },
+  ]);
+
+  // Arena 5 (col1,row1): ascending staircase going right
+  const a5plats = arenaPlats(1, 1, [
+    { x: 0, y: GY, w: AW, h: GH, type: 'normal', color: '#4a4a3a' },
+    { x: 10, y: GY - 35, w: 45, h: 14, type: 'normal', color: '#666644' },
+    { x: 65, y: GY - 70, w: 45, h: 14, type: 'normal', color: '#666644' },
+    { x: 120, y: GY - 105, w: 45, h: 14, type: 'normal', color: '#666644' },
+    { x: 175, y: GY - 140, w: 42, h: 14, type: 'normal', color: '#666644' },
+    // Spike at bottom-right to punish falling off
+    { x: AW - 50, y: GY - SPIKE_H, w: 50, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
+  ]);
+
+  // Arena 6 (col2,row1): descending platforms going right
+  const a6plats = arenaPlats(2, 1, [
+    { x: 0, y: GY - 140, w: 50, h: 14, type: 'normal', color: '#554444' },
+    { x: 60, y: GY - 105, w: 45, h: 14, type: 'normal', color: '#554444' },
+    { x: 115, y: GY - 70, w: 45, h: 14, type: 'normal', color: '#554444' },
+    { x: 170, y: GY - 35, w: 47, h: 14, type: 'normal', color: '#554444' },
+    { x: 0, y: GY, w: AW, h: GH, type: 'normal', color: '#4a3a3a' },
+    // Spike pit at bottom-left to punish missed jumps
+    { x: 0, y: GY - SPIKE_H, w: 50, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
+  ]);
+
+  // Arena 7 (col3,row1): single platform with spikes both sides (tiny safe zone)
+  const a7plats = arenaPlats(3, 1, [
+    { x: 0, y: GY, w: AW, h: GH, type: 'normal', color: '#3a3a3a' },
+    { x: 0, y: GY - SPIKE_H, w: 70, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
+    { x: AW - 70, y: GY - SPIKE_H, w: 70, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
+    // Safe middle platform
+    { x: AW / 2 - 30, y: GY - 70, w: 60, h: 14, type: 'normal', color: '#555555' },
+  ]);
+
+  // Spawn positions for each arena character (local, centered left portion of ground)
+  function spawnPos(col, row) {
+    return {
+      x: arenaX(col) + 20,
+      y: arenaY(row) + GY - 32,
+    };
+  }
+
+  // Collect all platforms from all arenas
+  const allPlatforms = [
+    ...a0plats, ...a1plats, ...a2plats, ...a3plats,
+    ...a4plats, ...a5plats, ...a6plats, ...a7plats,
+  ];
+
+  // Phase 2 layout — single wide map
+  // Center island at middle, 7 surrounding mini-arenas linked by bridges
+  // We'll define these at runtime in initLevel for cleanliness
+  // For now store the blueprint in level data
+
+  return {
+    bg: '#0c0c18',
+    isIllusion: true,
+    spawnX: 0,   // not used directly; each illusionPlayer has own pos
+    spawnY: 0,
+    endX: 420,   // gate position (phase 2 center island)
+    endY: 160,
+    spikes: [],
+    ceilingSpikes: [],
+    deathCeiling: 0,
+    platforms: allPlatforms,
+    movingSpikes: [],
+    levelSpikes: [],
+    // Illusion state
+    illusionPhase: 1,           // 1 = elimination, 2 = collection
+    illusionRealIdx: -1,        // which of the 8 is real (set on init)
+    illusionPlayers: [],        // array of 8 player objects
+    illusionAlive: [],          // bool per player
+    illusionDead: [],           // permanently dead (illusion killed)
+    illusionTransitioning: false,
+    illusionTransitionTimer: 0,
+    illusionPhase2Inited: false,
+    // Phase 2 state
+    shards: [],                 // { x, y, collected, arenaIdx }
+    shardsCollected: 0,
+    phase2GateSpawned: false,
+    phase2MovingSpikes: [],
+    // Arena grid constants (stored so render can use them)
+    AW, AH, COLS, ROWS, MARGIN, GAP,
+    arenaSpawnPositions: [
+      spawnPos(0,0), spawnPos(1,0), spawnPos(2,0), spawnPos(3,0),
+      spawnPos(0,1), spawnPos(1,1), spawnPos(2,1), spawnPos(3,1),
+    ],
+    // Per-arena bounds for death detection
+    arenaBounds: [
+      { x: arenaX(0), y: arenaY(0), w: AW, h: AH },
+      { x: arenaX(1), y: arenaY(0), w: AW, h: AH },
+      { x: arenaX(2), y: arenaY(0), w: AW, h: AH },
+      { x: arenaX(3), y: arenaY(0), w: AW, h: AH },
+      { x: arenaX(0), y: arenaY(1), w: AW, h: AH },
+      { x: arenaX(1), y: arenaY(1), w: AW, h: AH },
+      { x: arenaX(2), y: arenaY(1), w: AW, h: AH },
+      { x: arenaX(3), y: arenaY(1), w: AW, h: AH },
+    ],
+  };
+}
+
 function getLevel(n) {
   if (n === 0) return buildLevel1();
   if (n === 1) return buildLevel2();
   if (n === 2) return buildLevel3();
   if (n === 3) return buildLevel4();
+  if (n === 4) return buildLevel5();
   return buildSimpleLevel(n);
 }
 
@@ -789,6 +981,43 @@ function initLevel(n) {
   }
   level.movingSpikes = [];
   level.levelSpikes = [];
+  // Reset illusion state for Level 5
+  if (level.isIllusion) {
+    level.illusionPhase = 1;
+    level.illusionRealIdx = Math.floor(Math.random() * 8);
+    level.illusionTransitioning = false;
+    level.illusionTransitionTimer = 0;
+    level.illusionPhase2Inited = false;
+    level.shards = [];
+    level.shardsCollected = 0;
+    level.phase2GateSpawned = false;
+    level.phase2MovingSpikes = [];
+    // Create 8 player objects
+    level.illusionPlayers = [];
+    level.illusionAlive = [];
+    level.illusionDead = [];
+    for (let i = 0; i < 8; i++) {
+      const sp = level.arenaSpawnPositions[i];
+      level.illusionPlayers.push({
+        x: sp.x, y: sp.y - 32,
+        w: 14, h: 26,
+        vx: 0, vy: 0,
+        onGround: false,
+        alive: true,
+        facingRight: true,
+        legPhase: 0,
+        respawnTimer: 0,
+        arenaIdx: i,
+      });
+      level.illusionAlive.push(true);
+      level.illusionDead.push(false);
+    }
+    // Point level.spawnX/Y to the real player's arena spawn (used for particles etc.)
+    const rsp = level.arenaSpawnPositions[level.illusionRealIdx];
+    resetPlayer(rsp.x, rsp.y - 64); // keep player alive but unused in illusion phase
+    player.alive = false; // main player not active in illusion phase
+    return;
+  }
   // Reset arena state for Level 4
   if (level.isArena) {
     level.arenaTimer = 30000;
@@ -917,6 +1146,10 @@ function checkPlayerDeath(p) {
 }
 
 function updatePlayer(dt) {
+  if (level.isIllusion) {
+    updateIllusion(dt);
+    return;
+  }
   if (!player.alive) return;
 
   if (level.isDualPlayer) {
@@ -971,6 +1204,283 @@ function updatePlayer(dt) {
     const ex = level.endX, ey = level.endY;
     if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H)) {
       winLevel();
+    }
+  }
+}
+
+// =====================================================================
+// ILLUSION LEVEL (Level 5) LOGIC
+// =====================================================================
+function illusionPlayerPhysics(ip, moveLeft, moveRight, doJump) {
+  // Movement
+  if (moveLeft)  { ip.vx = -MOVE_SPEED * 0.85; ip.facingRight = false; }
+  else if (moveRight) { ip.vx = MOVE_SPEED * 0.85; ip.facingRight = true; }
+  else ip.vx *= 0.7;
+
+  if (doJump && ip.onGround) {
+    ip.vy = JUMP_FORCE * 0.85;
+    ip.onGround = false;
+  }
+
+  ip.vy += GRAVITY;
+  if (ip.vy > 18) ip.vy = 18;
+  ip.onGround = false;
+
+  // Move X, clamp to arena bounds
+  const bounds = level.arenaBounds[ip.arenaIdx];
+  ip.x += ip.vx;
+  if (ip.x < bounds.x + 1) { ip.x = bounds.x + 1; ip.vx = 0; }
+  if (ip.x + ip.w > bounds.x + bounds.w - 1) { ip.x = bounds.x + bounds.w - 1 - ip.w; ip.vx = 0; }
+
+  // Move Y
+  ip.y += ip.vy;
+
+  // Platform collisions — only platforms within this arena
+  for (const plat of level.platforms) {
+    if (plat.state === 'gone') continue;
+    if (plat.isSpike) continue; // handled separately
+    // Check if plat is within this arena (rough check)
+    if (plat.x + plat.w < bounds.x || plat.x > bounds.x + bounds.w) continue;
+    if (plat.y + plat.h < bounds.y || plat.y > bounds.y + bounds.h) continue;
+    if (!rectOverlap(ip.x, ip.y, ip.w, ip.h, plat.x, plat.y, plat.w, plat.h)) continue;
+
+    const prevY = ip.y - ip.vy;
+    if (ip.vy >= 0 && prevY + ip.h <= plat.y + 4) {
+      ip.y = plat.y - ip.h;
+      ip.vy = 0;
+      ip.onGround = true;
+    } else if (ip.vy < 0 && prevY >= plat.y + plat.h - 4) {
+      ip.y = plat.y + plat.h;
+      ip.vy = 0;
+    }
+  }
+
+  // Also check phase-2 moving spikes
+  if (level.illusionPhase === 2) {
+    for (const ms of level.phase2MovingSpikes) {
+      if (!ms.active) continue;
+      if (ms.arenaIdx !== ip.arenaIdx) continue;
+      if (rectOverlap(ip.x + 2, ip.y + 2, ip.w - 4, ip.h - 4, ms.x, ms.y, ms.w, ms.h)) {
+        ip.vy = -8; // bounce up as death signal
+        ip.alive = false;
+      }
+    }
+  }
+
+  // Leg animation
+  if ((moveLeft || moveRight) && ip.onGround) ip.legPhase += 0.2;
+}
+
+function illusionPlayerDead(ip) {
+  const bounds = level.arenaBounds[ip.arenaIdx];
+  // Fell off bottom
+  if (ip.y > bounds.y + bounds.h + 10) return true;
+  // Spike zone collision
+  for (const plat of level.platforms) {
+    if (!plat.isSpike) continue;
+    if (plat.x + plat.w < bounds.x || plat.x > bounds.x + bounds.w) continue;
+    if (plat.ceilSpike) {
+      // Ceiling spike: hit from below (player head)
+      if (rectOverlap(ip.x + 2, ip.y, ip.w - 4, 8, plat.x, plat.y, plat.w, plat.h)) return true;
+    } else {
+      // Floor spike: hit from above (player feet)
+      if (rectOverlap(ip.x + 2, ip.y + ip.h - 8, ip.w - 4, 10, plat.x, plat.y, plat.w, plat.h)) return true;
+    }
+  }
+  return false;
+}
+
+function initPhase2() {
+  if (level.illusionPhase2Inited) return;
+  level.illusionPhase2Inited = true;
+  level.illusionPhase = 2;
+
+  // The real player takes over the main player object, placed at center island
+  const CX = CANVAS_W / 2 - 9, CY = 240;
+  resetPlayer(CX, CY);
+  player.alive = true;
+
+  // Build phase-2 map: center island + 7 connected arenas with bridges and shards
+  const centerX = CANVAS_W / 2 - 80, centerY = 260, centerW = 160, centerH = 16;
+  level.platforms = [
+    { id: 'c-island', x: centerX, y: centerY, w: centerW, h: centerH, type: 'normal', color: '#446644' },
+    // Bridges — narrow corridors to 7 outer arena zones
+    // Left bridge
+    { id: 'br-L', x: centerX - 90, y: centerY, w: 90, h: 14, type: 'normal', color: '#334433' },
+    // Right bridge
+    { id: 'br-R', x: centerX + centerW, y: centerY, w: 90, h: 14, type: 'normal', color: '#334433' },
+    // Top-left bridge
+    { id: 'br-TL', x: centerX - 40, y: centerY - 80, w: 14, h: 80, type: 'normal', color: '#334433' },
+    // Top-right bridge
+    { id: 'br-TR', x: centerX + centerW - 14 + 40, y: centerY - 80, w: 14, h: 80, type: 'normal', color: '#334433' },
+    // Bottom-left bridge
+    { id: 'br-BL', x: centerX - 40, y: centerY + centerH, w: 14, h: 80, type: 'normal', color: '#334433' },
+    // Bottom-right bridge
+    { id: 'br-BR', x: centerX + centerW - 14 + 40, y: centerY + centerH, w: 14, h: 80, type: 'normal', color: '#334433' },
+    // 7 outer arena platforms (one per illusion)
+    { id: 'a0', x: 20,  y: centerY, w: 80, h: 14, type: 'normal', color: '#335555' },
+    { id: 'a1', x: 820, y: centerY, w: 60, h: 14, type: 'normal', color: '#335555' },
+    { id: 'a2', x: centerX - 80, y: centerY - 120, w: 80, h: 14, type: 'normal', color: '#335555' },
+    { id: 'a3', x: centerX + centerW, y: centerY - 120, w: 80, h: 14, type: 'normal', color: '#335555' },
+    { id: 'a4', x: centerX - 80, y: centerY + 100, w: 80, h: 14, type: 'normal', color: '#335555' },
+    { id: 'a5', x: centerX + centerW, y: centerY + 100, w: 80, h: 14, type: 'normal', color: '#335555' },
+    { id: 'a6', x: CANVAS_W / 2 - 40, y: centerY - 160, w: 80, h: 14, type: 'normal', color: '#335555' },
+    // Floor (full)
+    { id: 'floor', x: 0, y: CANVAS_H - 20, w: CANVAS_W, h: 20, type: 'normal', color: '#222233' },
+  ];
+  level.spikes = [];
+  level.ceilingSpikes = [];
+  level.movingSpikes = [];
+
+  // Place shards above each outer arena platform
+  const arenaIds = ['a0','a1','a2','a3','a4','a5','a6'];
+  level.shards = [];
+  for (let i = 0; i < 7; i++) {
+    const ap = level.platforms.find(p => p.id === arenaIds[i]);
+    level.shards.push({
+      x: ap.x + ap.w / 2 - 8,
+      y: ap.y - 30,
+      w: 16, h: 20,
+      collected: false,
+      arenaIdx: i,
+      glowPhase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // Spawn moving spike obstacles in the outer arenas
+  level.phase2MovingSpikes = [];
+  // Left arena: horizontal moving spike
+  level.phase2MovingSpikes.push({ x: 20, y: centerY - 40, w: 14, h: 14, vx: 1.5, minX: 20, maxX: 95, active: true, arenaIdx: 0 });
+  // Right arena: horizontal moving spike
+  level.phase2MovingSpikes.push({ x: 820, y: centerY - 40, w: 14, h: 14, vx: -1.5, minX: 820, maxX: 880, active: true, arenaIdx: 1 });
+  // Top-left: vertical bounce spike
+  level.phase2MovingSpikes.push({ x: centerX - 60, y: centerY - 110, w: 14, h: 14, vy: 1.2, minY: centerY - 130, maxY: centerY - 30, active: true, arenaIdx: 2, vertical: true });
+  // Top-right: vertical bounce spike
+  level.phase2MovingSpikes.push({ x: centerX + centerW + 30, y: centerY - 110, w: 14, h: 14, vy: 1.2, minY: centerY - 130, maxY: centerY - 30, active: true, arenaIdx: 3, vertical: true });
+  // Bottom-left: horizontal spike
+  level.phase2MovingSpikes.push({ x: centerX - 80, y: centerY + 86, w: 14, h: 14, vx: 1.5, minX: centerX - 80, maxX: centerX - 15, active: true, arenaIdx: 4 });
+  // Bottom-right: horizontal spike
+  level.phase2MovingSpikes.push({ x: centerX + centerW + 10, y: centerY + 86, w: 14, h: 14, vx: -1.5, minX: centerX + centerW + 10, maxX: centerX + centerW + 80, active: true, arenaIdx: 5 });
+  // Top center: horizontal spike
+  level.phase2MovingSpikes.push({ x: CANVAS_W / 2 - 35, y: centerY - 170, w: 14, h: 14, vx: 1.8, minX: CANVAS_W / 2 - 40, maxX: CANVAS_W / 2 + 30, active: true, arenaIdx: 6 });
+}
+
+function updateIllusion(dt) {
+  if (level.illusionTransitioning) {
+    level.illusionTransitionTimer -= dt;
+    if (level.illusionTransitionTimer <= 0) {
+      level.illusionTransitioning = false;
+      initPhase2();
+    }
+    return;
+  }
+
+  if (level.illusionPhase === 1) {
+    // Update all living illusion players
+    const moveLeft = keys.left, moveRight = keys.right, doJump = keys.jump;
+    let aliveCount = 0;
+    for (let i = 0; i < 8; i++) {
+      const ip = level.illusionPlayers[i];
+      if (level.illusionDead[i]) continue; // permanently gone
+      aliveCount++;
+
+      if (ip.respawnTimer > 0) {
+        ip.respawnTimer -= dt;
+        if (ip.respawnTimer <= 0) {
+          // Respawn in arena
+          const sp = level.arenaSpawnPositions[i];
+          ip.x = sp.x; ip.y = sp.y - 32;
+          ip.vx = 0; ip.vy = 0;
+          ip.alive = true;
+          ip.onGround = false;
+        }
+        continue;
+      }
+
+      if (!ip.alive) {
+        // Just died — determine if illusion or real
+        if (i === level.illusionRealIdx) {
+          // Real: respawn after short delay (looks same as illusion respawning)
+          ip.respawnTimer = 800;
+        } else {
+          // Illusion: mark permanently dead
+          level.illusionDead[i] = true;
+          level.illusionAlive[i] = false;
+          spawnDeathParticles(ip.x, ip.y);
+          shakeTimer = 150; shakeIntensity = 4;
+        }
+        continue;
+      }
+
+      illusionPlayerPhysics(ip, moveLeft, moveRight, doJump);
+
+      if (illusionPlayerDead(ip)) {
+        ip.alive = false;
+        spawnDeathParticles(ip.x, ip.y);
+      }
+    }
+
+    // Check if all illusions are dead
+    let aliveIllusions = 0;
+    for (let i = 0; i < 8; i++) {
+      if (i !== level.illusionRealIdx && !level.illusionDead[i]) aliveIllusions++;
+    }
+    if (aliveIllusions === 0) {
+      // Phase 1 complete — transition
+      level.illusionTransitioning = true;
+      level.illusionTransitionTimer = 1500;
+      shakeTimer = 600; shakeIntensity = 6;
+    }
+  } else if (level.illusionPhase === 2) {
+    // Standard single-player physics on the phase-2 map
+    updateSinglePlayer(player, keys.left, keys.right, keys.jump, dt);
+
+    if (checkPlayerDeath(player)) {
+      killPlayer();
+      return;
+    }
+
+    // Update phase-2 moving spikes
+    for (const ms of level.phase2MovingSpikes) {
+      if (!ms.active) continue;
+      if (ms.vertical) {
+        ms.y += ms.vy;
+        if (ms.y <= ms.minY || ms.y + ms.h >= ms.maxY) ms.vy *= -1;
+      } else {
+        ms.x += ms.vx;
+        if (ms.x <= ms.minX || ms.x + ms.w >= ms.maxX) ms.vx *= -1;
+      }
+      // Kill main player if hit
+      if (player.alive && rectOverlap(player.x + 2, player.y + 2, player.w - 4, player.h - 4,
+          ms.x, ms.y, ms.w, ms.h)) {
+        killPlayer();
+        return;
+      }
+    }
+
+    // Shard collection
+    for (const shard of level.shards) {
+      if (shard.collected) continue;
+      if (rectOverlap(player.x, player.y, player.w, player.h, shard.x, shard.y, shard.w, shard.h)) {
+        shard.collected = true;
+        level.shardsCollected++;
+        shakeTimer = 120; shakeIntensity = 3;
+        spawnDeathParticles(shard.x, shard.y); // reuse for sparkle
+      }
+    }
+
+    // Spawn gate when all 7 shards collected
+    if (level.shardsCollected >= 7 && !level.phase2GateSpawned) {
+      level.phase2GateSpawned = true;
+      shakeTimer = 400; shakeIntensity = 5;
+    }
+
+    // Win check
+    if (level.phase2GateSpawned) {
+      const ex = level.endX, ey = level.endY;
+      if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H)) {
+        winLevel();
+      }
     }
   }
 }
@@ -1143,6 +1653,7 @@ function handlePlatformLand(p, plyr) {
 }
 
 function updatePlatforms(dt) {
+  if (level.isIllusion) return; // illusion level manages its own platform state
   p3StoodOn = false;
 
   for (const p of level.platforms) {
@@ -1406,6 +1917,8 @@ function updateParticles(dt) {
 // KILL / WIN
 // =====================================================================
 function killPlayer() {
+  // In illusion phase 1, player is managed separately — never call this
+  if (level && level.isIllusion && level.illusionPhase === 1) return;
   if (!player.alive) return;
   player.alive = false;
   spawnDeathParticles(player.x, player.y);
@@ -1465,6 +1978,8 @@ function winMessage() {
     ["You actually got both of them there? I'm mildly impressed. Mildly.","Split personality disorder: cured. Took you {d} deaths though.","Two brains working together and it STILL took that long."],
     // Level 4
     ["30 seconds of survival. You barely made it out alive. {d} deaths say everything.","The arena spared you. This time.","Survived the gauntlet. Don't expect applause. You took {d} deaths to do it.","The spikes eventually let you go. Charity."],
+    // Level 5
+    ["You found the real one. Eventually. After {d} deaths of guessing. Genius.","All 7 shards collected. The real you was hiding all along.","Process of elimination. Took {d} deaths but you got there.","The illusions couldn't fool you forever. Just for {d} deaths."],
     ["Did you Google the solution?","Honestly surprised you made it."],
     ["OK that one was actually hard. You still took too long though."],
     ["Are you cheating? No? Then how are you this slow?"],
@@ -1616,6 +2131,7 @@ function drawPlatform(p) {
   if (p.state === 'offscreen') return;
   if (p.state === 'gone') return;
   if (p.state === 'hidden') return; // invisible platforms
+  if (p.isSpike) return; // spike zones drawn in drawIllusion
 
   // Barriers: semi-transparent walls that fade when deactivated
   if (p.type === 'barrier') {
@@ -1702,6 +2218,7 @@ function drawParticles() {
 }
 
 function drawHUD() {
+  if (level.isIllusion) return; // illusion HUD drawn in drawIllusion()
   if (level.isDualPlayer) {
     // Dual player: show height progress for both players (vertical progress toward gate)
     const gateY = level.endY;
@@ -1845,6 +2362,193 @@ function drawArena() {
   }
 }
 
+function drawIllusion() {
+  if (level.illusionPhase === 1 || level.illusionTransitioning) {
+    const { AW, AH, COLS, ROWS, MARGIN, GAP } = level;
+
+    // Draw arena grid borders
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const i = row * COLS + col;
+        const ax = MARGIN + col * (AW + GAP);
+        const ay = MARGIN + row * (AH + GAP);
+
+        // Arena border
+        const isDead = level.illusionDead[i];
+        ctx.strokeStyle = isDead ? '#333' : '#444466';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ax, ay, AW, AH);
+
+        // Dimming overlay for dead arenas
+        if (isDead) {
+          ctx.globalAlpha = 0.6;
+          ctx.fillStyle = '#000';
+          ctx.fillRect(ax, ay, AW, AH);
+          ctx.globalAlpha = 1;
+
+          // Ghost X
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = '#ff4444';
+          ctx.font = `bold ${Math.floor(AH * 0.35)}px Courier New`;
+          ctx.textAlign = 'center';
+          ctx.fillText('✕', ax + AW / 2, ay + AH / 2 + 10);
+          ctx.globalAlpha = 1;
+        }
+
+        // Draw spike zones for this arena
+        for (const plat of level.platforms) {
+          if (!plat.isSpike) continue;
+          if (plat.x + plat.w < ax || plat.x > ax + AW) continue;
+          if (plat.ceilSpike) {
+            // Ceiling spikes (pointing down)
+            const cnt = Math.floor(plat.w / 10);
+            const sw = plat.w / cnt;
+            ctx.fillStyle = '#cc3333';
+            for (let k = 0; k < cnt; k++) {
+              const sx = plat.x + k * sw;
+              ctx.beginPath();
+              ctx.moveTo(sx, plat.y);
+              ctx.lineTo(sx + sw / 2, plat.y + plat.h);
+              ctx.lineTo(sx + sw, plat.y);
+              ctx.closePath();
+              ctx.fill();
+            }
+          } else {
+            // Floor spikes (pointing up)
+            const cnt = Math.floor(plat.w / 10);
+            const sw = plat.w / cnt;
+            ctx.fillStyle = '#cc3333';
+            for (let k = 0; k < cnt; k++) {
+              const sx = plat.x + k * sw;
+              ctx.beginPath();
+              ctx.moveTo(sx, plat.y + plat.h);
+              ctx.lineTo(sx + sw / 2, plat.y);
+              ctx.lineTo(sx + sw, plat.y + plat.h);
+              ctx.closePath();
+              ctx.fill();
+            }
+          }
+        }
+      }
+    }
+
+    // Draw each illusion player
+    const colors = [
+      ['#e8a060','#f0b868','#c08040'],
+      ['#60a0e8','#68b8f0','#4080c0'],
+      ['#a0e860','#b8f068','#80c040'],
+      ['#e860a0','#f068b8','#c04080'],
+      ['#e8e060','#f0e868','#c0c040'],
+      ['#60e8e0','#68f0e8','#40c0c0'],
+      ['#a060e8','#b868f0','#8040c0'],
+      ['#e06060','#f07070','#c04040'],
+    ];
+
+    for (let i = 0; i < 8; i++) {
+      const ip = level.illusionPlayers[i];
+      if (level.illusionDead[i]) continue;
+      if (ip.respawnTimer > 0) continue;
+      if (!ip.alive) continue;
+      const [body, head, limb] = colors[i];
+      drawPlayerGeneric(ip, body, head, limb, null);
+    }
+
+    // Phase 1 HUD: illusions eliminated counter
+    let deadCount = 0;
+    for (let i = 0; i < 8; i++) { if (i !== level.illusionRealIdx && level.illusionDead[i]) deadCount++; }
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(CANVAS_W / 2 - 100, 4, 200, 22);
+    ctx.fillStyle = '#aaaaff';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Illusions Eliminated: ${deadCount} / 7`, CANVAS_W / 2, 19);
+
+    // Transition overlay
+    if (level.illusionTransitioning) {
+      const alpha = 1 - (level.illusionTransitionTimer / 1500);
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#44ffaa';
+      ctx.font = 'bold 28px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('THE REAL ONE SURVIVES', CANVAS_W / 2, CANVAS_H / 2);
+      ctx.font = '14px Courier New';
+      ctx.fillStyle = '#aaa';
+      ctx.fillText('Collect the shards...', CANVAS_W / 2, CANVAS_H / 2 + 30);
+    }
+
+  } else if (level.illusionPhase === 2) {
+    // Draw phase-2 moving spikes
+    for (const ms of level.phase2MovingSpikes) {
+      if (!ms.active) continue;
+      ctx.fillStyle = '#ff3333';
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(ms.x + ms.w / 2, ms.y);
+      ctx.lineTo(ms.x + ms.w, ms.y + ms.h);
+      ctx.lineTo(ms.x, ms.y + ms.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    // Draw shards
+    for (const shard of level.shards) {
+      if (shard.collected) continue;
+      shard.glowPhase += 0.04;
+      const glow = 0.6 + Math.sin(shard.glowPhase) * 0.4;
+      ctx.globalAlpha = glow;
+      ctx.fillStyle = '#88ddff';
+      ctx.shadowColor = '#44aaff';
+      ctx.shadowBlur = 14;
+      // Crystal diamond shape
+      const cx2 = shard.x + shard.w / 2, cy2 = shard.y + shard.h / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx2, shard.y);
+      ctx.lineTo(shard.x + shard.w, cy2);
+      ctx.lineTo(cx2, shard.y + shard.h);
+      ctx.lineTo(shard.x, cy2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(cx2, shard.y + 3);
+      ctx.lineTo(shard.x + shard.w - 3, cy2);
+      ctx.lineTo(cx2, cy2 - 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+
+    // Shard counter HUD
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(CANVAS_W / 2 - 80, 4, 160, 22);
+    ctx.fillStyle = '#88ddff';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Shards: ${level.shardsCollected} / 7`, CANVAS_W / 2, 19);
+
+    // Gate prompt
+    if (level.phase2GateSpawned) {
+      const pulse = 0.6 + Math.sin(Date.now() / 300) * 0.4;
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#44ff88';
+      ctx.shadowColor = '#00ff88';
+      ctx.shadowBlur = 20;
+      ctx.font = 'bold 22px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText('REACH THE GATE', CANVAS_W / 2, 55);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
 function render() {
   // Screen shake
   let sx = 0, sy = 0;
@@ -1897,13 +2601,17 @@ function render() {
   for (const s of level.movingSpikes) drawMovingSpike(s);
 
   // Gates
-  if (!level.isArena) {
+  if (!level.isArena && !level.isIllusion) {
     drawGate(level.spawnX - GATE_W / 2, level.spawnY - GATE_H, false);
     if (level.isDualPlayer) {
       drawGate(level.spawn2X - GATE_W / 2, level.spawn2Y - GATE_H, false);
     }
   }
-  if (!level.isArena || level.arenaGateSpawned) {
+  if (!level.isArena && !level.isIllusion) {
+    drawGate(level.endX, level.endY, true);
+  } else if (level.isArena && level.arenaGateSpawned) {
+    drawGate(level.endX, level.endY, true);
+  } else if (level.isIllusion && level.illusionPhase === 2 && level.phase2GateSpawned) {
     drawGate(level.endX, level.endY, true);
   }
 
@@ -1912,8 +2620,15 @@ function render() {
     drawArena();
   }
 
+  // Illusion-specific rendering
+  if (level.isIllusion) {
+    drawIllusion();
+  }
+
   // Player
-  drawPlayer();
+  if (!level.isIllusion || level.illusionPhase === 2) {
+    drawPlayer();
+  }
 
   // Particles
   drawParticles();
@@ -2070,6 +2785,7 @@ function showDeath() {
   let msgs = DEATH_MSGS;
   if (currentLevel === 2) msgs = DUAL_DEATH_MSGS;
   else if (currentLevel === 3) msgs = ARENA_DEATH_MSGS;
+  else if (currentLevel === 4) msgs = ILLUSION_DEATH_MSGS;
   let msg = msgs[Math.floor(Math.random() * msgs.length)];
   msg = msg.replace('{n}', saveData.totalDeaths);
   document.getElementById('deathMsg').textContent = msg;
