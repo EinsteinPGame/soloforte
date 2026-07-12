@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>RPS Legends v5.0 - Play Online</title>
+<title>RPS Legends v6.0 - Play Online</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Consolas','Courier New',monospace;background:#0a0a1a;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center}
@@ -15,8 +15,8 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// RPS LEGENDS v5.0 — Ultimate Edition
-// 150+ move animations, Web Audio, enemy tiers, mobile, shop rework
+// RPS LEGENDS v6.0 — Ultimate Edition
+// Boss heal, surrender, PP fixes, faster leveling, 4-stage evolutions, crits, type advantage, boss preview
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -353,6 +353,13 @@ const MOVE_ANIMS={
   'Guard':{type:'buff',color:'#4488ff',color2:'#88bbff',shape:'shield',particles:'sparkle'},
   'Drain Hit':{type:'slash',color:'#00cc66',color2:'#44ff88',shape:'drain',impact:'flash',trail:'magic'},
   'Status Strike':{type:'slash',color:'#ff6600',color2:'#ffaa44',shape:'status',impact:'flash',trail:'sparks'},
+  'Haste Buff':{type:'buff',color:'#96dcff',color2:'#d0f0ff',shape:'wind_aura',particles:'wind'},
+  'Heavy Blow':{type:'lunge',color:'#d08020',color2:'#ffc060',shape:'fist_big',size:20,impact:'bigshake'},
+  'Double Strike':{type:'multi',color:'#ff6432',color2:'#ffaa00',count:2,shape:'slash',impact:'shake'},
+  'Venom Strike':{type:'projectile',color:'#8000c0',color2:'#c060ff',shape:'fang',size:14,trail:'poison',impact:'shake'},
+  'Charge Up':{type:'buff',color:'#ffdc00',color2:'#ffee60',shape:'electric',particles:'lightning'},
+  'Burst Slash':{type:'crossslash',color:'#ff4020',color2:'#ffaa00',size:18,impact:'bigshake',particles:'sparks'},
+  'Echo Strike':{type:'slash',color:'#c080ff',color2:'#ffffff',shape:'blade',impact:'flash'},
 };
 
 // Animation state
@@ -1633,7 +1640,7 @@ let S={scene:'menu',soulCrystals:0,unlocked:['Stone','Blade','Scroll'],
   runActive:false,mode:'classic',
   enemy:null,combatLog:[],combatState:'choose',
   encounter:null,showItems:false,showLog:false,showMiniShop:false,
-  messages:[],tick:0,eventLog:[],
+  messages:[],tick:0,eventLog:[],critFlash:0,bossPreview:null,
   settings:{difficulty:1,speed:1,musicOn:false},scrollY:0,
   freeItemPicks:null,freeItemFloor:-1,
   reviveUsed:false,burnPassive:false,reflectPassive:false,doubleStrike:false,priorityPassive:false,ultimatePassive:false,
@@ -1647,7 +1654,7 @@ function addLog(t){S.eventLog.push({text:t,floor:S.floor});if(S.eventLog.length>
 function addInv(name,effect){const f=S.inventory.find(x=>x.name===name);if(f)f.count++;else S.inventory.push({name,effect,count:1})}
 function addStatus(target,type){if(!target.statuses)target.statuses=[];const fx=STATUS_FX[type];if(!fx)return;if(target.statuses.find(s=>s.type===type))return;target.statuses.push({type,name:fx.name,dur:fx.dur,color:fx.color});SFX.statusApplied()}
 function pal(){const style=['menu','charSelect','eternalShop','howToPlay','settings','modeSelect','charShop'].includes(S.scene)?'menu':S.runActive?getStyle(S.floor):'menu';return STYLES[style]}
-function evoName(){if(!S.charData)return'';return S.evoStage===0?S.charName:S.evoStage===1?S.charData.evo1:S.charData.evo2}
+function evoName(){if(!S.charData)return'';if(S.evoStage===0)return S.charName;if(S.evoStage===1)return S.charData.evo1;if(S.evoStage===2)return S.charData.evo2;if(S.evoStage===3)return (S.charData.evo2||S.charData.evo1)+' Prime';return (S.charData.evo2||S.charData.evo1)+' Absolute';}
 function checkUnlocks(){CHARS.forEach(c=>{if(!S.unlocked.includes(c.name)&&c.cost===0)S.unlocked.push(c.name)})}
 
 function effAtk(){return Math.max(1,S.atk+S.tempAtk)}
@@ -1703,7 +1710,7 @@ function initChar(name){
   S.permAtk=d.atk+S.eternals.atk*2;S.permDef=d.def+S.eternals.def*2;S.permSpd=d.spd;
   S.tempAtk=0;S.tempDef=0;S.tempSpd=0;
   S.gold=0;S.crit=5+(TYPE_SPEC[d.type].critBonus||0);S.dodge=0;S.evoStage=0;
-  S.level=1;S.xp=0;S.xpNext=20;S.xpMult=1+S.eternals.xp*0.1;
+  S.level=1;S.xp=0;S.xpNext=13;S.xpMult=1+S.eternals.xp*0.1;
   S.moves=d.moves.map(m=>({...m,pp:m.maxPp}));
   S.inventory=[{name:'Healing Potion',effect:'heal30',count:3}];
   S.artifacts=[];S.statuses=[];S.runActive=true;S.floor=1;
@@ -1718,15 +1725,28 @@ function initChar(name){
 
 function gainXP(amount){
   amount=Math.floor(amount*S.xpMult);S.xp+=amount;
-  while(S.xp>=S.xpNext){S.xp-=S.xpNext;S.level++;S.xpNext=Math.floor(S.xpNext*1.15)+5;
+  while(S.xp>=S.xpNext){S.xp-=S.xpNext;S.level++;S.xpNext=Math.floor(S.xpNext*1.1)+3;
     S.maxHp+=5;S.hp=Math.min(S.hp+5,S.maxHp);S.atk+=1;S.permAtk+=1;S.def+=1;S.permDef+=1;
     if(S.level%3===0){S.spd+=1;S.permSpd+=1}
     addMsg(`Level Up! Lv.${S.level}`);addLog(`Reached Level ${S.level}`);
     SFX.levelUp();
-    if(S.level%5===0&&S.moves.length<6){
-      const newMoves=[mv('Power Strike',S.charData.type,20+S.level,12),mv('Guard','Buff',0,10,'def+'+(3+Math.floor(S.level/5))),
-        mv('Drain Hit',S.charData.type,15+Math.floor(S.level*0.5),10,'lifesteal'),mv('Status Strike',S.charData.type,12+Math.floor(S.level*0.3),14,null,30,pick(['bleed','burn','poison']))];
-      const nm=pick(newMoves);nm.name=nm.name+' '+['II','III','IV','V','VI'][Math.floor(S.level/5)-1];
+    if(S.level%5===0&&S.moves.length<8){
+      const tier=Math.floor(S.level/5);const suffix=['II','III','IV','V','VI','VII','VIII','IX','X'][tier-1]||'X';
+      const t=S.charData.type;
+      const newMoves=[
+        mv('Power Strike',t,20+S.level,12),
+        mv('Guard','Buff',0,10,'def+'+(3+Math.floor(S.level/5))),
+        mv('Drain Hit',t,15+Math.floor(S.level*0.5),10,'lifesteal'),
+        mv('Status Strike',t,12+Math.floor(S.level*0.3),14,null,30,pick(['bleed','burn','poison'])),
+        mv('Haste Buff','Buff',0,8,'spd+'+(4+Math.floor(S.level/4))),
+        mv('Heavy Blow',t,35+Math.floor(S.level*0.8),6),
+        mv('Double Strike',t,14+Math.floor(S.level*0.4),16),
+        mv('Venom Strike',t,10+Math.floor(S.level*0.3),18,null,40,'poison'),
+        mv('Charge Up','Buff',0,8,'atk+'+(5+Math.floor(S.level/4))),
+        mv('Burst Slash',t,28+Math.floor(S.level*0.7),8,null,20,pick(['bleed','defDown'])),
+        mv('Echo Strike',t,18+Math.floor(S.level*0.5),10),
+      ];
+      const nm={...pick(newMoves)};nm.name=nm.name.replace(/ (II|III|IV|V|VI|VII|VIII|IX|X)$/,'')+' '+suffix;
       S.pendingMove=nm;
     }
   }
@@ -1748,8 +1768,10 @@ function processStatuses(target,isPlayer){
 function calcDmg(baseDmg,moveType,atkStat,defStat,targetType,isPlayer){
   let dmg=baseDmg+atkStat-Math.floor(defStat/2);
   let mult=1.0;let aType=moveType==='Random'?pick(TYPES):moveType;
-  if(TADV[aType]===targetType)mult=1.5;
-  else if(TADV[targetType]===aType)mult=0.6;
+  let typeMsg=null;
+  if(TADV[aType]===targetType){mult=1.3;typeMsg='type advantage';}
+  else if(TADV[targetType]===aType){mult=0.8;typeMsg='type disadvantage';}
+  // else same type: 1.0x
   if(isPlayer){
     const spec=TYPE_SPEC[S.charData.type];
     if(spec.dmgMult)mult*=spec.dmgMult;
@@ -1764,12 +1786,28 @@ function calcDmg(baseDmg,moveType,atkStat,defStat,targetType,isPlayer){
   if(isCrit)mult*=1.5;
   if(isPlayer&&S.statuses.find(s=>s.type==='burn'))mult*=0.9;
   dmg=Math.max(1,Math.floor(dmg*mult));
-  return{dmg,isSuper:mult>1.3&&!isCrit,isCrit,aType};
+  return{dmg,isSuper:typeMsg==='type advantage'&&!isCrit,isCrit,aType,typeMsg};
 }
 
 // Pending move execution (called after animation completes)
 let pendingMoveAction=null;
 
+function doStruggle(){
+  if(S.combatState==='animating')return;
+  S.combatState='animating';
+  startMoveAnim('Rock Throw',true,'Rock');
+  SFX.click();
+  pendingMoveAction=()=>{
+    const e=S.enemy;
+    const struggleDmg=Math.max(1,Math.floor(effAtk()*0.5));
+    e.hp-=struggleDmg;
+    const recoil=Math.max(1,Math.floor(S.maxHp*0.1));
+    S.hp-=recoil;
+    S.combatLog.push({msg:`Struggle! ${struggleDmg} dmg (recoil ${recoil})`,color:'#c8c8c8'});
+    if(e.hp<=0){afterCombatWin();}
+    else{enemyTurn();if(S.hp<=0)handleDeath();else S.combatState='choose';}
+  };
+}
 function doMove(i){
   if(S.combatState==='animating')return; // Block input during animation
   const m=S.moves[i];if(m.pp<=0)return;
@@ -1814,8 +1852,9 @@ function executeMoveLogic(i){
       const bonus=Math.floor(dmg*0.5);e.hp-=bonus;totalDmg+=bonus;
       S.combatLog.push({msg:`Double-strike! +${bonus} bonus dmg!`,color:'#b040f0'});
     }
-    let msg=`${m.name}! `;if(hits>1)msg+=`x${hits} `;if(isSuper)msg+='SUPER! ';if(isCrit)msg+='CRIT! ';msg+=`${totalDmg} dmg`;
+    let msg=`${m.name}! `;if(hits>1)msg+=`x${hits} `;if(isSuper)msg+='SUPER! ';if(isCrit)msg+='CRITICAL HIT! ';msg+=`${totalDmg} dmg`;
     S.combatLog.push({msg,color:isCrit?'#ffd700':isSuper?'#28c8dc':'#32c832'});
+    if(isCrit){S.critFlash=40;triggerShake(10);}
     addLog(`${m.name}: ${totalDmg} dmg to ${e.name}`);
     // SFX
     if(isCrit)SFX.crit();else if(isSuper)SFX.superEffective();else SFX.hit(aType);
@@ -1854,7 +1893,8 @@ function enemyTurn(){
   if(spec.dmgTaken)dmg=Math.floor(dmg*spec.dmgTaken);
   for(const a of S.artifacts){if(a.effect==='harmony')dmg=Math.floor(dmg*0.9)}
   if(S.charData.ability&&S.charData.ability.includes('Harmony'))dmg=Math.floor(dmg*0.9);
-  if(TADV[eType]===S.charData.type){dmg=Math.floor(dmg*1.3);S.combatLog.push({msg:`Enemy ${eType}! Super effective! ${dmg} dmg!`,color:'#dc3232'})}
+  if(TADV[eType]===S.charData.type){dmg=Math.floor(dmg*1.3);S.combatLog.push({msg:`Enemy ${eType} advantage! ${dmg} dmg!`,color:'#dc3232'})}
+  else if(TADV[S.charData.type]===eType){dmg=Math.floor(dmg*0.8);S.combatLog.push({msg:`Enemy ${eType} resisted! ${dmg} dmg!`,color:'#64c8ff'})}
   else S.combatLog.push({msg:`Enemy attacks! ${dmg} dmg!`,color:'#f08c1e'});
   if(S.reflectPassive){const ref=Math.floor(dmg*0.2);e.hp-=ref;S.combatLog.push({msg:`Reflected ${ref} dmg!`,color:'#b040f0'})}
   S.hp-=dmg;
@@ -1866,9 +1906,13 @@ function enemyTurn(){
 
 function advanceFloor(){
   S.floor++;S.showMiniShop=false;
+  // PP partial restore each floor (+2 per move)
+  S.moves.forEach(m=>{m.pp=Math.min(m.maxPp,m.pp+2)});
   if(S.floor>S.highestFloor){S.highestFloor=S.floor}
-  if(S.floor===25&&S.evoStage===0){S.evoStage=1;S.maxHp+=30;S.hp=Math.min(S.hp+30,S.maxHp);S.atk+=5;S.permAtk+=5;S.def+=3;S.permDef+=3;addMsg(`EVOLVED into ${evoName()}!`);addLog(`Evolved into ${evoName()}`)}
-  else if(S.floor===50&&S.evoStage===1){S.evoStage=2;S.maxHp+=50;S.hp=Math.min(S.hp+50,S.maxHp);S.atk+=8;S.permAtk+=8;S.def+=5;S.permDef+=5;addMsg(`FINAL EVOLUTION: ${evoName()}!`);addLog(`Final evolution: ${evoName()}`)}
+  if(S.floor===25&&S.evoStage===0){S.evoStage=1;S.maxHp+=30;S.hp=Math.min(S.hp+30,S.maxHp);S.atk+=5;S.permAtk+=5;S.def+=3;S.permDef+=3;addMsg(`EVOLVED into ${evoName()}!`);SFX.levelUp();addLog(`Evolved into ${evoName()}`)}
+  else if(S.floor===50&&S.evoStage===1){S.evoStage=2;S.maxHp+=50;S.hp=Math.min(S.hp+50,S.maxHp);S.atk+=8;S.permAtk+=8;S.def+=5;S.permDef+=5;addMsg(`EVOLVED into ${evoName()}!`);SFX.levelUp();addLog(`Evolution stage 2: ${evoName()}`)}
+  else if(S.floor===75&&S.evoStage===2){S.evoStage=3;S.maxHp+=70;S.hp=Math.min(S.hp+70,S.maxHp);S.atk+=12;S.permAtk+=12;S.def+=8;S.permDef+=8;S.spd+=3;S.permSpd+=3;addMsg(`PRIME EVOLUTION: ${evoName()}!`);SFX.levelUp();addLog(`Prime evolution: ${evoName()}`)}
+  else if(S.floor===100&&S.evoStage===3){S.evoStage=4;S.maxHp+=100;S.hp=Math.min(S.hp+100,S.maxHp);S.atk+=18;S.permAtk+=18;S.def+=12;S.permDef+=12;S.spd+=5;S.permSpd+=5;addMsg(`ABSOLUTE EVOLUTION: ${evoName()}!`);SFX.levelUp();addLog(`Absolute evolution: ${evoName()}`)}
   const maxFloor=S.mode==='classic'?300:Infinity;
   if(S.floor>maxFloor&&S.mode==='classic'){handleVictory();return}
   if(S.mode==='endless'&&S.floor>300&&S.floor%50===1){addMsg('Difficulty increased!');addLog('Endless: difficulty spike!')}
@@ -1885,11 +1929,18 @@ function advanceFloor(){
 
 function startCombat(isBoss){
   if(isBoss)resetTempStats();
-  if(isBoss){S.enemy=genBoss(S.floor);SFX.bossAppear()}
-  else{
+  if(isBoss){
+    S.enemy=genBoss(S.floor);SFX.bossAppear();
+    S.bossPreview={boss:S.enemy,timer:210}; // ~3.5s at 60fps
+    S.scene='bossPreview';
+    return;
+  }else{
     const biome=getBiome(S.floor);const eName=pick(biome.enemies);
     S.enemy=genEnemyData(eName,S.floor,biome);S.enemy.maxHp=S.enemy.hp;
   }
+  _enterCombat();
+}
+function _enterCombat(){
   S.combatLog=[];S.combatState='choose';S.showItems=false;S.scene='combat';
   if(S.enemy.isBoss){
     S.combatLog.push({msg:`BOSS: ${S.enemy.name}!`,color:'#ffd700'});
@@ -1922,14 +1973,15 @@ function afterCombatWin(){
   const ge=Math.floor((10+rand(5,15)+S.floor*2)*(1+S.eternals.goldMult*0.1));
   S.gold+=ge;SFX.coin();
   if(S.charData.ability&&S.charData.ability.includes('Sparkle'))S.gold+=Math.floor(ge*0.2);
-  const xpGain=5+S.floor+rand(0,5)+(e.isBoss?S.floor:0);
+  const xpGain=8+S.floor+rand(0,8)+(e.isBoss?S.floor*2:0);
   gainXP(xpGain);
   S.combatLog.push({msg:`+${ge}g +${Math.floor(xpGain*S.xpMult)}xp`,color:'#ffd700'});
   addLog(`Defeated ${e.name} (+${ge}g)`);
   if(e.isBoss){
     S.statuses=[];
-    S.combatLog.push({msg:'BOSS DEFEATED! Statuses cleared!',color:'#ffd700'});
-    S.moves.forEach(m=>m.pp=m.maxPp);addMsg('PP fully restored!');
+    S.hp=S.maxHp;
+    S.combatLog.push({msg:'BOSS DEFEATED! Full heal! Statuses cleared!',color:'#ffd700'});
+    S.moves.forEach(m=>m.pp=m.maxPp);addMsg('Boss slain! Full HP restored!');SFX.heal();
   }
   if(e.isRival){S.combatLog.push({msg:'RIVAL DEFEATED!',color:'#ff3264'});S.gold+=50}
   if(Math.random()<0.08+S.eternals.luck*0.05&&S.artifacts.length<5){
@@ -1994,6 +2046,16 @@ function dChar(cx,cy,sz,col,sty,evo=0){
   X.beginPath();X.moveTo(cx-sz/6,ly);X.lineTo(cx-sz/4,ly+sz/3);X.stroke();
   X.beginPath();X.moveTo(cx+sz/6,ly);X.lineTo(cx+sz/4,ly+sz/3);X.stroke();
   if(evo>=2){X.fillStyle='#ffd700';X.beginPath();X.moveTo(cx-hr,hy-hr);X.lineTo(cx-hr/2,hy-hr-12);X.lineTo(cx,hy-hr-5);X.lineTo(cx+hr/2,hy-hr-12);X.lineTo(cx+hr,hy-hr);X.closePath();X.fill()}
+  if(evo>=3){// Wings at prime evolution
+    X.fillStyle='rgba(160,80,255,0.5)';
+    X.beginPath();X.moveTo(cx-sz/4,hy+hr);X.lineTo(cx-sz*0.8,hy-hr*0.5);X.lineTo(cx-sz/4,hy+hr*0.5);X.closePath();X.fill();
+    X.beginPath();X.moveTo(cx+sz/4,hy+hr);X.lineTo(cx+sz*0.8,hy-hr*0.5);X.lineTo(cx+sz/4,hy+hr*0.5);X.closePath();X.fill();
+  }
+  if(evo>=4){// Absolute: glowing crown aura
+    X.globalAlpha=0.5+Math.sin(S.tick*0.08)*0.2;
+    X.fillStyle='#ffd700';X.beginPath();X.arc(cx,cy-sz/4,sz*0.85,0,Math.PI*2);X.fill();
+    X.globalAlpha=1;
+  }
 }
 
 // ============================================================
@@ -2121,6 +2183,14 @@ function doRun(){
   if(Math.random()<0.5+effSpd()*0.02){S.combatLog.push({msg:'Escaped!',color:'#32c832'});addLog('Escaped from battle');S.combatState='result'}
   else{S.combatLog.push({msg:"Couldn't escape!",color:'#dc3232'});enemyTurn();if(S.hp<=0)handleDeath()}
 }
+function doSurrender(){
+  if(S.combatState==='animating')return;
+  addMsg('Surrendered — moving to next floor');
+  addLog(`Surrendered at floor ${S.floor}`);
+  S.combatState='result';
+  S.showMiniShop=false;
+  advanceFloor();
+}
 // ============================================================
 // SCENE DRAWING
 // ============================================================
@@ -2129,7 +2199,7 @@ function drawMenu(){
   const mw=isMobile?200:280;
   dText('='.repeat(isMobile?30:50),W/2,30,'#00ff41',14,'center');
   dText('RPS LEGENDS',W/2,55,p.gold,isMobile?28:38,'center',true);
-  dText('v5.0 — Ultimate Edition',W/2,isMobile?85:100,p.dim,isMobile?12:16,'center');
+  dText('v6.0 — Ultimate Edition',W/2,isMobile?85:100,p.dim,isMobile?12:16,'center');
   dText('='.repeat(isMobile?30:50),W/2,isMobile?102:122,'#00ff41',14,'center');
   dText(`Soul Crystals: ${S.soulCrystals}`,W/2,isMobile?118:148,'#a03cc8',isMobile?13:16,'center');
   dText(`Highest Floor: ${S.highestFloor} | Runs: ${S.totalRuns}`,W/2,isMobile?135:170,p.dim,isMobile?10:13,'center');
@@ -2217,6 +2287,7 @@ function drawCombat(){
   dPanel(10,M?22:28,panW,panH,p);
   dText(`${evoName()} Lv.${S.level}`,18,M?26:32,S.charData.color,M?11:14,undefined,true);
   if(!M)dChar(145,105,45,S.charData.color,sty,S.evoStage);
+  if(M)dChar(panW-30,62,28,S.charData.color,sty,S.evoStage);
   dText(`HP:${Math.max(0,S.hp)}/${S.maxHp}`,18,M?42:148,p.text,M?9:11);
   dHpBar(18,M?54:162,panW-20,M?10:12,S.hp,S.maxHp,p);
   dText(`A:${effAtk()} D:${effDef()} S:${effSpd()}`,18,M?68:178,p.dim,M?8:10);
@@ -2249,6 +2320,19 @@ function drawCombat(){
   S.combatLog.slice(M?-2:-4).forEach((l,i)=>dText(l.msg,18,logY+5+i*(M?16:20),l.color,M?9:11));
   // Draw animation overlay
   if(animState&&animState.active)updateAndDrawAnim();
+  // Critical hit flash
+  if(S.critFlash>0){
+    const cf=S.critFlash/40;
+    X.globalAlpha=cf*0.85;
+    X.fillStyle=`rgba(255,220,0,${cf*0.15})`;X.fillRect(0,0,W,H);
+    X.globalAlpha=cf;
+    X.fillStyle='#ffd700';X.font=`bold ${Math.round((M?20:28)*FS)}px Consolas,monospace`;
+    X.textAlign='center';X.textBaseline='middle';
+    X.shadowColor='#ff8800';X.shadowBlur=20;
+    X.fillText('CRITICAL HIT!',W/2,H/2);
+    X.shadowBlur=0;X.globalAlpha=1;
+    S.critFlash--;
+  }
   // Action area
   const actY=logY+logH+5;
   if(S.combatState==='choose'||S.combatState==='animating'){
@@ -2265,13 +2349,24 @@ function drawCombat(){
       if(!M&&m.statusType)dText(`${STATUS_FX[m.statusType].name} ${m.statusChance}%`,bx+5,by+34,STATUS_FX[m.statusType].color,9);
       if(ok)addBtn(bx,by,bw,bh,()=>doMove(i),'mv_'+i);
     });
+    // Show Struggle if all moves are out of PP
+    const allOutOfPP=S.moves.every(m=>m.pp<=0);
+    if(allOutOfPP&&S.combatState==='choose'){
+      const sr=Math.ceil(S.moves.length/moveCols);const sBy=actY+sr*(bh+5);
+      const sw=M?Math.floor((W-30)/2):165;
+      dRect(10,sBy,sw,bh,'#4a3030',6);dBorder(10,sBy,sw,bh,'#ff6060',2,6);
+      dText('Struggle',15,sBy+3,'#ff6060',M?10:12,undefined,true);
+      dText('0 PP cost, 50% ATK dmg + recoil',15,sBy+(M?18:20),'#a06060',M?7:9);
+      addBtn(10,sBy,sw,bh,()=>doStruggle(),'mv_struggle');
+    }
     const moveRows=Math.ceil(S.moves.length/moveCols);
     const ay=actY+moveRows*(bh+5)+5;
     const ic=S.inventory.reduce((s,it)=>s+(it.count||1),0);
-    const abw=M?Math.floor((W-30)/3):100, abh=M?38:30;
+    const abw=M?Math.floor((W-35)/4):90, abh=M?38:30;
     dBtn(10,ay,abw,abh,`Items(${ic})`,p,()=>{S.showItems=true},'c_it');
     dBtn(15+abw,ay,abw,abh,'Run',p,()=>doRun(),'c_run');
     dBtn(20+abw*2,ay,abw,abh,'Log',p,()=>{S.showLog=true},'c_log');
+    dBtn(25+abw*3,ay,abw,abh,'Surrender',p,()=>doSurrender(),'c_surr');
     dText(`Gold: ${S.gold}`,W-140,ay,p.gold,M?11:13);
   }
   if(S.combatState==='result'){
@@ -2365,6 +2460,39 @@ function drawMiniShop(){
   dBtn(W/2-55,oy+oh-35,110,30,'Close',p,()=>{S.showMiniShop=false},'ms_cl');
 }
 
+// ============================================================
+// BOSS PREVIEW SCENE
+// ============================================================
+function drawBossPreview(){
+  const p=pal();const bp=S.bossPreview;if(!bp||!bp.boss)return;
+  const boss=bp.boss;
+  // Dark background with warning pulse
+  const pulse=0.5+Math.sin(S.tick*0.12)*0.5;
+  dRect(0,0,W,H,'#0a0005');
+  X.fillStyle=`rgba(80,0,0,${0.15*pulse})`;X.fillRect(0,0,W,H);
+  // Warning text
+  const M=isMobile;
+  dText('! BOSS APPROACHING !',W/2,M?30:40,'#ff3232',M?16:22,'center',true);
+  // Boss name big
+  dText(boss.name,W/2,M?70:90,'#ffd700',M?22:32,'center',true);
+  dText(`Type: ${boss.type}  |  Level: Floor ${S.floor}`,W/2,M?100:130,'#ffaa44',M?12:16,'center');
+  dText(`HP: ${boss.maxHp}  |  ATK: ${boss.atk}`,W/2,M?118:158,'#ff8060',M?11:14,'center');
+  if(boss.quote){dText(`"${boss.quote}"`,W/2,M?140:190,'#ffd700',M?10:13,'center');}
+  // Draw boss sprite
+  const sty=getStyle(S.floor);
+  dEnemy(W/2,M?210:260,M?60:80,boss.name,boss.color,sty,boss);
+  // Countdown bar
+  const frac=bp.timer/210;
+  dRect(W/4,M?290:340,W/2,M?10:14,'#300',4);
+  dRect(W/4,M?290:340,Math.floor(W/2*frac),M?10:14,'#ff3232',4);
+  dText('Battle starts automatically...',W/2,M?308:362,'#c06060',M?9:11,'center');
+  dBtn(W/2-60,M?330:390,120,34,'Fight Now!',{btnN:'#600000',btnH:'#900000',btnT:'#ffd700',border:'#ff3232'},()=>{
+    S.bossPreview=null;_enterCombat();
+  },'bp_fight');
+  // Countdown
+  bp.timer--;
+  if(bp.timer<=0){S.bossPreview=null;_enterCombat();}
+}
 // ============================================================
 // ENCOUNTER SCENE
 // ============================================================
@@ -2555,6 +2683,7 @@ function loop(){
   else if(s==='charSelect')drawCharSelect();
   else if(s==='charShop')drawCharShop();
   else if(s==='combat')drawCombat();
+  else if(s==='bossPreview')drawBossPreview();
   else if(s==='encounter')drawEncounter();
   else if(s==='eternalShop')drawEternalShop();
   else if(s==='howToPlay')drawHowToPlay();
