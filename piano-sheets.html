@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Piano Sheets - SoloForte AI</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0a0a1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+      padding: 60px 20px 40px;
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 50%, #0d0d2b 100%);
+    }
+    .header .back-link {
+      display: inline-block;
+      margin-bottom: 24px;
+      color: #7b68ee;
+      text-decoration: none;
+      font-size: 0.9rem;
+      letter-spacing: 0.02em;
+      transition: color 0.2s;
+    }
+    .header .back-link:hover { color: #00d4ff; }
+    .header h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #7b68ee, #00d4ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+    .header .subtitle {
+      font-size: 1.1rem;
+      color: #a0a0c0;
+    }
+
+    /* ── Search ── */
+    .search-bar-wrap {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 32px 20px 0;
+    }
+    .search-bar {
+      width: 100%;
+      padding: 14px 20px;
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      color: #e0e0e0;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .search-bar::placeholder { color: #555577; }
+    .search-bar:focus {
+      border-color: #7b68ee;
+      box-shadow: 0 0 0 3px rgba(123, 104, 238, 0.15);
+    }
+
+    /* ── Library Grid ── */
+    .library {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+    }
+
+    .sheet-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    /* ── Sheet Card ── */
+    .sheet-card {
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .sheet-card:hover {
+      border-color: #7b68ee;
+      transform: translateY(-4px);
+    }
+    .sheet-card.hidden {
+      display: none;
+    }
+
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #d0d0f0;
+      line-height: 1.3;
+    }
+    .card-nickname {
+      font-size: 0.88rem;
+      color: #7b68ee;
+      font-style: italic;
+    }
+    .card-composer {
+      font-size: 0.88rem;
+      color: #8888aa;
+      margin-top: 2px;
+    }
+    .card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+      gap: 8px;
+    }
+    .difficulty {
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .difficulty.beginner   { background: #0e2a1a; color: #3ddc84; border: 1px solid #1a4a30; }
+    .difficulty.intermediate { background: #1e1a0e; color: #ffc85c; border: 1px solid #3a3010; }
+    .difficulty.advanced   { background: #2a0e0e; color: #ff6b6b; border: 1px solid #4a1a1a; }
+
+    .view-btn {
+      padding: 8px 18px;
+      background: linear-gradient(90deg, #7b68ee, #00d4ff);
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      white-space: nowrap;
+    }
+    .view-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(123, 104, 238, 0.4);
+    }
+
+    /* ── Empty State ── */
+    .empty-state {
+      display: none;
+      text-align: center;
+      padding: 60px 20px;
+      color: #555577;
+    }
+    .empty-state .empty-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      display: block;
+    }
+    .empty-state h3 {
+      font-size: 1.1rem;
+      color: #7777aa;
+      margin-bottom: 8px;
+    }
+    .empty-state p {
+      font-size: 0.9rem;
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+    .modal {
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 16px;
+      padding: 36px 32px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+      position: relative;
+      animation: modalIn 0.2s ease;
+    }
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.93) translateY(12px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .modal-close {
+      position: absolute;
+      top: 16px;
+      right: 18px;
+      background: none;
+      border: none;
+      color: #555577;
+      font-size: 1.4rem;
+      cursor: pointer;
+      line-height: 1;
+      transition: color 0.2s;
+    }
+    .modal-close:hover { color: #e0e0e0; }
+    .modal-icon {
+      font-size: 3rem;
+      margin-bottom: 16px;
+      display: block;
+    }
+    .modal h2 {
+      font-size: 1.25rem;
+      color: #d0d0f0;
+      margin-bottom: 6px;
+    }
+    .modal .modal-nickname {
+      font-size: 0.9rem;
+      color: #7b68ee;
+      font-style: italic;
+      margin-bottom: 20px;
+    }
+    .modal .modal-body {
+      font-size: 0.95rem;
+      color: #8888aa;
+      line-height: 1.7;
+      background: #0d0d22;
+      border: 1px dashed #2a2a4a;
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .modal .modal-body strong {
+      color: #a0a0cc;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 30px 20px;
+      color: #555;
+      font-size: 0.85rem;
+      border-top: 1px solid #1a1a3e;
+    }
+    footer a { color: #7b68ee; text-decoration: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .header h1 { font-size: 2rem; }
+      .modal { padding: 28px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <a href="index.html" class="back-link">&#8592; Back to SoloForte AI</a>
+    <h1>Piano Sheets 🎹</h1>
+    <p class="subtitle">Your personal piano sheet music library</p>
+  </div>
+
+  <div class="search-bar-wrap">
+    <input
+      type="text"
+      class="search-bar"
+      id="searchInput"
+      placeholder="Search by song name or nickname..."
+      autocomplete="off"
+    >
+  </div>
+
+  <div class="library">
+    <div class="sheet-grid" id="sheetGrid">
+
+      <div class="sheet-card"
+           data-title="River Flows in You"
+           data-nickname="The YIRUMA Song"
+           data-composer="Yiruma"
+           data-difficulty="intermediate">
+        <div class="card-title">River Flows in You</div>
+        <div class="card-nickname">"The YIRUMA Song"</div>
+        <div class="card-composer">Yiruma</div>
+        <div class="card-footer">
+          <span class="difficulty intermediate">Intermediate</span>
+          <button class="view-btn" onclick="openModal('River Flows in You', '&quot;The YIRUMA Song&quot;')">View Sheet</button>
+        </div>
+      </div>
+
+      <div class="sheet-card"
+           data-title="Moonlight Sonata (1st Movement)"
+           data-nickname="That Beethoven one"
+           data-composer="Ludwig van Beethoven"
+           data-difficulty="intermediate">
+        <div class="card-title">Moonlight Sonata (1st Movement)</div>
+        <div class="card-nickname">"That Beethoven one"</div>
+        <div class="card-composer">Ludwig van Beethoven</div>
+        <div class="card-footer">
+          <span class="difficulty intermediate">Intermediate</span>
+          <button class="view-btn" onclick="openModal('Moonlight Sonata (1st Movement)', '&quot;That Beethoven one&quot;')">View Sheet</button>
+        </div>
+      </div>
+
+      <div class="sheet-card"
+           data-title="Für Elise"
+           data-nickname="The iconic beginner piece"
+           data-composer="Ludwig van Beethoven"
+           data-difficulty="beginner">
+        <div class="card-title">F&uuml;r Elise</div>
+        <div class="card-nickname">"The iconic beginner piece"</div>
+        <div class="card-composer">Ludwig van Beethoven</div>
+        <div class="card-footer">
+          <span class="difficulty beginner">Beginner</span>
+          <button class="view-btn" onclick="openModal('F\u00FCr Elise', '&quot;The iconic beginner piece&quot;')">View Sheet</button>
+        </div>
+      </div>
+
+      <div class="sheet-card"
+           data-title="Canon in D"
+           data-nickname="The wedding song"
+           data-composer="Johann Pachelbel"
+           data-difficulty="intermediate">
+        <div class="card-title">Canon in D</div>
+        <div class="card-nickname">"The wedding song"</div>
+        <div class="card-composer">Johann Pachelbel</div>
+        <div class="card-footer">
+          <span class="difficulty intermediate">Intermediate</span>
+          <button class="view-btn" onclick="openModal('Canon in D', '&quot;The wedding song&quot;')">View Sheet</button>
+        </div>
+      </div>
+
+      <div class="sheet-card"
+           data-title="Unravel (Tokyo Ghoul OP)"
+           data-nickname="Unravel"
+           data-composer="TK (Tooru Kitajima)"
+           data-difficulty="advanced">
+        <div class="card-title">Unravel (Tokyo Ghoul OP)</div>
+        <div class="card-nickname">"Unravel"</div>
+        <div class="card-composer">TK (Tooru Kitajima)</div>
+        <div class="card-footer">
+          <span class="difficulty advanced">Advanced</span>
+          <button class="view-btn" onclick="openModal('Unravel (Tokyo Ghoul OP)', '&quot;Unravel&quot;')">View Sheet</button>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="empty-state" id="emptyState">
+      <span class="empty-icon">🎵</span>
+      <h3>No sheets found</h3>
+      <p>Try a different search term, or ask to add more songs!</p>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
+    <div class="modal" id="modal">
+      <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
+      <span class="modal-icon">🎹</span>
+      <h2 id="modalTitle"></h2>
+      <div class="modal-nickname" id="modalNickname"></div>
+      <div class="modal-body">
+        <strong>Sheet music will be added soon!</strong><br><br>
+        Tell me which songs you want and I'll get the sheets loaded in. This is just a placeholder for now — the library is ready to go once you confirm your song list.
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>&copy; 2026 SoloForte AI &mdash; <a href="index.html">Back to Home</a></p>
+  </footer>
+
+  <script>
+    const searchInput = document.getElementById('searchInput');
+    const sheetGrid   = document.getElementById('sheetGrid');
+    const emptyState  = document.getElementById('emptyState');
+    const cards       = document.querySelectorAll('.sheet-card');
+
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.trim().toLowerCase();
+      let visible = 0;
+
+      cards.forEach(card => {
+        const title    = card.dataset.title.toLowerCase();
+        const nickname = card.dataset.nickname.toLowerCase();
+        const composer = card.dataset.composer.toLowerCase();
+        const matches  = !q || title.includes(q) || nickname.includes(q) || composer.includes(q);
+
+        if (matches) {
+          card.classList.remove('hidden');
+          visible++;
+        } else {
+          card.classList.add('hidden');
+        }
+      });
+
+      emptyState.style.display = visible === 0 ? 'block' : 'none';
+    });
+
+    function openModal(title, nickname) {
+      document.getElementById('modalTitle').textContent = title;
+      document.getElementById('modalNickname').innerHTML = nickname;
+      document.getElementById('modalOverlay').classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function handleOverlayClick(e) {
+      if (e.target === document.getElementById('modalOverlay')) closeModal();
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeModal();
+    });
+  </script>
+</body>
+</html>
