@@ -193,14 +193,19 @@
     <h2>The Cruelest Platformer</h2>
     <p>W / Space / Up = Jump &nbsp;|&nbsp; A/D or Arrow Keys = Move</p>
     <p>Spikes kill. Everything is a trap. Good luck.</p>
-    <br>
-    <button class="btn green" onclick="showLevelSelect()">PLAY</button>
-    <button class="btn blue" onclick="showLevelSelect()">LEVEL SELECT</button>
+    <div style="margin:12px 0">
+      <input id="playerNameInput" type="text" placeholder="Enter your name" maxlength="16"
+        style="background:#1a1a1a;border:2px solid #4488ff;color:#fff;font-family:'Courier New',monospace;
+        font-size:16px;padding:8px 14px;border-radius:4px;text-align:center;width:200px;outline:none">
+    </div>
+    <button class="btn green" onclick="enterGame()">PLAY</button>
+    <button class="btn blue" onclick="enterGame()">LEVEL SELECT</button>
   </div>
 
   <!-- Level Select Screen -->
   <div class="overlay" id="levelSelectScreen" style="display:none">
     <h1 style="font-size:clamp(18px,3vw,28px);margin-bottom:6px">LEVEL SELECT</h1>
+    <p style="color:#4488ff;margin-bottom:4px">Playing as: <span id="playerNameDisplay">Player</span></p>
     <p style="color:#ff6666">Total Deaths: <span id="totalDeathDisplay">0</span></p>
     <div id="levelGrid"></div>
     <button class="btn" onclick="showTitle()">BACK</button>
@@ -247,61 +252,73 @@ const GATE_H = 54;
 
 // Death messages
 const DEATH_MSGS = [
-  "Did you really think that would work?",
-  "L bozo.",
-  "Not even close.",
-  "Skill issue.",
-  "Maybe try pressing W?",
-  "That's rough, buddy.",
-  "The floor was RIGHT THERE.",
-  "You fell for it again.",
-  "Pathetic. Absolutely pathetic.",
-  "This is honestly impressive... impressively bad.",
-  "Have you considered quitting?",
-  "The spikes say hi.",
-  "Try harder. Much harder.",
-  "Are you okay? That looked painful.",
-  "Death #{n} and counting...",
-  "Maybe the next one.",
-  "Wow. Just wow.",
-  "My grandma could've made that jump.",
-  "Have you tried... not dying?",
-  "That spike was literally right there.",
-  "Deaths: {n}. Skill: 0.",
-  "The platforms are laughing at you.",
-  "Maybe try a different game?",
-  "You walked into that one. Literally.",
-  "I've seen potatoes with better reflexes.",
-  "At this rate, the spikes are getting bored.",
-  "You know the spikes don't move, right?",
-  "Is your keyboard broken or are you?",
-  "That was painful to watch.",
-  "The game feels sorry for you.",
-  "Speedrunning deaths, I see.",
-  "New strategy idea: don't die.",
-  "Even the spikes are cringing.",
-  "You're making this look harder than it is.",
-  "Plot twist: you're the real obstacle.",
+  "Bro.",
+  "Nah that was actually sad.",
+  "You saw that coming right?",
+  "Come on man.",
+  "That's {n} now by the way.",
+  "I'm not even gonna say anything.",
+  "You good?",
+  "That one hurt to watch honestly.",
+  "Bruh what was that.",
+  "You literally walked into it.",
+  "Okay take a breath and try again.",
+  "I believe in you. Kind of.",
+  "That was so close actually. Nah I lied.",
+  "Just... why.",
+  "The spike was right there dude.",
+  "My guy.",
+  "That jump was not it.",
+  "You're overthinking it.",
+  "Stop panicking and just time it.",
+  "Were you even looking at the screen?",
+  "Alright reset, go again.",
+  "I won't judge. Much.",
+  "That's rough.",
+  "Happens to the best of us. You're not the best of us though.",
+  "Okay that one was kinda funny.",
+  "Nope.",
+  "Try going slower maybe?",
+  "Or faster. Idk man just don't die.",
+  "You keep doing the same thing expecting different results.",
+  "Almost. Not really.",
+  "That platform was literally right there.",
+  "I mean... at least you're consistent.",
+  "Death #{n}. You're collecting these.",
+  "Take your time. Or don't, you'll die either way.",
 ];
 
 // =====================================================================
-// SAVE SYSTEM
+// SAVE SYSTEM (per-player)
 // =====================================================================
-let saveData = {
-  unlockedLevels: 1,
-  completedLevels: [],
-  levelDeaths: {},
-  totalDeaths: 0,
-};
+let currentPlayer = 'Player';
+
+function defaultSave() {
+  return { unlockedLevels: 1, completedLevels: [], levelDeaths: {}, totalDeaths: 0 };
+}
+
+let saveData = defaultSave();
+
+function saveKey(name) { return 'zylos_rage_' + name.toLowerCase().trim(); }
 
 function loadSave() {
   try {
-    const s = localStorage.getItem('zylos_rage_save');
-    if (s) saveData = Object.assign(saveData, JSON.parse(s));
-  } catch(e) {}
+    const s = localStorage.getItem(saveKey(currentPlayer));
+    if (s) saveData = Object.assign(defaultSave(), JSON.parse(s));
+    else saveData = defaultSave();
+  } catch(e) { saveData = defaultSave(); }
 }
 function writeSave() {
-  try { localStorage.setItem('zylos_rage_save', JSON.stringify(saveData)); } catch(e) {}
+  try { localStorage.setItem(saveKey(currentPlayer), JSON.stringify(saveData)); } catch(e) {}
+}
+
+function enterGame() {
+  const input = document.getElementById('playerNameInput').value.trim();
+  if (input) currentPlayer = input;
+  else currentPlayer = 'Player';
+  loadSave();
+  updateDeathUI();
+  showLevelSelect();
 }
 
 // =====================================================================
@@ -676,12 +693,18 @@ function updatePlatforms(dt) {
         if (p.timer <= 0) { p.state = 'solid'; }
       } else if (p.state === 'prelaunch') {
         p.timer -= dt;
-        if (p.timer <= 0) {
+        // Check if player is still on THIS platform
+        const onThis = player.onGround &&
+          Math.abs(player.y + player.h - p.y) < 4 &&
+          player.x + player.w > p.x && player.x < p.x + p.w;
+        if (!onThis) {
+          // Player stepped off — cancel launch, go back to solid
+          p.state = 'solid';
+          p.timer = 0;
+        } else if (p.timer <= 0) {
           // Launch!
-          if (player.onGround) {
-            player.vy = p.launchVY;
-            player.onGround = false;
-          }
+          player.vy = p.launchVY;
+          player.onGround = false;
           // Platform disappears upward fast
           p.state = 'launching';
           p.launchY = p.y;
@@ -1157,6 +1180,7 @@ function showLevelSelect() {
   gameRunning = false;
   buildLevelGrid();
   document.getElementById('totalDeathDisplay').textContent = saveData.totalDeaths;
+  document.getElementById('playerNameDisplay').textContent = currentPlayer;
   showScreen('levelSelectScreen');
 }
 
