@@ -531,10 +531,11 @@ function buildLevel2() {
       { id: 0, x: 10, y: groundY - 50, w: 100, h: 16, type: 'normal', color: '#557788' },
       // Vanishing stepping stones
       ...vanishPlats,
-      // Secret invisible platform — slightly above spike level, near platform 3 area
-      // Player must drop down from platform 3 to land on it
+      // Secret invisible platform — directly below 3rd stepping stone
+      // Positioned low enough that you can't land on it by accident jumping between platforms
+      // Must intentionally wait on P3 and drop straight down
       // Rises VERY HIGH — player is trapped up top with no way forward
-      { id: 20, x: startX + spacing * 2 + 10, y: groundY - 50, w: 70, h: 16,
+      { id: 20, x: startX + spacing * 2, y: groundY - 35, w: 70, h: 16,
         type: 'secret_rise', state: 'hidden', timer: 0,
         riseDelay: 600, riseTarget: SPIKE_H + 6, riseSpeed: 3.5,
         color: '#335533', origColor: '#335533' },
@@ -731,15 +732,13 @@ function handlePlatformLand(p) {
     // Second+ visit: stays solid
   }
 
-  // Launch platform: accelerates immediately on first landing
+  // Launch platform: like vanish block but flies UP after short delay
+  // Once triggered, it goes up regardless of player position
   if (p.type === 'launch' && p.state === 'solid') {
     p.visitCount = (p.visitCount || 0) + 1;
     if (p.visitCount >= 1) {
-      // Instant launch — no delay
-      player.vy = p.launchVY;
-      player.onGround = false;
-      p.state = 'launching';
-      p.launchY = p.y;
+      p.state = 'prelaunch';
+      p.timer = 350; // same feel as vanish blocks
     }
   }
 
@@ -779,25 +778,31 @@ function updatePlatforms(dt) {
       }
     }
 
-    // Launch platform update
+    // Launch platform update — flies up after delay, doesn't need player to stay on it
     if (p.type === 'launch') {
       if (p.state === 'prelaunch') {
         p.timer -= dt;
-        // Check player is still on this platform
-        const onThis = player.onGround &&
-          Math.abs(player.y + player.h - p.y) < 4 &&
-          player.x + player.w > p.x && player.x < p.x + p.w;
-        if (!onThis) {
-          p.state = 'solid';
-          p.timer = 0;
-        } else if (p.timer <= 0) {
-          player.vy = p.launchVY;
-          player.onGround = false;
+        if (p.timer <= 0) {
+          // Check if player is still on it — if so, launch them too
+          const onThis = player.onGround &&
+            Math.abs(player.y + player.h - p.y) < 4 &&
+            player.x + player.w > p.x && player.x < p.x + p.w;
+          if (onThis) {
+            player.vy = p.launchVY;
+            player.onGround = false;
+          }
           p.state = 'launching';
           p.launchY = p.y;
         }
       } else if (p.state === 'launching') {
+        // Platform flies up regardless
         p.y -= 8;
+        // Carry player if they're on it
+        if (player.onGround &&
+            Math.abs(player.y + player.h - (p.y + 8)) < 6 &&
+            player.x + player.w > p.x && player.x < p.x + p.w) {
+          player.y -= 8;
+        }
         if (p.y < -100) { p.state = 'offscreen'; }
       }
     }
