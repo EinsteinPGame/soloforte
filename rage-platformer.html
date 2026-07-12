@@ -256,7 +256,7 @@ const DEATH_MSGS = [
   "The floor was RIGHT THERE.",
   "You fell for it again.",
   "Pathetic. Absolutely pathetic.",
-  "This is actually embarrassing.",
+  "This is honestly impressive... impressively bad.",
   "Have you considered quitting?",
   "The spikes say hi.",
   "Try harder. Much harder.",
@@ -621,19 +621,21 @@ function handlePlatformLand(p) {
   if (p.type === 'vanish' && p.state === 'solid') {
     p.visitCount = (p.visitCount || 0) + 1;
     if (p.visitCount === 1) {
-      // First visit: start vanish timer
-      p.state = 'vanishing';
-      p.timer = p.vanishDelay;
+      // First visit: vanish instantly (no blinking)
+      p.state = 'gone';
+      p.timer = p.reappearDelay;
+      triggerLinked(p.id, 'gone');
     }
-    // Second+ visit: stays solid (handled in update)
+    // Second+ visit: stays solid
   }
 
   if (p.type === 'launch' && p.state === 'solid') {
     p.visitCount = (p.visitCount || 0) + 1;
     if (p.visitCount === 1) {
-      // First visit: disappear like vanish
-      p.state = 'vanishing';
-      p.timer = p.vanishDelay;
+      // First visit: vanish instantly (no blinking)
+      p.state = 'gone';
+      p.timer = p.reappearDelay || 2200;
+      triggerLinked(p.id, 'gone');
     } else if (p.visitCount === 2) {
       // Second visit: brief wait then launch
       p.state = 'prelaunch';
@@ -707,9 +709,12 @@ function updatePlatforms(dt) {
       }
 
       // Check if player stands on P3 (id=2) to activate P5
+      // Only after P4 has been launched (visitCount >= 2)
       if (p.id === 4 && p.state === 'idle') {
         const p3 = level.platforms.find(pp => pp.id === 2);
-        if (p3 && p3.state === 'solid') {
+        const p4 = level.platforms.find(pp => pp.id === 3);
+        const p4Launched = p4 && (p4.state === 'launching' || p4.state === 'offscreen' || (p4.visitCount || 0) >= 2);
+        if (p3 && p3.state === 'solid' && p4Launched) {
           // Is player on P3?
           const onP3 = player.onGround &&
             Math.abs(player.y + player.h - p3.y) < 4 &&
@@ -722,9 +727,14 @@ function updatePlatforms(dt) {
       }
 
       if (p.state === 'moving') {
-        // Move left toward player
+        // Move left toward player — player rides along
         if (p.x > p.targetX) {
-          p.x -= p.speed;
+          const dx = -p.speed;
+          p.x += dx;
+          if (player.onGround && Math.abs(player.y + player.h - p.y) < 6 &&
+              player.x + player.w > p.x && player.x < p.x + p.w) {
+            player.x += dx;
+          }
         } else {
           p.x = p.targetX;
           p.state = 'carrying';
@@ -735,7 +745,13 @@ function updatePlatforms(dt) {
       }
 
       if (p.state === 'carrying') {
-        p.x += p.speed * 1.5; // carry right faster
+        const dx = p.speed * 1.5;
+        p.x += dx; // carry right faster
+        // Player rides with platform automatically
+        if (player.onGround && Math.abs(player.y + player.h - p.y) < 6 &&
+            player.x + player.w > p.x && player.x < p.x + p.w) {
+          player.x += dx;
+        }
         p.timer += dt;
 
         // Spawn spikes after 600ms of carrying
@@ -996,13 +1012,9 @@ function drawGate(x, y, isEnd) {
 
 function drawPlatform(p) {
   if (p.state === 'offscreen') return;
-  let alpha = 1;
-  if (p.state === 'vanishing' || p.state === 'prelaunch') {
-    alpha = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() / 80));
-  }
   if (p.state === 'gone') return;
 
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = 1;
   ctx.fillStyle = p.color || '#557788';
   ctx.fillRect(p.x, p.y, p.w, p.h);
   // Top highlight
@@ -1013,25 +1025,7 @@ function drawPlatform(p) {
   ctx.fillRect(p.x, p.y + p.h - 3, p.w, 3);
   ctx.globalAlpha = 1;
 
-  // Type indicator
-  if (p.type === 'vanish' || p.type === 'vanish_linked') {
-    ctx.fillStyle = `rgba(255,180,50,${alpha * 0.7})`;
-    ctx.font = '9px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('?', p.x + p.w / 2, p.y - 3);
-  }
-  if (p.type === 'launch') {
-    ctx.fillStyle = `rgba(255,80,80,${alpha * 0.7})`;
-    ctx.font = '9px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText(p.visitCount === 1 ? '!!!' : '?', p.x + p.w / 2, p.y - 3);
-  }
-  if (p.type === 'moving' && p.state === 'idle') {
-    ctx.fillStyle = 'rgba(100,160,255,0.7)';
-    ctx.font = '9px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('...', p.x + p.w / 2, p.y - 3);
-  }
+  // No type indicators — platforms all look the same (no hints!)
 }
 
 function drawParticles() {
