@@ -420,8 +420,11 @@ function buildLevel1() {
       // P3 - vanishes with P2 (index 1), reappears when P2 reappears
       { id: 2, x: 370, y: groundY - 150, w: 95, h: 16, type: 'vanish_linked',
         linkedTo: 1, state: 'solid', color: '#886622', origColor: '#886622' },
-      // P4 - normal platform
-      { id: 3, x: 520, y: groundY - 130, w: 95, h: 16, type: 'normal', color: '#882244' },
+      // P4 - launch platform: first step nothing, second step shoots up
+      { id: 3, x: 520, y: groundY - 130, w: 95, h: 16, type: 'launch',
+        state: 'solid', visitCount: 0,
+        launchDelay: 800, launchVY: -22,
+        color: '#882244', origColor: '#882244', timer: 0 },
       // End platform — far right
       { id: 5, x: CANVAS_W - 150, y: groundY - 180, w: 130, h: 16, type: 'normal', color: '#335533' },
       // P5 - idle; activates when player stands on P3 after P4 launches
@@ -567,13 +570,19 @@ function initLevel(n) {
       p.timer = 0;
       if (p.visitCount !== undefined) p.visitCount = 0;
     }
+    if (p.type === 'launch') {
+      if (!p.origY) p.origY = p.y;
+      p.y = p.origY;
+      p.state = 'solid';
+      p.timer = 0;
+      p.visitCount = 0;
+    }
     if (p.type === 'moving') {
       p.state = 'idle';
       p.x = p.origX;
       p.timer = 0;
       p.spike1Spawned = false;
       p.spike2Spawned = false;
-      p.p4Visited = false;
     }
     if (p.type === 'secret_rise') {
       p.state = 'hidden';
@@ -719,10 +728,13 @@ function handlePlatformLand(p) {
     // Second+ visit: stays solid
   }
 
-  // Track P4 visit for P5 activation
-  if (p.id === 3) {
-    const p5 = level.platforms.find(pp => pp.id === 4);
-    if (p5) p5.p4Visited = true;
+  // Launch platform: first step = nothing, second step = launches up
+  if (p.type === 'launch' && p.state === 'solid') {
+    p.visitCount = (p.visitCount || 0) + 1;
+    if (p.visitCount >= 2) {
+      p.state = 'prelaunch';
+      p.timer = p.launchDelay;
+    }
   }
 
   // Secret rising platform — player lands on it
@@ -761,12 +773,37 @@ function updatePlatforms(dt) {
       }
     }
 
+    // Launch platform update
+    if (p.type === 'launch') {
+      if (p.state === 'prelaunch') {
+        p.timer -= dt;
+        // Check player is still on this platform
+        const onThis = player.onGround &&
+          Math.abs(player.y + player.h - p.y) < 4 &&
+          player.x + player.w > p.x && player.x < p.x + p.w;
+        if (!onThis) {
+          p.state = 'solid';
+          p.timer = 0;
+        } else if (p.timer <= 0) {
+          player.vy = p.launchVY;
+          player.onGround = false;
+          p.state = 'launching';
+          p.launchY = p.y;
+        }
+      } else if (p.state === 'launching') {
+        p.y -= 8;
+        if (p.y < -100) { p.state = 'offscreen'; }
+      }
+    }
+
     if (p.type === 'moving') {
       // Check if player stands on P3 (id=2) to activate P5
-      // Only after player has visited P4 and come back
+      // Only after P4 has launched
       if (p.id === 4 && p.state === 'idle') {
         const p3 = level.platforms.find(pp => pp.id === 2);
-        if (p3 && p3.state === 'solid' && p.p4Visited) {
+        const p4 = level.platforms.find(pp => pp.id === 3);
+        const p4Launched = p4 && (p4.state === 'launching' || p4.state === 'offscreen');
+        if (p3 && p3.state === 'solid' && p4Launched) {
           // Is player on P3?
           const onP3 = player.onGround &&
             Math.abs(player.y + player.h - p3.y) < 4 &&
@@ -814,14 +851,14 @@ function updatePlatforms(dt) {
         if (!p.spike1Spawned && progress >= 0.15) {
           p.spike1Spawned = true;
           level.movingSpikes.push(
-            { x: -60, y: p.y - 40, w: 40, h: 20, vx: 9, vy: 0, active: true, wave: 1 }
+            { x: -60, y: p.y - 40, w: 40, h: 20, vx: 14, vy: 0, active: true, wave: 1 }
           );
         }
         // Spike 2: spawns so it catches player at 75% mark
         if (!p.spike2Spawned && progress >= 0.45) {
           p.spike2Spawned = true;
           level.movingSpikes.push(
-            { x: -60, y: p.y - 40, w: 40, h: 20, vx: 10, vy: 0, active: true, wave: 2 }
+            { x: -60, y: p.y - 40, w: 40, h: 20, vx: 16, vy: 0, active: true, wave: 2 }
           );
         }
 
