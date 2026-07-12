@@ -229,6 +229,16 @@
     <button class="btn blue" onclick="showLevelSelect()">LEVEL SELECT</button>
   </div>
 
+  <!-- Difficulty Troll Screen -->
+  <div class="overlay" id="diffScreen" style="display:none">
+    <h1 style="color:#ffaa44;text-shadow:0 0 15px #ff8800">STRUGGLING?</h1>
+    <p id="diffMsg" style="font-size:clamp(13px,2vw,16px);color:#ccc;margin:10px 0">Would you like to decrease the difficulty?</p>
+    <div style="display:flex;gap:12px;margin-top:12px">
+      <button class="btn green" onclick="diffAnswer(true)">YES PLEASE</button>
+      <button class="btn" onclick="diffAnswer(false)">NO</button>
+    </div>
+  </div>
+
   <!-- Touch controls -->
   <div id="touchControls">
     <div id="touchLeft">&#8592;</div>
@@ -475,8 +485,71 @@ function buildSimpleLevel(num) {
   };
 }
 
+// Level 2 - The Vanishing Path
+function buildLevel2() {
+  const groundY = CANVAS_H - 40;
+  // 7 stepping stone platforms, all vanish on step
+  // Catch: platform 6 (second-to-last) vanishes AND takes platform 5 with it
+  // Secret: invisible platform near platform 3, drop to it → it rises → secret moving platform to end
+  const platY = groundY - 120;
+  const spacing = 105;
+  const startX = 60;
+
+  const vanishPlats = [];
+  for (let i = 0; i < 7; i++) {
+    const vp = {
+      id: 10 + i, x: startX + spacing * i, y: platY - i * 15, w: 80, h: 16,
+      type: 'vanish', vanishDelay: 600, reappearDelay: 3000,
+      state: 'solid', timer: 0, visitCount: 0,
+      color: '#886644', origColor: '#886644'
+    };
+    // Platform 6 (index 5) is linked — vanishes when platform 5 (index 4) is stepped on
+    if (i === 5) {
+      vp.type = 'vanish_linked';
+      vp.linkedTo = 10 + 4; // linked to platform at index 4
+      delete vp.vanishDelay;
+      delete vp.reappearDelay;
+      delete vp.visitCount;
+    }
+    vanishPlats.push(vp);
+  }
+
+  return {
+    bg: '#1a2e1e',
+    spawnX: 40,
+    spawnY: groundY - 80,
+    endX: CANVAS_W - 70,
+    endY: groundY - 200,
+    spikes: makeSpikeRow(groundY, 0, CANVAS_W),
+    ceilingSpikes: [],
+    deathCeiling: 0,
+    platforms: [
+      // Starting ledge
+      { id: 0, x: 10, y: groundY - 60, w: 100, h: 16, type: 'normal', color: '#557788' },
+      // Vanishing stepping stones
+      ...vanishPlats,
+      // Secret invisible platform — slightly above spike level, near platform 3 area
+      // Player must drop down from platform 3 to land on it
+      { id: 20, x: startX + spacing * 2 + 10, y: groundY - 50, w: 70, h: 16,
+        type: 'secret_rise', state: 'hidden', timer: 0,
+        riseDelay: 800, riseTarget: groundY - 180, riseSpeed: 2,
+        color: '#335533', origColor: '#335533' },
+      // Secret moving platform — appears to the right of the rising one just before it reaches top
+      { id: 21, x: startX + spacing * 2 + 90, y: groundY - 170, w: 80, h: 16,
+        type: 'secret_move', state: 'hidden', timer: 0,
+        moveTarget: CANVAS_W - 160, moveSpeed: 3,
+        color: '#224488', origColor: '#224488' },
+      // End platform
+      { id: 30, x: CANVAS_W - 160, y: groundY - 180, w: 140, h: 16, type: 'normal', color: '#335533' },
+    ],
+    movingSpikes: [],
+    levelSpikes: [],
+  };
+}
+
 function getLevel(n) {
   if (n === 0) return buildLevel1();
+  if (n === 1) return buildLevel2();
   return buildSimpleLevel(n);
 }
 
@@ -501,6 +574,16 @@ function initLevel(n) {
       p.spike1Spawned = false;
       p.spike2Spawned = false;
       p.p4Visited = false;
+    }
+    if (p.type === 'secret_rise') {
+      p.state = 'hidden';
+      p.timer = 0;
+      p.origY = p.y;
+    }
+    if (p.type === 'secret_move') {
+      p.state = 'hidden';
+      p.timer = 0;
+      p.origX = p.x;
     }
   }
   level.movingSpikes = [];
@@ -641,6 +724,17 @@ function handlePlatformLand(p) {
     const p5 = level.platforms.find(pp => pp.id === 4);
     if (p5) p5.p4Visited = true;
   }
+
+  // Secret rising platform — player lands on it
+  if (p.type === 'secret_rise' && p.state === 'hidden') {
+    p.state = 'landed';
+    p.timer = p.riseDelay;
+  }
+
+  // Secret moving platform — player steps on it to activate
+  if (p.type === 'secret_move' && p.state === 'waiting') {
+    p.state = 'moving_right';
+  }
 }
 
 function updatePlatforms(dt) {
@@ -736,6 +830,59 @@ function updatePlatforms(dt) {
         }
       }
     }
+
+    // Secret rising platform
+    if (p.type === 'secret_rise') {
+      if (p.state === 'landed') {
+        // Player landed — wait briefly then start rising
+        p.timer -= dt;
+        if (p.timer <= 0) {
+          p.state = 'rising';
+        }
+      }
+      if (p.state === 'rising') {
+        const dy = -p.riseSpeed;
+        p.y += dy;
+        // Player rides up
+        if (player.onGround && Math.abs(player.y + player.h - p.y) < 6 &&
+            player.x + player.w > p.x && player.x < p.x + p.w) {
+          player.y += dy;
+        }
+        // When almost at target, trigger secret_move to appear
+        if (p.y <= p.riseTarget + 30) {
+          const sm = level.platforms.find(pp => pp.type === 'secret_move' && pp.state === 'hidden');
+          if (sm) {
+            sm.state = 'appearing';
+            sm.timer = 0;
+          }
+        }
+        if (p.y <= p.riseTarget) {
+          p.y = p.riseTarget;
+          p.state = 'solid';
+        }
+      }
+    }
+
+    // Secret moving platform
+    if (p.type === 'secret_move') {
+      if (p.state === 'appearing') {
+        // Just appeared — wait for player to step on
+        p.state = 'waiting';
+      }
+      if (p.state === 'moving_right') {
+        const dx = p.moveSpeed;
+        p.x += dx;
+        // Player rides along
+        if (player.onGround && Math.abs(player.y + player.h - p.y) < 6 &&
+            player.x + player.w > p.x && player.x < p.x + p.w) {
+          player.x += dx;
+        }
+        if (p.x >= p.moveTarget) {
+          p.x = p.moveTarget;
+          p.state = 'solid';
+        }
+      }
+    }
   }
 
   // Update moving spikes
@@ -811,7 +958,9 @@ function killPlayer() {
   updateDeathUI();
 
   setTimeout(() => {
-    showDeath();
+    if (!checkDiffPopup()) {
+      showDeath();
+    }
   }, 600);
 }
 
@@ -980,6 +1129,7 @@ function drawGate(x, y, isEnd) {
 function drawPlatform(p) {
   if (p.state === 'offscreen') return;
   if (p.state === 'gone') return;
+  if (p.state === 'hidden') return; // invisible platforms
 
   ctx.globalAlpha = 1;
   ctx.fillStyle = p.color || '#557788';
@@ -991,8 +1141,6 @@ function drawPlatform(p) {
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.fillRect(p.x, p.y + p.h - 3, p.w, 3);
   ctx.globalAlpha = 1;
-
-  // No type indicators — platforms all look the same (no hints!)
 }
 
 function drawParticles() {
@@ -1113,10 +1261,40 @@ function startGameLoop() {
 // SCREENS
 // =====================================================================
 function showScreen(id) {
-  ['titleScreen','levelSelectScreen','deathScreen','winScreen'].forEach(s => {
+  ['titleScreen','levelSelectScreen','deathScreen','winScreen','diffScreen'].forEach(s => {
     document.getElementById(s).style.display = 'none';
   });
   if (id) document.getElementById(id).style.display = 'flex';
+}
+
+let diffShownThisAttempt = false;
+
+function checkDiffPopup() {
+  if (diffShownThisAttempt) return false;
+  const threshold = 15 + Math.floor(Math.random() * 6); // 15-20
+  if (levelDeaths >= threshold) {
+    diffShownThisAttempt = true;
+    showScreen('diffScreen');
+    speakMsg("Would you like to decrease the difficulty?");
+    return true;
+  }
+  return false;
+}
+
+function diffAnswer(yes) {
+  if (yes) {
+    const msg = "No way you can't complete something this basic without help.";
+    document.getElementById('diffMsg').textContent = msg;
+    speakMsg(msg);
+  } else {
+    const msg = "Let your arrogance be your downfall.";
+    document.getElementById('diffMsg').textContent = msg;
+    speakMsg(msg);
+  }
+  // Hide buttons, show message briefly, then back to death screen
+  setTimeout(() => {
+    showDeath();
+  }, 2500);
 }
 
 function showTitle() {
@@ -1158,6 +1336,7 @@ function buildLevelGrid() {
 function startLevel(n) {
   currentLevel = n;
   levelDeaths = 0;
+  diffShownThisAttempt = false;
   initLevel(n);
   updateLevelUI();
   updateDeathUI();
