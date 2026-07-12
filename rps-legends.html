@@ -1627,6 +1627,11 @@ const ENCOUNTERS=[
 // ============================================================
 // STATE
 // ============================================================
+let rpsDebugMode = (()=>{try{return localStorage.getItem('rps_tester')==='JK2E3'}catch(e){return false}})();
+let _titleClicks = 0;
+let _testerInputActive = false;
+let _testerInputValue = '';
+
 let S={scene:'menu',soulCrystals:0,unlocked:['Stone','Blade','Scroll'],
   eternals:{maxHp:0,atk:0,def:0,goldMult:0,xp:0,luck:0},
   eternalItems:[{name:'Max HP +10',key:'maxHp',base:5},{name:'ATK +2',key:'atk',base:8},{name:'DEF +2',key:'def',base:8},
@@ -1729,6 +1734,12 @@ function initChar(name){
   S.doubleStrike=false;S.priorityPassive=false;S.ultimatePassive=false;
   if(d.ability==='Wisdom: Gains 20% more XP')S.xpMult*=1.2;
   if(d.ability&&d.ability.includes('Stealth'))S.dodge+=20;
+  // Debug mode: extra starting stats
+  if(rpsDebugMode){
+    S.maxHp=Math.floor(S.maxHp*1.2);S.hp=S.maxHp;
+    S.atk+=3;S.permAtk+=3;
+    S.gold+=50;
+  }
   addLog(`Started run with ${name}`);
 }
 
@@ -1843,7 +1854,7 @@ function executeMoveLogic(i){
     S.combatLog.push({msg:r||m.name,color:'#28c8dc'});addLog(`Used ${m.name}: ${r}`);
     SFX.buff();
   }else{
-    const{dmg,isSuper,isCrit,aType}=calcDmg(m.dmg,m.type,effAtk(),0,e.type,true);
+    const{dmg,isSuper,isCrit,aType,typeMsg}=calcDmg(m.dmg,m.type,effAtk(),0,e.type,true);
     let hits=1;
     const hasDoubleStrike=S.doubleStrike||(S.charData.ability&&S.charData.ability.includes('Attacks twice'));
     if(hasDoubleStrike)hits=2;
@@ -1863,6 +1874,10 @@ function executeMoveLogic(i){
     }
     let msg=`${m.name}! `;if(hits>1)msg+=`x${hits} `;if(isSuper)msg+='SUPER! ';if(isCrit)msg+='CRITICAL HIT! ';msg+=`${totalDmg} dmg`;
     S.combatLog.push({msg,color:isCrit?'#ffd700':isSuper?'#28c8dc':'#32c832'});
+    if(rpsDebugMode){
+      const typeMStr=isSuper?'1.3':(typeMsg==='type disadvantage'?'0.8':'1.0');
+      S.combatLog.push({msg:`DEBUG: base=${m.dmg} + atk=${effAtk()} - def/2=0 \u00d7 type=${typeMStr} \u00d7 crit=${isCrit?'1.5':'1.0'} = ${dmg}`,color:'#00ff41'});
+    }
     if(isCrit){S.critFlash=40;triggerShake(10);}
     addLog(`${m.name}: ${totalDmg} dmg to ${e.name}`);
     // SFX
@@ -1905,6 +1920,10 @@ function enemyTurn(){
   if(TADV[eType]===S.charData.type){dmg=Math.floor(dmg*1.3);S.combatLog.push({msg:`Enemy ${eType} advantage! ${dmg} dmg!`,color:'#dc3232'})}
   else if(TADV[S.charData.type]===eType){dmg=Math.floor(dmg*0.8);S.combatLog.push({msg:`Enemy ${eType} resisted! ${dmg} dmg!`,color:'#64c8ff'})}
   else S.combatLog.push({msg:`Enemy attacks! ${dmg} dmg!`,color:'#f08c1e'});
+  if(rpsDebugMode){
+    const typeM=TADV[eType]===S.charData.type?'1.3':(TADV[S.charData.type]===eType?'0.8':'1.0');
+    S.combatLog.push({msg:`DEBUG: base=${e.atk} + atk=0 - def/2=${Math.floor(effDef()/3)} \u00d7 type=${typeM} \u00d7 crit=1.0 = ${dmg}`,color:'#00ff41'});
+  }
   if(S.reflectPassive){const ref=Math.floor(dmg*0.2);e.hp-=ref;S.combatLog.push({msg:`Reflected ${ref} dmg!`,color:'#b040f0'})}
   S.hp-=dmg;
   SFX.hit(eType);
@@ -1956,6 +1975,12 @@ function _enterCombat(){
     if(S.enemy.quote)S.combatLog.push({msg:`"${S.enemy.quote}"`,color:'#ffdc00'});
     addLog(`Boss fight: ${S.enemy.name}`);
   }
+  // Debug: show enemy type weakness
+  if(rpsDebugMode&&S.enemy){
+    const eType=S.enemy.type;
+    const weakTo=Object.keys(TADV).find(k=>TADV[k]===eType)||'None';
+    S.combatLog.push({msg:`DEBUG: Enemy is ${eType}. Use ${weakTo} moves for 1.3x damage.`,color:'#00ff41'});
+  }
   if(TYPE_SPEC[S.charData.type].healPct)S.hp=Math.min(S.maxHp,S.hp+Math.floor(S.maxHp*TYPE_SPEC[S.charData.type].healPct));
   if(S.charData.ability&&S.charData.ability.includes('Meditate'))S.moves.forEach(m=>{if(m.pp<m.maxPp)m.pp=Math.min(m.maxPp,m.pp+2)});
 }
@@ -1972,6 +1997,10 @@ function startRival(){
     color:'#ff3264',isBoss:false,isRival:true,phase:1,statuses:[],
     quote:'We meet again! This time I won\'t lose!'};
   S.combatLog=[{msg:'RIVAL BATTLE!',color:'#ff3264'},{msg:`"${S.enemy.quote}"`,color:'#ffdc00'}];
+  if(rpsDebugMode){
+    const weakTo=Object.keys(TADV).find(k=>TADV[k]===rType)||'None';
+    S.combatLog.push({msg:`DEBUG: Enemy is ${rType}. Use ${weakTo} moves for 1.3x damage.`,color:'#00ff41'});
+  }
   S.combatState='choose';S.showItems=false;S.scene='combat';addLog('Rival battle!');
 }
 
@@ -2208,6 +2237,11 @@ function drawMenu(){
   const mw=isMobile?200:280;
   dText('='.repeat(isMobile?30:50),W/2,30,'#00ff41',14,'center');
   dText('RPS LEGENDS',W/2,55,p.gold,isMobile?28:38,'center',true);
+  // Hidden: click the title 5 times to show tester input
+  addBtn(W/2-120,40,240,35,()=>{
+    _titleClicks++;
+    if(_titleClicks>=5&&!rpsDebugMode){_testerInputActive=true;_testerInputValue='';_titleClicks=0}
+  },'_title_secret');
   dText('v6.0 — Ultimate Edition',W/2,isMobile?85:100,p.dim,isMobile?12:16,'center');
   dText('='.repeat(isMobile?30:50),W/2,isMobile?102:122,'#00ff41',14,'center');
   dText(`Soul Crystals: ${S.soulCrystals}`,W/2,isMobile?118:148,'#a03cc8',isMobile?13:16,'center');
@@ -2220,6 +2254,22 @@ function drawMenu(){
   dBtn(bx,by0+gap*2,bw,bh,'Character Shop',p,()=>{S.scene='charShop';S.scrollY=0},'m3');
   dBtn(bx,by0+gap*3,bw,bh,'How to Play',p,()=>{S.scene='howToPlay';S.scrollY=0},'m4');
   dBtn(bx,by0+gap*4,bw,bh,'Settings',p,()=>{S.scene='settings'},'m5');
+  // Tester code input overlay
+  if(_testerInputActive){
+    dRect(W/2-140,H/2-50,280,100,'#0a0a2a',10);
+    X.strokeStyle='#00ff41';X.lineWidth=2;X.beginPath();X.roundRect(W/2-140,H/2-50,280,100,10);X.stroke();
+    dText('Tester Code:',W/2,H/2-40,'#00ff41',14,'center',true);
+    dRect(W/2-100,H/2-18,200,28,'#1a1a3a',4);
+    X.strokeStyle='#444';X.lineWidth=1;X.beginPath();X.roundRect(W/2-100,H/2-18,200,28,4);X.stroke();
+    dText(_testerInputValue+'_',W/2,H/2-14,'#e0e0e0',16,'center');
+    dBtn(W/2-50,H/2+18,100,24,'Submit',p,()=>{
+      if(_testerInputValue.toLowerCase()==='jk2e3'){
+        try{localStorage.setItem('rps_tester','JK2E3')}catch(e){}
+        rpsDebugMode=true;addMsg('Tester mode activated!');
+      }else{addMsg('Invalid code.')}
+      _testerInputActive=false;_testerInputValue='';
+    },'_tester_submit');
+  }
 }
 
 function drawModeSelect(){
@@ -2738,6 +2788,21 @@ C.addEventListener('mousemove',e=>{const p=gmp(e);mX=p.x;mY=p.y});
 C.addEventListener('click',e=>{const p=gmp(e);handleClick(p.x,p.y)});
 C.addEventListener('touchstart',e=>{e.preventDefault();const p=gmp(e);handleClick(p.x,p.y)},{passive:false});
 
+// Keyboard handler for tester code input
+window.addEventListener('keydown',e=>{
+  if(!_testerInputActive)return;
+  if(e.key==='Backspace'){_testerInputValue=_testerInputValue.slice(0,-1);e.preventDefault();return}
+  if(e.key==='Enter'){
+    if(_testerInputValue.toLowerCase()==='jk2e3'){
+      try{localStorage.setItem('rps_tester','JK2E3')}catch(ex){}
+      rpsDebugMode=true;addMsg('Tester mode activated!');
+    }else{addMsg('Invalid code.')}
+    _testerInputActive=false;_testerInputValue='';return;
+  }
+  if(e.key==='Escape'){_testerInputActive=false;_testerInputValue='';return}
+  if(e.key.length===1&&_testerInputValue.length<10){_testerInputValue+=e.key;e.preventDefault()}
+});
+
 // ============================================================
 // MAIN LOOP
 // ============================================================
@@ -2768,6 +2833,10 @@ function loop(){
   else if(s==='death')drawDeath();
   else if(s==='victory')drawVictory();
   else if(s==='learnMove')drawLearnMove();
+  // Debug badge
+  if(rpsDebugMode){
+    dText('\uD83D\uDD27 TESTER',W-10,5,'#00ff41',11,'right',true);
+  }
   drawMsgs();
   S.messages=S.messages.filter(m=>{m.timer--;return m.timer>0});
   X.restore();

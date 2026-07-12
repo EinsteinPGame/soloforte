@@ -360,6 +360,8 @@ const LOOP_DEATH_MSGS = [
 // SAVE SYSTEM (per-player)
 // =====================================================================
 let currentPlayer = 'Player';
+let debugMode = false;
+let ghostMode = false;
 
 function defaultSave() {
   return { unlockedLevels: 1, completedLevels: [], levelDeaths: {}, totalDeaths: 0 };
@@ -384,10 +386,22 @@ function enterGame() {
   const input = document.getElementById('playerNameInput').value.trim();
   if (input) currentPlayer = input;
   else currentPlayer = 'Player';
+  debugMode = currentPlayer.toLowerCase() === 'jk2e3';
+  ghostMode = false;
   loadSave();
   updateDeathUI();
   showLevelSelect();
 }
+
+// Debug hint texts per level
+const DEBUG_HINTS = {
+  0: "Platforms aren't always what they seem...",
+  1: "Some platforms vanish. Watch for the hidden ones.",
+  2: "Two characters, inverted controls. Both must reach the gate.",
+  3: "Survive 30 seconds. Stay on the platforms.",
+  4: "Find the real one \u2014 it respawns when killed.",
+  5: "The portal isn't broken. Keep trying.",
+};
 
 // =====================================================================
 // GAME STATE
@@ -1088,6 +1102,11 @@ function initLevel(n) {
   }
   particles = [];
   shakeTimer = 0;
+  // Debug mode: hint timer
+  if (debugMode) {
+    level.hintTimer = 240; // 4 seconds at 60fps
+    level.hintText = DEBUG_HINTS[n] || "Good luck!";
+  }
 }
 
 // =====================================================================
@@ -1113,7 +1132,7 @@ function updateSinglePlayer(p, moveLeft, moveRight, doJump, dt) {
   // Jump — weaker in Level 2 so players can't skip to the end
   if (doJump && p.onGround) {
     const jumpMod = (currentLevel === 1) ? 0.75 : 1.0;
-    p.vy = JUMP_FORCE * jumpMod;
+    p.vy = JUMP_FORCE * jumpMod * (debugMode ? 1.15 : 1);
     p.onGround = false;
   }
 
@@ -1183,17 +1202,26 @@ function checkPlayerDeath(p) {
   // Off screen bottom
   if (p.y > CANVAS_H + 50) return true;
 
+  // Ghost mode: immune to spikes
+  if (debugMode && ghostMode) return false;
+
+  // Debug mode: shrink spike hitboxes by 20%
+  const _ss = debugMode ? 0.2 : 0; // spike shrink factor
+
   // Spike collision - floor spikes
   for (const s of level.spikes) {
-    if (rectOverlap(p.x + 2, p.y + p.h - 8, p.w - 4, 10, s.x, s.y, s.w, s.h)) return true;
+    const sx = s.x + s.w * _ss * 0.5, sy = s.y + s.h * _ss * 0.5, sw = s.w * (1 - _ss), sh = s.h * (1 - _ss);
+    if (rectOverlap(p.x + 2, p.y + p.h - 8, p.w - 4, 10, sx, sy, sw, sh)) return true;
   }
   // Ceiling spikes
   for (const s of level.ceilingSpikes) {
-    if (rectOverlap(p.x + 2, p.y, p.w - 4, 10, s.x, s.y, s.w, s.h)) return true;
+    const sx = s.x + s.w * _ss * 0.5, sy = s.y + s.h * _ss * 0.5, sw = s.w * (1 - _ss), sh = s.h * (1 - _ss);
+    if (rectOverlap(p.x + 2, p.y, p.w - 4, 10, sx, sy, sw, sh)) return true;
   }
   // Moving spikes
   for (const s of level.movingSpikes) {
-    if (s.active && rectOverlap(p.x + 2, p.y + 2, p.w - 4, p.h - 4, s.x, s.y, s.w, s.h)) return true;
+    const sx = s.x + s.w * _ss * 0.5, sy = s.y + s.h * _ss * 0.5, sw = s.w * (1 - _ss), sh = s.h * (1 - _ss);
+    if (s.active && rectOverlap(p.x + 2, p.y + 2, p.w - 4, p.h - 4, sx, sy, sw, sh)) return true;
   }
   return false;
 }
@@ -2062,6 +2090,7 @@ function winMessage() {
 // =====================================================================
 function drawPlayerGeneric(p, bodyColor, headColor, limbColor, label) {
   if (!p.alive) return;
+  if (debugMode && ghostMode) ctx.globalAlpha = 0.4;
   const x = Math.round(p.x);
   const y = Math.round(p.y);
   const cx = x + p.w / 2;
@@ -2115,6 +2144,7 @@ function drawPlayerGeneric(p, bodyColor, headColor, limbColor, label) {
     ctx.textAlign = 'center';
     ctx.fillText(label, cx, y - 4);
   }
+  if (debugMode && ghostMode) ctx.globalAlpha = 1;
 }
 
 function drawPlayer() {
@@ -2727,6 +2757,62 @@ function render() {
   // HUD
   drawHUD();
 
+  // Debug mode: hint overlay
+  if (debugMode && level.hintTimer > 0) {
+    level.hintTimer--;
+    const alpha = level.hintTimer > 200 ? Math.min(1, (240 - level.hintTimer) / 40) :
+                  level.hintTimer < 40 ? level.hintTimer / 40 : 1;
+    ctx.globalAlpha = alpha * 0.85;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    const hintW = Math.min(CANVAS_W - 40, 500);
+    ctx.fillRect(CANVAS_W / 2 - hintW / 2, CANVAS_H / 2 - 25, hintW, 50);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ffdd44';
+    ctx.font = 'bold 14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(level.hintText, CANVAS_W / 2, CANVAS_H / 2 - 2);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+
+  // Debug mode: overlay
+  if (debugMode) {
+    const dbgLines = [];
+    dbgLines.push('x: ' + Math.round(player.x) + '  y: ' + Math.round(player.y));
+    dbgLines.push('vx: ' + player.vx.toFixed(1) + '  vy: ' + player.vy.toFixed(1));
+    if (level.isLoop) dbgLines.push('Loop: ' + (level.loopCount + 1) + '/' + level.loopTarget);
+    if (level.isArena) dbgLines.push('Time: ' + Math.ceil(level.arenaTimer / 1000) + 's');
+    if (level.isIllusion) {
+      const deadCount = level.illusionDead ? level.illusionDead.filter(d => d).length : 0;
+      dbgLines.push('Real: #' + (level.illusionRealIdx + 1) + '  Dead: ' + deadCount + '/7');
+    }
+    // FPS
+    if (!window._dbgFpsTs) { window._dbgFpsTs = performance.now(); window._dbgFpsCnt = 0; window._dbgFps = 0; }
+    window._dbgFpsCnt++;
+    const now = performance.now();
+    if (now - window._dbgFpsTs >= 1000) {
+      window._dbgFps = window._dbgFpsCnt;
+      window._dbgFpsCnt = 0;
+      window._dbgFpsTs = now;
+    }
+    dbgLines.push('FPS: ' + (window._dbgFps || '--'));
+    if (ghostMode) dbgLines.push('GHOST MODE');
+
+    const lineH = 14;
+    const boxW = 160;
+    const boxH = dbgLines.length * lineH + 8;
+    const boxX = CANVAS_W - boxW - 8;
+    const boxY = 36;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'left';
+    for (let i = 0; i < dbgLines.length; i++) {
+      ctx.fillText(dbgLines[i], boxX + 6, boxY + 6 + i * lineH);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -2900,10 +2986,15 @@ const KEY_MAP = {
   'ArrowLeft': 'left', 'a': 'left', 'A': 'left',
   'ArrowRight': 'right', 'd': 'right', 'D': 'right',
   'ArrowUp': 'jump', 'w': 'jump', 'W': 'jump', ' ': 'jump',
+  'g': 'ghost', 'G': 'ghost',
 };
 
 window.addEventListener('keydown', e => {
   const k = KEY_MAP[e.key];
+  if (k === 'ghost') {
+    if (debugMode) ghostMode = !ghostMode;
+    return;
+  }
   if (k) {
     e.preventDefault();
     keys[k] = true;
