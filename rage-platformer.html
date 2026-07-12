@@ -502,7 +502,7 @@ function buildLevel2() {
   for (let i = 0; i < 7; i++) {
     const vp = {
       id: 10 + i, x: startX + spacing * i, y: platY - i * 10, w: 80, h: 16,
-      type: 'vanish', vanishDelay: 600, reappearDelay: 3000,
+      type: 'vanish', vanishDelay: 200, reappearDelay: 3000,
       state: 'solid', timer: 0, visitCount: 0,
       color: '#886644', origColor: '#886644'
     };
@@ -524,8 +524,8 @@ function buildLevel2() {
     endX: CANVAS_W - 70,
     endY: groundY - 200,
     spikes: makeSpikeRow(groundY, 0, CANVAS_W),
-    ceilingSpikes: [],
-    deathCeiling: 0,
+    ceilingSpikes: makeSpikeRow(0, 0, CANVAS_W).map(s => ({...s, y: 0, h: SPIKE_H})),
+    deathCeiling: SPIKE_H + 2,
     platforms: [
       // Starting ledge
       { id: 0, x: 10, y: groundY - 50, w: 100, h: 16, type: 'normal', color: '#557788' },
@@ -536,7 +536,7 @@ function buildLevel2() {
       // Rises VERY HIGH — player is trapped up top with no way forward
       { id: 20, x: startX + spacing * 2 + 10, y: groundY - 50, w: 70, h: 16,
         type: 'secret_rise', state: 'hidden', timer: 0,
-        riseDelay: 800, riseTarget: 60, riseSpeed: 2,
+        riseDelay: 600, riseTarget: SPIKE_H + 6, riseSpeed: 3.5,
         color: '#335533', origColor: '#335533' },
       // Second invisible platform — BELOW the first one's final position
       // Stays invisible until player steps on it, then gains color and moves right
@@ -726,7 +726,7 @@ function handlePlatformLand(p) {
     if (p.visitCount === 1) {
       // First visit: short delay then vanish (no blinking, just disappears)
       p.state = 'vanishing';
-      p.timer = 350; // brief window to react
+      p.timer = p.vanishDelay || 350; // use platform-specific delay
     }
     // Second+ visit: stays solid
   }
