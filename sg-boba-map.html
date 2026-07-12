@@ -1,0 +1,1138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>SG Boba Map - Find Bubble Tea Near Any MRT Station</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0f0f1a;
+      --surface: #1a1a2e;
+      --surface2: #16213e;
+      --border: #2a2a4a;
+      --text: #e0e0f0;
+      --text-muted: #8888aa;
+      --accent: #f0a500;
+      --accent2: #e8638c;
+
+      --nsl: #d42e12;
+      --ewl: #009645;
+      --ccl: #fa9e0d;
+      --dtl: #005ec4;
+      --nel: #9b0fac;
+      --tel: #9d5b25;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .header-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .legend-toggle {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .legend-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ===== LEGEND ===== */
+    #legend {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: none;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    #legend.open { display: flex; }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .legend-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ===== MAP CONTAINER ===== */
+    #map-wrapper {
+      width: 100%;
+      overflow: hidden;
+      position: relative;
+      background: var(--bg);
+      touch-action: none;
+    }
+    #map-svg-container {
+      width: 100%;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-origin: 0 0;
+    }
+    #map-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* ===== STATION PANEL ===== */
+    #station-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--surface);
+      border-top: 2px solid var(--accent);
+      border-radius: 20px 20px 0 0;
+      padding: 0;
+      max-height: 75vh;
+      overflow-y: auto;
+      transform: translateY(100%);
+      transition: transform 0.4s cubic-bezier(0.34, 1.2, 0.64, 1);
+      z-index: 200;
+    }
+    #station-panel.open {
+      transform: translateY(0);
+    }
+    .panel-handle {
+      width: 40px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 12px auto 0;
+    }
+    .panel-header {
+      padding: 16px 20px 12px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      z-index: 1;
+    }
+    .panel-station-name {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .panel-station-code {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 3px;
+    }
+    .panel-close {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .panel-close:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    .shops-container {
+      padding: 16px 20px 24px;
+    }
+    .shops-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+
+    /* ===== SHOP CARDS ===== */
+    .shop-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    .shop-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .shop-card:hover, .shop-card:active {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .shop-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .shop-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .shop-location {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    /* ===== DETAIL PANEL ===== */
+    #detail-panel {
+      position: fixed;
+      inset: 0;
+      background: var(--surface);
+      z-index: 300;
+      overflow-y: auto;
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    #detail-panel.open {
+      transform: translateX(0);
+    }
+    .detail-header {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      z-index: 1;
+    }
+    .detail-back {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .detail-back:hover { border-color: var(--accent); }
+    .detail-title-block { flex: 1; }
+    .detail-shop-name {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .detail-shop-sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .detail-body {
+      padding: 20px;
+    }
+
+    .section-title {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+      margin-top: 22px;
+    }
+    .section-title:first-child { margin-top: 0; }
+
+    /* Menu items */
+    .menu-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .menu-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .menu-item-name {
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .menu-item-price {
+      font-size: 0.85rem;
+      color: var(--accent);
+      font-weight: 600;
+      white-space: nowrap;
+      margin-left: 10px;
+    }
+
+    /* Options chips */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state p { color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; }
+
+    /* ===== SVG STATION STYLES (applied via JS) ===== */
+    .station-dot {
+      cursor: pointer;
+      transition: r 0.15s;
+    }
+    .station-dot:hover { opacity: 0.85; }
+
+    /* ===== BACKDROP ===== */
+    #backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 150;
+    }
+    #backdrop.visible { display: block; }
+
+    /* ===== SCROLLBAR ===== */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    @media (min-width: 600px) {
+      #station-panel {
+        max-width: 500px;
+        left: auto;
+        right: 20px;
+        bottom: 20px;
+        border-radius: 16px;
+        border: 1px solid var(--accent);
+        max-height: 80vh;
+      }
+      #detail-panel {
+        max-width: 500px;
+        left: auto;
+        right: 0;
+        border-left: 1px solid var(--border);
+      }
+      .shop-cards { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="header-title">🧋 SG Boba Map</div>
+    <div class="header-sub">Find bubble tea near any MRT station</div>
+  </div>
+  <button class="legend-toggle" onclick="toggleLegend()">Lines</button>
+</header>
+
+<div id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--nsl)"></div>North-South</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--ewl)"></div>East-West</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--ccl)"></div>Circle</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--dtl)"></div>Downtown</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--nel)"></div>North East</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--tel)"></div>Thomson-East Coast</div>
+</div>
+
+<div id="map-wrapper">
+  <div id="map-svg-container">
+    <svg id="map-svg" viewBox="0 0 1000 800" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background -->
+      <rect width="1000" height="800" fill="#0f0f1a"/>
+
+      <!-- ===== TRACK LINES ===== -->
+      <g id="lines" stroke-linecap="round" stroke-linejoin="round" fill="none">
+
+        <!-- North-South Line (NSL) Red: Jurong East -> Woodlands -> Marina South Pier -->
+        <polyline stroke="#d42e12" stroke-width="6"
+          points="130,600 130,540 130,480 130,420 130,360 190,310 250,270 310,240 370,210 420,180 460,155 500,140 540,140 570,140 600,160 620,200 620,250 620,300 620,350 620,400 620,440 640,470 650,510 650,560 650,610 650,660"/>
+
+        <!-- East-West Line (EWL) Green: Tuas -> Tampines -> Expo -->
+        <polyline stroke="#009645" stroke-width="6"
+          points="60,620 130,600 200,590 270,575 340,560 400,545 460,530 520,520 580,510 620,510 650,510 700,500 760,490 810,480 860,470 900,460 940,450"/>
+
+        <!-- Circle Line (CCL) Orange: Dhoby Ghaut -> HarbourFront -->
+        <polyline stroke="#fa9e0d" stroke-width="5"
+          points="620,300 660,280 700,270 740,275 770,290 790,320 800,360 795,400 780,430 760,455 730,470 700,480 670,490 650,510"/>
+        <!-- Upper arc of circle line -->
+        <polyline stroke="#fa9e0d" stroke-width="5"
+          points="620,300 600,280 575,265 545,258 520,260 495,268 472,282 455,300 445,325 440,355 445,385 455,410 470,430 490,448 515,460 540,468 565,472 590,472 620,470 650,460 680,455 700,480"/>
+
+        <!-- Downtown Line (DTL) Blue: Bukit Panjang -> Expo -->
+        <polyline stroke="#005ec4" stroke-width="5"
+          points="160,310 220,330 280,345 330,355 380,365 420,380 460,395 490,410 510,430 520,448 530,465 540,468"/>
+        <polyline stroke="#005ec4" stroke-width="5"
+          points="540,468 580,460 620,445 660,430 700,420 740,415 780,415 820,420 860,428 900,435 940,445"/>
+
+        <!-- North East Line (NEL) Purple: HarbourFront -> Punggol -->
+        <polyline stroke="#9b0fac" stroke-width="5"
+          points="650,610 640,565 630,520 620,480 610,450 600,420 590,395 580,370 580,340 590,315 610,295 630,280 650,270 670,265 700,265 730,270 760,280"/>
+
+        <!-- Thomson-East Coast Line (TEL) Brown: Woodlands -> Gardens by the Bay -->
+        <polyline stroke="#9d5b25" stroke-width="5"
+          points="310,180 310,210 310,240 320,275 340,305 360,330 390,355 420,380 450,405 475,430 500,455 520,475 540,495 560,515 580,535 610,555 635,575 650,600 650,640 650,680"/>
+      </g>
+
+      <!-- ===== STATIONS ===== (rendered by JS) -->
+      <g id="stations-layer"></g>
+      <g id="labels-layer"></g>
+    </svg>
+  </div>
+</div>
+
+<div id="backdrop" onclick="closePanel()"></div>
+
+<!-- Station Panel -->
+<div id="station-panel">
+  <div class="panel-handle"></div>
+  <div class="panel-header">
+    <div>
+      <div class="panel-station-name" id="panel-station-name">Station Name</div>
+      <div class="panel-station-code" id="panel-station-code">Code</div>
+    </div>
+    <button class="panel-close" onclick="closePanel()">&#x2715;</button>
+  </div>
+  <div class="shops-container" id="shops-container"></div>
+</div>
+
+<!-- Detail Panel (shop menu) -->
+<div id="detail-panel">
+  <div class="detail-header">
+    <button class="detail-back" onclick="closeDetail()">&#x2190;</button>
+    <div class="detail-title-block">
+      <div class="detail-shop-name" id="detail-shop-name"></div>
+      <div class="detail-shop-sub" id="detail-shop-sub"></div>
+    </div>
+  </div>
+  <div class="detail-body" id="detail-body"></div>
+</div>
+
+<script>
+// ============================================================
+// DATA
+// ============================================================
+
+const BRANDS = {
+  koi: {
+    name: "KOI The",
+    color: "#c0392b",
+    bg: "#2d0c09",
+    icon: "☕",
+    menu: [
+      { name: "Golden Bubble Milk Tea", price: "$4.20 / $5.20" },
+      { name: "Hazelnut Milk Tea", price: "$4.20 / $5.20" },
+      { name: "Matcha Latte", price: "$5.20 / $6.20" },
+      { name: "Brown Sugar Bubble Milk", price: "$5.50 / $6.50" }
+    ]
+  },
+  gongcha: {
+    name: "Gong Cha",
+    color: "#8B1A1A",
+    bg: "#1e0a0a",
+    icon: "🧋",
+    menu: [
+      { name: "Pearl Milk Tea", price: "$4.40 / $5.40" },
+      { name: "Brown Sugar Fresh Milk", price: "$5.60 / $6.60" },
+      { name: "Taro Milk Tea", price: "$4.40 / $5.40" },
+      { name: "Earl Grey Milk Tea", price: "$4.40 / $5.40" },
+      { name: "Strawberry Milk Tea", price: "$5.00 / $6.00" }
+    ]
+  },
+  liho: {
+    name: "LiHO",
+    color: "#2e7d32",
+    bg: "#0a1e0b",
+    icon: "🍵",
+    menu: [
+      { name: "Brown Sugar Pearl Milk Tea", price: "$4.50 / $5.50" },
+      { name: "Cheese Tea", price: "$5.50 / $6.50" },
+      { name: "Cocoa Milk Tea", price: "$4.50 / $5.50" }
+    ]
+  },
+  tigersugar: {
+    name: "Tiger Sugar",
+    color: "#f57c00",
+    bg: "#1e1000",
+    icon: "🐯",
+    menu: [
+      { name: "Black Sugar Boba Milk", price: "$5.80 / $6.80" },
+      { name: "Black Sugar Pearl Milk Tea", price: "$5.30 / $6.30" },
+      { name: "Brown Sugar Milk Tea", price: "$5.30" }
+    ]
+  },
+  eachacup: {
+    name: "Each A Cup",
+    color: "#7b1fa2",
+    bg: "#150920",
+    icon: "🥤",
+    menu: [
+      { name: "Classic Milk Tea", price: "$3.80 / $4.80" },
+      { name: "Taro Milk Tea", price: "$4.30 / $5.30" },
+      { name: "Okinawa Milk Tea", price: "$4.30 / $5.30" }
+    ]
+  },
+  playmade: {
+    name: "Playmade",
+    color: "#0288d1",
+    bg: "#051520",
+    icon: "🎮",
+    menu: [
+      { name: "Build-Your-Own Bubble Tea", price: "from $5.50" },
+      { name: "Brown Sugar Bubble Milk", price: "$5.90" }
+    ]
+  },
+  rnb: {
+    name: "R&B Tea",
+    color: "#c62828",
+    bg: "#1e0505",
+    icon: "🍓",
+    menu: [
+      { name: "Brown Sugar Pearl Milk", price: "$5.50" },
+      { name: "Brown Sugar Boba Milk Tea", price: "$5.00" }
+    ]
+  },
+  chicha: {
+    name: "Chicha San Chen",
+    color: "#558b2f",
+    bg: "#0c1a05",
+    icon: "🍃",
+    menu: [
+      { name: "Brown Sugar Pearl Fresh Milk", price: "$5.90 / $6.90" },
+      { name: "Oolong Milk Tea", price: "$4.80 / $5.80" }
+    ]
+  }
+};
+
+const OPTIONS = {
+  sugar: ["0%", "25%", "50%", "75%", "100%"],
+  ice: ["No Ice", "Less Ice", "Normal"],
+  size: ["Regular", "Large"]
+};
+
+// Station data: id, name, code, lines[], x, y, shops[]
+// shops: { brand: key, location: string }
+const STATIONS = [
+  // === North-South + other interchanges ===
+  { id: "jurong-east", name: "Jurong East", code: "NS1/EW24", lines: ["nsl","ewl"], x: 130, y: 600, shops: [
+    { brand: "koi", location: "JEM" },
+    { brand: "gongcha", location: "Westgate" },
+    { brand: "liho", location: "JEM" },
+    { brand: "rnb", location: "JEM" }
+  ]},
+  { id: "bukit-batok", name: "Bukit Batok", code: "NS2", lines: ["nsl"], x: 130, y: 540 },
+  { id: "bukit-gombak", name: "Bukit Gombak", code: "NS3", lines: ["nsl"], x: 130, y: 480 },
+  { id: "choa-chu-kang", name: "Choa Chu Kang", code: "NS4/LRT", lines: ["nsl"], x: 130, y: 420 },
+  { id: "yew-tee", name: "Yew Tee", code: "NS5", lines: ["nsl"], x: 130, y: 360 },
+  { id: "kranji", name: "Kranji", code: "NS7", lines: ["nsl"], x: 190, y: 310 },
+  { id: "marsiling", name: "Marsiling", code: "NS8", lines: ["nsl"], x: 250, y: 270 },
+  { id: "woodlands", name: "Woodlands", code: "NS9/TE2", lines: ["nsl","tel"], x: 310, y: 240, shops: [
+    { brand: "koi", location: "Causeway Point" },
+    { brand: "gongcha", location: "Causeway Point" }
+  ]},
+  { id: "admiralty", name: "Admiralty", code: "NS10", lines: ["nsl"], x: 370, y: 210 },
+  { id: "sembawang", name: "Sembawang", code: "NS11", lines: ["nsl"], x: 420, y: 180 },
+  { id: "canberra", name: "Canberra", code: "NS12", lines: ["nsl"], x: 460, y: 155 },
+  { id: "yishun", name: "Yishun", code: "NS13", lines: ["nsl"], x: 500, y: 140 },
+  { id: "khatib", name: "Khatib", code: "NS14", lines: ["nsl"], x: 540, y: 140 },
+  { id: "yio-chu-kang", name: "Yio Chu Kang", code: "NS15", lines: ["nsl"], x: 570, y: 140 },
+  { id: "ang-mo-kio", name: "Ang Mo Kio", code: "NS16", lines: ["nsl"], x: 600, y: 160, shops: [
+    { brand: "koi", location: "AMK Hub" },
+    { brand: "gongcha", location: "AMK Hub" }
+  ]},
+  { id: "bishan", name: "Bishan", code: "NS17/CC15", lines: ["nsl","ccl"], x: 620, y: 200, shops: [
+    { brand: "gongcha", location: "Junction 8" },
+    { brand: "liho", location: "Junction 8" }
+  ]},
+  { id: "braddell", name: "Braddell", code: "NS18", lines: ["nsl"], x: 620, y: 250 },
+  { id: "toa-payoh", name: "Toa Payoh", code: "NS19", lines: ["nsl"], x: 620, y: 300, shops: [
+    { brand: "koi", location: "HDB Hub" },
+    { brand: "gongcha", location: "HDB Hub" }
+  ]},
+  { id: "novena", name: "Novena", code: "NS20", lines: ["nsl"], x: 620, y: 350 },
+  { id: "newton", name: "Newton", code: "NS21/DT11", lines: ["nsl","dtl"], x: 620, y: 400 },
+  { id: "orchard", name: "Orchard", code: "NS22/TE14", lines: ["nsl","tel"], x: 620, y: 440, shops: [
+    { brand: "koi", location: "ION Orchard" },
+    { brand: "gongcha", location: "Takashimaya" },
+    { brand: "liho", location: "ION Orchard" },
+    { brand: "tigersugar", location: "Scotts Square" },
+    { brand: "chicha", location: "ION Orchard" }
+  ]},
+  { id: "somerset", name: "Somerset", code: "NS23", lines: ["nsl"], x: 640, y: 470, shops: [
+    { brand: "koi", location: "313@Somerset" },
+    { brand: "gongcha", location: "Orchard Central" },
+    { brand: "playmade", location: "313@Somerset" }
+  ]},
+  { id: "dhoby-ghaut", name: "Dhoby Ghaut", code: "NS24/NE6/CC1", lines: ["nsl","nel","ccl"], x: 650, y: 510, shops: [
+    { brand: "koi", location: "Plaza Singapura" },
+    { brand: "liho", location: "Plaza Singapura" }
+  ]},
+  { id: "city-hall", name: "City Hall", code: "NS25/EW13", lines: ["nsl","ewl"], x: 650, y: 560, shops: [
+    { brand: "gongcha", location: "Raffles City" },
+    { brand: "tigersugar", location: "Raffles City" }
+  ]},
+  { id: "raffles-place", name: "Raffles Place", code: "NS26/EW14", lines: ["nsl","ewl"], x: 650, y: 610, shops: [
+    { brand: "gongcha", location: "Raffles Place area" },
+    { brand: "tigersugar", location: "Raffles Place area" }
+  ]},
+  { id: "marina-bay", name: "Marina Bay", code: "NS27/CE2/TE20", lines: ["nsl","tel"], x: 650, y: 660 },
+
+  // === East-West Line ===
+  { id: "pioneer", name: "Pioneer", code: "EW28", lines: ["ewl"], x: 60, y: 620 },
+  { id: "boon-lay", name: "Boon Lay", code: "EW27", lines: ["ewl"], x: 130, y: 600 }, // same as Jurong East area
+  { id: "lakeside", name: "Lakeside", code: "EW26", lines: ["ewl"], x: 200, y: 590 },
+  { id: "chinese-garden", name: "Chinese Garden", code: "EW25", lines: ["ewl"], x: 270, y: 575 },
+  { id: "clementi", name: "Clementi", code: "EW23", lines: ["ewl"], x: 340, y: 560 },
+  { id: "dover", name: "Dover", code: "EW22", lines: ["ewl"], x: 400, y: 545 },
+  { id: "buona-vista", name: "Buona Vista", code: "EW21/CC22", lines: ["ewl","ccl"], x: 460, y: 530 },
+  { id: "commonwealth", name: "Commonwealth", code: "EW20", lines: ["ewl"], x: 520, y: 520 },
+  { id: "queenstown", name: "Queenstown", code: "EW19", lines: ["ewl"], x: 580, y: 510 },
+  { id: "redhill", name: "Redhill", code: "EW18", lines: ["ewl"], x: 620, y: 510 },
+  { id: "tiong-bahru", name: "Tiong Bahru", code: "EW17", lines: ["ewl"], x: 650, y: 510 },
+  { id: "outram-park", name: "Outram Park", code: "EW16/NE3/TE17", lines: ["ewl","nel","tel"], x: 700, y: 500 },
+  { id: "tanjong-pagar", name: "Tanjong Pagar", code: "EW15", lines: ["ewl"], x: 760, y: 490 },
+  { id: "bugis", name: "Bugis", code: "EW12/DT14", lines: ["ewl","dtl"], x: 810, y: 480, shops: [
+    { brand: "koi", location: "Bugis Junction" },
+    { brand: "gongcha", location: "Bugis+" },
+    { brand: "liho", location: "Bugis Junction" },
+    { brand: "eachacup", location: "Bugis+" }
+  ]},
+  { id: "lavender", name: "Lavender", code: "EW11", lines: ["ewl"], x: 860, y: 470 },
+  { id: "kallang", name: "Kallang", code: "EW10", lines: ["ewl"], x: 900, y: 460 },
+  { id: "aljunied", name: "Aljunied", code: "EW9", lines: ["ewl"], x: 940, y: 450 },
+  { id: "paya-lebar", name: "Paya Lebar", code: "EW8/CC9", lines: ["ewl","ccl"], x: 940, y: 445 },
+  { id: "eunos", name: "Eunos", code: "EW7", lines: ["ewl"], x: 940, y: 445 },
+  { id: "kembangan", name: "Kembangan", code: "EW6", lines: ["ewl"], x: 940, y: 445 },
+  { id: "bedok", name: "Bedok", code: "EW5", lines: ["ewl"], x: 940, y: 445 },
+  { id: "tanah-merah", name: "Tanah Merah", code: "EW4/CG0", lines: ["ewl"], x: 940, y: 445 },
+  { id: "tampines", name: "Tampines", code: "EW2/DT32", lines: ["ewl","dtl"], x: 900, y: 435, shops: [
+    { brand: "koi", location: "Tampines Mall" },
+    { brand: "gongcha", location: "Tampines 1" },
+    { brand: "eachacup", location: "Tampines Mall" }
+  ]},
+
+  // === Downtown Line ===
+  { id: "bukit-panjang", name: "Bukit Panjang", code: "DT1", lines: ["dtl"], x: 160, y: 310 },
+  { id: "cashew", name: "Cashew", code: "DT2", lines: ["dtl"], x: 220, y: 330 },
+  { id: "hillview", name: "Hillview", code: "DT3", lines: ["dtl"], x: 280, y: 345 },
+  { id: "beauty-world", name: "Beauty World", code: "DT5", lines: ["dtl"], x: 330, y: 355 },
+  { id: "king-albert-park", name: "King Albert Park", code: "DT6", lines: ["dtl"], x: 380, y: 365 },
+  { id: "sixth-avenue", name: "Sixth Avenue", code: "DT7", lines: ["dtl"], x: 420, y: 380 },
+  { id: "tan-kah-kee", name: "Tan Kah Kee", code: "DT8", lines: ["dtl"], x: 460, y: 395 },
+  { id: "botanic-gardens", name: "Botanic Gardens", code: "DT9/CC19", lines: ["dtl","ccl"], x: 490, y: 410 },
+  { id: "stevens", name: "Stevens", code: "DT10/TE11", lines: ["dtl","tel"], x: 510, y: 430 },
+  { id: "little-india", name: "Little India", code: "DT12/NE7", lines: ["dtl","nel"], x: 530, y: 465 },
+  { id: "rochor", name: "Rochor", code: "DT13", lines: ["dtl"], x: 540, y: 468 },
+  { id: "promenade", name: "Promenade", code: "DT15/CC4", lines: ["dtl","ccl"], x: 700, y: 420 },
+  { id: "bayfront", name: "Bayfront", code: "DT16/CE1", lines: ["dtl"], x: 740, y: 415 },
+  { id: "downtown", name: "Downtown", code: "DT17", lines: ["dtl"], x: 780, y: 415 },
+  { id: "telok-ayer", name: "Telok Ayer", code: "DT18", lines: ["dtl"], x: 820, y: 420 },
+  { id: "fort-canning", name: "Fort Canning", code: "DT20", lines: ["dtl"], x: 860, y: 428 },
+
+  // === Circle Line ===
+  { id: "caldecott", name: "Caldecott", code: "CC17/TE9", lines: ["ccl","tel"], x: 660, y: 280 },
+  { id: "marymount", name: "Marymount", code: "CC16", lines: ["ccl"], x: 700, y: 270 },
+  { id: "lorong-chuan", name: "Lorong Chuan", code: "CC14", lines: ["ccl"], x: 740, y: 275 },
+  { id: "serangoon", name: "Serangoon", code: "NE12/CC13", lines: ["nel","ccl"], x: 770, y: 290, shops: [
+    { brand: "koi", location: "NEX" },
+    { brand: "gongcha", location: "NEX" },
+    { brand: "liho", location: "NEX" },
+    { brand: "tigersugar", location: "NEX" }
+  ]},
+  { id: "bartley", name: "Bartley", code: "CC12", lines: ["ccl"], x: 790, y: 320 },
+  { id: "tai-seng", name: "Tai Seng", code: "CC11", lines: ["ccl"], x: 800, y: 360 },
+  { id: "macpherson", name: "MacPherson", code: "CC10/DT26", lines: ["ccl","dtl"], x: 795, y: 400 },
+  { id: "dakota", name: "Dakota", code: "CC8", lines: ["ccl"], x: 780, y: 430 },
+  { id: "mountbatten", name: "Mountbatten", code: "CC7", lines: ["ccl"], x: 760, y: 455 },
+  { id: "stadium", name: "Stadium", code: "CC6", lines: ["ccl"], x: 730, y: 470 },
+  { id: "nicoll-highway", name: "Nicoll Highway", code: "CC5", lines: ["ccl"], x: 700, y: 480 },
+  { id: "esplanade", name: "Esplanade", code: "CC3", lines: ["ccl"], x: 670, y: 490 },
+  { id: "bras-basah", name: "Bras Basah", code: "CC2", lines: ["ccl"], x: 650, y: 505 },
+  { id: "one-north", name: "one-north", code: "CC23", lines: ["ccl"], x: 472, y: 282 },
+  { id: "kent-ridge", name: "Kent Ridge", code: "CC24", lines: ["ccl"], x: 455, y: 300 },
+  { id: "haw-par-villa", name: "Haw Par Villa", code: "CC25", lines: ["ccl"], x: 445, y: 325 },
+  { id: "pasir-panjang", name: "Pasir Panjang", code: "CC26", lines: ["ccl"], x: 440, y: 355 },
+  { id: "labrador-park", name: "Labrador Park", code: "CC27", lines: ["ccl"], x: 445, y: 385 },
+  { id: "telok-blangah", name: "Telok Blangah", code: "CC28", lines: ["ccl"], x: 455, y: 410 },
+  { id: "harbourfront", name: "HarbourFront", code: "NE1/CC29", lines: ["nel","ccl"], x: 490, y: 448, shops: [
+    { brand: "koi", location: "VivoCity" },
+    { brand: "gongcha", location: "VivoCity" },
+    { brand: "tigersugar", location: "VivoCity" },
+    { brand: "chicha", location: "VivoCity" }
+  ]},
+  { id: "moulmein", name: "Moulmein", code: "CC20", lines: ["ccl"], x: 495, y: 268 },
+  { id: "farrer-road", name: "Farrer Road", code: "CC20", lines: ["ccl"], x: 520, y: 260 },
+  { id: "holland-village", name: "Holland Village", code: "CC21", lines: ["ccl"], x: 515, y: 460 },
+  { id: "circle-one-north", name: "one-north (CCL)", code: "CC23", lines: ["ccl"], x: 490, y: 448 },
+  { id: "harbourfront-ccl", name: "HarbourFront exit", code: "CC29", lines: ["ccl"], x: 490, y: 448 },
+
+  // === North East Line ===
+  { id: "punggol", name: "Punggol", code: "NE17", lines: ["nel"], x: 760, y: 280 },
+  { id: "sengkang", name: "Sengkang", code: "NE16", lines: ["nel"], x: 730, y: 270 },
+  { id: "hougang", name: "Hougang", code: "NE14", lines: ["nel"], x: 700, y: 265 },
+  { id: "buangkok", name: "Buangkok", code: "NE15", lines: ["nel"], x: 670, y: 265 },
+  { id: "kovan", name: "Kovan", code: "NE13", lines: ["nel"], x: 650, y: 270 },
+  { id: "woodleigh", name: "Woodleigh", code: "NE11", lines: ["nel"], x: 630, y: 280 },
+  { id: "potong-pasir", name: "Potong Pasir", code: "NE10", lines: ["nel"], x: 610, y: 295 },
+  { id: "boon-keng", name: "Boon Keng", code: "NE9", lines: ["nel"], x: 590, y: 315 },
+  { id: "farrer-park", name: "Farrer Park", code: "NE8", lines: ["nel"], x: 580, y: 340 },
+  { id: "little-india-nel", name: "Little India", code: "NE7/DT12", lines: ["nel","dtl"], x: 580, y: 370 },
+  { id: "clarke-quay", name: "Clarke Quay", code: "NE5", lines: ["nel"], x: 590, y: 395 },
+  { id: "chinatown", name: "Chinatown", code: "NE4/DT19", lines: ["nel","dtl"], x: 600, y: 420 },
+  { id: "outram-nel", name: "Outram Park", code: "NE3", lines: ["nel"], x: 610, y: 450 },
+  { id: "harbourfront-nel", name: "HarbourFront", code: "NE1", lines: ["nel"], x: 620, y: 480 },
+
+  // === Thomson-East Coast Line ===
+  { id: "woodlands-north", name: "Woodlands North", code: "TE1", lines: ["tel"], x: 310, y: 180 },
+  { id: "springleaf", name: "Springleaf", code: "TE3", lines: ["tel"], x: 320, y: 275 },
+  { id: "lentor", name: "Lentor", code: "TE4", lines: ["tel"], x: 340, y: 305 },
+  { id: "mayflower", name: "Mayflower", code: "TE5", lines: ["tel"], x: 360, y: 330 },
+  { id: "bright-hill", name: "Bright Hill", code: "TE6", lines: ["tel"], x: 390, y: 355 },
+  { id: "upper-thomson", name: "Upper Thomson", code: "TE7", lines: ["tel"], x: 420, y: 380 },
+  { id: "caldecott-tel", name: "Caldecott", code: "TE8/CC17", lines: ["tel","ccl"], x: 450, y: 405 },
+  { id: "mount-pleasant", name: "Mount Pleasant", code: "TE9", lines: ["tel"], x: 475, y: 430 },
+  { id: "stevens-tel", name: "Stevens", code: "TE10/DT10", lines: ["tel","dtl"], x: 500, y: 455 },
+  { id: "napier", name: "Napier", code: "TE12", lines: ["tel"], x: 520, y: 475 },
+  { id: "great-world", name: "Great World", code: "TE15", lines: ["tel"], x: 560, y: 515, shops: [
+    { brand: "koi", location: "Great World City" },
+    { brand: "gongcha", location: "Great World City" }
+  ]},
+  { id: "havelock", name: "Havelock", code: "TE16", lines: ["tel"], x: 580, y: 535 },
+  { id: "maxwell", name: "Maxwell", code: "TE18", lines: ["tel"], x: 610, y: 555 },
+  { id: "shenton-way", name: "Shenton Way", code: "TE19", lines: ["tel"], x: 635, y: 575 },
+  { id: "gardens-by-bay", name: "Gardens by the Bay", code: "TE22", lines: ["tel"], x: 650, y: 680 }
+];
+
+// De-duplicate stations that appear multiple times (same logical station)
+const seenIds = new Set();
+const UNIQUE_STATIONS = STATIONS.filter(s => {
+  if (seenIds.has(s.id)) return false;
+  seenIds.add(s.id);
+  return true;
+});
+
+// A simplified set of key stations for rendering (avoid clutter)
+// We'll render all but mark them differently
+const KEY_STATIONS = new Set([
+  "jurong-east","woodlands","ang-mo-kio","bishan","toa-payoh","orchard","somerset",
+  "dhoby-ghaut","city-hall","raffles-place","marina-bay","bugis","tampines",
+  "harbourfront","serangoon","great-world","punggol","sengkang","hougang",
+  "kovan","farrer-park","clarke-quay","chinatown","raffles-place",
+  "caldecott","marymount","lorong-chuan","bartley","macpherson","paya-lebar",
+  "buona-vista","newton","bishan","outram-park","tanjong-pagar","lavender",
+  "bukit-panjang","beauty-world","botanic-gardens","little-india",
+  "woodlands-north","lentor","mayflower","upper-thomson","mount-pleasant",
+  "napier","great-world","havelock","maxwell","gardens-by-bay",
+  "springleaf","bright-hill","stevens","shenton-way","caldecott-tel",
+  "admiralty","sembawang","yishun","khatib","novena",
+  "clementi","queenstown","redhill","tiong-bahru","boon-lay","pioneer",
+  "bukit-batok","choa-chu-kang","yew-tee","harbourfront-nel"
+]);
+
+const LINE_COLORS = {
+  nsl: "#d42e12",
+  ewl: "#009645",
+  ccl: "#fa9e0d",
+  dtl: "#005ec4",
+  nel: "#9b0fac",
+  tel: "#9d5b25"
+};
+
+// ============================================================
+// RENDER STATIONS
+// ============================================================
+function renderStations() {
+  const stLayer = document.getElementById("stations-layer");
+  const lblLayer = document.getElementById("labels-layer");
+
+  // Render a representative set to avoid extreme clutter
+  const toRender = UNIQUE_STATIONS.filter(s => KEY_STATIONS.has(s.id));
+
+  toRender.forEach(station => {
+    const isInterchange = station.lines.length > 1;
+    const hasShops = station.shops && station.shops.length > 0;
+    const primaryColor = LINE_COLORS[station.lines[0]] || "#888";
+
+    // Outer glow for shops
+    if (hasShops) {
+      const glow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      glow.setAttribute("cx", station.x);
+      glow.setAttribute("cy", station.y);
+      glow.setAttribute("r", isInterchange ? 14 : 10);
+      glow.setAttribute("fill", "none");
+      glow.setAttribute("stroke", "#f0a500");
+      glow.setAttribute("stroke-width", "2");
+      glow.setAttribute("opacity", "0.6");
+      stLayer.appendChild(glow);
+    }
+
+    // Main dot
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", station.x);
+    circle.setAttribute("cy", station.y);
+    circle.setAttribute("r", isInterchange ? 9 : 6);
+    circle.setAttribute("fill", isInterchange ? "#fff" : primaryColor);
+    circle.setAttribute("stroke", primaryColor);
+    circle.setAttribute("stroke-width", isInterchange ? 3 : 0);
+    circle.setAttribute("class", "station-dot");
+    circle.setAttribute("data-id", station.id);
+    circle.style.cursor = "pointer";
+    stLayer.appendChild(circle);
+
+    // Boba indicator dot
+    if (hasShops) {
+      const bobaIndicator = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      bobaIndicator.setAttribute("cx", station.x + (isInterchange ? 9 : 6));
+      bobaIndicator.setAttribute("cy", station.y - (isInterchange ? 9 : 6));
+      bobaIndicator.setAttribute("r", 4);
+      bobaIndicator.setAttribute("fill", "#f0a500");
+      bobaIndicator.style.pointerEvents = "none";
+      stLayer.appendChild(bobaIndicator);
+    }
+
+    // Label
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", station.x + 13);
+    text.setAttribute("y", station.y + 4);
+    text.setAttribute("font-size", "9");
+    text.setAttribute("fill", "#c0c0d0");
+    text.setAttribute("font-family", "system-ui, sans-serif");
+    text.setAttribute("pointer-events", "none");
+    text.textContent = station.name;
+    lblLayer.appendChild(text);
+
+    // Click handler
+    circle.addEventListener("click", () => openStation(station.id));
+
+    // Touch handler
+    circle.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      openStation(station.id);
+    });
+  });
+}
+
+// ============================================================
+// PANEL LOGIC
+// ============================================================
+let currentStation = null;
+
+function openStation(stationId) {
+  const station = UNIQUE_STATIONS.find(s => s.id === stationId);
+  if (!station) return;
+  currentStation = station;
+
+  document.getElementById("panel-station-name").textContent = station.name;
+  document.getElementById("panel-station-code").textContent = station.code;
+
+  const container = document.getElementById("shops-container");
+  container.innerHTML = "";
+
+  if (!station.shops || station.shops.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🧋</div>
+        <p>No bubble tea data yet for this station.<br>Spotted a shop here? Suggest it!</p>
+      </div>`;
+  } else {
+    const label = document.createElement("div");
+    label.className = "shops-label";
+    label.textContent = `${station.shops.length} shop${station.shops.length > 1 ? "s" : ""} nearby`;
+    container.appendChild(label);
+
+    const grid = document.createElement("div");
+    grid.className = "shop-cards";
+
+    station.shops.forEach((shopData, idx) => {
+      const brand = BRANDS[shopData.brand];
+      if (!brand) return;
+      const card = document.createElement("div");
+      card.className = "shop-card";
+      card.innerHTML = `
+        <div class="shop-badge" style="background:${brand.bg};color:${brand.color};border:1px solid ${brand.color}40">
+          ${brand.icon} ${brand.name}
+        </div>
+        <div class="shop-name">${brand.name}</div>
+        <div class="shop-location">📍 ${shopData.location}</div>
+      `;
+      card.addEventListener("click", () => openDetail(shopData.brand, shopData.location, station.name));
+      grid.appendChild(card);
+    });
+
+    container.appendChild(grid);
+  }
+
+  document.getElementById("station-panel").classList.add("open");
+  document.getElementById("backdrop").classList.add("visible");
+}
+
+function closePanel() {
+  document.getElementById("station-panel").classList.remove("open");
+  document.getElementById("backdrop").classList.remove("visible");
+  closeDetail();
+}
+
+function openDetail(brandKey, location, stationName) {
+  const brand = BRANDS[brandKey];
+  if (!brand) return;
+
+  document.getElementById("detail-shop-name").textContent = `${brand.icon} ${brand.name}`;
+  document.getElementById("detail-shop-sub").textContent = `${location} · near ${stationName}`;
+
+  const body = document.getElementById("detail-body");
+  body.innerHTML = "";
+
+  // Menu
+  const menuTitle = document.createElement("div");
+  menuTitle.className = "section-title";
+  menuTitle.textContent = "Menu";
+  body.appendChild(menuTitle);
+
+  const menuList = document.createElement("div");
+  menuList.className = "menu-list";
+  brand.menu.forEach(item => {
+    const row = document.createElement("div");
+    row.className = "menu-item";
+    row.innerHTML = `
+      <span class="menu-item-name">${item.name}</span>
+      <span class="menu-item-price">${item.price}</span>
+    `;
+    menuList.appendChild(row);
+  });
+  body.appendChild(menuList);
+
+  // Sugar
+  const sugarTitle = document.createElement("div");
+  sugarTitle.className = "section-title";
+  sugarTitle.textContent = "Sugar Level";
+  body.appendChild(sugarTitle);
+  const sugarChips = document.createElement("div");
+  sugarChips.className = "chips";
+  OPTIONS.sugar.forEach(s => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.textContent = s;
+    sugarChips.appendChild(chip);
+  });
+  body.appendChild(sugarChips);
+
+  // Ice
+  const iceTitle = document.createElement("div");
+  iceTitle.className = "section-title";
+  iceTitle.textContent = "Ice Level";
+  body.appendChild(iceTitle);
+  const iceChips = document.createElement("div");
+  iceChips.className = "chips";
+  OPTIONS.ice.forEach(i => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.textContent = i;
+    iceChips.appendChild(chip);
+  });
+  body.appendChild(iceChips);
+
+  // Size
+  const sizeTitle = document.createElement("div");
+  sizeTitle.className = "section-title";
+  sizeTitle.textContent = "Size";
+  body.appendChild(sizeTitle);
+  const sizeChips = document.createElement("div");
+  sizeChips.className = "chips";
+  OPTIONS.size.forEach(sz => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.textContent = sz;
+    sizeChips.appendChild(chip);
+  });
+  body.appendChild(sizeChips);
+
+  // Spacer
+  const spacer = document.createElement("div");
+  spacer.style.height = "24px";
+  body.appendChild(spacer);
+
+  document.getElementById("detail-panel").classList.add("open");
+}
+
+function closeDetail() {
+  document.getElementById("detail-panel").classList.remove("open");
+}
+
+function toggleLegend() {
+  const l = document.getElementById("legend");
+  l.classList.toggle("open");
+}
+
+// ============================================================
+// MAP HEIGHT
+// ============================================================
+function setMapHeight() {
+  const header = document.querySelector("header");
+  const h = window.innerHeight - header.offsetHeight;
+  document.getElementById("map-wrapper").style.height = h + "px";
+}
+
+// ============================================================
+// PINCH-ZOOM + PAN
+// ============================================================
+let scale = 1, minScale = 0.5, maxScale = 4;
+let panX = 0, panY = 0;
+let lastDist = 0, isDragging = false;
+let dragStartX, dragStartY, panStartX, panStartY;
+
+function applyTransform(animate) {
+  const el = document.getElementById("map-svg-container");
+  el.style.transition = animate ? "transform 0.3s ease" : "none";
+  el.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+
+const mapWrapper = document.getElementById("map-wrapper");
+
+mapWrapper.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.min(maxScale, Math.max(minScale, scale * delta));
+  const rect = mapWrapper.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  panX = mx - (mx - panX) * (newScale / scale);
+  panY = my - (my - panY) * (newScale / scale);
+  scale = newScale;
+  applyTransform(false);
+}, { passive: false });
+
+mapWrapper.addEventListener("mousedown", (e) => {
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  panStartX = panX;
+  panStartY = panY;
+});
+window.addEventListener("mousemove", (e) => {
+  if (!isDragging) return;
+  panX = panStartX + (e.clientX - dragStartX);
+  panY = panStartY + (e.clientY - dragStartY);
+  applyTransform(false);
+});
+window.addEventListener("mouseup", () => { isDragging = false; });
+
+// Touch pan + pinch
+let lastTouchX, lastTouchY, touchStartPanX, touchStartPanY;
+
+mapWrapper.addEventListener("touchstart", (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastDist = Math.hypot(dx, dy);
+  } else if (e.touches.length === 1) {
+    lastTouchX = e.touches[0].clientX;
+    lastTouchY = e.touches[0].clientY;
+    touchStartPanX = panX;
+    touchStartPanY = panY;
+  }
+}, { passive: true });
+
+mapWrapper.addEventListener("touchmove", (e) => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    const pinchScale = dist / lastDist;
+    const newScale = Math.min(maxScale, Math.max(minScale, scale * pinchScale));
+    const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    const rect = mapWrapper.getBoundingClientRect();
+    const cx = mx - rect.left;
+    const cy = my - rect.top;
+    panX = cx - (cx - panX) * (newScale / scale);
+    panY = cy - (cy - panY) * (newScale / scale);
+    scale = newScale;
+    lastDist = dist;
+    applyTransform(false);
+  } else if (e.touches.length === 1) {
+    const dx = e.touches[0].clientX - lastTouchX;
+    const dy = e.touches[0].clientY - lastTouchY;
+    panX = touchStartPanX + (e.touches[0].clientX - lastTouchX + (panX - touchStartPanX));
+    panY = touchStartPanY + (e.touches[0].clientY - lastTouchY + (panY - touchStartPanY));
+    // simpler:
+    panX += dx * 0.5;
+    panY += dy * 0.5;
+    lastTouchX = e.touches[0].clientX;
+    lastTouchY = e.touches[0].clientY;
+    applyTransform(false);
+  }
+}, { passive: false });
+
+// ============================================================
+// INIT
+// ============================================================
+renderStations();
+setMapHeight();
+window.addEventListener("resize", setMapHeight);
+</script>
+</body>
+</html>
