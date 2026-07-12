@@ -298,6 +298,22 @@ const DEATH_MSGS = [
   "That's {n} deaths. You should be ashamed.",
 ];
 
+// Level 3 dual-player death messages
+const DUAL_DEATH_MSGS = [
+  "Two brains, zero skill.",
+  "The left one blamed the right one.",
+  "Synchronized failure.",
+  "Your left brain killed your right brain.",
+  "Two characters and you still can't make it.",
+  "Double the players, double the disappointment.",
+  "One fell. Both died. Classic you.",
+  "They were counting on each other. You let them both down.",
+  "Mirror, mirror on the wall, who's the worst player of them all?",
+  "That's {n} deaths. With TWO characters.",
+  "You can't even coordinate with yourself.",
+  "Split personality, united in failure.",
+];
+
 // =====================================================================
 // SAVE SYSTEM (per-player)
 // =====================================================================
@@ -364,6 +380,17 @@ const player = {
   legPhase: 0,
 };
 
+// Player 2 (Level 3 dual character)
+const player2 = {
+  x: 0, y: 0,
+  w: 18, h: 32,
+  vx: 0, vy: 0,
+  onGround: false,
+  alive: true,
+  facingRight: false,
+  legPhase: 0,
+};
+
 function resetPlayer(spawnX, spawnY) {
   player.x = spawnX;
   player.y = spawnY;
@@ -372,6 +399,17 @@ function resetPlayer(spawnX, spawnY) {
   player.onGround = false;
   player.alive = true;
   player.legPhase = 0;
+}
+
+function resetPlayer2(spawnX, spawnY) {
+  player2.x = spawnX;
+  player2.y = spawnY;
+  player2.vx = 0;
+  player2.vy = 0;
+  player2.onGround = false;
+  player2.alive = true;
+  player2.facingRight = false;
+  player2.legPhase = 0;
 }
 
 // =====================================================================
@@ -554,9 +592,90 @@ function buildLevel2() {
   };
 }
 
+// Level 3 - The Split (dual character, inverted controls)
+function buildLevel3() {
+  return {
+    bg: '#1a1428',
+    isDualPlayer: true,
+    spawnX: 50,
+    spawnY: 380,
+    spawn2X: 810,
+    spawn2Y: 380,
+    endX: 420,
+    endY: 50,
+    spikes: [],
+    ceilingSpikes: [],
+    deathCeiling: 0,
+    platforms: [
+      // === LEFT SIDE (Player A's path) ===
+      // A-START: large safe ledge bottom-left
+      { id: 'L0', x: 10, y: 420, w: 140, h: 16, type: 'normal', color: '#665577' },
+      // L1: step up
+      { id: 'L1', x: 80, y: 370, w: 80, h: 16, type: 'normal', color: '#665577' },
+      // L2: narrow vanishing platform
+      { id: 'L2', x: 30, y: 320, w: 55, h: 16, type: 'vanish',
+        vanishDelay: 800, reappearDelay: 2500,
+        state: 'solid', timer: 0, visitCount: 0, color: '#886644', origColor: '#886644' },
+      // L3: wider step
+      { id: 'L3', x: 120, y: 280, w: 90, h: 16, type: 'normal', color: '#665577' },
+      // L4: timed platform (appears/disappears on timer)
+      { id: 'L4', x: 40, y: 230, w: 70, h: 16, type: 'timed',
+        timedOn: 2000, timedOff: 1500, timedState: 'solid', timedTimer: 0,
+        state: 'solid', color: '#448866', origColor: '#448866' },
+      // L5: narrow step
+      { id: 'L5', x: 150, y: 195, w: 50, h: 16, type: 'normal', color: '#665577' },
+      // L-PLATE: pressure plate platform (mid-height left side)
+      { id: 'L-PLATE', x: 60, y: 150, w: 100, h: 16, type: 'pressure',
+        pressurePlate: true, opens: 'barrier-right', activated: false,
+        color: '#997733', origColor: '#997733' },
+      // L6: step toward center
+      { id: 'L6', x: 200, y: 120, w: 70, h: 16, type: 'normal', color: '#665577' },
+
+      // === RIGHT SIDE (Player B's path) ===
+      // B-START: large safe ledge bottom-right
+      { id: 'R0', x: 750, y: 420, w: 140, h: 16, type: 'normal', color: '#556677' },
+      // R1: step up
+      { id: 'R1', x: 740, y: 365, w: 80, h: 16, type: 'normal', color: '#556677' },
+      // R2: wider platform (contrast with left narrow)
+      { id: 'R2', x: 810, y: 310, w: 80, h: 16, type: 'normal', color: '#556677' },
+      // R3: moving platform
+      { id: 'R3', x: 720, y: 265, w: 80, h: 16, type: 'moving_h',
+        state: 'active', origX: 720, moveMin: 700, moveMax: 850, moveSpeed: 1.2, moveDir: 1,
+        color: '#445588', origColor: '#445588' },
+      // R4: narrow step
+      { id: 'R4', x: 830, y: 220, w: 50, h: 16, type: 'normal', color: '#556677' },
+      // R5: vanishing platform
+      { id: 'R5', x: 750, y: 185, w: 60, h: 16, type: 'vanish',
+        vanishDelay: 900, reappearDelay: 2200,
+        state: 'solid', timer: 0, visitCount: 0, color: '#886644', origColor: '#886644' },
+      // R-PLATE: pressure plate platform (mid-height right side)
+      { id: 'R-PLATE', x: 740, y: 150, w: 100, h: 16, type: 'pressure',
+        pressurePlate: true, opens: 'barrier-left', activated: false,
+        color: '#997733', origColor: '#997733' },
+      // R6: step toward center
+      { id: 'R6', x: 630, y: 120, w: 70, h: 16, type: 'normal', color: '#556677' },
+
+      // === CENTER TOP ===
+      // Center platform where the gate sits
+      { id: 'CENTER', x: 380, y: 80, w: 140, h: 16, type: 'normal', color: '#557755' },
+
+      // === BARRIERS ===
+      // Left barrier: blocks left path to center until R-PLATE is pressed
+      { id: 'barrier-left', x: 268, y: 60, w: 14, h: 80, type: 'barrier',
+        state: 'active', color: 'rgba(255,80,80,0.5)', origColor: 'rgba(255,80,80,0.5)' },
+      // Right barrier: blocks right path to center until L-PLATE is pressed
+      { id: 'barrier-right', x: 618, y: 60, w: 14, h: 80, type: 'barrier',
+        state: 'active', color: 'rgba(80,80,255,0.5)', origColor: 'rgba(80,80,255,0.5)' },
+    ],
+    movingSpikes: [],
+    levelSpikes: [],
+  };
+}
+
 function getLevel(n) {
   if (n === 0) return buildLevel1();
   if (n === 1) return buildLevel2();
+  if (n === 2) return buildLevel3();
   return buildSimpleLevel(n);
 }
 
@@ -598,10 +717,30 @@ function initLevel(n) {
       p.timer = 0;
       p.origX = p.x;
     }
+    if (p.type === 'timed') {
+      p.timedState = 'solid';
+      p.state = 'solid';
+      p.timedTimer = 0;
+    }
+    if (p.type === 'pressure') {
+      p.activated = false;
+      p.color = p.origColor;
+    }
+    if (p.type === 'barrier') {
+      p.state = 'active';
+    }
+    if (p.type === 'moving_h') {
+      p.state = 'active';
+      p.x = p.origX;
+    }
   }
   level.movingSpikes = [];
   level.levelSpikes = [];
   resetPlayer(level.spawnX, level.spawnY - player.h);
+  // Reset player2 for dual player levels
+  if (level.isDualPlayer) {
+    resetPlayer2(level.spawn2X, level.spawn2Y - player2.h);
+  }
   particles = [];
   shakeTimer = 0;
 }
@@ -613,107 +752,168 @@ function rectOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
-function updatePlayer(dt) {
-  if (!player.alive) return;
-
+function updateSinglePlayer(p, moveLeft, moveRight, doJump, dt) {
   // Movement
-  const moving = keys.left || keys.right;
-  if (keys.left) {
-    player.vx = -MOVE_SPEED;
-    player.facingRight = false;
-  } else if (keys.right) {
-    player.vx = MOVE_SPEED;
-    player.facingRight = true;
+  const moving = moveLeft || moveRight;
+  if (moveLeft) {
+    p.vx = -MOVE_SPEED;
+    p.facingRight = false;
+  } else if (moveRight) {
+    p.vx = MOVE_SPEED;
+    p.facingRight = true;
   } else {
-    player.vx *= 0.7;
+    p.vx *= 0.7;
   }
 
   // Jump — weaker in Level 2 so players can't skip to the end
-  if (keys.jump && player.onGround) {
-    const jumpMod = (currentLevel === 1) ? 0.75 : 1.0; // Level 2 = 75% jump
-    player.vy = JUMP_FORCE * jumpMod;
-    player.onGround = false;
+  if (doJump && p.onGround) {
+    const jumpMod = (currentLevel === 1) ? 0.75 : 1.0;
+    p.vy = JUMP_FORCE * jumpMod;
+    p.onGround = false;
   }
 
   // Gravity
-  player.vy += GRAVITY;
-  if (player.vy > 18) player.vy = 18;
+  p.vy += GRAVITY;
+  if (p.vy > 18) p.vy = 18;
 
-  player.onGround = false;
+  p.onGround = false;
 
   // X movement
-  player.x += player.vx;
+  p.x += p.vx;
   // Bounds
-  if (player.x < 0) { player.x = 0; player.vx = 0; }
-  if (player.x + player.w > CANVAS_W) { player.x = CANVAS_W - player.w; player.vx = 0; }
+  if (p.x < 0) { p.x = 0; p.vx = 0; }
+  if (p.x + p.w > CANVAS_W) { p.x = CANVAS_W - p.w; p.vx = 0; }
 
   // Y movement
-  player.y += player.vy;
+  p.y += p.vy;
 
   // Platform collisions
-  for (const p of level.platforms) {
-    if (p.state === 'gone') continue;
-    if (!rectOverlap(player.x, player.y, player.w, player.h, p.x, p.y, p.w, p.h)) continue;
+  for (const plat of level.platforms) {
+    if (plat.state === 'gone') continue;
+    if (plat.type === 'barrier' && plat.state !== 'active') continue;
+    // Barriers act as solid walls
+    if (plat.type === 'barrier' && plat.state === 'active') {
+      if (rectOverlap(p.x, p.y, p.w, p.h, plat.x, plat.y, plat.w, plat.h)) {
+        // Push player out horizontally
+        const pCenterX = p.x + p.w / 2;
+        const bCenterX = plat.x + plat.w / 2;
+        if (pCenterX < bCenterX) {
+          p.x = plat.x - p.w;
+        } else {
+          p.x = plat.x + plat.w;
+        }
+        p.vx = 0;
+      }
+      continue;
+    }
+    if (!rectOverlap(p.x, p.y, p.w, p.h, plat.x, plat.y, plat.w, plat.h)) continue;
 
     // Coming from above (landing)
-    const prevY = player.y - player.vy;
-    if (player.vy >= 0 && prevY + player.h <= p.y + 4) {
-      player.y = p.y - player.h;
-      player.vy = 0;
-      player.onGround = true;
+    const prevY = p.y - p.vy;
+    if (p.vy >= 0 && prevY + p.h <= plat.y + 4) {
+      p.y = plat.y - p.h;
+      p.vy = 0;
+      p.onGround = true;
 
-      // Trigger platform mechanics
-      handlePlatformLand(p);
-    } else if (player.vy < 0 && prevY >= p.y + p.h - 4) {
+      // Trigger platform mechanics (only for player1 on non-dual levels, or whichever lands)
+      handlePlatformLand(plat, p);
+    } else if (p.vy < 0 && prevY >= plat.y + plat.h - 4) {
       // Hit head on platform from below
-      player.y = p.y + p.h;
-      player.vy = 0;
-    }
-  }
-
-  // Death ceiling
-  if (level.deathCeiling > 0 && player.y < level.deathCeiling) {
-    killPlayer();
-    return;
-  }
-
-  // Off screen top (no ceiling defined) - death
-  if (player.y + player.h < 0) {
-    killPlayer();
-    return;
-  }
-  // Off screen bottom
-  if (player.y > CANVAS_H + 50) {
-    killPlayer();
-    return;
-  }
-
-  // Spike collision - floor spikes
-  for (const s of level.spikes) {
-    if (rectOverlap(player.x + 2, player.y + player.h - 8, player.w - 4, 10, s.x, s.y, s.w, s.h)) {
-      killPlayer(); return;
-    }
-  }
-  // Ceiling spikes
-  for (const s of level.ceilingSpikes) {
-    if (rectOverlap(player.x + 2, player.y, player.w - 4, 10, s.x, s.y, s.w, s.h)) {
-      killPlayer(); return;
-    }
-  }
-  // Moving spikes
-  for (const s of level.movingSpikes) {
-    if (s.active && rectOverlap(player.x + 2, player.y + 2, player.w - 4, player.h - 4, s.x, s.y, s.w, s.h)) {
-      killPlayer(); return;
+      p.y = plat.y + plat.h;
+      p.vy = 0;
     }
   }
 
   // Leg animation
-  if (moving && player.onGround) player.legPhase += 0.2;
+  if (moving && p.onGround) p.legPhase += 0.2;
 
-  // Win check
-  const ex = level.endX, ey = level.endY;
-  if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H)) {
-    winLevel();
+  return true; // alive
+}
+
+function checkPlayerDeath(p) {
+  // Death ceiling
+  if (level.deathCeiling > 0 && p.y < level.deathCeiling) return true;
+  // Off screen top (no ceiling defined)
+  if (p.y + p.h < 0) return true;
+  // Off screen bottom
+  if (p.y > CANVAS_H + 50) return true;
+
+  // Spike collision - floor spikes
+  for (const s of level.spikes) {
+    if (rectOverlap(p.x + 2, p.y + p.h - 8, p.w - 4, 10, s.x, s.y, s.w, s.h)) return true;
+  }
+  // Ceiling spikes
+  for (const s of level.ceilingSpikes) {
+    if (rectOverlap(p.x + 2, p.y, p.w - 4, 10, s.x, s.y, s.w, s.h)) return true;
+  }
+  // Moving spikes
+  for (const s of level.movingSpikes) {
+    if (s.active && rectOverlap(p.x + 2, p.y + 2, p.w - 4, p.h - 4, s.x, s.y, s.w, s.h)) return true;
+  }
+  return false;
+}
+
+function updatePlayer(dt) {
+  if (!player.alive) return;
+
+  if (level.isDualPlayer) {
+    // Dual player mode: Player A normal controls, Player B inverted X
+    updateSinglePlayer(player, keys.left, keys.right, keys.jump, dt);
+    updateSinglePlayer(player2, keys.right, keys.left, keys.jump, dt); // inverted X
+
+    // Check death for either player
+    if (checkPlayerDeath(player) || checkPlayerDeath(player2)) {
+      killPlayer();
+      return;
+    }
+
+    // Check pressure plates
+    checkPressurePlates();
+
+    // Win check: BOTH players must touch the gate
+    const ex = level.endX, ey = level.endY;
+    const p1AtGate = rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H);
+    const p2AtGate = rectOverlap(player2.x, player2.y, player2.w, player2.h, ex, ey, GATE_W, GATE_H);
+    if (p1AtGate && p2AtGate) {
+      winLevel();
+    }
+  } else {
+    // Single player mode (Levels 1, 2, etc.)
+    updateSinglePlayer(player, keys.left, keys.right, keys.jump, dt);
+
+    if (checkPlayerDeath(player)) {
+      killPlayer();
+      return;
+    }
+
+    // Win check
+    const ex = level.endX, ey = level.endY;
+    if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H)) {
+      winLevel();
+    }
+  }
+}
+
+function checkPressurePlates() {
+  for (const p of level.platforms) {
+    if (p.type !== 'pressure' || p.activated) continue;
+    // Check if either player is standing on this plate
+    const p1On = player.onGround &&
+      Math.abs(player.y + player.h - p.y) < 4 &&
+      player.x + player.w > p.x && player.x < p.x + p.w;
+    const p2On = player2.onGround &&
+      Math.abs(player2.y + player2.h - p.y) < 4 &&
+      player2.x + player2.w > p.x && player2.x < p.x + p.w;
+    if (p1On || p2On) {
+      p.activated = true;
+      p.color = '#44ff44';
+      // Deactivate the barrier this plate opens
+      for (const b of level.platforms) {
+        if (b.id === p.opens && b.type === 'barrier') {
+          b.state = 'deactivated';
+        }
+      }
+    }
   }
 }
 
@@ -722,7 +922,7 @@ function updatePlayer(dt) {
 // =====================================================================
 let p3StoodOn = false; // track if player is on P3 (index 2) for level 1
 
-function handlePlatformLand(p) {
+function handlePlatformLand(p, plyr) {
   if (p.type === 'vanish' && p.state === 'solid') {
     p.visitCount = (p.visitCount || 0) + 1;
     if (p.visitCount === 1) {
@@ -923,6 +1123,41 @@ function updatePlatforms(dt) {
         }
       }
     }
+
+    // Timed platform (Level 3) — appears/disappears on timer
+    if (p.type === 'timed') {
+      p.timedTimer += dt;
+      if (p.timedState === 'solid') {
+        if (p.timedTimer >= p.timedOn) {
+          p.timedState = 'gone';
+          p.state = 'gone';
+          p.timedTimer = 0;
+        }
+      } else if (p.timedState === 'gone') {
+        if (p.timedTimer >= p.timedOff) {
+          p.timedState = 'solid';
+          p.state = 'solid';
+          p.timedTimer = 0;
+        }
+      }
+    }
+
+    // Horizontally moving platform (Level 3)
+    if (p.type === 'moving_h' && p.state === 'active') {
+      p.x += p.moveSpeed * p.moveDir;
+      if (p.x <= p.moveMin) { p.x = p.moveMin; p.moveDir = 1; }
+      if (p.x + 80 >= p.moveMax) { p.x = p.moveMax - 80; p.moveDir = -1; }
+      // Carry players standing on it
+      const dx = p.moveSpeed * p.moveDir;
+      if (player.alive && player.onGround && Math.abs(player.y + player.h - p.y) < 4 &&
+          player.x + player.w > p.x && player.x < p.x + 80) {
+        player.x += dx;
+      }
+      if (level.isDualPlayer && player2.alive && player2.onGround && Math.abs(player2.y + player2.h - p.y) < 4 &&
+          player2.x + player2.w > p.x && player2.x < p.x + 80) {
+        player2.x += dx;
+      }
+    }
   }
 
   // Update moving spikes
@@ -987,6 +1222,10 @@ function killPlayer() {
   if (!player.alive) return;
   player.alive = false;
   spawnDeathParticles(player.x, player.y);
+  if (level.isDualPlayer && player2.alive) {
+    player2.alive = false;
+    spawnDeathParticles(player2.x, player2.y);
+  }
   shakeTimer = 400;
   shakeIntensity = 8;
 
@@ -1033,9 +1272,10 @@ function winMessage() {
   const lvlMsgs = [
     // Level 1
     ["Took you long enough.","Congratulations... you beat the TUTORIAL.","That was literally the easiest level.","Wait... that took you {d} deaths? On the FIRST level?"],
-    // Level 2-10
+    // Level 2
     ["Finally.","The platforms almost gave up on you.","That only took you... forever.","Don't celebrate. It gets worse."],
-    ["Halfway to mediocrity.","The spikes will miss you. Not really.","Your death count is higher than your IQ."],
+    // Level 3
+    ["You actually got both of them there? I'm mildly impressed. Mildly.","Split personality disorder: cured. Took you {d} deaths though.","Two brains working together and it STILL took that long."],
     ["Did you Google the solution?","Honestly surprised you made it."],
     ["OK that one was actually hard. You still took too long though."],
     ["Are you cheating? No? Then how are you this slow?"],
@@ -1053,46 +1293,44 @@ function winMessage() {
 // =====================================================================
 // DRAWING
 // =====================================================================
-function drawPlayer() {
-  if (!player.alive) return;
-  const x = Math.round(player.x);
-  const y = Math.round(player.y);
-  const cx = x + player.w / 2;
+function drawPlayerGeneric(p, bodyColor, headColor, limbColor, label) {
+  if (!p.alive) return;
+  const x = Math.round(p.x);
+  const y = Math.round(p.y);
+  const cx = x + p.w / 2;
 
   // Body
-  ctx.fillStyle = '#e8d0a0';
-  ctx.fillRect(x + 4, y + 10, 10, 14); // torso
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(x + 4, y + 10, 10, 14);
 
   // Head
-  ctx.fillStyle = '#f0d8a8';
+  ctx.fillStyle = headColor;
   ctx.beginPath();
   ctx.arc(cx, y + 7, 7, 0, Math.PI * 2);
   ctx.fill();
 
   // Eyes
   ctx.fillStyle = '#000';
-  const eyeOff = player.facingRight ? 2 : -2;
+  const eyeOff = p.facingRight ? 2 : -2;
   ctx.fillRect(cx + eyeOff - 1, y + 5, 2, 2);
 
   // Legs
-  const legSwing = Math.sin(player.legPhase) * 5;
-  ctx.strokeStyle = '#c0a070';
+  const legSwing = Math.sin(p.legPhase) * 5;
+  ctx.strokeStyle = limbColor;
   ctx.lineWidth = 3;
   ctx.lineCap = 'round';
-  // Left leg
   ctx.beginPath();
   ctx.moveTo(cx - 2, y + 24);
-  ctx.lineTo(cx - 2 - (player.onGround ? legSwing : 0), y + 36);
+  ctx.lineTo(cx - 2 - (p.onGround ? legSwing : 0), y + 36);
   ctx.stroke();
-  // Right leg
   ctx.beginPath();
   ctx.moveTo(cx + 2, y + 24);
-  ctx.lineTo(cx + 2 + (player.onGround ? legSwing : 0), y + 36);
+  ctx.lineTo(cx + 2 + (p.onGround ? legSwing : 0), y + 36);
   ctx.stroke();
 
   // Arms
-  const armSwing = Math.sin(player.legPhase + Math.PI) * 4;
-  ctx.strokeStyle = '#e8d0a0';
+  const armSwing = Math.sin(p.legPhase + Math.PI) * 4;
+  ctx.strokeStyle = bodyColor;
   ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.moveTo(cx - 4, y + 13);
@@ -1102,6 +1340,25 @@ function drawPlayer() {
   ctx.moveTo(cx + 4, y + 13);
   ctx.lineTo(cx + 10 + armSwing, y + 21);
   ctx.stroke();
+
+  // Label (A or B) above head
+  if (label) {
+    ctx.fillStyle = headColor;
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, cx, y - 4);
+  }
+}
+
+function drawPlayer() {
+  if (level.isDualPlayer) {
+    // Player A: red/orange tones
+    drawPlayerGeneric(player, '#e8a060', '#f0b868', '#c08040', 'A');
+    // Player B: blue/cyan tones
+    drawPlayerGeneric(player2, '#60a0e8', '#68b8f0', '#4080c0', 'B');
+  } else {
+    drawPlayerGeneric(player, '#e8d0a0', '#f0d8a8', '#c0a070', null);
+  }
 }
 
 function drawSpike(x, y, w, h) {
@@ -1171,6 +1428,67 @@ function drawPlatform(p) {
   if (p.state === 'gone') return;
   if (p.state === 'hidden') return; // invisible platforms
 
+  // Barriers: semi-transparent walls that fade when deactivated
+  if (p.type === 'barrier') {
+    if (p.state === 'deactivated') return; // invisible when deactivated
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    // Pulsing glow effect
+    const pulse = 0.3 + Math.sin(Date.now() / 300) * 0.15;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(p.x + 2, p.y + 2, p.w - 4, p.h - 4);
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  // Pressure plates: glowing pad
+  if (p.type === 'pressure') {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = p.activated ? '#44ff44' : p.color;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    // Glowing top strip
+    const glowAlpha = p.activated ? 0.6 : (0.2 + Math.sin(Date.now() / 500) * 0.15);
+    ctx.globalAlpha = glowAlpha;
+    ctx.fillStyle = p.activated ? '#88ffaa' : '#ffdd44';
+    ctx.fillRect(p.x, p.y, p.w, 5);
+    // Small indicator triangles on top
+    if (!p.activated) {
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = '#ffaa00';
+      const midX = p.x + p.w / 2;
+      ctx.beginPath();
+      ctx.moveTo(midX - 5, p.y);
+      ctx.lineTo(midX, p.y - 6);
+      ctx.lineTo(midX + 5, p.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  // Timed platforms: blink before disappearing
+  if (p.type === 'timed') {
+    ctx.globalAlpha = 1;
+    if (p.timedState === 'solid') {
+      // Blink warning in last 500ms before vanishing
+      const timeLeft = p.timedOn - p.timedTimer;
+      if (timeLeft < 500) {
+        ctx.globalAlpha = 0.4 + Math.sin(Date.now() / 80) * 0.3;
+      }
+    }
+    ctx.fillStyle = p.color || '#448866';
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(p.x, p.y, p.w, 3);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+    ctx.globalAlpha = 1;
+    return;
+  }
+
   ctx.globalAlpha = 1;
   ctx.fillStyle = p.color || '#557788';
   ctx.fillRect(p.x, p.y, p.w, p.h);
@@ -1195,13 +1513,37 @@ function drawParticles() {
 }
 
 function drawHUD() {
-  // Death counter already in overlay UI
-  // Level progress bar (optional minimal)
-  const progress = player.alive ? (player.x / CANVAS_W) : 0;
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  ctx.fillRect(10, CANVAS_H - 14, 200, 6);
-  ctx.fillStyle = '#4488ff';
-  ctx.fillRect(10, CANVAS_H - 14, 200 * Math.min(1, progress), 6);
+  if (level.isDualPlayer) {
+    // Dual player: show height progress for both players (vertical progress toward gate)
+    const gateY = level.endY;
+    const startY = Math.max(level.spawnY, level.spawn2Y);
+    const range = startY - gateY;
+    const p1Progress = player.alive ? Math.max(0, Math.min(1, (startY - player.y) / range)) : 0;
+    const p2Progress = player2.alive ? Math.max(0, Math.min(1, (startY - player2.y) / range)) : 0;
+    // Player A bar
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(10, CANVAS_H - 20, 95, 6);
+    ctx.fillStyle = '#e88040';
+    ctx.fillRect(10, CANVAS_H - 20, 95 * p1Progress, 6);
+    ctx.fillStyle = '#e88040';
+    ctx.font = 'bold 8px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillText('A', 12, CANVAS_H - 23);
+    // Player B bar
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(115, CANVAS_H - 20, 95, 6);
+    ctx.fillStyle = '#4088e0';
+    ctx.fillRect(115, CANVAS_H - 20, 95 * p2Progress, 6);
+    ctx.fillStyle = '#4088e0';
+    ctx.fillText('B', 117, CANVAS_H - 23);
+  } else {
+    // Single player progress bar
+    const progress = player.alive ? (player.x / CANVAS_W) : 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(10, CANVAS_H - 14, 200, 6);
+    ctx.fillStyle = '#4488ff';
+    ctx.fillRect(10, CANVAS_H - 14, 200 * Math.min(1, progress), 6);
+  }
 }
 
 function render() {
@@ -1257,6 +1599,9 @@ function render() {
 
   // Gates
   drawGate(level.spawnX - GATE_W / 2, level.spawnY - GATE_H, false);
+  if (level.isDualPlayer) {
+    drawGate(level.spawn2X - GATE_W / 2, level.spawn2Y - GATE_H, false);
+  }
   drawGate(level.endX, level.endY, true);
 
   // Player
@@ -1414,7 +1759,7 @@ function speakMsg(text) {
 
 function showDeath() {
   gameRunning = false;
-  const msgs = DEATH_MSGS;
+  const msgs = (currentLevel === 2) ? DUAL_DEATH_MSGS : DEATH_MSGS;
   let msg = msgs[Math.floor(Math.random() * msgs.length)];
   msg = msg.replace('{n}', saveData.totalDeaths);
   document.getElementById('deathMsg').textContent = msg;
