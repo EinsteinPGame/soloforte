@@ -393,8 +393,8 @@ function buildLevel1() {
     bg: '#1a1a2e',
     spawnX: 40,
     spawnY: groundY - 80,
-    endX: 470,
-    endY: groundY - 270,
+    endX: 480,
+    endY: groundY - 254,
     // Ground spikes cover the whole floor
     spikes: makeSpikeRow(groundY, 0, CANVAS_W),
     // Ceiling spikes (death if player goes too high)
@@ -410,20 +410,17 @@ function buildLevel1() {
       // P3 - vanishes with P2 (index 1), reappears when P2 reappears
       { id: 2, x: 370, y: groundY - 150, w: 95, h: 16, type: 'vanish_linked',
         linkedTo: 1, state: 'solid', color: '#886622', origColor: '#886622' },
-      // End platform — to the LEFT of the launch platform (green)
-      { id: 5, x: 440, y: groundY - 220, w: 130, h: 16, type: 'normal', color: '#335533' },
-      // P4 - launch platform: vanishes first visit, second visit launches up
-      { id: 3, x: 560, y: groundY - 120, w: 95, h: 16, type: 'launch',
-        state: 'solid', visitCount: 0,
-        vanishDelay: 500, launchDelay: 800, launchVY: -22,
-        color: '#882244', origColor: '#882244', timer: 0 },
+      // P4 - normal platform (no more launch)
+      { id: 3, x: 520, y: groundY - 130, w: 95, h: 16, type: 'normal', color: '#882244' },
+      // End platform — green, to the LEFT of P4
+      { id: 5, x: 440, y: groundY - 200, w: 130, h: 16, type: 'normal', color: '#335533' },
       // P5 - idle; activates when player stands on P3 after P4 launches
       //       moves left to player, carries right, sends spikes midway
       { id: 4, x: 760, y: groundY - 170, w: 100, h: 16, type: 'moving',
         state: 'idle',
         origX: 760, targetX: 365, speed: 2.5,
         color: '#224488', origColor: '#224488',
-        spawnSpikes: false, spikeSpawned: false,
+        spike1Spawned: false, spike2Spawned: false,
         timer: 0 },
     ],
     movingSpikes: [], // level-runtime moving spikes
@@ -497,17 +494,13 @@ function initLevel(n) {
       p.timer = 0;
       if (p.visitCount !== undefined) p.visitCount = 0;
     }
-    if (p.type === 'launch') {
-      p.state = 'solid';
-      p.timer = 0;
-      p.visitCount = 0;
-    }
     if (p.type === 'moving') {
       p.state = 'idle';
       p.x = p.origX;
       p.timer = 0;
-      p.spawnSpikes = false;
-      p.spikeSpawned = false;
+      p.spike1Spawned = false;
+      p.spike2Spawned = false;
+      p.p4Visited = false;
     }
   }
   level.movingSpikes = [];
@@ -643,17 +636,10 @@ function handlePlatformLand(p) {
     // Second+ visit: stays solid
   }
 
-  if (p.type === 'launch' && p.state === 'solid') {
-    p.visitCount = (p.visitCount || 0) + 1;
-    if (p.visitCount === 1) {
-      // First visit: short delay then vanish (no blinking)
-      p.state = 'vanishing';
-      p.timer = 350;
-    } else if (p.visitCount === 2) {
-      // Second visit: brief wait then launch
-      p.state = 'prelaunch';
-      p.timer = p.launchDelay;
-    }
+  // Track P4 visit for P5 activation
+  if (p.id === 3) {
+    const p5 = level.platforms.find(pp => pp.id === 4);
+    if (p5) p5.p4Visited = true;
   }
 }
 
@@ -681,59 +667,12 @@ function updatePlatforms(dt) {
       }
     }
 
-    if (p.type === 'launch') {
-      if (p.state === 'vanishing') {
-        p.timer -= dt;
-        if (p.timer <= 0) {
-          p.state = 'gone';
-          p.timer = p.reappearDelay || 2000;
-        }
-      } else if (p.state === 'gone') {
-        p.timer -= dt;
-        if (p.timer <= 0) { p.state = 'solid'; }
-      } else if (p.state === 'prelaunch') {
-        p.timer -= dt;
-        // Check if player is still on THIS platform
-        const onThis = player.onGround &&
-          Math.abs(player.y + player.h - p.y) < 4 &&
-          player.x + player.w > p.x && player.x < p.x + p.w;
-        if (!onThis) {
-          // Player stepped off — cancel launch, go back to solid
-          p.state = 'solid';
-          p.timer = 0;
-        } else if (p.timer <= 0) {
-          // Launch!
-          player.vy = p.launchVY;
-          player.onGround = false;
-          // Platform disappears upward fast
-          p.state = 'launching';
-          p.launchY = p.y;
-        }
-      } else if (p.state === 'launching') {
-        p.y -= 8; // platform shoots up
-        // When P4 launches, P5 (moving) also vanishes
-        const p5 = level.platforms.find(pp => pp.id === 4);
-        if (p5 && p5.state === 'idle') {
-          p5.state = 'gone_temp';
-          p5.timer = 1500;
-        }
-        if (p.y < -100) { p.state = 'offscreen'; }
-      }
-    }
-
     if (p.type === 'moving') {
-      if (p.state === 'gone_temp') {
-        p.timer -= dt;
-        if (p.timer <= 0) { p.state = 'idle'; p.x = p.origX; }
-      }
-
       // Check if player stands on P3 (id=2) to activate P5
-      // Only after P4 has been launched (visitCount >= 2)
+      // Only after player has visited P4 and come back
       if (p.id === 4 && p.state === 'idle') {
         const p3 = level.platforms.find(pp => pp.id === 2);
-        const p4 = level.platforms.find(pp => pp.id === 3);
-        const p4Launched = p4 && (p4.state === 'launching' || p4.state === 'offscreen' || (p4.visitCount || 0) >= 2);
-        if (p3 && p3.state === 'solid' && p4Launched) {
+        if (p3 && p3.state === 'solid' && p.p4Visited) {
           // Is player on P3?
           const onP3 = player.onGround &&
             Math.abs(player.y + player.h - p3.y) < 4 &&
@@ -758,8 +697,6 @@ function updatePlatforms(dt) {
           p.x = p.targetX;
           p.state = 'carrying';
           p.timer = 0;
-          // Spawn incoming spikes after short delay
-          p.spawnSpikes = true;
         }
       }
 
@@ -771,19 +708,30 @@ function updatePlatforms(dt) {
             player.x + player.w > p.x && player.x < p.x + p.w) {
           player.x += dx;
         }
-        p.timer += dt;
 
-        // Spawn spikes after 600ms of carrying
-        if (p.spawnSpikes && !p.spikeSpawned && p.timer > 600) {
-          p.spikeSpawned = true;
-          // Spawn two spike waves from the left
+        // Track journey progress (targetX to off-screen)
+        const journeyStart = p.targetX;
+        const journeyEnd = CANVAS_W + 20;
+        const journeyTotal = journeyEnd - journeyStart;
+        const journeyDone = p.x - journeyStart;
+        const progress = journeyDone / journeyTotal;
+
+        // Spike 1: spawns so it catches player at 50% mark
+        if (!p.spike1Spawned && progress >= 0.15) {
+          p.spike1Spawned = true;
           level.movingSpikes.push(
-            { x: -60, y: p.y - 40, w: 40, h: 20, vx: 5, vy: 0, active: true, wave: 1 },
-            { x: -120, y: p.y - 40, w: 40, h: 20, vx: 5, vy: 0, active: true, wave: 2, delay: 700, delayLeft: 700 }
+            { x: -60, y: p.y - 40, w: 40, h: 20, vx: 9, vy: 0, active: true, wave: 1 }
+          );
+        }
+        // Spike 2: spawns so it catches player at 75% mark
+        if (!p.spike2Spawned && progress >= 0.45) {
+          p.spike2Spawned = true;
+          level.movingSpikes.push(
+            { x: -60, y: p.y - 40, w: 40, h: 20, vx: 10, vy: 0, active: true, wave: 2 }
           );
         }
 
-        if (p.x > CANVAS_W + 20) {
+        if (p.x > journeyEnd) {
           p.state = 'done';
         }
       }
