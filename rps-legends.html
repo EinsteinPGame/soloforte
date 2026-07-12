@@ -71,224 +71,298 @@ const SFX={
 };
 
 // ============================================================
-// MOVE ANIMATION SYSTEM — 150+ unique move animations
+// MOVE ANIMATION SYSTEM — 150 unique thematic move animations
 // ============================================================
-const ANIM_TYPES={projectile:1,slash:2,burst:3,buff:4,beam:5,special:6};
-// Map every move name to animation config: {type, color, color2, particles, size, speed, extra}
+// Screen shake state
+let screenShake={x:0,y:0,intensity:0,decay:0.9};
+function triggerShake(intensity){screenShake.intensity=intensity}
+function updateShake(){if(screenShake.intensity>0.5){screenShake.x=(Math.random()-0.5)*screenShake.intensity*2;screenShake.y=(Math.random()-0.5)*screenShake.intensity*2;screenShake.intensity*=screenShake.decay}else{screenShake.x=0;screenShake.y=0;screenShake.intensity=0}}
+// Enemy hit flash state
+let enemyHitFlash=0;
+
+// Shape drawing helpers
+function drawRockShape(cx,cy,sz,c1,c2,rot){
+  X.save();X.translate(cx,cy);X.rotate(rot||0);
+  X.fillStyle=c1;X.beginPath();
+  X.moveTo(-sz*0.8,-sz*0.3);X.lineTo(-sz*0.4,-sz);X.lineTo(sz*0.3,-sz*0.8);
+  X.lineTo(sz*0.9,-sz*0.1);X.lineTo(sz*0.6,sz*0.7);X.lineTo(-sz*0.2,sz*0.9);
+  X.lineTo(-sz*0.9,sz*0.4);X.closePath();X.fill();
+  X.fillStyle=c2;X.beginPath();
+  X.moveTo(-sz*0.3,-sz*0.2);X.lineTo(sz*0.1,-sz*0.6);X.lineTo(sz*0.5,0);
+  X.lineTo(0,sz*0.3);X.closePath();X.fill();
+  X.restore();
+}
+function drawBladeShape(cx,cy,len,w,c,rot){
+  X.save();X.translate(cx,cy);X.rotate(rot||0);
+  X.fillStyle=c;X.beginPath();
+  X.moveTo(-len/2,0);X.lineTo(-len/4,-w/2);X.lineTo(len/2,0);
+  X.lineTo(-len/4,w/2);X.closePath();X.fill();
+  X.strokeStyle='rgba(255,255,255,0.5)';X.lineWidth=1;
+  X.beginPath();X.moveTo(-len/3,0);X.lineTo(len/2,0);X.stroke();
+  X.restore();
+}
+function drawPaperShape(cx,cy,sz,c,rot){
+  X.save();X.translate(cx,cy);X.rotate(rot||0);
+  X.fillStyle=c;X.fillRect(-sz/2,-sz*0.7,sz,sz*1.4);
+  X.strokeStyle='rgba(0,0,0,0.2)';X.lineWidth=1;
+  for(let i=-2;i<=2;i++)X.strokeRect(-sz/2+2,-sz*0.7+sz*0.28*i+sz*0.14,sz-4,0);
+  X.restore();
+}
+function drawStarShape(cx,cy,sz,c,rot,points){
+  const p=points||4;X.save();X.translate(cx,cy);X.rotate(rot||0);
+  X.fillStyle=c;X.beginPath();
+  for(let i=0;i<p*2;i++){const a=i*Math.PI/p-Math.PI/2;const r=i%2===0?sz:sz*0.4;
+    i===0?X.moveTo(Math.cos(a)*r,Math.sin(a)*r):X.lineTo(Math.cos(a)*r,Math.sin(a)*r)}
+  X.closePath();X.fill();X.restore();
+}
+function drawFlameParticle(cx,cy,sz,t){
+  const colors=['#ff2200','#ff6600','#ffaa00','#ffdd44'];
+  colors.forEach((c,i)=>{X.fillStyle=c;X.globalAlpha=0.8-i*0.15-t*0.3;
+    X.beginPath();X.arc(cx+(Math.random()-0.5)*4,cy-i*sz*0.3+(Math.random()-0.5)*3,sz*(1-i*0.2),0,Math.PI*2);X.fill()});
+}
+function drawIceCrystal(cx,cy,sz,c,rot){
+  X.save();X.translate(cx,cy);X.rotate(rot||0);X.strokeStyle=c;X.lineWidth=2;X.lineCap='round';
+  for(let i=0;i<6;i++){const a=i*Math.PI/3;
+    X.beginPath();X.moveTo(0,0);X.lineTo(Math.cos(a)*sz,Math.sin(a)*sz);X.stroke();
+    X.beginPath();X.moveTo(Math.cos(a)*sz*0.5+Math.cos(a+0.5)*sz*0.3,Math.sin(a)*sz*0.5+Math.sin(a+0.5)*sz*0.3);
+    X.lineTo(Math.cos(a)*sz*0.5,Math.sin(a)*sz*0.5);
+    X.lineTo(Math.cos(a)*sz*0.5+Math.cos(a-0.5)*sz*0.3,Math.sin(a)*sz*0.5+Math.sin(a-0.5)*sz*0.3);X.stroke()}
+  X.restore();
+}
+function drawLightningBolt(x1,y1,x2,y2,c,w,segments){
+  const segs=segments||8;X.strokeStyle=c;X.lineWidth=w;X.lineCap='round';X.beginPath();X.moveTo(x1,y1);
+  for(let i=1;i<segs;i++){const f=i/segs;const mx=x1+(x2-x1)*f+(Math.random()-0.5)*30;
+    const my=y1+(y2-y1)*f+(Math.random()-0.5)*20;X.lineTo(mx,my)}
+  X.lineTo(x2,y2);X.stroke();
+}
+function drawCraneShape(cx,cy,sz,c,rot){
+  X.save();X.translate(cx,cy);X.rotate(rot||0);X.fillStyle=c;
+  X.beginPath();X.moveTo(-sz,0);X.lineTo(-sz*0.3,-sz*0.5);X.lineTo(sz*0.5,0);
+  X.lineTo(-sz*0.3,sz*0.5);X.closePath();X.fill();
+  X.beginPath();X.moveTo(-sz*0.3,-sz*0.3);X.lineTo(0,-sz*0.8);X.lineTo(sz*0.2,-sz*0.3);X.closePath();X.fill();
+  X.beginPath();X.moveTo(-sz*0.3,sz*0.3);X.lineTo(0,sz*0.8);X.lineTo(sz*0.2,sz*0.3);X.closePath();X.fill();
+  X.restore();
+}
+function drawVineWrap(cx,cy,radius,t,c){
+  X.strokeStyle=c;X.lineWidth=3;X.lineCap='round';
+  for(let v=0;v<4;v++){X.beginPath();
+    for(let i=0;i<=20;i++){const a=v*Math.PI/2+i*0.5*t*Math.PI;const r=radius*(0.5+0.5*Math.sin(i*0.3+v));
+      const px=cx+Math.cos(a)*r;const py=cy+Math.sin(a)*r;i===0?X.moveTo(px,py):X.lineTo(px,py)}X.stroke()}
+}
+
+// All 150 move animation configs — each with unique type, shape, and behavior
 const MOVE_ANIMS={
-  // Stone (Rock)
-  'Rock Throw':{type:'projectile',color:'#b48c64',color2:'#8a6a48',particles:'rocks',size:12},
-  'Harden':{type:'buff',color:'#b48c64',color2:'#d4b896'},
-  'Boulder Smash':{type:'burst',color:'#b48c64',color2:'#6e5030',particles:'rocks',size:20},
-  // Blade (Scissors)
-  'Quick Cut':{type:'slash',color:'#c83c3c',color2:'#ff6666'},
-  'Sharpen':{type:'buff',color:'#c83c3c',color2:'#ff8888'},
-  'Cross Slash':{type:'slash',color:'#ff3333',color2:'#ff6666',particles:'sparks',size:16},
-  // Scroll (Paper)
-  'Paper Cut':{type:'projectile',color:'#dcdcf0',color2:'#ffffff',particles:'paper'},
-  'Fold Shield':{type:'buff',color:'#dcdcf0',color2:'#ffffff'},
-  'Origami Storm':{type:'burst',color:'#dcdcf0',color2:'#b0b0d0',particles:'paper',size:22},
-  // Crystal (Rock)
-  'Gem Shard':{type:'projectile',color:'#64c8ff',color2:'#88ddff',particles:'crystals'},
-  'Prism Beam':{type:'beam',color:'#64c8ff',color2:'#ff88ff',particles:'sparkle'},
-  'Diamond Crush':{type:'burst',color:'#64c8ff',color2:'#aaffff',particles:'crystals',size:20},
-  // Shadow (Scissors)
-  'Night Slash':{type:'slash',color:'#643c8c',color2:'#9060c0',particles:'shadow'},
-  'Vanish':{type:'buff',color:'#643c8c',color2:'#a070d0'},
-  'Phantom Blade':{type:'slash',color:'#8a50c0',color2:'#c080ff',particles:'shadow',size:18},
-  // Sage (Paper)
-  'Spell Page':{type:'projectile',color:'#3cb478',color2:'#60e0a0',particles:'magic'},
-  'Heal Word':{type:'buff',color:'#3cb478',color2:'#80ffc0',extra:'heal'},
-  'Arcane Burst':{type:'burst',color:'#3cb478',color2:'#40ff90',particles:'magic',size:20},
-  // Ember (Rock)
-  'Flame Rock':{type:'projectile',color:'#ff6432',color2:'#ffaa00',particles:'fire'},
-  'Heat Shield':{type:'buff',color:'#ff6432',color2:'#ff9960'},
-  'Eruption':{type:'burst',color:'#ff3200',color2:'#ff8c00',particles:'fire',size:24},
-  // Gale (Scissors)
-  'Wind Blade':{type:'slash',color:'#96dcff',color2:'#c0eeff',particles:'wind'},
-  'Tailwind':{type:'buff',color:'#96dcff',color2:'#d0f0ff'},
-  'Hurricane Cut':{type:'slash',color:'#60c8f0',color2:'#90e0ff',particles:'wind',size:18},
-  // Lotus (Paper)
-  'Petal Dance':{type:'burst',color:'#ff96c8',color2:'#ffc0e0',particles:'petals'},
-  'Bloom':{type:'buff',color:'#ff96c8',color2:'#ffd0e8',extra:'heal'},
-  "Nature's Wrath":{type:'burst',color:'#40c040',color2:'#ff96c8',particles:'petals',size:20},
-  // Iron (Rock)
-  'Iron Fist':{type:'projectile',color:'#a0a0b4',color2:'#c0c0d0',particles:'metal'},
-  'Metal Wall':{type:'buff',color:'#a0a0b4',color2:'#d0d0e0'},
-  'Steel Crash':{type:'burst',color:'#808096',color2:'#c0c0d0',particles:'metal',size:22},
-  // Fang (Scissors)
-  'Bite':{type:'slash',color:'#c86432',color2:'#ff8040',particles:'blood'},
-  'Howl':{type:'buff',color:'#c86432',color2:'#ff9060'},
-  'Savage Rend':{type:'slash',color:'#ff4020',color2:'#c86432',particles:'blood',size:18},
-  // Rune (Paper)
-  'Rune Bolt':{type:'beam',color:'#c8a0ff',color2:'#e0c0ff',particles:'magic'},
-  'Enchant':{type:'buff',color:'#c8a0ff',color2:'#e0d0ff'},
-  'Arcane Nova':{type:'burst',color:'#c8a0ff',color2:'#f0e0ff',particles:'magic',size:22},
-  // Frost (Rock)
-  'Ice Rock':{type:'projectile',color:'#a0e6ff',color2:'#d0f0ff',particles:'ice'},
-  'Frost Armor':{type:'buff',color:'#a0e6ff',color2:'#d0f8ff'},
-  'Avalanche':{type:'burst',color:'#80d0ff',color2:'#ffffff',particles:'ice',size:22},
-  // Spark (Scissors)
-  'Thunder Cut':{type:'slash',color:'#ffdc00',color2:'#ffffff',particles:'lightning'},
-  'Charge':{type:'buff',color:'#ffdc00',color2:'#ffee60'},
-  'Lightning Blade':{type:'beam',color:'#ffdc00',color2:'#ffffff',particles:'lightning',size:16},
-  // Silk (Paper)
-  'Thread Bind':{type:'projectile',color:'#ffe6f0',color2:'#ffffff',particles:'thread'},
-  'Cocoon':{type:'buff',color:'#ffe6f0',color2:'#ffffff'},
-  'Web Blast':{type:'burst',color:'#ffe6f0',color2:'#ffd0e0',particles:'thread',size:18},
-  // Obsidian (Rock)
-  'Dark Rock':{type:'projectile',color:'#1e1428',color2:'#5030a0',particles:'dark'},
-  'Void Shell':{type:'buff',color:'#3c2050',color2:'#6040a0'},
-  'Obliterate':{type:'burst',color:'#000000',color2:'#5000a0',particles:'dark',size:26},
-  // Razor (Scissors)
-  'Razor Wind':{type:'slash',color:'#e6322d',color2:'#ff6060',particles:'sparks'},
-  'Whet':{type:'buff',color:'#e6322d',color2:'#ff8080'},
-  'Execution':{type:'special',color:'#ff0000',color2:'#880000',particles:'blood',size:20,extra:'execute'},
-  // Oracle (Paper)
-  'Foresight':{type:'beam',color:'#c8c8ff',color2:'#ffffff',particles:'sparkle'},
-  'Prophecy':{type:'buff',color:'#c8c8ff',color2:'#e0e0ff'},
-  'Destiny Beam':{type:'beam',color:'#8888ff',color2:'#ffffff',particles:'sparkle',size:16},
-  // Magnet (Rock)
-  'Magnetic Pulse':{type:'burst',color:'#96969c',color2:'#c0c0ff',particles:'lightning'},
-  'Polarize':{type:'buff',color:'#96969c',color2:'#c0c0c0'},
-  'Rail Gun':{type:'beam',color:'#96969c',color2:'#ffffff',particles:'metal',size:14},
-  // Venom (Scissors)
-  'Toxic Cut':{type:'slash',color:'#6e00a0',color2:'#a040ff',particles:'poison'},
-  'Acid Coat':{type:'buff',color:'#6e00a0',color2:'#a060ff'},
-  'Venom Strike':{type:'slash',color:'#8000c0',color2:'#c060ff',particles:'poison',size:16},
-  // Origami (Paper)
-  'Crane Strike':{type:'projectile',color:'#ffc8c8',color2:'#ffffff',particles:'paper'},
-  '1000 Cranes':{type:'buff',color:'#ffc8c8',color2:'#ffffff',extra:'heal'},
-  'Paper Dragon':{type:'special',color:'#ff4040',color2:'#ffc8c8',particles:'paper',size:22,extra:'dragon'},
-  // Meteor (Rock)
-  'Space Rock':{type:'projectile',color:'#dc6400',color2:'#ff9030',particles:'fire',size:16},
-  'Gravity Well':{type:'buff',color:'#dc6400',color2:'#ffaa40'},
-  'Impact':{type:'special',color:'#ff3200',color2:'#ffcc00',particles:'fire',size:28,extra:'impact'},
-  // Ninja (Scissors)
-  'Shuriken':{type:'projectile',color:'#28283c',color2:'#505078',particles:'metal',size:8},
-  'Smoke Bomb':{type:'buff',color:'#555555',color2:'#888888',extra:'smoke'},
-  'Death Mark':{type:'special',color:'#ff0000',color2:'#28283c',particles:'shadow',size:16,extra:'mark'},
-  // Scholar (Paper)
-  'Book Slam':{type:'projectile',color:'#f0e6c8',color2:'#d0c0a0',particles:'paper',size:14},
-  'Study':{type:'buff',color:'#f0e6c8',color2:'#fff0d0'},
-  'Knowledge Blast':{type:'burst',color:'#f0e6c8',color2:'#ffffff',particles:'magic',size:20},
-  // Pebble (Rock)
-  'Roll':{type:'projectile',color:'#c8b496',color2:'#a09070',particles:'rocks',size:10},
-  'Curl Up':{type:'buff',color:'#c8b496',color2:'#e0d0b0'},
-  'Rock Slide':{type:'burst',color:'#c8b496',color2:'#a09070',particles:'rocks',size:20},
-  // Katana (Scissors)
-  'Iai Slash':{type:'slash',color:'#e6e6f0',color2:'#ffffff',particles:'sparks',size:18},
-  'Focus':{type:'buff',color:'#e6e6f0',color2:'#ffffff'},
-  '1000 Cuts':{type:'special',color:'#ffffff',color2:'#c83c3c',particles:'sparks',size:14,extra:'multiSlash'},
-  // Papyrus (Paper)
-  'Ancient Script':{type:'projectile',color:'#f0dcc8',color2:'#c8b098',particles:'paper'},
-  'Mummy Wrap':{type:'projectile',color:'#f0dcc8',color2:'#c8a070',particles:'thread',size:10},
-  'Curse':{type:'special',color:'#5000a0',color2:'#a040ff',particles:'dark',size:14,extra:'curse'},
-  // Lava (Rock)
-  'Lava Ball':{type:'projectile',color:'#ff3200',color2:'#ff8c00',particles:'fire',size:14},
-  'Magma Armor':{type:'buff',color:'#ff3200',color2:'#ff6400'},
-  'Volcanic Fury':{type:'burst',color:'#ff0000',color2:'#ff6400',particles:'fire',size:26},
-  // Scythe (Scissors)
-  'Reap':{type:'slash',color:'#464646',color2:'#808080',particles:'shadow'},
-  'Soul Drain':{type:'buff',color:'#464646',color2:'#808080',extra:'heal'},
-  'Final Harvest':{type:'slash',color:'#202020',color2:'#646464',particles:'shadow',size:20},
-  // Quill (Paper)
-  'Ink Shot':{type:'projectile',color:'#283cdc',color2:'#5060ff',particles:'ink'},
-  'Edit':{type:'buff',color:'#283cdc',color2:'#6080ff'},
-  'Masterpiece':{type:'burst',color:'#283cdc',color2:'#80a0ff',particles:'ink',size:20},
-  // Garnet (Rock)
-  'Ruby Ray':{type:'beam',color:'#dc1432',color2:'#ff5050',particles:'crystals'},
-  'Gem Shield':{type:'buff',color:'#dc1432',color2:'#ff6464'},
-  'Shatter':{type:'burst',color:'#dc1432',color2:'#ff3050',particles:'crystals',size:22},
-  // Rapier (Scissors)
-  'Thrust':{type:'slash',color:'#c8c8dc',color2:'#e0e0ff',particles:'sparks',size:10},
-  'Riposte':{type:'buff',color:'#c8c8dc',color2:'#e0e0f0'},
-  'Flurry':{type:'special',color:'#c8c8dc',color2:'#ffffff',particles:'sparks',size:8,extra:'multiSlash'},
-  // Talisman (Paper)
-  'Hex':{type:'special',color:'#ffa000',color2:'#ff6000',particles:'magic',size:14,extra:'curse'},
-  'Ward':{type:'buff',color:'#ffa000',color2:'#ffc040'},
-  'Spirit Bomb':{type:'burst',color:'#ffa000',color2:'#ffdd00',particles:'magic',size:24},
-  // Fossil (Rock)
-  'Ancient Strike':{type:'projectile',color:'#968c78',color2:'#b4a890',particles:'rocks'},
-  'Petrify':{type:'special',color:'#888070',color2:'#c0b8a0',particles:'ice',size:14,extra:'freeze'},
-  'Excavate':{type:'burst',color:'#968c78',color2:'#c8c0b0',particles:'rocks',size:20},
-  // Chakram (Scissors)
-  'Disc Throw':{type:'projectile',color:'#dc9600',color2:'#ffb830',particles:'metal',size:10},
-  'Spin':{type:'buff',color:'#dc9600',color2:'#ffc840'},
-  'Orbit Blade':{type:'special',color:'#dc9600',color2:'#ffcc40',particles:'metal',size:12,extra:'orbit'},
-  // Grimoire (Paper)
-  'Dark Page':{type:'projectile',color:'#500050',color2:'#a000a0',particles:'dark'},
-  'Forbidden Knowledge':{type:'buff',color:'#500050',color2:'#800080'},
-  'Eldritch Blast':{type:'beam',color:'#500050',color2:'#c000c0',particles:'dark',size:16},
-  // Marble (Rock)
-  'Smooth Roll':{type:'projectile',color:'#e6e6e6',color2:'#ffffff',particles:'rocks',size:12},
-  'Polish':{type:'buff',color:'#e6e6e6',color2:'#ffffff'},
-  'Marble Slam':{type:'burst',color:'#e6e6e6',color2:'#ffffff',particles:'rocks',size:20},
-  // Kunai (Scissors)
-  'Throw':{type:'projectile',color:'#323250',color2:'#505078',particles:'metal',size:8},
-  'Shadow Clone':{type:'buff',color:'#323250',color2:'#505078',extra:'smoke'},
-  'Lethal Aim':{type:'slash',color:'#323250',color2:'#ff0000',particles:'sparks',size:14},
-  // Scroll_S (Paper)
-  'Nature Spell':{type:'projectile',color:'#c8f0c8',color2:'#e0ffe0',particles:'petals'},
-  'Regrowth':{type:'buff',color:'#c8f0c8',color2:'#e0ffe0',extra:'heal'},
-  'Forest Fury':{type:'burst',color:'#40a040',color2:'#80ff80',particles:'petals',size:20},
-  // Geode (Rock)
-  'Crystal Throw':{type:'projectile',color:'#a064c8',color2:'#c090e0',particles:'crystals'},
-  'Geode Shell':{type:'buff',color:'#a064c8',color2:'#c0a0e0'},
-  'Gem Eruption':{type:'burst',color:'#a064c8',color2:'#e0c0ff',particles:'crystals',size:22},
-  // Sai (Scissors)
-  'Pierce':{type:'slash',color:'#966432',color2:'#c08850',particles:'sparks'},
-  'Trap':{type:'projectile',color:'#966432',color2:'#c08850',particles:'thread',size:10},
-  'Triple Strike':{type:'special',color:'#966432',color2:'#c08850',particles:'sparks',size:10,extra:'multiSlash'},
-  // Sutra (Paper)
-  'Mantra':{type:'beam',color:'#ffd700',color2:'#ffffff',particles:'sparkle'},
-  'Enlighten':{type:'buff',color:'#ffd700',color2:'#ffee80'},
-  'Nirvana':{type:'burst',color:'#ffd700',color2:'#ffffff',particles:'sparkle',size:26},
-  // Onyx (Rock)
-  'Dark Smash':{type:'projectile',color:'#1e1e1e',color2:'#5a5a5a',particles:'dark',size:14},
-  'Void Absorb':{type:'buff',color:'#1e1e1e',color2:'#404040',extra:'heal'},
-  'Black Hole':{type:'special',color:'#000000',color2:'#5000a0',particles:'dark',size:28,extra:'blackhole'},
-  // Raptor (Scissors)
-  'Claw Swipe':{type:'slash',color:'#64c800',color2:'#90ff30',particles:'blood'},
-  'Predator Eye':{type:'buff',color:'#64c800',color2:'#a0ff60'},
-  'Pounce':{type:'slash',color:'#64c800',color2:'#c0ff80',particles:'blood',size:18},
-  // Mandala (Paper)
-  'Pattern':{type:'beam',color:'#ff64ff',color2:'#ffc0ff',particles:'sparkle'},
-  'Meditate_M':{type:'buff',color:'#ff64ff',color2:'#ffa0ff',extra:'heal'},
-  'Cosmic Pattern':{type:'burst',color:'#ff64ff',color2:'#ffffff',particles:'sparkle',size:24},
-  // Titanium (Rock)
-  'Titan Punch':{type:'projectile',color:'#b4b4c8',color2:'#d0d0e0',particles:'metal',size:16},
-  'Titan Shield':{type:'buff',color:'#b4b4c8',color2:'#e0e0f0'},
-  'Titan Slam':{type:'burst',color:'#b4b4c8',color2:'#ffffff',particles:'metal',size:26},
-  // Muramasa (Scissors)
-  'Blood Cut':{type:'slash',color:'#dc0000',color2:'#ff4040',particles:'blood',size:16},
-  'Blood Rage':{type:'buff',color:'#dc0000',color2:'#ff5050'},
-  'Demon Slash':{type:'slash',color:'#ff0000',color2:'#880000',particles:'blood',size:22},
-  // Akashic (Paper)
-  'Record':{type:'beam',color:'#ffffff',color2:'#aaaaff',particles:'sparkle'},
-  'Archive':{type:'buff',color:'#ffffff',color2:'#ddddff'},
-  'Total Recall':{type:'burst',color:'#ffffff',color2:'#8888ff',particles:'magic',size:24},
-  // Chaos (Rock)
-  'Random Strike':{type:'special',color:'#ff5000',color2:'#00ff50',particles:'chaos',size:16,extra:'chaos'},
-  'Wild Card':{type:'buff',color:'#ff5000',color2:'#50ff00'},
-  'Chaos Rift':{type:'special',color:'#ff0000',color2:'#0000ff',particles:'chaos',size:24,extra:'chaos'},
-  // Generic fallbacks for level-up moves
-  'Power Strike':{type:'projectile',color:'#ffaa00',color2:'#ffdd44',particles:'fire',size:14},
-  'Guard':{type:'buff',color:'#4488ff',color2:'#88bbff'},
-  'Drain Hit':{type:'slash',color:'#00cc66',color2:'#44ff88',particles:'magic'},
-  'Status Strike':{type:'slash',color:'#ff6600',color2:'#ffaa44',particles:'sparks'},
+  // ===== Stone (Rock) =====
+  'Rock Throw':{type:'projectile',color:'#b48c64',color2:'#8a6a48',shape:'rock',size:14,trail:'dust',impact:'shake'},
+  'Harden':{type:'buff',color:'#b48c64',color2:'#d4b896',shape:'shell',particles:'rocks'},
+  'Boulder Smash':{type:'roll',color:'#b48c64',color2:'#6e5030',size:22,impact:'bigshake',trail:'dust'},
+  // ===== Blade (Scissors) =====
+  'Quick Cut':{type:'slash',color:'#c83c3c',color2:'#ff6666',shape:'blade',speed:1.8,impact:'flash'},
+  'Sharpen':{type:'buff',color:'#c83c3c',color2:'#ff8888',shape:'sparks',particles:'sparks'},
+  'Cross Slash':{type:'crossslash',color:'#ff3333',color2:'#ff6666',size:18,impact:'shake',particles:'sparks'},
+  // ===== Scroll (Paper) =====
+  'Paper Cut':{type:'sweep',color:'#dcdcf0',color2:'#ffffff',shape:'paper',size:10,impact:'flash'},
+  'Fold Shield':{type:'buff',color:'#dcdcf0',color2:'#ffffff',shape:'shield',particles:'paper'},
+  'Origami Storm':{type:'surround',color:'#dcdcf0',color2:'#b0b0d0',shape:'crane',count:8,impact:'shake'},
+  // ===== Crystal (Rock) =====
+  'Gem Shard':{type:'projectile',color:'#64c8ff',color2:'#88ddff',shape:'crystal',size:10,trail:'sparkle',impact:'flash'},
+  'Prism Beam':{type:'rainbow_beam',color:'#64c8ff',color2:'#ff88ff',size:12,impact:'flash'},
+  'Diamond Crush':{type:'rain',color:'#64c8ff',color2:'#aaffff',shape:'crystal',count:12,impact:'bigshake'},
+  // ===== Shadow (Scissors) =====
+  'Night Slash':{type:'darken_slash',color:'#643c8c',color2:'#9060c0',size:20,impact:'flash'},
+  'Vanish':{type:'buff',color:'#643c8c',color2:'#a070d0',shape:'fade',particles:'shadow'},
+  'Phantom Blade':{type:'phantom',color:'#8a50c0',color2:'#c080ff',shape:'ghostblade',size:18,impact:'shake'},
+  // ===== Sage (Paper) =====
+  'Spell Page':{type:'projectile',color:'#3cb478',color2:'#60e0a0',shape:'page',size:12,trail:'magic',impact:'flash'},
+  'Heal Word':{type:'buff',color:'#3cb478',color2:'#80ffc0',shape:'heal',particles:'sparkle',extra:'heal'},
+  'Arcane Burst':{type:'burst',color:'#3cb478',color2:'#40ff90',shape:'magic_ring',size:24,impact:'shake'},
+  // ===== Ember (Rock) =====
+  'Flame Rock':{type:'projectile',color:'#ff6432',color2:'#ffaa00',shape:'flame_rock',size:16,trail:'fire',impact:'shake'},
+  'Heat Shield':{type:'buff',color:'#ff6432',color2:'#ff9960',shape:'fire_aura',particles:'fire'},
+  'Eruption':{type:'rain',color:'#ff3200',color2:'#ff8c00',shape:'flame',count:15,impact:'bigshake'},
+  // ===== Gale (Scissors) =====
+  'Wind Blade':{type:'sweep',color:'#96dcff',color2:'#c0eeff',shape:'wind',size:14,impact:'flash'},
+  'Tailwind':{type:'buff',color:'#96dcff',color2:'#d0f0ff',shape:'wind_aura',particles:'wind'},
+  'Hurricane Cut':{type:'vortex',color:'#60c8f0',color2:'#90e0ff',shape:'wind',size:20,impact:'shake'},
+  // ===== Lotus (Paper) =====
+  'Petal Dance':{type:'surround',color:'#ff96c8',color2:'#ffc0e0',shape:'petal',count:12,impact:'flash'},
+  'Bloom':{type:'buff',color:'#ff96c8',color2:'#ffd0e8',shape:'flower',particles:'petals',extra:'heal'},
+  "Nature's Wrath":{type:'rain',color:'#40c040',color2:'#ff96c8',shape:'vine',count:10,impact:'bigshake'},
+  // ===== Iron (Rock) =====
+  'Iron Fist':{type:'projectile',color:'#a0a0b4',color2:'#c0c0d0',shape:'fist',size:16,trail:'sparks',impact:'bigshake'},
+  'Metal Wall':{type:'buff',color:'#a0a0b4',color2:'#d0d0e0',shape:'wall',particles:'metal'},
+  'Steel Crash':{type:'roll',color:'#808096',color2:'#c0c0d0',size:24,impact:'bigshake',trail:'sparks'},
+  // ===== Fang (Scissors) =====
+  'Bite':{type:'chomp',color:'#c86432',color2:'#ff8040',size:20,impact:'shake'},
+  'Howl':{type:'buff',color:'#c86432',color2:'#ff9060',shape:'howl',particles:'sound'},
+  'Savage Rend':{type:'multi',color:'#ff4020',color2:'#c86432',count:5,shape:'claw',impact:'bigshake'},
+  // ===== Rune (Paper) =====
+  'Rune Bolt':{type:'projectile',color:'#c8a0ff',color2:'#e0c0ff',shape:'rune',size:14,trail:'magic',impact:'flash'},
+  'Enchant':{type:'buff',color:'#c8a0ff',color2:'#e0d0ff',shape:'rune_circle',particles:'magic'},
+  'Arcane Nova':{type:'burst',color:'#c8a0ff',color2:'#f0e0ff',shape:'rune_ring',size:28,impact:'bigshake'},
+  // ===== Frost (Rock) =====
+  'Ice Rock':{type:'projectile',color:'#a0e6ff',color2:'#d0f0ff',shape:'ice',size:14,trail:'frost',impact:'freeze'},
+  'Frost Armor':{type:'buff',color:'#a0e6ff',color2:'#d0f8ff',shape:'ice_shell',particles:'ice'},
+  'Avalanche':{type:'rain',color:'#80d0ff',color2:'#ffffff',shape:'ice_rock',count:14,impact:'bigshake'},
+  // ===== Spark (Scissors) =====
+  'Thunder Cut':{type:'lightning',color:'#ffdc00',color2:'#ffffff',size:16,impact:'bigshake'},
+  'Charge':{type:'buff',color:'#ffdc00',color2:'#ffee60',shape:'electric',particles:'lightning'},
+  'Lightning Blade':{type:'lightning_slash',color:'#ffdc00',color2:'#ffffff',size:18,impact:'bigshake'},
+  // ===== Silk (Paper) =====
+  'Thread Bind':{type:'surround',color:'#ffe6f0',color2:'#ffffff',shape:'thread',count:6,impact:'flash'},
+  'Cocoon':{type:'buff',color:'#ffe6f0',color2:'#ffffff',shape:'cocoon',particles:'thread'},
+  'Web Blast':{type:'burst',color:'#ffe6f0',color2:'#ffd0e0',shape:'web',size:22,impact:'shake'},
+  // ===== Obsidian (Rock) =====
+  'Dark Rock':{type:'projectile',color:'#1e1428',color2:'#5030a0',shape:'dark_rock',size:16,trail:'dark',impact:'shake'},
+  'Void Shell':{type:'buff',color:'#3c2050',color2:'#6040a0',shape:'void_aura',particles:'dark'},
+  'Obliterate':{type:'implosion',color:'#000000',color2:'#5000a0',size:30,impact:'bigshake'},
+  // ===== Razor (Scissors) =====
+  'Razor Wind':{type:'sweep',color:'#e6322d',color2:'#ff6060',shape:'razor',size:16,impact:'shake'},
+  'Whet':{type:'buff',color:'#e6322d',color2:'#ff8080',shape:'sparks',particles:'sparks'},
+  'Execution':{type:'delayed',color:'#ff0000',color2:'#880000',shape:'guillotine',size:24,impact:'bigshake'},
+  // ===== Oracle (Paper) =====
+  'Foresight':{type:'eye_beam',color:'#c8c8ff',color2:'#ffffff',size:16,impact:'flash'},
+  'Prophecy':{type:'buff',color:'#c8c8ff',color2:'#e0e0ff',shape:'eye',particles:'sparkle'},
+  'Destiny Beam':{type:'beam',color:'#8888ff',color2:'#ffffff',size:18,impact:'bigshake',trail:'sparkle'},
+  // ===== Magnet (Rock) =====
+  'Magnetic Pulse':{type:'burst',color:'#96969c',color2:'#c0c0ff',shape:'pulse_ring',size:22,impact:'shake'},
+  'Polarize':{type:'buff',color:'#96969c',color2:'#c0c0c0',shape:'magnet',particles:'lightning'},
+  'Rail Gun':{type:'beam',color:'#96969c',color2:'#ffffff',size:6,speed:2.5,impact:'bigshake',trail:'sparks'},
+  // ===== Venom (Scissors) =====
+  'Toxic Cut':{type:'slash',color:'#6e00a0',color2:'#a040ff',shape:'poison_blade',impact:'poison',trail:'drip'},
+  'Acid Coat':{type:'buff',color:'#6e00a0',color2:'#a060ff',shape:'drip',particles:'poison'},
+  'Venom Strike':{type:'projectile',color:'#8000c0',color2:'#c060ff',shape:'fang',size:14,trail:'poison',impact:'shake'},
+  // ===== Origami (Paper) =====
+  'Crane Strike':{type:'projectile',color:'#ffc8c8',color2:'#ffffff',shape:'crane',size:12,trail:'paper',impact:'flash'},
+  '1000 Cranes':{type:'buff',color:'#ffc8c8',color2:'#ffffff',shape:'crane_circle',particles:'paper',extra:'heal'},
+  'Paper Dragon':{type:'transform',color:'#ff4040',color2:'#ffc8c8',shape:'dragon',size:24,impact:'bigshake'},
+  // ===== Meteor (Rock) =====
+  'Space Rock':{type:'projectile',color:'#dc6400',color2:'#ff9030',shape:'meteor',size:18,trail:'fire',impact:'shake'},
+  'Gravity Well':{type:'buff',color:'#dc6400',color2:'#ffaa40',shape:'gravity',particles:'dark'},
+  'Impact':{type:'rain',color:'#ff3200',color2:'#ffcc00',shape:'meteor',count:1,size:32,impact:'bigshake'},
+  // ===== Ninja (Scissors) =====
+  'Shuriken':{type:'projectile',color:'#28283c',color2:'#505078',shape:'star',size:10,trail:'shadow',spin:true,impact:'flash'},
+  'Smoke Bomb':{type:'buff',color:'#555555',color2:'#888888',shape:'smoke',particles:'smoke'},
+  'Death Mark':{type:'delayed',color:'#ff0000',color2:'#28283c',shape:'crosshair',size:18,impact:'bigshake'},
+  // ===== Scholar (Paper) =====
+  'Book Slam':{type:'projectile',color:'#f0e6c8',color2:'#d0c0a0',shape:'book',size:16,trail:'paper',impact:'shake'},
+  'Study':{type:'buff',color:'#f0e6c8',color2:'#fff0d0',shape:'book_aura',particles:'sparkle'},
+  'Knowledge Blast':{type:'burst',color:'#f0e6c8',color2:'#ffffff',shape:'rune_ring',size:24,impact:'shake'},
+  // ===== Pebble (Rock) =====
+  'Roll':{type:'roll',color:'#c8b496',color2:'#a09070',size:10,trail:'dust',impact:'flash'},
+  'Curl Up':{type:'buff',color:'#c8b496',color2:'#e0d0b0',shape:'ball',particles:'rocks'},
+  'Rock Slide':{type:'rain',color:'#c8b496',color2:'#a09070',shape:'rock',count:10,impact:'shake'},
+  // ===== Katana (Scissors) =====
+  'Iai Slash':{type:'delayed',color:'#e6e6f0',color2:'#ffffff',shape:'iai',size:22,impact:'bigshake'},
+  'Focus':{type:'buff',color:'#e6e6f0',color2:'#ffffff',shape:'focus',particles:'sparkle'},
+  '1000 Cuts':{type:'multi',color:'#ffffff',color2:'#c83c3c',count:14,shape:'slash',impact:'bigshake'},
+  // ===== Papyrus (Paper) =====
+  'Ancient Script':{type:'projectile',color:'#f0dcc8',color2:'#c8b098',shape:'scroll',size:12,trail:'magic',impact:'flash'},
+  'Mummy Wrap':{type:'surround',color:'#f0dcc8',color2:'#c8a070',shape:'bandage',count:8,impact:'flash'},
+  'Curse':{type:'vortex',color:'#5000a0',color2:'#a040ff',shape:'skull',size:18,impact:'shake'},
+  // ===== Lava (Rock) =====
+  'Lava Ball':{type:'projectile',color:'#ff3200',color2:'#ff8c00',shape:'lava',size:16,trail:'fire',impact:'shake'},
+  'Magma Armor':{type:'buff',color:'#ff3200',color2:'#ff6400',shape:'magma',particles:'fire'},
+  'Volcanic Fury':{type:'rain',color:'#ff0000',color2:'#ff6400',shape:'lava',count:12,impact:'bigshake'},
+  // ===== Scythe (Scissors) =====
+  'Reap':{type:'sweep',color:'#464646',color2:'#808080',shape:'scythe',size:22,impact:'shake'},
+  'Soul Drain':{type:'buff',color:'#464646',color2:'#808080',shape:'soul',particles:'ghost',extra:'heal'},
+  'Final Harvest':{type:'delayed',color:'#202020',color2:'#646464',shape:'scythe_big',size:28,impact:'bigshake'},
+  // ===== Quill (Paper) =====
+  'Ink Shot':{type:'projectile',color:'#283cdc',color2:'#5060ff',shape:'inkblob',size:10,trail:'ink',impact:'splash'},
+  'Edit':{type:'buff',color:'#283cdc',color2:'#6080ff',shape:'quill',particles:'ink'},
+  'Masterpiece':{type:'burst',color:'#283cdc',color2:'#80a0ff',shape:'ink_explosion',size:24,impact:'shake'},
+  // ===== Garnet (Rock) =====
+  'Ruby Ray':{type:'beam',color:'#dc1432',color2:'#ff5050',size:10,trail:'crystals',impact:'flash'},
+  'Gem Shield':{type:'buff',color:'#dc1432',color2:'#ff6464',shape:'gem_ring',particles:'crystals'},
+  'Shatter':{type:'burst',color:'#dc1432',color2:'#ff3050',shape:'shatter',size:26,impact:'bigshake'},
+  // ===== Rapier (Scissors) =====
+  'Thrust':{type:'lunge',color:'#c8c8dc',color2:'#e0e0ff',shape:'rapier',size:12,impact:'flash'},
+  'Riposte':{type:'buff',color:'#c8c8dc',color2:'#e0e0f0',shape:'parry',particles:'sparks'},
+  'Flurry':{type:'multi',color:'#c8c8dc',color2:'#ffffff',count:8,shape:'thrust',impact:'shake'},
+  // ===== Talisman (Paper) =====
+  'Hex':{type:'vortex',color:'#ffa000',color2:'#ff6000',shape:'hex_symbol',size:18,impact:'shake'},
+  'Ward':{type:'buff',color:'#ffa000',color2:'#ffc040',shape:'ward',particles:'magic'},
+  'Spirit Bomb':{type:'projectile',color:'#ffa000',color2:'#ffdd00',shape:'spirit',size:22,trail:'magic',impact:'bigshake'},
+  // ===== Fossil (Rock) =====
+  'Ancient Strike':{type:'projectile',color:'#968c78',color2:'#b4a890',shape:'fossil',size:14,trail:'dust',impact:'shake'},
+  'Petrify':{type:'surround',color:'#888070',color2:'#c0b8a0',shape:'stone_encase',count:8,impact:'freeze'},
+  'Excavate':{type:'burst',color:'#968c78',color2:'#c8c0b0',shape:'dig',size:24,impact:'shake'},
+  // ===== Chakram (Scissors) =====
+  'Disc Throw':{type:'projectile',color:'#dc9600',color2:'#ffb830',shape:'disc',size:10,spin:true,trail:'sparks',impact:'flash'},
+  'Spin':{type:'buff',color:'#dc9600',color2:'#ffc840',shape:'spin_aura',particles:'sparks'},
+  'Orbit Blade':{type:'surround',color:'#dc9600',color2:'#ffcc40',shape:'disc',count:4,impact:'shake'},
+  // ===== Grimoire (Paper) =====
+  'Dark Page':{type:'projectile',color:'#500050',color2:'#a000a0',shape:'dark_page',size:12,trail:'dark',impact:'flash'},
+  'Forbidden Knowledge':{type:'buff',color:'#500050',color2:'#800080',shape:'eye_dark',particles:'dark'},
+  'Eldritch Blast':{type:'beam',color:'#500050',color2:'#c000c0',size:18,trail:'tentacle',impact:'bigshake'},
+  // ===== Marble (Rock) =====
+  'Smooth Roll':{type:'roll',color:'#e6e6e6',color2:'#ffffff',size:14,trail:'sparkle',impact:'flash'},
+  'Polish':{type:'buff',color:'#e6e6e6',color2:'#ffffff',shape:'shine',particles:'sparkle'},
+  'Marble Slam':{type:'projectile',color:'#e6e6e6',color2:'#ffffff',shape:'marble',size:20,trail:'sparkle',impact:'bigshake'},
+  // ===== Kunai (Scissors) =====
+  'Throw':{type:'projectile',color:'#323250',color2:'#505078',shape:'kunai',size:8,trail:'shadow',spin:false,impact:'flash'},
+  'Shadow Clone':{type:'buff',color:'#323250',color2:'#505078',shape:'clone',particles:'smoke'},
+  'Lethal Aim':{type:'delayed',color:'#323250',color2:'#ff0000',shape:'kunai_aim',size:14,impact:'bigshake'},
+  // ===== Scroll_S (Paper) =====
+  'Nature Spell':{type:'projectile',color:'#c8f0c8',color2:'#e0ffe0',shape:'leaf',size:10,trail:'petals',impact:'flash'},
+  'Regrowth':{type:'buff',color:'#c8f0c8',color2:'#e0ffe0',shape:'sprout',particles:'petals',extra:'heal'},
+  'Forest Fury':{type:'rain',color:'#40a040',color2:'#80ff80',shape:'vine',count:8,impact:'shake'},
+  // ===== Geode (Rock) =====
+  'Crystal Throw':{type:'projectile',color:'#a064c8',color2:'#c090e0',shape:'crystal',size:12,trail:'sparkle',impact:'flash'},
+  'Geode Shell':{type:'buff',color:'#a064c8',color2:'#c0a0e0',shape:'crystal_shell',particles:'crystals'},
+  'Gem Eruption':{type:'burst',color:'#a064c8',color2:'#e0c0ff',shape:'crystal_burst',size:26,impact:'bigshake'},
+  // ===== Sai (Scissors) =====
+  'Pierce':{type:'lunge',color:'#966432',color2:'#c08850',shape:'sai',size:14,impact:'flash'},
+  'Trap':{type:'surround',color:'#966432',color2:'#c08850',shape:'trap',count:6,impact:'flash'},
+  'Triple Strike':{type:'multi',color:'#966432',color2:'#c08850',count:6,shape:'stab',impact:'shake'},
+  // ===== Sutra (Paper) =====
+  'Mantra':{type:'beam',color:'#ffd700',color2:'#ffffff',size:14,trail:'sparkle',impact:'flash'},
+  'Enlighten':{type:'buff',color:'#ffd700',color2:'#ffee80',shape:'halo',particles:'sparkle'},
+  'Nirvana':{type:'burst',color:'#ffd700',color2:'#ffffff',shape:'mandala',size:30,impact:'bigshake'},
+  // ===== Onyx (Rock) =====
+  'Dark Smash':{type:'projectile',color:'#1e1e1e',color2:'#5a5a5a',shape:'dark_rock',size:16,trail:'dark',impact:'shake'},
+  'Void Absorb':{type:'buff',color:'#1e1e1e',color2:'#404040',shape:'absorb',particles:'dark',extra:'heal'},
+  'Black Hole':{type:'vortex',color:'#000000',color2:'#5000a0',size:32,impact:'bigshake'},
+  // ===== Raptor (Scissors) =====
+  'Claw Swipe':{type:'slash',color:'#64c800',color2:'#90ff30',shape:'claw3',size:18,impact:'shake'},
+  'Predator Eye':{type:'buff',color:'#64c800',color2:'#a0ff60',shape:'predator',particles:'focus'},
+  'Pounce':{type:'roll',color:'#64c800',color2:'#c0ff80',size:20,impact:'bigshake',trail:'blur'},
+  // ===== Mandala (Paper) =====
+  'Pattern':{type:'beam',color:'#ff64ff',color2:'#ffc0ff',size:10,trail:'mandala',impact:'flash'},
+  'Meditate_M':{type:'buff',color:'#ff64ff',color2:'#ffa0ff',shape:'mandala',particles:'sparkle',extra:'heal'},
+  'Cosmic Pattern':{type:'burst',color:'#ff64ff',color2:'#ffffff',shape:'mandala_big',size:28,impact:'bigshake'},
+  // ===== Titanium (Rock) =====
+  'Titan Punch':{type:'lunge',color:'#b4b4c8',color2:'#d0d0e0',shape:'fist_big',size:20,impact:'bigshake'},
+  'Titan Shield':{type:'buff',color:'#b4b4c8',color2:'#e0e0f0',shape:'titan_wall',particles:'metal'},
+  'Titan Slam':{type:'roll',color:'#b4b4c8',color2:'#ffffff',size:28,impact:'bigshake',trail:'shockwave'},
+  // ===== Muramasa (Scissors) =====
+  'Blood Cut':{type:'slash',color:'#dc0000',color2:'#ff4040',shape:'blood_blade',size:18,impact:'shake',trail:'blood'},
+  'Blood Rage':{type:'buff',color:'#dc0000',color2:'#ff5050',shape:'blood_aura',particles:'blood'},
+  'Demon Slash':{type:'crossslash',color:'#ff0000',color2:'#880000',size:24,impact:'bigshake',trail:'blood'},
+  // ===== Akashic (Paper) =====
+  'Record':{type:'beam',color:'#ffffff',color2:'#aaaaff',size:10,trail:'data',impact:'flash'},
+  'Archive':{type:'buff',color:'#ffffff',color2:'#ddddff',shape:'data_ring',particles:'sparkle'},
+  'Total Recall':{type:'burst',color:'#ffffff',color2:'#8888ff',shape:'data_burst',size:28,impact:'bigshake'},
+  // ===== Chaos (Rock) =====
+  'Random Strike':{type:'chaos',color:'#ff5000',color2:'#00ff50',size:18,impact:'shake'},
+  'Wild Card':{type:'buff',color:'#ff5000',color2:'#50ff00',shape:'chaos',particles:'chaos'},
+  'Chaos Rift':{type:'chaos',color:'#ff0000',color2:'#0000ff',size:26,impact:'bigshake'},
+  // ===== Generic fallbacks for level-up moves =====
+  'Power Strike':{type:'projectile',color:'#ffaa00',color2:'#ffdd44',shape:'fist',size:14,trail:'fire',impact:'shake'},
+  'Guard':{type:'buff',color:'#4488ff',color2:'#88bbff',shape:'shield',particles:'sparkle'},
+  'Drain Hit':{type:'slash',color:'#00cc66',color2:'#44ff88',shape:'drain',impact:'flash',trail:'magic'},
+  'Status Strike':{type:'slash',color:'#ff6600',color2:'#ffaa44',shape:'status',impact:'flash',trail:'sparks'},
 };
 
 // Animation state
-let animState=null; // {active, t, duration, type, fromX, fromY, toX, toY, color, color2, particles, size, extra, particleList}
+let animState=null;
 
 function getAnimConfig(moveName){
-  // Try exact match first, then try prefix match for level-up moves (e.g., "Power Strike II")
   if(MOVE_ANIMS[moveName])return MOVE_ANIMS[moveName];
   const base=moveName.replace(/\s+(II|III|IV|V|VI)$/,'');
   if(MOVE_ANIMS[base])return MOVE_ANIMS[base];
-  // Default based on type
-  return{type:'projectile',color:'#ffffff',color2:'#aaaaaa',particles:'sparks',size:10};
+  return{type:'projectile',color:'#ffffff',color2:'#aaaaaa',shape:'ball',size:10,trail:'sparks',impact:'flash'};
 }
 
 function startMoveAnim(moveName,isPlayerAttack,moveType){
@@ -297,23 +371,156 @@ function startMoveAnim(moveName,isPlayerAttack,moveType){
   const eX=isMobile?W-100:W-145, eY=isMobile?80:112;
   const fromX=isPlayerAttack?pX:eX, fromY=isPlayerAttack?pY:eY;
   const toX=isPlayerAttack?eX:pX, toY=isPlayerAttack?eY:pY;
-  const dur=moveType==='Buff'?400:600;
+  // Variable durations: buffs short, signature moves longer
+  let dur=500;
+  if(moveType==='Buff'||cfg.type==='buff')dur=450;
+  else if(cfg.type==='delayed')dur=1000;
+  else if(cfg.type==='multi')dur=900;
+  else if(cfg.type==='roll')dur=800;
+  else if(cfg.type==='chaos')dur=700;
+  else if(cfg.type==='vortex'||cfg.type==='implosion')dur=850;
+  else if(cfg.type==='rain')dur=750;
+  else if(cfg.type==='surround')dur=700;
+  else if(cfg.impact==='bigshake')dur=700;
+  else dur=550;
+
   animState={
     active:true,t:0,duration:dur,
     type:cfg.type,fromX,fromY,toX,toY,
     color:cfg.color||'#fff',color2:cfg.color2||'#aaa',
-    particles:cfg.particles||'sparks',size:cfg.size||12,
+    shape:cfg.shape||'ball',size:cfg.size||12,
+    trail:cfg.trail||null,impact:cfg.impact||'flash',
+    spin:cfg.spin||false,count:cfg.count||8,
+    speed:cfg.speed||1,
     extra:cfg.extra||null,
-    isBuff:moveType==='Buff'||(cfg.extra==='heal'),
-    particleList:[]
+    isBuff:moveType==='Buff'||(cfg.extra==='heal')||(cfg.type==='buff'),
+    particleList:[],
+    hitTriggered:false
   };
-  // Pre-generate particles
-  for(let i=0;i<20;i++){
+  // Pre-generate particles for various effects
+  for(let i=0;i<30;i++){
     animState.particleList.push({
-      x:0,y:0,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,
-      life:0.3+Math.random()*0.7,sz:2+Math.random()*4,
-      color:Math.random()>0.5?cfg.color:cfg.color2
+      x:0,y:0,
+      vx:(Math.random()-0.5)*6,vy:(Math.random()-0.5)*6,
+      life:0.3+Math.random()*0.7,sz:2+Math.random()*5,
+      color:Math.random()>0.5?cfg.color:cfg.color2,
+      ang:Math.random()*Math.PI*2,
+      delay:Math.random()*0.5
     });
+  }
+}
+
+// Hit impact helper — triggers shake and enemy flash
+function triggerHitImpact(impactType){
+  if(impactType==='bigshake'){triggerShake(8);enemyHitFlash=12}
+  else if(impactType==='shake'){triggerShake(4);enemyHitFlash=8}
+  else if(impactType==='flash'){triggerShake(1);enemyHitFlash=10}
+  else if(impactType==='freeze'){triggerShake(3);enemyHitFlash=15}
+  else if(impactType==='poison'){triggerShake(2);enemyHitFlash=8}
+  else if(impactType==='splash'){triggerShake(2);enemyHitFlash=6}
+  else{triggerShake(1);enemyHitFlash=6}
+}
+
+// Trail drawing helper
+function drawTrail(positions,color,color2,trailType,sz){
+  positions.forEach((p,i)=>{
+    const alpha=0.6-i*0.1;if(alpha<=0)return;
+    X.globalAlpha=alpha;const s=sz*(1-i*0.12);
+    if(trailType==='fire'){
+      drawFlameParticle(p.x,p.y,s*0.6,i*0.1);
+    }else if(trailType==='frost'||trailType==='ice'){
+      X.fillStyle='#d0f0ff';X.beginPath();X.arc(p.x+(Math.random()-0.5)*4,p.y+(Math.random()-0.5)*4,s*0.5,0,Math.PI*2);X.fill();
+    }else if(trailType==='dark'){
+      X.fillStyle='rgba(30,0,60,0.6)';X.beginPath();X.arc(p.x,p.y,s*0.8,0,Math.PI*2);X.fill();
+    }else if(trailType==='magic'){
+      X.fillStyle=i%2?color:color2;drawStarShape(p.x,p.y,s*0.4,X.fillStyle,i*0.5,4);
+    }else if(trailType==='sparkle'){
+      X.fillStyle='#ffffff';X.beginPath();X.arc(p.x+(Math.random()-0.5)*6,p.y+(Math.random()-0.5)*6,2,0,Math.PI*2);X.fill();
+    }else if(trailType==='poison'||trailType==='drip'){
+      X.fillStyle='#8000c0';X.beginPath();X.arc(p.x,p.y+i*2,s*0.4+Math.random()*2,0,Math.PI*2);X.fill();
+    }else if(trailType==='blood'){
+      X.fillStyle='#aa0000';for(let d=0;d<3;d++){X.beginPath();X.arc(p.x+(Math.random()-0.5)*8,p.y+(Math.random()-0.5)*8+i*2,1+Math.random()*2,0,Math.PI*2);X.fill()}
+    }else if(trailType==='ink'){
+      X.fillStyle='#1828aa';X.beginPath();X.arc(p.x+(Math.random()-0.5)*5,p.y+(Math.random()-0.5)*5,s*0.5+Math.random()*2,0,Math.PI*2);X.fill();
+    }else if(trailType==='shadow'){
+      X.fillStyle='rgba(40,30,60,0.5)';X.beginPath();X.arc(p.x,p.y,s*0.7,0,Math.PI*2);X.fill();
+    }else if(trailType==='dust'){
+      X.fillStyle='#c8b496';for(let d=0;d<2;d++){X.beginPath();X.arc(p.x+(Math.random()-0.5)*8,p.y+Math.random()*4,2+Math.random()*2,0,Math.PI*2);X.fill()}
+    }else if(trailType==='sparks'){
+      X.fillStyle='#ffdd88';for(let d=0;d<2;d++){X.beginPath();X.arc(p.x+(Math.random()-0.5)*6,p.y+(Math.random()-0.5)*6,1+Math.random(),0,Math.PI*2);X.fill()}
+    }else if(trailType==='paper'){
+      X.fillStyle=color;X.save();X.translate(p.x,p.y);X.rotate(i*0.3);X.fillRect(-3,-4,6,8);X.restore();
+    }else{
+      X.fillStyle=color;X.beginPath();X.arc(p.x,p.y,s*0.5,0,Math.PI*2);X.fill();
+    }
+  });
+  X.globalAlpha=1;
+}
+
+// Main projectile shape drawer
+function drawProjectileShape(cx,cy,sz,shape,color,color2,rot,t){
+  if(shape==='rock'||shape==='dark_rock'||shape==='fossil'){
+    drawRockShape(cx,cy,sz,color,color2,rot);
+  }else if(shape==='ice'||shape==='ice_rock'){
+    drawRockShape(cx,cy,sz,color,'#ffffff',rot);
+    X.fillStyle='rgba(200,240,255,0.4)';X.beginPath();X.arc(cx,cy,sz*0.8,0,Math.PI*2);X.fill();
+  }else if(shape==='flame_rock'||shape==='lava'){
+    drawRockShape(cx,cy,sz,'#883300',color2,rot);
+    drawFlameParticle(cx,cy-sz*0.5,sz*0.6,t);
+  }else if(shape==='meteor'){
+    drawRockShape(cx,cy,sz*1.2,'#884400','#cc6600',rot);
+    drawFlameParticle(cx-sz*0.3,cy,sz*0.8,t);drawFlameParticle(cx+sz*0.2,cy+sz*0.2,sz*0.5,t);
+  }else if(shape==='crystal'){
+    X.fillStyle=color;X.beginPath();X.moveTo(cx,cy-sz);X.lineTo(cx+sz*0.6,cy);X.lineTo(cx,cy+sz*0.6);X.lineTo(cx-sz*0.6,cy);X.closePath();X.fill();
+    X.fillStyle=color2;X.beginPath();X.moveTo(cx,cy-sz);X.lineTo(cx+sz*0.3,cy-sz*0.2);X.lineTo(cx,cy+sz*0.3);X.lineTo(cx-sz*0.3,cy-sz*0.2);X.closePath();X.fill();
+  }else if(shape==='page'||shape==='scroll'||shape==='dark_page'){
+    drawPaperShape(cx,cy,sz,color,rot);
+  }else if(shape==='crane'){
+    drawCraneShape(cx,cy,sz,color,rot);
+  }else if(shape==='star'){
+    drawStarShape(cx,cy,sz,color,rot,4);
+  }else if(shape==='disc'){
+    X.save();X.translate(cx,cy);X.rotate(rot);X.fillStyle=color;X.beginPath();X.ellipse(0,0,sz,sz*0.5,0,0,Math.PI*2);X.fill();
+    X.strokeStyle=color2;X.lineWidth=2;X.beginPath();X.ellipse(0,0,sz*0.7,sz*0.35,0,0,Math.PI*2);X.stroke();X.restore();
+  }else if(shape==='rune'){
+    X.fillStyle=color;X.beginPath();X.arc(cx,cy,sz,0,Math.PI*2);X.fill();
+    X.strokeStyle=color2;X.lineWidth=2;X.font='bold '+Math.round(sz*1.2)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+    X.fillStyle=color2;X.fillText(pick(['R','X','Z','W','Y']),cx,cy);
+  }else if(shape==='book'){
+    X.fillStyle='#8B4513';X.fillRect(cx-sz*0.6,cy-sz*0.5,sz*1.2,sz);
+    X.fillStyle=color;X.fillRect(cx-sz*0.5,cy-sz*0.4,sz,sz*0.8);
+    X.strokeStyle=color2;X.lineWidth=1;X.strokeRect(cx-sz*0.5,cy-sz*0.4,sz,sz*0.8);
+  }else if(shape==='kunai'){
+    X.save();X.translate(cx,cy);X.rotate(rot||0);X.fillStyle=color;
+    X.beginPath();X.moveTo(-sz,0);X.lineTo(0,-sz*0.3);X.lineTo(sz*0.8,0);X.lineTo(0,sz*0.3);X.closePath();X.fill();
+    X.fillStyle='#8b4513';X.fillRect(-sz*1.2,-sz*0.1,sz*0.4,sz*0.2);X.restore();
+  }else if(shape==='fang'){
+    X.save();X.translate(cx,cy);X.rotate(rot||0);X.fillStyle=color;
+    X.beginPath();X.moveTo(-sz*0.3,-sz);X.quadraticCurveTo(sz*0.2,-sz*0.3,sz*0.1,sz*0.5);
+    X.lineTo(-sz*0.1,sz*0.5);X.quadraticCurveTo(-sz*0.6,-sz*0.3,-sz*0.3,-sz);X.fill();X.restore();
+  }else if(shape==='fist'||shape==='fist_big'){
+    const m=shape==='fist_big'?1.3:1;X.fillStyle=color;
+    X.beginPath();X.arc(cx,cy,sz*0.7*m,0,Math.PI*2);X.fill();
+    X.fillStyle=color2;for(let f=0;f<4;f++){X.beginPath();X.arc(cx+sz*0.3*m*Math.cos(f*0.4-0.6),cy-sz*0.5*m+f*sz*0.2*m,sz*0.18*m,0,Math.PI*2);X.fill()}
+  }else if(shape==='spirit'){
+    X.globalAlpha=0.7;X.fillStyle=color;X.beginPath();X.arc(cx,cy,sz,0,Math.PI*2);X.fill();
+    X.globalAlpha=0.5;X.fillStyle=color2;X.beginPath();X.arc(cx,cy,sz*0.6,0,Math.PI*2);X.fill();
+    X.globalAlpha=0.3;for(let i=0;i<4;i++){const a=t*5+i*Math.PI/2;X.fillStyle=color;X.beginPath();X.arc(cx+Math.cos(a)*sz*0.8,cy+Math.sin(a)*sz*0.8,sz*0.3,0,Math.PI*2);X.fill()}
+    X.globalAlpha=1;
+  }else if(shape==='inkblob'){
+    X.fillStyle=color;for(let b=0;b<5;b++){X.beginPath();X.arc(cx+(Math.random()-0.5)*sz*0.6,cy+(Math.random()-0.5)*sz*0.6,sz*0.4+Math.random()*sz*0.3,0,Math.PI*2);X.fill()}
+  }else if(shape==='marble'){
+    X.fillStyle=color;X.beginPath();X.arc(cx,cy,sz,0,Math.PI*2);X.fill();
+    X.fillStyle='rgba(255,255,255,0.5)';X.beginPath();X.arc(cx-sz*0.25,cy-sz*0.25,sz*0.35,0,Math.PI*2);X.fill();
+    X.strokeStyle=color2;X.lineWidth=2;X.beginPath();X.arc(cx,cy,sz,0,Math.PI*2);X.stroke();
+  }else if(shape==='leaf'){
+    X.save();X.translate(cx,cy);X.rotate(rot||0);X.fillStyle=color;
+    X.beginPath();X.moveTo(-sz,0);X.quadraticCurveTo(0,-sz*0.8,sz,0);X.quadraticCurveTo(0,sz*0.8,-sz,0);X.fill();
+    X.strokeStyle='#2a6a2a';X.lineWidth=1;X.beginPath();X.moveTo(-sz,0);X.lineTo(sz,0);X.stroke();X.restore();
+  }else{
+    // Default ball
+    X.fillStyle=color;X.beginPath();X.arc(cx,cy,sz,0,Math.PI*2);X.fill();
+    X.fillStyle=color2;X.beginPath();X.arc(cx,cy,sz*0.6,0,Math.PI*2);X.fill();
   }
 }
 
@@ -324,172 +531,742 @@ function updateAndDrawAnim(){
   a.t+=dt;
   if(a.t>=1){a.active=false;return false}
   const t=a.t;
-  const midX=(a.fromX+a.toX)/2, midY=(a.fromY+a.toY)/2;
 
+  // Apply screen shake
+  updateShake();
   X.save();
+  X.translate(screenShake.x,screenShake.y);
   X.globalAlpha=1;
 
+  // Trigger hit impact at the right moment
+  const hitTime=a.type==='delayed'?0.7:(a.type==='roll'||a.type==='lunge'?0.8:(a.type==='beam'||a.type==='rainbow_beam'||a.type==='lightning'?0.45:0.7));
+  if(!a.hitTriggered&&t>=hitTime&&!a.isBuff){
+    triggerHitImpact(a.impact);
+    a.hitTriggered=true;
+  }
+
+  // ===== BUFF / HEAL ANIMATIONS =====
   if(a.isBuff||a.type==='buff'){
-    // Buff/heal: glow aura on caster
     const cx=a.fromX,cy=a.fromY;
-    const rad=30+t*25;
-    const g=X.createRadialGradient(cx,cy,5,cx,cy,rad);
-    g.addColorStop(0,a.color+'88');g.addColorStop(0.5,a.color+'44');g.addColorStop(1,a.color+'00');
-    X.fillStyle=g;X.beginPath();X.arc(cx,cy,rad,0,Math.PI*2);X.fill();
-    // Rising particles
-    for(let i=0;i<8;i++){
-      const px=cx+(Math.sin(t*10+i*0.8))*20;
-      const py=cy-t*60-i*5;
-      X.globalAlpha=1-t;
-      X.fillStyle=a.color2;
-      X.beginPath();X.arc(px,py,3,0,Math.PI*2);X.fill();
+    // Buff-specific shapes
+    if(a.shape==='shell'||a.shape==='ice_shell'||a.shape==='crystal_shell'){
+      // Stone/ice shell forming around character
+      const expand=t<0.5?t/0.5:1;const fade=t>0.7?(1-(t-0.7)/0.3):1;
+      X.globalAlpha=fade*0.6;
+      for(let i=0;i<8;i++){const ang=i*Math.PI/4;const r=20*expand+5;
+        const px=cx+Math.cos(ang)*r;const py=cy+Math.sin(ang)*r;
+        X.fillStyle=a.color;X.fillRect(px-4,py-4,8*expand,8*expand)}
+      X.globalAlpha=fade*0.3;X.fillStyle=a.color;X.beginPath();X.arc(cx,cy,25*expand,0,Math.PI*2);X.fill();
+    }else if(a.shape==='shield'||a.shape==='wall'||a.shape==='titan_wall'){
+      // Shield forming in front
+      const expand=t<0.4?t/0.4:1;const fade=t>0.7?(1-(t-0.7)/0.3):1;
+      const sw=a.shape==='titan_wall'?50:35;
+      X.globalAlpha=fade*0.7;X.fillStyle=a.color;
+      X.beginPath();X.arc(cx+20,cy,sw*expand,Math.PI*1.3,Math.PI*0.7);X.fill();
+      X.strokeStyle=a.color2;X.lineWidth=3;X.beginPath();X.arc(cx+20,cy,sw*expand,Math.PI*1.3,Math.PI*0.7);X.stroke();
+    }else if(a.shape==='fire_aura'||a.shape==='magma'){
+      // Fire licking up around character
+      for(let i=0;i<6;i++){const ang=i*Math.PI/3+t*2;const r=15+Math.sin(t*8+i)*5;
+        X.globalAlpha=0.8-t*0.5;drawFlameParticle(cx+Math.cos(ang)*r,cy+Math.sin(ang)*r-t*15,5,t)}
+    }else if(a.shape==='electric'){
+      // Sparks jumping around character
+      X.globalAlpha=0.8-t*0.3;
+      for(let i=0;i<4;i++){const a1=Math.random()*Math.PI*2;const a2=a1+Math.random()*2-1;
+        drawLightningBolt(cx+Math.cos(a1)*10,cy+Math.sin(a1)*10,cx+Math.cos(a2)*25,cy+Math.sin(a2)*25,a.color,2,4)}
+    }else if(a.shape==='smoke'||a.shape==='clone'){
+      // Smoke poof
+      const expand=t<0.3?t/0.3:1;const fade=t>0.4?(1-(t-0.4)/0.6):1;
+      for(let i=0;i<8;i++){X.globalAlpha=fade*0.4;X.fillStyle=i%2?a.color:a.color2;
+        const px=cx+(Math.random()-0.5)*40*expand;const py=cy+(Math.random()-0.5)*30*expand-t*20;
+        X.beginPath();X.arc(px,py,6+Math.random()*8,0,Math.PI*2);X.fill()}
+    }else if(a.shape==='howl'){
+      // Sound waves expanding outward
+      for(let i=0;i<4;i++){const r=(20+i*15)*t*2;X.globalAlpha=(1-t)*(1-i*0.2);
+        X.strokeStyle=a.color;X.lineWidth=2;X.beginPath();X.arc(cx,cy,r,Math.PI*0.3,Math.PI*0.7);X.stroke();
+        X.beginPath();X.arc(cx,cy,r,Math.PI*1.3,Math.PI*1.7);X.stroke()}
+    }else if(a.shape==='flower'||a.shape==='sprout'){
+      // Bloom effect with petals opening
+      const expand=t<0.5?t/0.5:1;const fade=t>0.8?(1-(t-0.8)/0.2):1;
+      X.globalAlpha=fade;
+      for(let i=0;i<6;i++){const ang=i*Math.PI/3+t;
+        X.fillStyle=i%2?a.color:a.color2;
+        X.beginPath();const px=cx+Math.cos(ang)*12*expand;const py=cy+Math.sin(ang)*12*expand;
+        X.ellipse(px,py,8*expand,4*expand,ang,0,Math.PI*2);X.fill()}
+      X.fillStyle='#ffff00';X.beginPath();X.arc(cx,cy,5,0,Math.PI*2);X.fill();
+    }else if(a.shape==='rune_circle'||a.shape==='ward'){
+      // Glowing rune circle appears beneath
+      const expand=t<0.4?t/0.4:1;const fade=t>0.7?(1-(t-0.7)/0.3):1;
+      X.globalAlpha=fade*0.6;X.strokeStyle=a.color;X.lineWidth=2;
+      X.beginPath();X.arc(cx,cy+15,25*expand,0,Math.PI*2);X.stroke();
+      X.strokeStyle=a.color2;X.beginPath();X.arc(cx,cy+15,18*expand,0,Math.PI*2);X.stroke();
+      // Rune symbols
+      for(let i=0;i<6;i++){const ang=i*Math.PI/3+t*2;const r=22*expand;
+        X.fillStyle=a.color2;X.font='8px Consolas';X.textAlign='center';
+        X.fillText(pick(['*','+','o','x']),cx+Math.cos(ang)*r,cy+15+Math.sin(ang)*r)}
+    }else if(a.shape==='halo'||a.shape==='focus'){
+      // Halo above head
+      const expand=t<0.3?t/0.3:1;const fade=t>0.7?(1-(t-0.7)/0.3):1;
+      X.globalAlpha=fade*0.8;X.strokeStyle=a.color;X.lineWidth=3;
+      X.beginPath();X.ellipse(cx,cy-30,20*expand,6*expand,0,0,Math.PI*2);X.stroke();
+      X.strokeStyle=a.color2;X.lineWidth=1;X.beginPath();X.ellipse(cx,cy-30,22*expand,8*expand,0,0,Math.PI*2);X.stroke();
+    }else if(a.shape==='blood_aura'){
+      // Blood dripping upward
+      for(let i=0;i<6;i++){const px=cx+(Math.random()-0.5)*30;const py=cy-t*40-Math.random()*20;
+        X.globalAlpha=(1-t)*0.7;X.fillStyle='#cc0000';X.beginPath();X.arc(px,py,2+Math.random()*3,0,Math.PI*2);X.fill()}
+    }else if(a.shape==='crane_circle'){
+      // Cranes circling
+      const fade=t>0.8?(1-(t-0.8)/0.2):1;X.globalAlpha=fade;
+      for(let i=0;i<6;i++){const ang=t*Math.PI*3+i*Math.PI/3;const r=20+t*10;
+        drawCraneShape(cx+Math.cos(ang)*r,cy+Math.sin(ang)*r,5,a.color,ang+Math.PI/2)}
+    }else if(a.shape==='eye'||a.shape==='eye_dark'||a.shape==='predator'){
+      // Eye opening above character
+      const open=t<0.3?t/0.3:(t>0.7?(1-(t-0.7)/0.3):1);
+      X.globalAlpha=open*0.8;X.fillStyle=a.color;
+      X.beginPath();X.ellipse(cx,cy-25,15,8*open,0,0,Math.PI*2);X.fill();
+      X.fillStyle=a.shape==='eye_dark'?'#ff0000':'#000';X.beginPath();X.arc(cx,cy-25,4*open,0,Math.PI*2);X.fill();
+    }else if(a.shape==='mandala'){
+      // Mandala pattern
+      const expand=t<0.5?t/0.5:1;const fade=t>0.7?(1-(t-0.7)/0.3):1;
+      X.globalAlpha=fade*0.5;X.strokeStyle=a.color;X.lineWidth=1;
+      for(let r=10;r<=30;r+=10){X.beginPath();X.arc(cx,cy,r*expand,0,Math.PI*2);X.stroke()}
+      for(let i=0;i<8;i++){const ang=i*Math.PI/4+t;X.beginPath();X.moveTo(cx,cy);
+        X.lineTo(cx+Math.cos(ang)*30*expand,cy+Math.sin(ang)*30*expand);X.stroke()}
+    }else if(a.shape==='absorb'){
+      // Particles pulling inward
+      for(let i=0;i<8;i++){const ang=i*Math.PI/4+t*3;const r=30*(1-t)+5;
+        X.globalAlpha=(1-t)*0.7;X.fillStyle=a.color2;X.beginPath();
+        X.arc(cx+Math.cos(ang)*r,cy+Math.sin(ang)*r,3,0,Math.PI*2);X.fill()}
+    }else if(a.shape==='drip'){
+      // Acid/poison dripping
+      for(let i=0;i<5;i++){X.globalAlpha=(1-t)*0.7;X.fillStyle=a.color;
+        const px=cx+(i-2)*8;const py=cy-10+t*30+Math.sin(i*2)*5;
+        X.beginPath();X.arc(px,py,3,0,Math.PI*2);X.fill();
+        X.beginPath();X.moveTo(px,py-4);X.lineTo(px-2,py);X.lineTo(px+2,py);X.closePath();X.fill()}
+    }else if(a.shape==='cocoon'){
+      const expand=t<0.5?t/0.5:1;const fade=t>0.7?(1-(t-0.7)/0.3):1;
+      X.globalAlpha=fade*0.5;X.fillStyle=a.color;
+      X.beginPath();X.ellipse(cx,cy,15*expand,22*expand,0,0,Math.PI*2);X.fill();
+      X.strokeStyle=a.color2;X.lineWidth=1;
+      for(let i=0;i<6;i++){const y2=cy-20+i*8;X.beginPath();X.moveTo(cx-15*expand,y2);X.bezierCurveTo(cx-5,y2-4,cx+5,y2+4,cx+15*expand,y2);X.stroke()}
+    }else if(a.shape==='data_ring'){
+      const r=20+t*10;const fade=t>0.7?(1-(t-0.7)/0.3):1;X.globalAlpha=fade*0.7;
+      X.strokeStyle=a.color;X.lineWidth=1;X.beginPath();X.arc(cx,cy,r,0,Math.PI*2);X.stroke();
+      X.font='8px Consolas';X.fillStyle=a.color2;
+      for(let i=0;i<8;i++){const ang=i*Math.PI/4+t*4;X.fillText(pick(['0','1']),cx+Math.cos(ang)*r,cy+Math.sin(ang)*r)}
+    }else{
+      // Default buff: radial glow + rising particles
+      const rad=30+t*25;
+      const g=X.createRadialGradient(cx,cy,5,cx,cy,rad);
+      g.addColorStop(0,a.color+'88');g.addColorStop(0.5,a.color+'44');g.addColorStop(1,a.color+'00');
+      X.fillStyle=g;X.beginPath();X.arc(cx,cy,rad,0,Math.PI*2);X.fill();
+      for(let i=0;i<8;i++){const px=cx+(Math.sin(t*10+i*0.8))*20;const py=cy-t*60-i*5;
+        X.globalAlpha=1-t;X.fillStyle=a.color2;X.beginPath();X.arc(px,py,3,0,Math.PI*2);X.fill()}
     }
-  }else if(a.type==='projectile'){
-    // Projectile: flies from attacker to target
+  }
+  // ===== PROJECTILE =====
+  else if(a.type==='projectile'){
     const px=a.fromX+(a.toX-a.fromX)*t;
     const py=a.fromY+(a.toY-a.fromY)*t-Math.sin(t*Math.PI)*30;
-    const sz=a.size;
-    X.fillStyle=a.color;X.beginPath();X.arc(px,py,sz,0,Math.PI*2);X.fill();
-    X.fillStyle=a.color2;X.beginPath();X.arc(px,py,sz*0.6,0,Math.PI*2);X.fill();
-    // Trail
-    for(let i=0;i<5;i++){
-      const tt=Math.max(0,t-i*0.03);
-      const tx=a.fromX+(a.toX-a.fromX)*tt;
-      const ty=a.fromY+(a.toY-a.fromY)*tt-Math.sin(tt*Math.PI)*30;
-      X.globalAlpha=0.5-i*0.1;
-      X.fillStyle=a.color;X.beginPath();X.arc(tx,ty,sz*(1-i*0.15),0,Math.PI*2);X.fill();
-    }
-  }else if(a.type==='slash'){
-    // Slash: blade/cut effect on target
+    const rot=a.spin?t*Math.PI*6:Math.atan2(a.toY-a.fromY,a.toX-a.fromX);
+    // Trail positions
+    const trails=[];
+    for(let i=1;i<=6;i++){const tt=Math.max(0,t-i*0.035);
+      trails.push({x:a.fromX+(a.toX-a.fromX)*tt,y:a.fromY+(a.toY-a.fromY)*tt-Math.sin(tt*Math.PI)*30})}
+    drawTrail(trails,a.color,a.color2,a.trail,a.size);
+    X.globalAlpha=1;
+    drawProjectileShape(px,py,a.size,a.shape,a.color,a.color2,rot,t);
+    // Impact burst at end
+    if(t>0.85){const it=(t-0.85)/0.15;X.globalAlpha=1-it;
+      a.particleList.slice(0,10).forEach((p,i)=>{const ipx=a.toX+p.vx*it*25;const ipy=a.toY+p.vy*it*25;
+        X.fillStyle=p.color;X.beginPath();X.arc(ipx,ipy,p.sz*(1-it),0,Math.PI*2);X.fill()})}
+  }
+  // ===== SLASH =====
+  else if(a.type==='slash'){
     const cx=a.toX,cy=a.toY;
-    const progress=t<0.4?t/0.4:1;
+    const windUp=t<0.2?t/0.2:1;
+    const progress=t<0.2?0:(t<0.5?(t-0.2)/0.3:1);
     const fade=t>0.6?(1-(t-0.6)/0.4):1;
     X.globalAlpha=fade;
-    X.strokeStyle=a.color;X.lineWidth=3+a.size*0.3;X.lineCap='round';
-    // Draw slash lines
-    const ang=Math.PI*0.25;
-    const len=30+a.size;
-    X.beginPath();
-    X.moveTo(cx-Math.cos(ang)*len*progress,cy-Math.sin(ang)*len*progress);
-    X.lineTo(cx+Math.cos(ang)*len*progress,cy+Math.sin(ang)*len*progress);
-    X.stroke();
+    // Blade-style slash with motion blur
+    const ang=Math.PI*0.25;const len=(35+a.size)*progress;
+    // Motion blur (multiple semi-transparent slashes offset)
+    for(let b=0;b<4;b++){X.globalAlpha=fade*(0.3-b*0.06);
+      const off=b*2;X.strokeStyle=a.color;X.lineWidth=4+a.size*0.3-b;X.lineCap='round';
+      X.beginPath();X.moveTo(cx-Math.cos(ang)*len+off,cy-Math.sin(ang)*len+off);
+      X.lineTo(cx+Math.cos(ang)*len+off,cy+Math.sin(ang)*len+off);X.stroke()}
+    // Main slash line
+    X.globalAlpha=fade;X.strokeStyle=a.color;X.lineWidth=4+a.size*0.3;X.lineCap='round';
+    X.beginPath();X.moveTo(cx-Math.cos(ang)*len,cy-Math.sin(ang)*len);
+    X.lineTo(cx+Math.cos(ang)*len,cy+Math.sin(ang)*len);X.stroke();
+    // Inner bright core
     X.strokeStyle=a.color2;X.lineWidth=2;
-    X.beginPath();
-    X.moveTo(cx-Math.cos(-ang)*len*progress*0.8,cy-Math.sin(-ang)*len*progress*0.8);
-    X.lineTo(cx+Math.cos(-ang)*len*progress*0.8,cy+Math.sin(-ang)*len*progress*0.8);
-    X.stroke();
+    X.beginPath();X.moveTo(cx-Math.cos(ang)*len*0.8,cy-Math.sin(ang)*len*0.8);
+    X.lineTo(cx+Math.cos(ang)*len*0.8,cy+Math.sin(ang)*len*0.8);X.stroke();
+    // Claw-specific: 3 parallel lines
+    if(a.shape==='claw3'){for(let c=0;c<3;c++){const off=(c-1)*8;
+      X.globalAlpha=fade*0.7;X.strokeStyle=a.color;X.lineWidth=3;
+      X.beginPath();X.moveTo(cx-Math.cos(ang)*len+off,cy-Math.sin(ang)*len-off);
+      X.lineTo(cx+Math.cos(ang)*len+off,cy+Math.sin(ang)*len-off);X.stroke()}}
+    // Blood trail for blood_blade
+    if(a.trail==='blood'&&progress>0.3){for(let i=0;i<6;i++){X.globalAlpha=fade*0.5;X.fillStyle='#aa0000';
+      X.beginPath();X.arc(cx+(Math.random()-0.5)*len,cy+(Math.random()-0.5)*len,1+Math.random()*2,0,Math.PI*2);X.fill()}}
     // Impact sparks
-    if(t>0.3){
-      a.particleList.forEach((p,i)=>{
-        const pt=t-0.3;
-        const px=cx+p.vx*pt*40;
-        const py=cy+p.vy*pt*40;
-        X.globalAlpha=fade*p.life*(1-pt*1.5);
-        X.fillStyle=p.color;
-        X.beginPath();X.arc(px,py,p.sz*(1-pt),0,Math.PI*2);X.fill();
-      });
-    }
-  }else if(a.type==='burst'){
-    // Burst: explosion at target
+    if(t>0.4){a.particleList.slice(0,12).forEach(p=>{const pt=t-0.4;const ppx=cx+p.vx*pt*35;const ppy=cy+p.vy*pt*35;
+      X.globalAlpha=fade*p.life*(1-pt*1.2);X.fillStyle=p.color;X.beginPath();X.arc(ppx,ppy,p.sz*(1-pt*0.5),0,Math.PI*2);X.fill()})}
+  }
+  // ===== CROSS SLASH (X-shaped) =====
+  else if(a.type==='crossslash'){
     const cx=a.toX,cy=a.toY;
-    const expand=t<0.5?t/0.5:1;
+    const p1=t<0.35?t/0.35:1;
+    const p2=t<0.2?0:(t<0.5?(t-0.2)/0.3:1);
+    const fade=t>0.6?(1-(t-0.6)/0.4):1;
+    const len=30+a.size;
+    // First slash (\)
+    X.globalAlpha=fade;X.strokeStyle=a.color;X.lineWidth=5;X.lineCap='round';
+    X.beginPath();X.moveTo(cx-len*p1,cy-len*p1);X.lineTo(cx+len*p1,cy+len*p1);X.stroke();
+    // Second slash (/)
+    X.strokeStyle=a.color2;X.lineWidth=4;
+    X.beginPath();X.moveTo(cx+len*p2,cy-len*p2);X.lineTo(cx-len*p2,cy+len*p2);X.stroke();
+    // Core glow at intersection
+    if(p2>0.5){X.globalAlpha=fade*0.6;const g=X.createRadialGradient(cx,cy,0,cx,cy,15);
+      g.addColorStop(0,'#ffffff');g.addColorStop(1,a.color+'00');X.fillStyle=g;X.beginPath();X.arc(cx,cy,15,0,Math.PI*2);X.fill()}
+    // Sparks
+    if(t>0.35){a.particleList.slice(0,15).forEach(p=>{const pt=t-0.35;
+      X.globalAlpha=fade*0.7*(1-pt);X.fillStyle=p.color;X.beginPath();
+      X.arc(cx+p.vx*pt*40,cy+p.vy*pt*40,p.sz*(1-pt*0.5),0,Math.PI*2);X.fill()})}
+  }
+  // ===== SWEEP (full-screen horizontal slash) =====
+  else if(a.type==='sweep'){
+    const cx=a.toX,cy=a.toY;
+    const dir=a.fromX<a.toX?1:-1;
+    const sweepProgress=t<0.4?t/0.4:1;
     const fade=t>0.5?(1-(t-0.5)/0.5):1;
-    const rad=(a.size||20)*expand*2;
-    X.globalAlpha=fade*0.6;
-    const g=X.createRadialGradient(cx,cy,0,cx,cy,rad);
-    g.addColorStop(0,a.color2);g.addColorStop(0.5,a.color);g.addColorStop(1,a.color+'00');
-    X.fillStyle=g;X.beginPath();X.arc(cx,cy,rad,0,Math.PI*2);X.fill();
-    // Particles fly outward
-    a.particleList.forEach((p,i)=>{
-      const px=cx+p.vx*expand*30;
-      const py=cy+p.vy*expand*30;
-      X.globalAlpha=fade*0.8;
-      X.fillStyle=p.color;
-      X.beginPath();X.arc(px,py,p.sz,0,Math.PI*2);X.fill();
-    });
-  }else if(a.type==='beam'){
-    // Beam: line from caster to target
-    const progress=t<0.4?t/0.4:1;
-    const fade=t>0.7?(1-(t-0.7)/0.3):1;
+    // Horizontal blade sweeping across
+    const startX=dir>0?0:W;const endX=dir>0?W:0;
+    const bladeX=startX+(endX-startX)*sweepProgress;
+    X.globalAlpha=fade*0.8;X.strokeStyle=a.color;X.lineWidth=3+a.size*0.2;X.lineCap='round';
+    X.beginPath();X.moveTo(bladeX-dir*60,cy-15);X.lineTo(bladeX,cy);X.lineTo(bladeX-dir*60,cy+15);X.stroke();
+    // Motion blur trail
+    for(let b=1;b<=5;b++){X.globalAlpha=fade*0.15;X.strokeStyle=a.color2;X.lineWidth=2;
+      X.beginPath();X.moveTo(bladeX-dir*(60+b*15),cy-15);X.lineTo(bladeX-dir*b*15,cy);X.lineTo(bladeX-dir*(60+b*15),cy+15);X.stroke()}
+    // Wound mark on enemy
+    if(t>0.4&&sweepProgress>=1){X.globalAlpha=fade*0.9;X.strokeStyle=a.color;X.lineWidth=3;
+      X.beginPath();X.moveTo(cx-30,cy);X.lineTo(cx+30,cy);X.stroke();
+      X.strokeStyle=a.color2;X.lineWidth=1;X.beginPath();X.moveTo(cx-25,cy-2);X.lineTo(cx+25,cy-2);X.stroke()}
+  }
+  // ===== ROLL (character rolls like Sonic toward enemy) =====
+  else if(a.type==='roll'){
+    const spinUp=t<0.3?t/0.3:1;
+    const launch=t<0.3?0:(t<0.85?(t-0.3)/0.55:1);
+    const impact=t>0.85?(t-0.85)/0.15:0;
+    const sz=a.size;
+    if(launch<1){
+      // Rolling ball moving toward enemy
+      const rx=a.fromX+(a.toX-a.fromX)*launch;
+      const ry=a.fromY+(a.toY-a.fromY)*launch;
+      const rot=t*Math.PI*12;
+      // Spin-up effect at start
+      if(t<0.3){for(let i=0;i<6;i++){const ang=spinUp*Math.PI*4+i*Math.PI/3;const r=sz+5;
+        X.globalAlpha=0.3;X.fillStyle=a.color2;X.beginPath();X.arc(a.fromX+Math.cos(ang)*r,a.fromY+Math.sin(ang)*r,3,0,Math.PI*2);X.fill()}}
+      // Trail
+      const trails=[];for(let i=1;i<=6;i++){const tt=Math.max(0,launch-i*0.04);
+        trails.push({x:a.fromX+(a.toX-a.fromX)*tt,y:a.fromY+(a.toY-a.fromY)*tt})}
+      drawTrail(trails,a.color,a.color2,a.trail||'dust',sz);
+      // The rolling ball
+      X.globalAlpha=1;X.fillStyle=a.color;X.beginPath();X.arc(rx,ry,sz,0,Math.PI*2);X.fill();
+      X.save();X.translate(rx,ry);X.rotate(rot);
+      X.strokeStyle=a.color2;X.lineWidth=2;X.beginPath();X.moveTo(-sz,0);X.lineTo(sz,0);X.stroke();
+      X.beginPath();X.moveTo(0,-sz);X.lineTo(0,sz);X.stroke();X.restore();
+    }
+    // Impact explosion
+    if(impact>0){const cx=a.toX,cy=a.toY;
+      X.globalAlpha=1-impact;const rad=sz*2*impact;
+      const g=X.createRadialGradient(cx,cy,0,cx,cy,rad+10);
+      g.addColorStop(0,'#ffffff');g.addColorStop(0.3,a.color);g.addColorStop(1,a.color+'00');
+      X.fillStyle=g;X.beginPath();X.arc(cx,cy,rad+10,0,Math.PI*2);X.fill();
+      a.particleList.slice(0,15).forEach(p=>{X.globalAlpha=(1-impact)*0.8;X.fillStyle=p.color;
+        X.beginPath();X.arc(cx+p.vx*impact*30,cy+p.vy*impact*30,p.sz*(1-impact*0.5),0,Math.PI*2);X.fill()})}
+  }
+  // ===== BURST (explosion at target) =====
+  else if(a.type==='burst'){
+    const cx=a.toX,cy=a.toY;
+    const expand=t<0.4?t/0.4:1;
+    const fade=t>0.5?(1-(t-0.5)/0.5):1;
+    const rad=(a.size||20)*expand*1.5;
+    // Ring shapes for special bursts
+    if(a.shape==='rune_ring'||a.shape==='mandala_big'||a.shape==='data_burst'){
+      X.globalAlpha=fade*0.5;X.strokeStyle=a.color;X.lineWidth=3;
+      X.beginPath();X.arc(cx,cy,rad,0,Math.PI*2);X.stroke();
+      X.strokeStyle=a.color2;X.lineWidth=1;X.beginPath();X.arc(cx,cy,rad*0.7,0,Math.PI*2);X.stroke();
+      for(let i=0;i<8;i++){const ang=i*Math.PI/4+t*3;X.globalAlpha=fade*0.3;
+        X.beginPath();X.moveTo(cx,cy);X.lineTo(cx+Math.cos(ang)*rad,cy+Math.sin(ang)*rad);X.stroke()}
+    }else if(a.shape==='web'){
+      X.globalAlpha=fade*0.6;X.strokeStyle=a.color;X.lineWidth=1;
+      for(let ring=0;ring<4;ring++){const r=rad*(ring+1)/4;
+        X.beginPath();for(let i=0;i<=8;i++){const ang=i*Math.PI/4;const px=cx+Math.cos(ang)*r;const py=cy+Math.sin(ang)*r;
+          i===0?X.moveTo(px,py):X.lineTo(px,py)}X.closePath();X.stroke()}
+      for(let i=0;i<8;i++){const ang=i*Math.PI/4;X.beginPath();X.moveTo(cx,cy);X.lineTo(cx+Math.cos(ang)*rad,cy+Math.sin(ang)*rad);X.stroke()}
+    }else if(a.shape==='ink_explosion'){
+      for(let i=0;i<12;i++){X.globalAlpha=fade*0.7;X.fillStyle=i%3?a.color:a.color2;
+        const ang=i*Math.PI/6+t;const r=rad*(0.5+Math.random()*0.5);
+        X.beginPath();X.arc(cx+Math.cos(ang)*r*expand,cy+Math.sin(ang)*r*expand,4+Math.random()*6,0,Math.PI*2);X.fill()}
+    }else if(a.shape==='shatter'){
+      // Crystal shatter - shards flying out
+      for(let i=0;i<10;i++){const ang=i*Math.PI/5;const r=rad*expand*(0.5+Math.random()*0.5);
+        X.globalAlpha=fade*0.8;X.fillStyle=i%2?a.color:a.color2;
+        X.save();X.translate(cx+Math.cos(ang)*r,cy+Math.sin(ang)*r);X.rotate(ang+t*3);
+        X.fillRect(-4,-6,8,12);X.restore()}
+    }else if(a.shape==='crystal_burst'){
+      for(let i=0;i<8;i++){const ang=i*Math.PI/4;const r=rad*expand;
+        X.globalAlpha=fade*0.8;X.fillStyle=a.color;
+        X.beginPath();X.moveTo(cx+Math.cos(ang)*r,cy+Math.sin(ang)*r);
+        X.lineTo(cx+Math.cos(ang-0.2)*(r-10),cy+Math.sin(ang-0.2)*(r-10));
+        X.lineTo(cx+Math.cos(ang+0.2)*(r-10),cy+Math.sin(ang+0.2)*(r-10));X.closePath();X.fill()}
+    }else{
+      // Default radial burst
+      X.globalAlpha=fade*0.6;
+      const g=X.createRadialGradient(cx,cy,0,cx,cy,rad);
+      g.addColorStop(0,a.color2);g.addColorStop(0.5,a.color);g.addColorStop(1,a.color+'00');
+      X.fillStyle=g;X.beginPath();X.arc(cx,cy,rad,0,Math.PI*2);X.fill();
+    }
+    // Outward particles
+    a.particleList.slice(0,15).forEach(p=>{const ppx=cx+p.vx*expand*30;const ppy=cy+p.vy*expand*30;
+      X.globalAlpha=fade*0.7;X.fillStyle=p.color;X.beginPath();X.arc(ppx,ppy,p.sz,0,Math.PI*2);X.fill()});
+    // Pulse ring for magic_ring shape
+    if(a.shape==='magic_ring'||a.shape==='pulse_ring'){X.globalAlpha=fade*0.4;X.strokeStyle=a.color2;X.lineWidth=2;
+      X.beginPath();X.arc(cx,cy,rad*1.3,0,Math.PI*2);X.stroke()}
+  }
+  // ===== BEAM (line from caster to target) =====
+  else if(a.type==='beam'){
+    const progress=t<0.35?t/0.35:1;
+    const fade=t>0.65?(1-(t-0.65)/0.35):1;
     const endX=a.fromX+(a.toX-a.fromX)*progress;
     const endY=a.fromY+(a.toY-a.fromY)*progress;
-    X.globalAlpha=fade;
-    X.strokeStyle=a.color;X.lineWidth=a.size||8;X.lineCap='round';
+    const bw=a.size||8;
+    // Outer glow
+    X.globalAlpha=fade*0.3;X.strokeStyle=a.color;X.lineWidth=bw*2;X.lineCap='round';
     X.beginPath();X.moveTo(a.fromX,a.fromY);X.lineTo(endX,endY);X.stroke();
-    X.strokeStyle=a.color2;X.lineWidth=(a.size||8)*0.4;
+    // Main beam
+    X.globalAlpha=fade;X.strokeStyle=a.color;X.lineWidth=bw;
+    X.beginPath();X.moveTo(a.fromX,a.fromY);X.lineTo(endX,endY);X.stroke();
+    // Core
+    X.strokeStyle=a.color2;X.lineWidth=bw*0.4;
     X.beginPath();X.moveTo(a.fromX,a.fromY);X.lineTo(endX,endY);X.stroke();
     // Sparkles along beam
-    if(progress>0.5){
-      for(let i=0;i<6;i++){
-        const bt=i/6*progress;
-        const bx=a.fromX+(a.toX-a.fromX)*bt+(Math.random()-0.5)*10;
-        const by=a.fromY+(a.toY-a.fromY)*bt+(Math.random()-0.5)*10;
-        X.globalAlpha=fade*0.7;
-        X.fillStyle=a.color2;
-        X.beginPath();X.arc(bx,by,2+Math.random()*2,0,Math.PI*2);X.fill();
-      }
-    }
-  }else if(a.type==='special'){
+    if(progress>0.3){for(let i=0;i<8;i++){const bt=i/8*progress;
+      const bx=a.fromX+(a.toX-a.fromX)*bt+(Math.random()-0.5)*bw;
+      const by=a.fromY+(a.toY-a.fromY)*bt+(Math.random()-0.5)*bw;
+      X.globalAlpha=fade*0.6;X.fillStyle=a.color2;X.beginPath();X.arc(bx,by,1.5+Math.random()*2,0,Math.PI*2);X.fill()}}
+    // Impact glow at hit point
+    if(progress>=1){X.globalAlpha=fade*0.5;const ig=X.createRadialGradient(a.toX,a.toY,0,a.toX,a.toY,bw*2);
+      ig.addColorStop(0,'#ffffff');ig.addColorStop(1,a.color+'00');X.fillStyle=ig;X.beginPath();X.arc(a.toX,a.toY,bw*2,0,Math.PI*2);X.fill()}
+  }
+  // ===== RAINBOW BEAM (Prism Beam) =====
+  else if(a.type==='rainbow_beam'){
+    const progress=t<0.35?t/0.35:1;
+    const fade=t>0.6?(1-(t-0.6)/0.4):1;
+    const endX=a.fromX+(a.toX-a.fromX)*progress;
+    const endY=a.fromY+(a.toY-a.fromY)*progress;
+    const colors=['#ff0000','#ff8800','#ffff00','#00ff00','#0088ff','#8800ff'];
+    // Multiple beams fanning out slightly
+    colors.forEach((c,i)=>{const offset=(i-2.5)*3;
+      X.globalAlpha=fade*0.6;X.strokeStyle=c;X.lineWidth=3;X.lineCap='round';
+      X.beginPath();X.moveTo(a.fromX,a.fromY);X.lineTo(endX+offset*progress*3,endY+offset*progress*2);X.stroke()});
+    // White core
+    X.globalAlpha=fade*0.8;X.strokeStyle='#ffffff';X.lineWidth=2;
+    X.beginPath();X.moveTo(a.fromX,a.fromY);X.lineTo(endX,endY);X.stroke();
+    // Prismatic sparkles
+    if(progress>0.5){for(let i=0;i<6;i++){X.globalAlpha=fade*0.5;X.fillStyle=colors[i];
+      X.beginPath();X.arc(endX+(Math.random()-0.5)*20,endY+(Math.random()-0.5)*20,2+Math.random()*3,0,Math.PI*2);X.fill()}}
+  }
+  // ===== LIGHTNING (zigzag bolt) =====
+  else if(a.type==='lightning'){
+    const strike=t<0.15?0:(t<0.3?1:1);
+    const fade=t>0.5?(1-(t-0.5)/0.5):1;
+    if(t>0.15){
+      X.globalAlpha=fade;
+      // Bright flash at start
+      if(t<0.25){X.globalAlpha=0.3*(1-(t-0.15)/0.1);X.fillStyle='#ffffff';X.fillRect(0,0,W,H)}
+      X.globalAlpha=fade;
+      // Main bolt
+      drawLightningBolt(a.fromX,a.fromY,a.toX,a.toY,a.color,4,10);
+      // Glow
+      X.globalAlpha=fade*0.4;drawLightningBolt(a.fromX,a.fromY,a.toX,a.toY,a.color2,8,10);
+      // Branch bolts
+      const mx=(a.fromX+a.toX)/2+(Math.random()-0.5)*30;const my=(a.fromY+a.toY)/2+(Math.random()-0.5)*20;
+      X.globalAlpha=fade*0.5;drawLightningBolt(mx,my,mx+(Math.random()-0.5)*40,my+(Math.random()-0.5)*30,a.color,2,4);
+      // Impact sparks
+      if(t>0.3){a.particleList.slice(0,8).forEach(p=>{const pt=t-0.3;
+        X.globalAlpha=fade*0.6*(1-pt);X.fillStyle='#ffff88';
+        X.beginPath();X.arc(a.toX+p.vx*pt*20,a.toY+p.vy*pt*20,2,0,Math.PI*2);X.fill()})}}
+  }
+  // ===== LIGHTNING SLASH =====
+  else if(a.type==='lightning_slash'){
     const cx=a.toX,cy=a.toY;
-    if(a.extra==='blackhole'){
-      // Swirling vortex
-      const rad=15+t*30;
-      for(let i=0;i<12;i++){
-        const ang=i/12*Math.PI*2+t*10;
-        const r=rad*(1-t*0.3);
-        const px=cx+Math.cos(ang)*r;
-        const py=cy+Math.sin(ang)*r;
-        X.globalAlpha=0.8-t*0.6;
-        X.fillStyle=i%2?a.color:a.color2;
-        X.beginPath();X.arc(px,py,3+t*2,0,Math.PI*2);X.fill();
+    const strike=t<0.3?t/0.3:1;
+    const fade=t>0.5?(1-(t-0.5)/0.5):1;
+    // Electric slash
+    X.globalAlpha=fade;
+    drawLightningBolt(cx-30*strike,cy-25*strike,cx+30*strike,cy+25*strike,a.color,4,6);
+    drawLightningBolt(cx+25*strike,cy-20*strike,cx-25*strike,cy+20*strike,a.color2,3,5);
+    // Bright core
+    if(strike>0.5){X.globalAlpha=fade*0.4;X.fillStyle='#ffffff';X.beginPath();X.arc(cx,cy,12*strike,0,Math.PI*2);X.fill()}
+    // Sparks
+    for(let i=0;i<5;i++){X.globalAlpha=fade*0.5;X.fillStyle=a.color;
+      X.beginPath();X.arc(cx+(Math.random()-0.5)*40*strike,cy+(Math.random()-0.5)*30*strike,1+Math.random()*2,0,Math.PI*2);X.fill()}
+  }
+  // ===== DARKEN SLASH (Night Slash - screen darkens) =====
+  else if(a.type==='darken_slash'){
+    const cx=a.toX,cy=a.toY;
+    // Darken screen
+    const dark=t<0.3?t/0.3:(t>0.6?(1-(t-0.6)/0.4):1);
+    X.globalAlpha=dark*0.5;X.fillStyle='#000000';X.fillRect(0,0,W,H);
+    // Slash from darkness
+    if(t>0.2){const sp=(t-0.2)/0.3;const progress=Math.min(1,sp);const fade=t>0.6?(1-(t-0.6)/0.4):1;
+      X.globalAlpha=fade;X.strokeStyle=a.color2;X.lineWidth=5;X.lineCap='round';
+      const len=40*progress;
+      X.beginPath();X.moveTo(cx-len,cy-len*0.8);X.lineTo(cx+len,cy+len*0.8);X.stroke();
+      X.strokeStyle=a.color;X.lineWidth=2;X.beginPath();X.moveTo(cx-len*0.9,cy-len*0.7);X.lineTo(cx+len*0.9,cy+len*0.7);X.stroke();
+      // Shadow particles
+      for(let i=0;i<6;i++){X.globalAlpha=fade*0.4;X.fillStyle='#9060c0';
+        X.beginPath();X.arc(cx+(Math.random()-0.5)*50,cy+(Math.random()-0.5)*40,2+Math.random()*3,0,Math.PI*2);X.fill()}}
+  }
+  // ===== PHANTOM (ghost blade materializes) =====
+  else if(a.type==='phantom'){
+    const cx=a.toX,cy=a.toY;
+    const materialize=t<0.4?t/0.4:1;
+    const strike=t<0.4?0:(t<0.65?(t-0.4)/0.25:1);
+    const fade=t>0.7?(1-(t-0.7)/0.3):1;
+    // Ghost blade fading in
+    X.globalAlpha=materialize*0.5*fade;X.fillStyle=a.color2;
+    drawBladeShape(cx,cy-20+strike*20,35,8,a.color2,-Math.PI/4+strike*Math.PI/2);
+    // Strike flash
+    if(strike>0.5){X.globalAlpha=fade*0.6;X.strokeStyle=a.color;X.lineWidth=3;
+      X.beginPath();X.moveTo(cx-25,cy-25);X.lineTo(cx+25,cy+25);X.stroke()}
+    // Ghost particles
+    for(let i=0;i<6;i++){X.globalAlpha=fade*0.3;X.fillStyle=a.color2;
+      X.beginPath();X.arc(cx+(Math.sin(t*5+i*1.2))*20,cy+(Math.cos(t*4+i*0.8))*15,3+Math.sin(t*8+i)*2,0,Math.PI*2);X.fill()}
+  }
+  // ===== RAIN (things falling from above) =====
+  else if(a.type==='rain'){
+    const cx=a.toX,cy=a.toY;
+    const cnt=a.count||10;
+    const fade=t>0.7?(1-(t-0.7)/0.3):1;
+    for(let i=0;i<cnt;i++){
+      const delay=i*0.06;if(t<delay)continue;
+      const lt=(t-delay)/(1-delay);
+      const startX2=cx+(i-cnt/2)*12+(Math.sin(i*3)*15);
+      const startY2=cy-80-i*5;
+      const endX2=cx+(i-cnt/2)*5;const endY2=cy+5;
+      const px=startX2+(endX2-startX2)*Math.min(1,lt*1.3);
+      const py=startY2+(endY2-startY2)*Math.min(1,lt*1.3);
+      X.globalAlpha=fade*(lt<1?0.8:Math.max(0,1-(lt-0.8)*3));
+      if(a.shape==='rock'||a.shape==='ice_rock'){drawRockShape(px,py,a.size?a.size/3:5,a.color,a.color2,lt*2+i)}
+      else if(a.shape==='ice'){drawIceCrystal(px,py,6,a.color,lt*2+i)}
+      else if(a.shape==='flame'||a.shape==='lava'){drawFlameParticle(px,py,5,lt)}
+      else if(a.shape==='vine'){X.strokeStyle=a.color;X.lineWidth=2;X.beginPath();X.moveTo(px,py-10);X.quadraticCurveTo(px+5,py,px-3,py+10);X.stroke()}
+      else if(a.shape==='meteor'){drawRockShape(px,py,a.size?a.size/2:8,'#884400','#cc6600',lt);drawFlameParticle(px,py-5,4,lt)}
+      else if(a.shape==='crystal'){X.fillStyle=a.color;X.beginPath();X.moveTo(px,py-6);X.lineTo(px+4,py);X.lineTo(px,py+4);X.lineTo(px-4,py);X.closePath();X.fill()}
+      else{X.fillStyle=a.color;X.beginPath();X.arc(px,py,4,0,Math.PI*2);X.fill()}
+      // Mini impact on landing
+      if(lt>0.9){const it=(lt-0.9)/0.1;X.globalAlpha=fade*(1-it)*0.4;X.fillStyle=a.color2;
+        for(let s=0;s<3;s++){X.beginPath();X.arc(endX2+(Math.random()-0.5)*10,endY2+(Math.random()-0.5)*5,2,0,Math.PI*2);X.fill()}}
+    }
+  }
+  // ===== SURROUND (particles orbit/wrap around target) =====
+  else if(a.type==='surround'){
+    const cx=a.toX,cy=a.toY;
+    const cnt=a.count||8;
+    const gather=t<0.3?t/0.3:1;
+    const tighten=t>0.3?(t-0.3)/0.7:0;
+    const fade=t>0.8?(1-(t-0.8)/0.2):1;
+    const baseR=40*(1-tighten*0.6);
+    for(let i=0;i<cnt;i++){
+      const ang=i*Math.PI*2/cnt+t*Math.PI*3;
+      const r=baseR*gather;
+      const px=cx+Math.cos(ang)*r;const py=cy+Math.sin(ang)*r;
+      X.globalAlpha=fade*0.8;
+      if(a.shape==='crane'){drawCraneShape(px,py,5,a.color,ang)}
+      else if(a.shape==='petal'){X.fillStyle=i%2?a.color:a.color2;X.save();X.translate(px,py);X.rotate(ang);
+        X.beginPath();X.ellipse(0,0,6,3,0,0,Math.PI*2);X.fill();X.restore()}
+      else if(a.shape==='thread'||a.shape==='bandage'){X.strokeStyle=a.color;X.lineWidth=2;
+        const nx=cx+Math.cos(ang+0.3)*r*0.9;const ny=cy+Math.sin(ang+0.3)*r*0.9;
+        X.beginPath();X.moveTo(px,py);X.lineTo(nx,ny);X.stroke()}
+      else if(a.shape==='disc'){X.fillStyle=a.color;X.save();X.translate(px,py);X.rotate(ang*2);
+        X.beginPath();X.ellipse(0,0,6,3,0,0,Math.PI*2);X.fill();X.restore()}
+      else if(a.shape==='stone_encase'){X.fillStyle=a.color;X.fillRect(px-4,py-4,8,8)}
+      else if(a.shape==='trap'){X.strokeStyle=a.color;X.lineWidth=2;
+        X.beginPath();X.moveTo(px-4,py-4);X.lineTo(px+4,py-4);X.lineTo(px,py+4);X.closePath();X.stroke()}
+      else{X.fillStyle=a.color;X.beginPath();X.arc(px,py,4,0,Math.PI*2);X.fill()}
+    }
+    // Tightening vines/threads connecting particles
+    if(tighten>0.3&&(a.shape==='thread'||a.shape==='bandage')){
+      X.globalAlpha=fade*0.4;X.strokeStyle=a.color;X.lineWidth=1;
+      drawVineWrap(cx,cy,baseR*0.8,tighten,a.color)}
+  }
+  // ===== DELAYED (pause then fast strike) =====
+  else if(a.type==='delayed'){
+    const cx=a.toX,cy=a.toY;
+    const charge=t<0.55?t/0.55:1;  // Long wind-up
+    const strike=t<0.55?0:(t<0.7?(t-0.55)/0.15:1);  // Ultra-fast strike
+    const fade=t>0.75?(1-(t-0.75)/0.25):1;
+    // Charging phase - energy gathering
+    if(t<0.55){
+      X.globalAlpha=charge*0.5;
+      // Glow building at attacker
+      const g=X.createRadialGradient(a.fromX,a.fromY,5,a.fromX,a.fromY,20+charge*15);
+      g.addColorStop(0,a.color+'aa');g.addColorStop(1,a.color+'00');
+      X.fillStyle=g;X.beginPath();X.arc(a.fromX,a.fromY,20+charge*15,0,Math.PI*2);X.fill();
+      // Crosshair/target on enemy
+      if(a.shape==='crosshair'||a.shape==='kunai_aim'){
+        X.globalAlpha=charge*0.6;X.strokeStyle=a.color;X.lineWidth=2;
+        X.beginPath();X.arc(cx,cy,15+Math.sin(t*10)*3,0,Math.PI*2);X.stroke();
+        X.beginPath();X.moveTo(cx-20,cy);X.lineTo(cx+20,cy);X.stroke();
+        X.beginPath();X.moveTo(cx,cy-20);X.lineTo(cx,cy+20);X.stroke()}
+      // Iai draw pose - line appearing
+      if(a.shape==='iai'){X.globalAlpha=charge*0.3;X.strokeStyle=a.color2;X.lineWidth=1;
+        X.beginPath();X.moveTo(a.fromX+10,a.fromY);X.lineTo(a.fromX+10+charge*20,a.fromY);X.stroke()}
+    }
+    // Strike phase - instant and dramatic
+    if(strike>0){
+      // Flash
+      if(strike<0.5){X.globalAlpha=0.3*(1-strike*2);X.fillStyle='#ffffff';X.fillRect(0,0,W,H)}
+      X.globalAlpha=fade;
+      if(a.shape==='iai'){
+        // Horizontal ultra-fast draw slash
+        X.strokeStyle=a.color2;X.lineWidth=4;X.lineCap='round';
+        X.beginPath();X.moveTo(cx-50*strike,cy);X.lineTo(cx+50*strike,cy);X.stroke();
+        X.strokeStyle=a.color;X.lineWidth=2;
+        X.beginPath();X.moveTo(cx-45*strike,cy-1);X.lineTo(cx+45*strike,cy-1);X.stroke();
+      }else if(a.shape==='guillotine'||a.shape==='scythe_big'){
+        // Vertical drop slash
+        X.strokeStyle=a.color;X.lineWidth=5;X.lineCap='round';
+        X.beginPath();X.moveTo(cx,cy-50);X.lineTo(cx,cy+30*strike);X.stroke();
+        X.strokeStyle=a.color2;X.lineWidth=2;
+        X.beginPath();X.moveTo(cx-1,cy-45);X.lineTo(cx-1,cy+25*strike);X.stroke();
+      }else{
+        // Default: strike line from attacker to target
+        X.strokeStyle=a.color;X.lineWidth=3;
+        X.beginPath();X.moveTo(a.fromX,a.fromY);X.lineTo(cx,cy);X.stroke();
       }
-      X.globalAlpha=0.5;X.fillStyle='#000';
-      X.beginPath();X.arc(cx,cy,10+t*10,0,Math.PI*2);X.fill();
-    }else if(a.extra==='chaos'){
-      // Random colors and positions
-      for(let i=0;i<15;i++){
-        const px=cx+(Math.random()-0.5)*60;
-        const py=cy+(Math.random()-0.5)*60;
-        X.globalAlpha=0.7*(1-t);
-        X.fillStyle=`hsl(${Math.random()*360},80%,60%)`;
-        X.beginPath();X.arc(px,py,2+Math.random()*5,0,Math.PI*2);X.fill();
-      }
-    }else if(a.extra==='multiSlash'){
-      // Rapid slash lines
-      const nSlashes=Math.floor(t*8)+1;
-      for(let i=0;i<nSlashes;i++){
-        const sx=cx+(Math.random()-0.5)*40;
-        const sy=cy+(Math.random()-0.5)*40;
-        const ang=Math.random()*Math.PI;
-        const len=15+Math.random()*15;
-        X.globalAlpha=0.8*(1-t);
-        X.strokeStyle=Math.random()>0.5?a.color:a.color2;
-        X.lineWidth=2;X.lineCap='round';
+      // Impact mark on enemy
+      X.globalAlpha=fade*0.8;X.strokeStyle=a.color;X.lineWidth=2;
+      X.beginPath();X.moveTo(cx-20,cy);X.lineTo(cx+20,cy);X.stroke();
+      // Sparks
+      a.particleList.slice(0,10).forEach(p=>{const pt=strike;
+        X.globalAlpha=fade*0.6*(1-pt);X.fillStyle=p.color;
+        X.beginPath();X.arc(cx+p.vx*pt*25,cy+p.vy*pt*25,p.sz*(1-pt*0.3),0,Math.PI*2);X.fill()});
+    }
+  }
+  // ===== MULTI (rapid small hits like 1000 Cuts) =====
+  else if(a.type==='multi'){
+    const cx=a.toX,cy=a.toY;
+    const cnt=a.count||10;
+    const fade=t>0.85?(1-(t-0.85)/0.15):1;
+    const currentHits=Math.floor(t*cnt);
+    // Draw accumulated slash/stab marks
+    for(let i=0;i<=currentHits&&i<cnt;i++){
+      const seed=i*137.5;const sx=cx+Math.sin(seed)*25;const sy=cy+Math.cos(seed*1.3)*20;
+      const ang=seed%Math.PI;const len=12+Math.sin(seed*0.7)*5;
+      const hitAge=(t-i/cnt);if(hitAge<0)continue;
+      const hitFade=Math.min(1,hitAge*8)*fade;
+      X.globalAlpha=hitFade*0.7;
+      if(a.shape==='slash'||a.shape==='stab'){
+        X.strokeStyle=i%3===0?a.color2:a.color;X.lineWidth=2;X.lineCap='round';
         X.beginPath();X.moveTo(sx-Math.cos(ang)*len,sy-Math.sin(ang)*len);
         X.lineTo(sx+Math.cos(ang)*len,sy+Math.sin(ang)*len);X.stroke();
-      }
-    }else if(a.extra==='orbit'){
-      // Spinning disc around target
-      for(let i=0;i<3;i++){
-        const ang=t*Math.PI*4+i*(Math.PI*2/3);
-        const r=25+Math.sin(t*Math.PI)*10;
-        const px=cx+Math.cos(ang)*r;
-        const py=cy+Math.sin(ang)*r;
-        X.globalAlpha=0.8*(1-t*0.5);
-        X.fillStyle=a.color;
-        X.beginPath();X.arc(px,py,a.size||6,0,Math.PI*2);X.fill();
-      }
-    }else{
-      // Default special: burst + slash combo
-      const fade=t>0.6?(1-(t-0.6)/0.4):1;
-      X.globalAlpha=fade*0.7;
-      const g=X.createRadialGradient(cx,cy,0,cx,cy,30+t*20);
-      g.addColorStop(0,a.color2);g.addColorStop(1,a.color+'00');
-      X.fillStyle=g;X.beginPath();X.arc(cx,cy,30+t*20,0,Math.PI*2);X.fill();
-      // Slash
-      X.strokeStyle=a.color;X.lineWidth=3;
-      X.beginPath();X.moveTo(cx-20,cy-20);X.lineTo(cx+20,cy+20);X.stroke();
+      }else if(a.shape==='thrust'){
+        X.fillStyle=a.color;X.beginPath();X.arc(sx,sy,3,0,Math.PI*2);X.fill();
+        X.strokeStyle=a.color2;X.lineWidth=1;X.beginPath();X.moveTo(sx-len*0.5,sy);X.lineTo(sx+len*0.5,sy);X.stroke();
+      }else if(a.shape==='claw'){
+        for(let c=0;c<3;c++){X.strokeStyle=a.color;X.lineWidth=1.5;
+          X.beginPath();X.moveTo(sx-len+c*4,sy-len+c*2);X.lineTo(sx+len+c*4,sy+len+c*2);X.stroke()}
+      }else{
+        X.strokeStyle=i%2?a.color:a.color2;X.lineWidth=2;
+        X.beginPath();X.moveTo(sx-Math.cos(ang)*len,sy-Math.sin(ang)*len);
+        X.lineTo(sx+Math.cos(ang)*len,sy+Math.sin(ang)*len);X.stroke()}
     }
+    // Screen flash on each new hit
+    if(currentHits>0&&t*cnt%1<0.15){X.globalAlpha=0.1;X.fillStyle='#ffffff';X.fillRect(a.toX-40,a.toY-40,80,80)}
+  }
+  // ===== VORTEX (swirling pull effect) =====
+  else if(a.type==='vortex'){
+    const cx=a.toX,cy=a.toY;
+    const grow=t<0.3?t/0.3:1;
+    const spin=t*Math.PI*6;
+    const fade=t>0.7?(1-(t-0.7)/0.3):1;
+    const maxR=a.size||25;
+    // Swirling particles pulled inward
+    for(let i=0;i<16;i++){
+      const startAng=i*Math.PI/8;
+      const r=maxR*grow*(1-t*0.3)+Math.sin(t*5+i)*5;
+      const ang=startAng+spin;
+      const px=cx+Math.cos(ang)*r;const py=cy+Math.sin(ang)*r;
+      X.globalAlpha=fade*0.7;X.fillStyle=i%2?a.color:a.color2;
+      X.beginPath();X.arc(px,py,2+Math.sin(t*8+i)*1.5,0,Math.PI*2);X.fill();}
+    // Dark center
+    X.globalAlpha=fade*0.6;X.fillStyle='#000000';
+    X.beginPath();X.arc(cx,cy,8+grow*5,0,Math.PI*2);X.fill();
+    // Glowing ring
+    X.globalAlpha=fade*0.4;X.strokeStyle=a.color2;X.lineWidth=2;
+    X.beginPath();X.arc(cx,cy,maxR*grow*0.7,0,Math.PI*2);X.stroke();
+    // Spiral lines
+    X.globalAlpha=fade*0.3;X.strokeStyle=a.color;X.lineWidth=1;
+    for(let s=0;s<3;s++){X.beginPath();
+      for(let j=0;j<=20;j++){const sa=s*Math.PI*2/3+j*0.3+spin;const sr=maxR*grow*(j/20);
+        j===0?X.moveTo(cx+Math.cos(sa)*sr,cy+Math.sin(sa)*sr):X.lineTo(cx+Math.cos(sa)*sr,cy+Math.sin(sa)*sr)}X.stroke()}
+  }
+  // ===== IMPLOSION (Obliterate - dark energy implosion) =====
+  else if(a.type==='implosion'){
+    const cx=a.toX,cy=a.toY;
+    const expand=t<0.4?t/0.4:1;
+    const collapse=t>0.4?(t-0.4)/0.3:0;
+    const fade=t>0.7?(1-(t-0.7)/0.3):1;
+    const maxR=a.size||30;
+    // Particles rush inward
+    for(let i=0;i<20;i++){
+      const ang=i*Math.PI/10+t*2;
+      const startR=maxR*1.5;
+      const r=collapse<1?startR*(1-collapse*0.8):startR*0.2;
+      X.globalAlpha=fade*0.6;X.fillStyle=i%3?a.color:a.color2;
+      X.beginPath();X.arc(cx+Math.cos(ang)*r*expand,cy+Math.sin(ang)*r*expand,2+Math.sin(i)*1.5,0,Math.PI*2);X.fill();}
+    // Growing dark sphere
+    if(expand>0.5){X.globalAlpha=fade*0.7;X.fillStyle='#000000';
+      const sr=collapse<1?5+collapse*15:20;
+      X.beginPath();X.arc(cx,cy,sr,0,Math.PI*2);X.fill();
+      X.globalAlpha=fade*0.3;X.strokeStyle=a.color2;X.lineWidth=2;X.beginPath();X.arc(cx,cy,sr+3,0,Math.PI*2);X.stroke()}
+    // Shockwave on collapse
+    if(collapse>0.8){const sw=(collapse-0.8)/0.2;X.globalAlpha=(1-sw)*fade*0.4;X.strokeStyle=a.color2;X.lineWidth=3;
+      X.beginPath();X.arc(cx,cy,sw*maxR*2,0,Math.PI*2);X.stroke()}
+  }
+  // ===== LUNGE (thrust forward) =====
+  else if(a.type==='lunge'){
+    const windUp=t<0.3?t/0.3:1;
+    const thrust=t<0.3?0:(t<0.6?(t-0.3)/0.3:1);
+    const recoil=t>0.6?(t-0.6)/0.4:0;
+    const fade=t>0.8?(1-(t-0.8)/0.2):1;
+    // Draw back during wind-up, then thrust forward
+    const dx=a.toX-a.fromX,dy=a.toY-a.fromY;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    const nx=dx/dist,ny=dy/dist;
+    const px=a.fromX-nx*10*windUp+nx*(dist*0.7)*thrust-nx*20*recoil;
+    const py=a.fromY-ny*10*windUp+ny*(dist*0.7)*thrust-ny*20*recoil;
+    const rot=Math.atan2(dy,dx);
+    X.globalAlpha=fade;
+    if(a.shape==='rapier'||a.shape==='sai'){
+      // Thin blade
+      drawBladeShape(px+nx*15,py+ny*15,30,4,a.color,rot);
+      X.strokeStyle='#ffffff';X.lineWidth=1;X.globalAlpha=fade*0.5;
+      X.beginPath();X.moveTo(px,py);X.lineTo(px+nx*30,py+ny*30);X.stroke();
+    }else{
+      // Fist/punch
+      X.fillStyle=a.color;X.beginPath();X.arc(px+nx*10,py+ny*10,a.size*0.7,0,Math.PI*2);X.fill();
+      X.fillStyle=a.color2;X.beginPath();X.arc(px+nx*10,py+ny*10,a.size*0.4,0,Math.PI*2);X.fill();
+    }
+    // Motion lines
+    if(thrust>0.3){X.globalAlpha=fade*0.4;X.strokeStyle=a.color2;X.lineWidth=1;
+      for(let i=0;i<4;i++){const off=(Math.random()-0.5)*10;
+        X.beginPath();X.moveTo(px-nx*20+ny*off,py-ny*20-nx*off);X.lineTo(px-nx*40+ny*off,py-ny*40-nx*off);X.stroke()}}
+    // Impact at target
+    if(thrust>=1&&recoil<0.5){X.globalAlpha=fade*0.6*(1-recoil*2);
+      const g=X.createRadialGradient(a.toX,a.toY,0,a.toX,a.toY,15);
+      g.addColorStop(0,'#ffffff');g.addColorStop(1,a.color+'00');X.fillStyle=g;
+      X.beginPath();X.arc(a.toX,a.toY,15,0,Math.PI*2);X.fill()}
+  }
+  // ===== EYE BEAM (Foresight) =====
+  else if(a.type==='eye_beam'){
+    const cx=(a.fromX+a.toX)/2,cy=Math.min(a.fromY,a.toY)-30;
+    const eyeOpen=t<0.3?t/0.3:(t>0.7?(1-(t-0.7)/0.3):1);
+    const beamFire=t>0.3&&t<0.7?(t-0.3)/0.4:0;
+    // Giant eye appears
+    X.globalAlpha=eyeOpen*0.7;X.fillStyle=a.color;
+    X.beginPath();X.ellipse(cx,cy,25,12*eyeOpen,0,0,Math.PI*2);X.fill();
+    X.fillStyle='#000000';X.beginPath();X.arc(cx,cy,6*eyeOpen,0,Math.PI*2);X.fill();
+    X.fillStyle=a.color2;X.beginPath();X.arc(cx-2,cy-2,2*eyeOpen,0,Math.PI*2);X.fill();
+    // Beam from eye to target
+    if(beamFire>0){X.globalAlpha=0.6*(1-(t>0.7?(t-0.7)/0.3:0));X.strokeStyle=a.color2;X.lineWidth=4;
+      X.beginPath();X.moveTo(cx,cy+12*eyeOpen);X.lineTo(a.toX,a.toY);X.stroke();
+      X.strokeStyle='#ffffff';X.lineWidth=1.5;X.beginPath();X.moveTo(cx,cy+12*eyeOpen);X.lineTo(a.toX,a.toY);X.stroke()}
+  }
+  // ===== CHOMP (Bite - jaws closing) =====
+  else if(a.type==='chomp'){
+    const cx=a.toX,cy=a.toY;
+    const open=t<0.3?1-t/0.3*0.3:0.7;
+    const close=t>0.3&&t<0.5?(t-0.3)/0.2:0;
+    const hold=t>0.5?1:0;
+    const fade=t>0.7?(1-(t-0.7)/0.3):1;
+    const jawOpen=t<0.3?0.4:(t<0.5?0.4*(1-close):0);
+    // Upper jaw
+    X.globalAlpha=fade*0.8;X.fillStyle=a.color;
+    X.beginPath();X.moveTo(cx-a.size,cy-jawOpen*30-5);X.lineTo(cx+a.size,cy-jawOpen*30-5);
+    X.lineTo(cx+a.size*0.7,cy-jawOpen*15);X.lineTo(cx-a.size*0.7,cy-jawOpen*15);X.closePath();X.fill();
+    // Teeth
+    X.fillStyle='#ffffff';for(let i=0;i<4;i++){const tx=cx-a.size*0.5+i*a.size*0.33;
+      X.beginPath();X.moveTo(tx,cy-jawOpen*15);X.lineTo(tx+4,cy-jawOpen*8);X.lineTo(tx+8,cy-jawOpen*15);X.closePath();X.fill()}
+    // Lower jaw
+    X.fillStyle=a.color2;
+    X.beginPath();X.moveTo(cx-a.size,cy+jawOpen*30+5);X.lineTo(cx+a.size,cy+jawOpen*30+5);
+    X.lineTo(cx+a.size*0.7,cy+jawOpen*15);X.lineTo(cx-a.size*0.7,cy+jawOpen*15);X.closePath();X.fill();
+    // Lower teeth
+    X.fillStyle='#ffffff';for(let i=0;i<4;i++){const tx=cx-a.size*0.5+i*a.size*0.33;
+      X.beginPath();X.moveTo(tx,cy+jawOpen*15);X.lineTo(tx+4,cy+jawOpen*8);X.lineTo(tx+8,cy+jawOpen*15);X.closePath();X.fill()}
+    // Impact on close
+    if(hold&&t<0.65){X.globalAlpha=fade*0.4;X.fillStyle='#ffffff';X.beginPath();X.arc(cx,cy,10*(1-(t-0.5)/0.15),0,Math.PI*2);X.fill()}
+  }
+  // ===== TRANSFORM (character morphs briefly) =====
+  else if(a.type==='transform'){
+    const cx=a.fromX,cy=a.fromY;
+    const tx=a.toX,ty=a.toY;
+    const morph=t<0.3?t/0.3:1;
+    const charge=t>0.3&&t<0.6?(t-0.3)/0.3:0;
+    const strike=t>0.6?(t-0.6)/0.4:0;
+    const fade=t>0.85?(1-(t-0.85)/0.15):1;
+    // Morphing aura
+    if(morph<1){X.globalAlpha=morph*0.5;X.fillStyle=a.color;
+      X.beginPath();X.arc(cx,cy,25+morph*15,0,Math.PI*2);X.fill()}
+    // Dragon shape flying toward enemy
+    if(t>0.3){
+      const px=cx+(tx-cx)*Math.min(1,strike*1.2);const py=cy+(ty-cy)*Math.min(1,strike*1.2);
+      X.globalAlpha=fade*0.9;X.fillStyle=a.color;
+      // Dragon body
+      X.save();X.translate(px,py);const dRot=Math.atan2(ty-cy,tx-cx);X.rotate(dRot);
+      X.beginPath();X.moveTo(20,0);X.lineTo(-10,-12);X.lineTo(-5,0);X.lineTo(-10,12);X.closePath();X.fill();
+      // Wings
+      X.fillStyle=a.color2;
+      X.beginPath();X.moveTo(-5,-5);X.lineTo(-15,-20+Math.sin(t*15)*5);X.lineTo(5,-3);X.closePath();X.fill();
+      X.beginPath();X.moveTo(-5,5);X.lineTo(-15,20-Math.sin(t*15)*5);X.lineTo(5,3);X.closePath();X.fill();
+      X.restore();
+      // Fire trail
+      if(strike>0.2){const trails=[];for(let i=1;i<=5;i++){const tt=Math.max(0,strike-i*0.04);
+        trails.push({x:cx+(tx-cx)*tt,y:cy+(ty-cy)*tt})}
+        drawTrail(trails,a.color,a.color2,'fire',8)}
+    }
+    // Impact
+    if(strike>0.8){const it=(strike-0.8)/0.2;X.globalAlpha=(1-it)*fade;
+      X.fillStyle=a.color;X.beginPath();X.arc(tx,ty,20*it,0,Math.PI*2);X.fill()}
+  }
+  // ===== CHAOS (random animation each frame) =====
+  else if(a.type==='chaos'){
+    const cx=a.toX,cy=a.toY;
+    const fade=t>0.7?(1-(t-0.7)/0.3):1;
+    // Random mix of effects every few frames
+    for(let i=0;i<18;i++){
+      const px=cx+(Math.random()-0.5)*70;const py=cy+(Math.random()-0.5)*70;
+      const hue=Math.random()*360;
+      X.globalAlpha=fade*0.7;X.fillStyle=`hsl(${hue},90%,60%)`;
+      const r=Math.random();
+      if(r<0.3){X.beginPath();X.arc(px,py,2+Math.random()*6,0,Math.PI*2);X.fill()}
+      else if(r<0.6){X.strokeStyle=`hsl(${hue},90%,60%)`;X.lineWidth=2;
+        X.beginPath();X.moveTo(px-10,py-10);X.lineTo(px+10,py+10);X.stroke()}
+      else{drawStarShape(px,py,3+Math.random()*4,`hsl(${hue},90%,60%)`,Math.random()*Math.PI,Math.floor(3+Math.random()*4))}
+    }
+    // Occasional screen flash with random color
+    if(Math.random()<0.1){X.globalAlpha=0.1;X.fillStyle=`hsl(${Math.random()*360},80%,50%)`;X.fillRect(0,0,W,H)}
+  }
+  else{
+    // Fallback: simple projectile
+    const px=a.fromX+(a.toX-a.fromX)*t;const py=a.fromY+(a.toY-a.fromY)*t-Math.sin(t*Math.PI)*30;
+    X.fillStyle=a.color;X.beginPath();X.arc(px,py,a.size,0,Math.PI*2);X.fill();
   }
 
   X.restore();
@@ -1456,7 +2233,11 @@ function drawCombat(){
   dPanel(epx,M?22:28,panW,panH,p);
   dText(e.name,epx+8,M?26:32,e.color,M?11:14,undefined,true);
   dText(`Type: ${e.type}`,epx+8,M?40:50,p.dim,M?9:11);
-  if(!M)dEnemy(W-145,112,55,e.name,e.color,sty,e);else dEnemy(epx+panW/2,75,40,e.name,e.color,sty,e);
+  // Enemy hit flash: white overlay and recoil when hit
+  const eRecoil=enemyHitFlash>0?Math.sin(enemyHitFlash*0.8)*3:0;
+  if(!M)dEnemy(W-145+eRecoil,112,55,e.name,e.color,sty,e);else dEnemy(epx+panW/2+eRecoil,75,40,e.name,e.color,sty,e);
+  if(enemyHitFlash>0){const eFX=!M?W-145:epx+panW/2;const eFY=!M?112:75;const eSZ=!M?55:40;
+    X.globalAlpha=enemyHitFlash/15*0.4;X.fillStyle='#ffffff';X.beginPath();X.arc(eFX+eRecoil,eFY,eSZ/2.5,0,Math.PI*2);X.fill();X.globalAlpha=1;enemyHitFlash--}
   dText(`HP:${Math.max(0,e.hp)}/${e.maxHp}`,epx+8,M?90:148,p.text,M?9:11);
   dHpBar(epx+8,M?102:162,panW-20,M?10:12,e.hp,e.maxHp,p,true);
   if(!M)dStatuses(W-272,180,e.statuses);
