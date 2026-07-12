@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ZYLOS RAGE - The Cruelest Platformer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a0a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    touch-action: none;
+  }
+  #gameContainer {
+    position: relative;
+    width: 100%;
+    max-width: 900px;
+  }
+  #gameCanvas {
+    display: block;
+    width: 100%;
+    border: 2px solid #333;
+    cursor: none;
+  }
+  #ui {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 8px 12px;
+    pointer-events: none;
+    color: #fff;
+    text-shadow: 1px 1px 3px #000;
+    font-size: 13px;
+    font-weight: bold;
+  }
+  #deathCounter {
+    background: rgba(0,0,0,0.5);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid #ff3333;
+    color: #ff6666;
+  }
+  #levelInfo {
+    background: rgba(0,0,0,0.5);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid #4466ff;
+    color: #88aaff;
+  }
+  /* Touch controls */
+  #touchControls {
+    display: none;
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 130px;
+    pointer-events: none;
+  }
+  #touchLeft, #touchRight, #touchJump {
+    position: absolute;
+    pointer-events: all;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    font-weight: bold;
+    color: rgba(255,255,255,0.8);
+    user-select: none;
+    -webkit-user-select: none;
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.2);
+  }
+  #touchLeft  { bottom: 16px; left: 16px;  width: 70px; height: 70px; }
+  #touchRight { bottom: 16px; left: 100px; width: 70px; height: 70px; }
+  #touchJump  { bottom: 16px; right: 16px; width: 90px; height: 70px; }
+  @media (pointer: coarse) {
+    #touchControls { display: block; }
+  }
+  /* Overlay screens */
+  .overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.85);
+    color: #fff;
+    z-index: 10;
+  }
+  .overlay h1 {
+    font-size: clamp(20px, 4vw, 36px);
+    color: #ff4444;
+    text-shadow: 0 0 20px #ff0000;
+    margin-bottom: 10px;
+  }
+  .overlay h2 {
+    font-size: clamp(14px, 2.5vw, 20px);
+    color: #ffaa44;
+    margin-bottom: 20px;
+  }
+  .overlay p {
+    font-size: clamp(11px, 1.8vw, 14px);
+    color: #aaa;
+    margin-bottom: 6px;
+    text-align: center;
+    max-width: 420px;
+    padding: 0 10px;
+  }
+  .btn {
+    margin: 8px;
+    padding: 10px 28px;
+    background: #222;
+    border: 2px solid #ff4444;
+    color: #ff4444;
+    font-family: 'Courier New', monospace;
+    font-size: clamp(12px, 2vw, 16px);
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .btn:hover { background: #ff4444; color: #000; }
+  .btn.blue { border-color: #4488ff; color: #4488ff; }
+  .btn.blue:hover { background: #4488ff; color: #000; }
+  .btn.green { border-color: #44ff88; color: #44ff88; }
+  .btn.green:hover { background: #44ff88; color: #000; }
+  /* Level select grid */
+  #levelGrid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+    margin: 12px 0;
+    max-width: 360px;
+  }
+  .lvl-btn {
+    width: 60px;
+    height: 60px;
+    background: #1a1a1a;
+    border: 2px solid #444;
+    color: #888;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    padding: 4px;
+  }
+  .lvl-btn.unlocked {
+    border-color: #4488ff;
+    color: #4488ff;
+    cursor: pointer;
+  }
+  .lvl-btn.unlocked:hover { background: #4488ff; color: #000; }
+  .lvl-btn.completed {
+    border-color: #44ff88;
+    color: #44ff88;
+  }
+  .lvl-btn.completed:hover { background: #44ff88; color: #000; }
+  .lvl-btn.locked { cursor: not-allowed; opacity: 0.4; }
+  .lvl-btn .lock-icon { font-size: 18px; }
+  .lvl-btn .lvl-num { font-size: 16px; }
+  .lvl-btn .lvl-deaths { font-size: 9px; color: #ff6666; margin-top: 2px; }
+  .lvl-btn.completed .lvl-deaths { color: #44ff88; }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="900" height="500"></canvas>
+  <div id="ui">
+    <div id="deathCounter">Deaths: <span id="deathCount">0</span></div>
+    <div id="levelInfo">Level <span id="levelNum">1</span></div>
+  </div>
+
+  <!-- Title Screen -->
+  <div class="overlay" id="titleScreen">
+    <h1>ZYLOS RAGE</h1>
+    <h2>The Cruelest Platformer</h2>
+    <p>W / Space / Up = Jump &nbsp;|&nbsp; A/D or Arrow Keys = Move</p>
+    <p>Spikes kill. Everything is a trap. Good luck.</p>
+    <br>
+    <button class="btn green" onclick="showLevelSelect()">PLAY</button>
+    <button class="btn blue" onclick="showLevelSelect()">LEVEL SELECT</button>
+  </div>
+
+  <!-- Level Select Screen -->
+  <div class="overlay" id="levelSelectScreen" style="display:none">
+    <h1 style="font-size:clamp(18px,3vw,28px);margin-bottom:6px">LEVEL SELECT</h1>
+    <p style="color:#ff6666">Total Deaths: <span id="totalDeathDisplay">0</span></p>
+    <div id="levelGrid"></div>
+    <button class="btn" onclick="showTitle()">BACK</button>
+  </div>
+
+  <!-- Death Screen -->
+  <div class="overlay" id="deathScreen" style="display:none">
+    <h1>YOU DIED</h1>
+    <p id="deathMsg">Did you really think that would work?</p>
+    <p style="color:#ff6666;font-size:16px;margin-top:8px">Deaths this level: <span id="levelDeathCount">0</span></p>
+    <button class="btn" id="retryBtn" onclick="retryLevel()" style="margin-top:14px">TRY AGAIN</button>
+    <button class="btn blue" onclick="showLevelSelect()">QUIT</button>
+  </div>
+
+  <!-- Win Screen -->
+  <div class="overlay" id="winScreen" style="display:none">
+    <h1 style="color:#44ff88;text-shadow:0 0 20px #00ff88">LEVEL COMPLETE!</h1>
+    <p id="winMsg">You somehow made it.</p>
+    <p style="color:#ffaa44;font-size:15px;margin-top:8px">Deaths: <span id="winDeaths">0</span></p>
+    <button class="btn green" id="nextLvlBtn" onclick="nextLevel()" style="margin-top:14px">NEXT LEVEL</button>
+    <button class="btn blue" onclick="showLevelSelect()">LEVEL SELECT</button>
+  </div>
+
+  <!-- Touch controls -->
+  <div id="touchControls">
+    <div id="touchLeft">&#8592;</div>
+    <div id="touchRight">&#8594;</div>
+    <div id="touchJump">JUMP</div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// CONSTANTS & CONFIG
+// =====================================================================
+const CANVAS_W = 900;
+const CANVAS_H = 500;
+const GRAVITY = 0.55;
+const JUMP_FORCE = -13;
+const MOVE_SPEED = 4.5;
+const SPIKE_H = 22;
+const GATE_W = 32;
+const GATE_H = 54;
+
+// Death messages
+const DEATH_MSGS = [
+  "Did you really think that would work?",
+  "L bozo.",
+  "Not even close.",
+  "Skill issue.",
+  "Maybe try pressing W?",
+  "That's rough, buddy.",
+  "The floor was RIGHT THERE.",
+  "You fell for it again.",
+  "Pathetic. Absolutely pathetic.",
+  "This is actually embarrassing.",
+  "Have you considered quitting?",
+  "The spikes say hi.",
+  "Try harder. Much harder.",
+  "Are you okay? That looked painful.",
+  "Death #{n} and counting...",
+  "Maybe the next one.",
+  "Wow. Just wow.",
+  "My grandma could've made that jump.",
+  "Have you tried... not dying?",
+  "That spike was literally right there.",
+  "Deaths: {n}. Skill: 0.",
+  "The platforms are laughing at you.",
+  "Maybe try a different game?",
+  "You walked into that one. Literally.",
+  "I've seen potatoes with better reflexes.",
+  "At this rate, the spikes are getting bored.",
+  "You know the spikes don't move, right?",
+  "Is your keyboard broken or are you?",
+  "That was painful to watch.",
+  "The game feels sorry for you.",
+  "Speedrunning deaths, I see.",
+  "New strategy idea: don't die.",
+  "Even the spikes are cringing.",
+  "You're making this look harder than it is.",
+  "Plot twist: you're the real obstacle.",
+];
+
+// =====================================================================
+// SAVE SYSTEM
+// =====================================================================
+let saveData = {
+  unlockedLevels: 1,
+  completedLevels: [],
+  levelDeaths: {},
+  totalDeaths: 0,
+};
+
+function loadSave() {
+  try {
+    const s = localStorage.getItem('zylos_rage_save');
+    if (s) saveData = Object.assign(saveData, JSON.parse(s));
+  } catch(e) {}
+}
+function writeSave() {
+  try { localStorage.setItem('zylos_rage_save', JSON.stringify(saveData)); } catch(e) {}
+}
+
+// =====================================================================
+// GAME STATE
+// =====================================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let currentLevel = 0;
+let levelDeaths = 0;
+let gameRunning = false;
+let currentScreen = 'title'; // title | levelSelect | game | death | win
+
+let shakeTimer = 0;
+let shakeIntensity = 0;
+let particles = [];
+
+// Input state
+const keys = { left: false, right: false, jump: false };
+let jumpPressed = false; // edge-trigger for jump
+
+// =====================================================================
+// PLAYER
+// =====================================================================
+const player = {
+  x: 0, y: 0,
+  w: 18, h: 32,
+  vx: 0, vy: 0,
+  onGround: false,
+  alive: true,
+  facingRight: true,
+  // animation
+  legPhase: 0,
+};
+
+function resetPlayer(spawnX, spawnY) {
+  player.x = spawnX;
+  player.y = spawnY;
+  player.vx = 0;
+  player.vy = 0;
+  player.onGround = false;
+  player.alive = true;
+  player.legPhase = 0;
+}
+
+// =====================================================================
+// LEVEL DEFINITIONS
+// =====================================================================
+// Platform types:
+//   normal          - solid always
+//   vanish          - disappears after N ms on first land, reappears later
+//   vanish2         - disappears when platform at index vanishTrigger vanishes
+//   launch          - launches player up after delay on first land
+//   moving          - moves toward player then carries to end
+//
+// Each level: { bg, platforms:[], spawnX, spawnY, endX, endY }
+
+function makeSpikeRow(y, xStart, xEnd) {
+  // Returns an array of spike objects
+  let spikes = [];
+  const sw = 18;
+  for (let x = xStart; x < xEnd; x += sw) {
+    spikes.push({ x, y, w: Math.min(sw, xEnd - x), h: SPIKE_H });
+  }
+  return spikes;
+}
+
+// Level 1 - The Tutorial That Lies
+function buildLevel1() {
+  const groundY = CANVAS_H - 40;
+  return {
+    bg: '#1a1a2e',
+    spawnX: 40,
+    spawnY: groundY - 80,
+    endX: CANVAS_W - 60,
+    endY: groundY - 200,
+    // Ground spikes cover the whole floor
+    spikes: makeSpikeRow(groundY, 0, CANVAS_W),
+    // Ceiling spikes (death if player goes too high)
+    ceilingSpikes: makeSpikeRow(0, 0, CANVAS_W).map(s => ({...s, y: 0, h: SPIKE_H})),
+    deathCeiling: 60,
+    platforms: [
+      // Starting ledge (safe solid)
+      { id: 0, x: 10, y: groundY - 60, w: 120, h: 16, type: 'normal', color: '#557788' },
+      // P2 - vanish on first land, reappear after 2s
+      { id: 1, x: 200, y: groundY - 100, w: 100, h: 16, type: 'vanish',
+        vanishDelay: 600,   // ms after landing to vanish
+        reappearDelay: 2200, // ms after vanish to reappear
+        state: 'solid',     // solid | vanishing | gone | reappearing
+        timer: 0, visitCount: 0, color: '#885522', origColor: '#885522' },
+      // P3 - vanishes with P2 (index 1), reappears when P2 reappears
+      { id: 2, x: 360, y: groundY - 140, w: 100, h: 16, type: 'vanish_linked',
+        linkedTo: 1, state: 'solid', color: '#886622', origColor: '#886622' },
+      // P4 - launch platform: vanishes first visit, second visit launches up
+      { id: 3, x: 520, y: groundY - 120, w: 100, h: 16, type: 'launch',
+        state: 'solid', visitCount: 0,
+        vanishDelay: 500, launchDelay: 800, launchVY: -22,
+        color: '#882244', origColor: '#882244', timer: 0 },
+      // P5 - idle at right; activates when player stands on P3
+      //       moves left to player, carries right, sends spikes midway
+      { id: 4, x: 750, y: groundY - 160, w: 110, h: 16, type: 'moving',
+        state: 'idle',  // idle | moving | carrying | done
+        origX: 750, targetX: 355, speed: 2.5,
+        color: '#224488', origColor: '#224488',
+        spawnSpikes: false, spikeSpawned: false,
+        timer: 0 },
+      // End platform (solid)
+      { id: 5, x: CANVAS_W - 130, y: groundY - 200, w: 130, h: 16, type: 'normal', color: '#335533' },
+    ],
+    movingSpikes: [], // level-runtime moving spikes
+    levelSpikes: [],  // extra runtime spikes (from moving platform spike event)
+  };
+}
+
+function buildSimpleLevel(num) {
+  const groundY = CANVAS_H - 40;
+  const bg = ['#1e1a2e','#1a2e1e','#2e1a1a','#2e2a1a','#1a2a2e','#2e1a2e','#1a1e2e','#2a2e1a','#1e2a1a'][num % 9];
+  const plats = [];
+  // Generate a stepping stone path
+  const count = 4 + num;
+  const spacing = Math.floor((CANVAS_W - 200) / (count + 1));
+  for (let i = 0; i <= count; i++) {
+    const x = 80 + spacing * i;
+    const h = Math.min(180, 60 + num * 12 + i * 10);
+    const w = Math.max(55, 100 - num * 5 - i * 3);
+    plats.push({ id: i, x, y: groundY - h, w, h: 16, type: 'normal', color: '#557788' });
+  }
+  // Extra hazard platforms for later levels
+  if (num >= 3) {
+    for (let i = 1; i < plats.length - 1; i += 2) {
+      plats[i].type = 'vanish';
+      plats[i].vanishDelay = Math.max(400, 1200 - num * 100);
+      plats[i].reappearDelay = 2000;
+      plats[i].state = 'solid';
+      plats[i].timer = 0;
+      plats[i].visitCount = 0;
+      plats[i].color = '#885533';
+      plats[i].origColor = '#885533';
+    }
+  }
+  return {
+    bg,
+    spawnX: 40,
+    spawnY: groundY - 80,
+    endX: CANVAS_W - 60,
+    endY: groundY - (60 + num * 12 + count * 10) - 10,
+    spikes: makeSpikeRow(groundY, 0, CANVAS_W),
+    ceilingSpikes: [],
+    deathCeiling: 0,
+    platforms: [
+      // Starting ledge
+      { id: 'start', x: 10, y: groundY - 60, w: 80, h: 16, type: 'normal', color: '#557788' },
+      ...plats,
+      // End platform
+      { id: 'end', x: CANVAS_W - 120, y: groundY - (60 + num * 12 + count * 10), w: 120, h: 16, type: 'normal', color: '#335533' },
+    ],
+    movingSpikes: [],
+    levelSpikes: [],
+  };
+}
+
+function getLevel(n) {
+  if (n === 0) return buildLevel1();
+  return buildSimpleLevel(n);
+}
+
+// =====================================================================
+// ACTIVE LEVEL STATE
+// =====================================================================
+let level = null;
+
+function initLevel(n) {
+  level = getLevel(n);
+  // Reset dynamic platform states
+  for (const p of level.platforms) {
+    if (p.type === 'vanish' || p.type === 'vanish_linked') {
+      p.state = 'solid';
+      p.timer = 0;
+      if (p.visitCount !== undefined) p.visitCount = 0;
+    }
+    if (p.type === 'launch') {
+      p.state = 'solid';
+      p.timer = 0;
+      p.visitCount = 0;
+    }
+    if (p.type === 'moving') {
+      p.state = 'idle';
+      p.x = p.origX;
+      p.timer = 0;
+      p.spawnSpikes = false;
+      p.spikeSpawned = false;
+    }
+  }
+  level.movingSpikes = [];
+  level.levelSpikes = [];
+  resetPlayer(level.spawnX, level.spawnY - player.h);
+  particles = [];
+  shakeTimer = 0;
+}
+
+// =====================================================================
+// PHYSICS & COLLISION
+// =====================================================================
+function rectOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+}
+
+function updatePlayer(dt) {
+  if (!player.alive) return;
+
+  // Movement
+  const moving = keys.left || keys.right;
+  if (keys.left) {
+    player.vx = -MOVE_SPEED;
+    player.facingRight = false;
+  } else if (keys.right) {
+    player.vx = MOVE_SPEED;
+    player.facingRight = true;
+  } else {
+    player.vx *= 0.7;
+  }
+
+  // Jump
+  if (keys.jump && player.onGround) {
+    player.vy = JUMP_FORCE;
+    player.onGround = false;
+  }
+
+  // Gravity
+  player.vy += GRAVITY;
+  if (player.vy > 18) player.vy = 18;
+
+  player.onGround = false;
+
+  // X movement
+  player.x += player.vx;
+  // Bounds
+  if (player.x < 0) { player.x = 0; player.vx = 0; }
+  if (player.x + player.w > CANVAS_W) { player.x = CANVAS_W - player.w; player.vx = 0; }
+
+  // Y movement
+  player.y += player.vy;
+
+  // Platform collisions
+  for (const p of level.platforms) {
+    if (p.state === 'gone') continue;
+    if (!rectOverlap(player.x, player.y, player.w, player.h, p.x, p.y, p.w, p.h)) continue;
+
+    // Coming from above (landing)
+    const prevY = player.y - player.vy;
+    if (player.vy >= 0 && prevY + player.h <= p.y + 4) {
+      player.y = p.y - player.h;
+      player.vy = 0;
+      player.onGround = true;
+
+      // Trigger platform mechanics
+      handlePlatformLand(p);
+    } else if (player.vy < 0 && prevY >= p.y + p.h - 4) {
+      // Hit head on platform from below
+      player.y = p.y + p.h;
+      player.vy = 0;
+    }
+  }
+
+  // Death ceiling
+  if (level.deathCeiling > 0 && player.y < level.deathCeiling) {
+    killPlayer();
+    return;
+  }
+
+  // Off screen top (no ceiling defined) - death
+  if (player.y + player.h < 0) {
+    killPlayer();
+    return;
+  }
+  // Off screen bottom
+  if (player.y > CANVAS_H + 50) {
+    killPlayer();
+    return;
+  }
+
+  // Spike collision - floor spikes
+  for (const s of level.spikes) {
+    if (rectOverlap(player.x + 2, player.y + player.h - 8, player.w - 4, 10, s.x, s.y, s.w, s.h)) {
+      killPlayer(); return;
+    }
+  }
+  // Ceiling spikes
+  for (const s of level.ceilingSpikes) {
+    if (rectOverlap(player.x + 2, player.y, player.w - 4, 10, s.x, s.y, s.w, s.h)) {
+      killPlayer(); return;
+    }
+  }
+  // Moving spikes
+  for (const s of level.movingSpikes) {
+    if (s.active && rectOverlap(player.x + 2, player.y + 2, player.w - 4, player.h - 4, s.x, s.y, s.w, s.h)) {
+      killPlayer(); return;
+    }
+  }
+
+  // Leg animation
+  if (moving && player.onGround) player.legPhase += 0.2;
+
+  // Win check
+  const ex = level.endX, ey = level.endY;
+  if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H)) {
+    winLevel();
+  }
+}
+
+// =====================================================================
+// PLATFORM MECHANICS
+// =====================================================================
+let p3StoodOn = false; // track if player is on P3 (index 2) for level 1
+
+function handlePlatformLand(p) {
+  if (p.type === 'vanish' && p.state === 'solid') {
+    p.visitCount = (p.visitCount || 0) + 1;
+    if (p.visitCount === 1) {
+      // First visit: start vanish timer
+      p.state = 'vanishing';
+      p.timer = p.vanishDelay;
+    }
+    // Second+ visit: stays solid (handled in update)
+  }
+
+  if (p.type === 'launch' && p.state === 'solid') {
+    p.visitCount = (p.visitCount || 0) + 1;
+    if (p.visitCount === 1) {
+      // First visit: disappear like vanish
+      p.state = 'vanishing';
+      p.timer = p.vanishDelay;
+    } else if (p.visitCount === 2) {
+      // Second visit: brief wait then launch
+      p.state = 'prelaunch';
+      p.timer = p.launchDelay;
+    }
+  }
+}
+
+function updatePlatforms(dt) {
+  p3StoodOn = false;
+
+  for (const p of level.platforms) {
+    if (p.type === 'vanish') {
+      if (p.state === 'vanishing') {
+        p.timer -= dt;
+        if (p.timer <= 0) {
+          p.state = 'gone';
+          p.timer = p.reappearDelay;
+          // Trigger linked platforms (type vanish_linked) to vanish too
+          triggerLinked(p.id, 'gone');
+        }
+      } else if (p.state === 'gone') {
+        p.timer -= dt;
+        if (p.timer <= 0) {
+          // Reappear - only stays solid on second visit onward
+          p.state = 'solid';
+          p.visitCount = Math.max(1, (p.visitCount || 0)); // keep visit count
+          triggerLinked(p.id, 'solid');
+        }
+      }
+    }
+
+    if (p.type === 'launch') {
+      if (p.state === 'vanishing') {
+        p.timer -= dt;
+        if (p.timer <= 0) {
+          p.state = 'gone';
+          p.timer = p.reappearDelay || 2000;
+        }
+      } else if (p.state === 'gone') {
+        p.timer -= dt;
+        if (p.timer <= 0) { p.state = 'solid'; }
+      } else if (p.state === 'prelaunch') {
+        p.timer -= dt;
+        if (p.timer <= 0) {
+          // Launch!
+          if (player.onGround) {
+            player.vy = p.launchVY;
+            player.onGround = false;
+          }
+          // Platform disappears upward fast
+          p.state = 'launching';
+          p.launchY = p.y;
+        }
+      } else if (p.state === 'launching') {
+        p.y -= 8; // platform shoots up
+        // When P4 launches, P5 (moving) also vanishes
+        const p5 = level.platforms.find(pp => pp.id === 4);
+        if (p5 && p5.state === 'idle') {
+          p5.state = 'gone_temp';
+          p5.timer = 1500;
+        }
+        if (p.y < -100) { p.state = 'offscreen'; }
+      }
+    }
+
+    if (p.type === 'moving') {
+      if (p.state === 'gone_temp') {
+        p.timer -= dt;
+        if (p.timer <= 0) { p.state = 'idle'; p.x = p.origX; }
+      }
+
+      // Check if player stands on P3 (id=2) to activate P5
+      if (p.id === 4 && p.state === 'idle') {
+        const p3 = level.platforms.find(pp => pp.id === 2);
+        if (p3 && p3.state === 'solid') {
+          // Is player on P3?
+          const onP3 = player.onGround &&
+            Math.abs(player.y + player.h - p3.y) < 4 &&
+            player.x + player.w > p3.x && player.x < p3.x + p3.w;
+          if (onP3) {
+            p3StoodOn = true;
+            p.state = 'moving';
+          }
+        }
+      }
+
+      if (p.state === 'moving') {
+        // Move left toward player
+        if (p.x > p.targetX) {
+          p.x -= p.speed;
+        } else {
+          p.x = p.targetX;
+          p.state = 'carrying';
+          p.timer = 0;
+          // Spawn incoming spikes after short delay
+          p.spawnSpikes = true;
+        }
+      }
+
+      if (p.state === 'carrying') {
+        p.x += p.speed * 1.5; // carry right faster
+        p.timer += dt;
+
+        // Spawn spikes after 600ms of carrying
+        if (p.spawnSpikes && !p.spikeSpawned && p.timer > 600) {
+          p.spikeSpawned = true;
+          // Spawn two spike waves from the left
+          level.movingSpikes.push(
+            { x: -60, y: p.y - 40, w: 40, h: 20, vx: 5, vy: 0, active: true, wave: 1 },
+            { x: -120, y: p.y - 40, w: 40, h: 20, vx: 5, vy: 0, active: true, wave: 2, delay: 700, delayLeft: 700 }
+          );
+        }
+
+        if (p.x > CANVAS_W + 20) {
+          p.state = 'done';
+        }
+      }
+    }
+  }
+
+  // Update moving spikes
+  for (const s of level.movingSpikes) {
+    if (!s.active) continue;
+    if (s.delay && s.delayLeft > 0) {
+      s.delayLeft -= dt;
+      continue;
+    }
+    s.x += s.vx;
+    if (s.x > CANVAS_W + 50) s.active = false;
+  }
+}
+
+function triggerLinked(triggerId, newState) {
+  for (const p of level.platforms) {
+    if (p.type === 'vanish_linked' && p.linkedTo === triggerId) {
+      p.state = newState;
+      if (newState === 'gone') {
+        p.timer = 0; // follows trigger's reappear timing
+      }
+    }
+  }
+}
+
+// =====================================================================
+// PARTICLE EFFECTS
+// =====================================================================
+function spawnDeathParticles(x, y) {
+  for (let i = 0; i < 24; i++) {
+    const angle = (Math.PI * 2 * i) / 24 + (Math.random() - 0.5) * 0.5;
+    const speed = 2 + Math.random() * 5;
+    particles.push({
+      x: x + 9, y: y + 16,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 2,
+      life: 1.0,
+      decay: 0.02 + Math.random() * 0.03,
+      r: Math.floor(180 + Math.random() * 75),
+      g: Math.floor(Math.random() * 60),
+      b: Math.floor(Math.random() * 30),
+      size: 3 + Math.random() * 4,
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.15;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// =====================================================================
+// KILL / WIN
+// =====================================================================
+function killPlayer() {
+  if (!player.alive) return;
+  player.alive = false;
+  spawnDeathParticles(player.x, player.y);
+  shakeTimer = 400;
+  shakeIntensity = 8;
+
+  levelDeaths++;
+  saveData.totalDeaths++;
+  saveData.levelDeaths[currentLevel] = (saveData.levelDeaths[currentLevel] || 0) + 1;
+  writeSave();
+
+  updateDeathUI();
+
+  setTimeout(() => {
+    showDeath();
+  }, 600);
+}
+
+function winLevel() {
+  if (!player.alive) return;
+  player.alive = false;
+  gameRunning = false;
+
+  if (!saveData.completedLevels.includes(currentLevel)) {
+    saveData.completedLevels.push(currentLevel);
+  }
+  const nextLevel = currentLevel + 1;
+  if (nextLevel < 10 && saveData.unlockedLevels <= nextLevel) {
+    saveData.unlockedLevels = nextLevel + 1;
+  }
+  writeSave();
+
+  document.getElementById('winDeaths').textContent = levelDeaths;
+  document.getElementById('winMsg').textContent = winMessage();
+  const nextBtn = document.getElementById('nextLvlBtn');
+  if (currentLevel >= 9) {
+    nextBtn.style.display = 'none';
+  } else {
+    nextBtn.style.display = '';
+  }
+  showScreen('winScreen');
+}
+
+function winMessage() {
+  const lvlMsgs = [
+    // Level 1
+    ["Took you long enough.","Congratulations... you beat the TUTORIAL.","That was literally the easiest level.","Wait... that took you {d} deaths? On the FIRST level?"],
+    // Level 2-10
+    ["Finally.","The platforms almost gave up on you.","That only took you... forever.","Don't celebrate. It gets worse."],
+    ["Halfway to mediocrity.","The spikes will miss you. Not really.","Your death count is higher than your IQ."],
+    ["Did you Google the solution?","Honestly surprised you made it."],
+    ["OK that one was actually hard. You still took too long though."],
+    ["Are you cheating? No? Then how are you this slow?"],
+    ["6 down, 4 to go. You're not gonna make it."],
+    ["Lucky. Pure luck."],
+    ["Almost there. Almost."],
+    ["Wait... you actually beat the whole game? ...Respect. Just kidding, took you {d} deaths."]
+  ];
+  const pool = lvlMsgs[Math.min(currentLevel, lvlMsgs.length - 1)];
+  if (levelDeaths === 0) return "Flawless?! Are you hacking?";
+  let msg = pool[Math.floor(Math.random() * pool.length)];
+  return msg.replace('{d}', levelDeaths);
+}
+
+// =====================================================================
+// DRAWING
+// =====================================================================
+function drawPlayer() {
+  if (!player.alive) return;
+  const x = Math.round(player.x);
+  const y = Math.round(player.y);
+  const cx = x + player.w / 2;
+
+  // Body
+  ctx.fillStyle = '#e8d0a0';
+  ctx.fillRect(x + 4, y + 10, 10, 14); // torso
+
+  // Head
+  ctx.fillStyle = '#f0d8a8';
+  ctx.beginPath();
+  ctx.arc(cx, y + 7, 7, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#000';
+  const eyeOff = player.facingRight ? 2 : -2;
+  ctx.fillRect(cx + eyeOff - 1, y + 5, 2, 2);
+
+  // Legs
+  const legSwing = Math.sin(player.legPhase) * 5;
+  ctx.strokeStyle = '#c0a070';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  // Left leg
+  ctx.beginPath();
+  ctx.moveTo(cx - 2, y + 24);
+  ctx.lineTo(cx - 2 - (player.onGround ? legSwing : 0), y + 36);
+  ctx.stroke();
+  // Right leg
+  ctx.beginPath();
+  ctx.moveTo(cx + 2, y + 24);
+  ctx.lineTo(cx + 2 + (player.onGround ? legSwing : 0), y + 36);
+  ctx.stroke();
+
+  // Arms
+  const armSwing = Math.sin(player.legPhase + Math.PI) * 4;
+  ctx.strokeStyle = '#e8d0a0';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 4, y + 13);
+  ctx.lineTo(cx - 10 - armSwing, y + 21);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx + 4, y + 13);
+  ctx.lineTo(cx + 10 + armSwing, y + 21);
+  ctx.stroke();
+}
+
+function drawSpike(x, y, w, h) {
+  const count = Math.floor(w / 12);
+  const sw = w / count;
+  ctx.fillStyle = '#cc3333';
+  for (let i = 0; i < count; i++) {
+    const sx = x + i * sw;
+    ctx.beginPath();
+    ctx.moveTo(sx, y + h);
+    ctx.lineTo(sx + sw / 2, y);
+    ctx.lineTo(sx + sw, y + h);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawMovingSpike(s) {
+  if (!s.active) return;
+  if (s.delay && s.delayLeft > 0) return;
+  ctx.fillStyle = '#ff2222';
+  ctx.beginPath();
+  // Horizontal spike pointing right
+  const cx2 = s.x + s.w;
+  const cy2 = s.y + s.h / 2;
+  ctx.moveTo(s.x, s.y);
+  ctx.lineTo(cx2 + 10, cy2);
+  ctx.lineTo(s.x, s.y + s.h);
+  ctx.closePath();
+  ctx.fill();
+  // Secondary spikes
+  ctx.fillStyle = '#ff5555';
+  ctx.beginPath();
+  ctx.moveTo(s.x, s.y + 4);
+  ctx.lineTo(cx2, cy2 - 4);
+  ctx.lineTo(s.x, s.y + s.h / 2);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawGate(x, y, isEnd) {
+  const color = isEnd ? '#ff3333' : '#3388ff';
+  const glow = isEnd ? '#ff0000' : '#0066ff';
+  // Glow
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 16;
+  // Posts
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 5, GATE_H);
+  ctx.fillRect(x + GATE_W - 5, y, 5, GATE_H);
+  // Top bar
+  ctx.fillRect(x, y, GATE_W, 6);
+  // Inner glow fill
+  ctx.fillStyle = isEnd ? 'rgba(255,60,60,0.15)' : 'rgba(60,120,255,0.15)';
+  ctx.fillRect(x + 5, y + 6, GATE_W - 10, GATE_H - 6);
+  ctx.shadowBlur = 0;
+
+  // Label
+  ctx.fillStyle = color;
+  ctx.font = 'bold 8px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText(isEnd ? 'END' : 'START', x + GATE_W / 2, y - 4);
+}
+
+function drawPlatform(p) {
+  if (p.state === 'offscreen') return;
+  let alpha = 1;
+  if (p.state === 'vanishing' || p.state === 'prelaunch') {
+    alpha = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() / 80));
+  }
+  if (p.state === 'gone') return;
+
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = p.color || '#557788';
+  ctx.fillRect(p.x, p.y, p.w, p.h);
+  // Top highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(p.x, p.y, p.w, 3);
+  // Bottom shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(p.x, p.y + p.h - 3, p.w, 3);
+  ctx.globalAlpha = 1;
+
+  // Type indicator
+  if (p.type === 'vanish' || p.type === 'vanish_linked') {
+    ctx.fillStyle = `rgba(255,180,50,${alpha * 0.7})`;
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('?', p.x + p.w / 2, p.y - 3);
+  }
+  if (p.type === 'launch') {
+    ctx.fillStyle = `rgba(255,80,80,${alpha * 0.7})`;
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(p.visitCount === 1 ? '!!!' : '?', p.x + p.w / 2, p.y - 3);
+  }
+  if (p.type === 'moving' && p.state === 'idle') {
+    ctx.fillStyle = 'rgba(100,160,255,0.7)';
+    ctx.font = '9px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('...', p.x + p.w / 2, p.y - 3);
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = `rgb(${p.r},${p.g},${p.b})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawHUD() {
+  // Death counter already in overlay UI
+  // Level progress bar (optional minimal)
+  const progress = player.alive ? (player.x / CANVAS_W) : 0;
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(10, CANVAS_H - 14, 200, 6);
+  ctx.fillStyle = '#4488ff';
+  ctx.fillRect(10, CANVAS_H - 14, 200 * Math.min(1, progress), 6);
+}
+
+function render() {
+  // Screen shake
+  let sx = 0, sy = 0;
+  if (shakeTimer > 0) {
+    sx = (Math.random() - 0.5) * shakeIntensity * 2;
+    sy = (Math.random() - 0.5) * shakeIntensity * 2;
+    shakeIntensity *= 0.9;
+  }
+
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // Background
+  ctx.fillStyle = level.bg;
+  ctx.fillRect(-sx, -sy, CANVAS_W + Math.abs(sx) * 2, CANVAS_H + Math.abs(sy) * 2);
+
+  // Background grid (subtle)
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  for (let gx = 0; gx < CANVAS_W; gx += 40) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, CANVAS_H); ctx.stroke();
+  }
+  for (let gy = 0; gy < CANVAS_H; gy += 40) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(CANVAS_W, gy); ctx.stroke();
+  }
+
+  // Floor spikes
+  for (const s of level.spikes) drawSpike(s.x, s.y, s.w, s.h);
+  // Ceiling spikes
+  for (const s of (level.ceilingSpikes || [])) {
+    // Ceiling spikes point down
+    const count = Math.floor(s.w / 12);
+    const sw2 = s.w / count;
+    ctx.fillStyle = '#cc3333';
+    for (let i = 0; i < count; i++) {
+      const ix = s.x + i * sw2;
+      ctx.beginPath();
+      ctx.moveTo(ix, 0);
+      ctx.lineTo(ix + sw2 / 2, SPIKE_H);
+      ctx.lineTo(ix + sw2, 0);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // Platforms
+  for (const p of level.platforms) drawPlatform(p);
+
+  // Moving spikes
+  for (const s of level.movingSpikes) drawMovingSpike(s);
+
+  // Gates
+  drawGate(level.spawnX - GATE_W / 2, level.spawnY - GATE_H, false);
+  drawGate(level.endX, level.endY, true);
+
+  // Player
+  drawPlayer();
+
+  // Particles
+  drawParticles();
+
+  // HUD
+  drawHUD();
+
+  ctx.restore();
+}
+
+// =====================================================================
+// GAME LOOP
+// =====================================================================
+let lastTime = 0;
+
+function gameLoop(ts) {
+  if (!gameRunning) return;
+  const dt = Math.min(ts - lastTime, 50); // cap dt
+  lastTime = ts;
+
+  if (shakeTimer > 0) shakeTimer -= dt;
+
+  updatePlayer(dt);
+  updatePlatforms(dt);
+  updateParticles(dt);
+  render();
+
+  requestAnimationFrame(gameLoop);
+}
+
+function startGameLoop() {
+  gameRunning = true;
+  lastTime = performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+// =====================================================================
+// SCREENS
+// =====================================================================
+function showScreen(id) {
+  ['titleScreen','levelSelectScreen','deathScreen','winScreen'].forEach(s => {
+    document.getElementById(s).style.display = 'none';
+  });
+  if (id) document.getElementById(id).style.display = 'flex';
+}
+
+function showTitle() {
+  gameRunning = false;
+  showScreen('titleScreen');
+}
+
+function showLevelSelect() {
+  gameRunning = false;
+  buildLevelGrid();
+  document.getElementById('totalDeathDisplay').textContent = saveData.totalDeaths;
+  showScreen('levelSelectScreen');
+}
+
+function buildLevelGrid() {
+  const grid = document.getElementById('levelGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < 10; i++) {
+    const btn = document.createElement('div');
+    btn.className = 'lvl-btn';
+    const completed = saveData.completedLevels.includes(i);
+    const unlocked = i < saveData.unlockedLevels;
+    if (completed) btn.classList.add('completed');
+    else if (unlocked) btn.classList.add('unlocked');
+    else btn.classList.add('locked');
+
+    const deaths = saveData.levelDeaths[i] || 0;
+    btn.innerHTML = `<span class="lvl-num">${unlocked ? (i + 1) : '🔒'}</span>` +
+      (deaths > 0 ? `<span class="lvl-deaths">${deaths}x</span>` : '');
+
+    if (unlocked) {
+      btn.addEventListener('click', () => startLevel(i));
+    }
+    grid.appendChild(btn);
+  }
+}
+
+function startLevel(n) {
+  currentLevel = n;
+  levelDeaths = 0;
+  initLevel(n);
+  updateLevelUI();
+  updateDeathUI();
+  showScreen(null);
+  startGameLoop();
+}
+
+function retryLevel() {
+  levelDeaths = 0;
+  initLevel(currentLevel);
+  updateDeathUI();
+  showScreen(null);
+  startGameLoop();
+}
+
+function nextLevel() {
+  if (currentLevel < 9) {
+    startLevel(currentLevel + 1);
+  } else {
+    showLevelSelect();
+  }
+}
+
+function showDeath() {
+  gameRunning = false;
+  const msgs = DEATH_MSGS;
+  let msg = msgs[Math.floor(Math.random() * msgs.length)];
+  msg = msg.replace('{n}', saveData.totalDeaths);
+  document.getElementById('deathMsg').textContent = msg;
+  document.getElementById('levelDeathCount').textContent = levelDeaths;
+  showScreen('deathScreen');
+}
+
+function updateDeathUI() {
+  document.getElementById('deathCount').textContent = saveData.totalDeaths;
+}
+function updateLevelUI() {
+  document.getElementById('levelNum').textContent = currentLevel + 1;
+}
+
+// =====================================================================
+// INPUT
+// =====================================================================
+const KEY_MAP = {
+  'ArrowLeft': 'left', 'a': 'left', 'A': 'left',
+  'ArrowRight': 'right', 'd': 'right', 'D': 'right',
+  'ArrowUp': 'jump', 'w': 'jump', 'W': 'jump', ' ': 'jump',
+};
+
+window.addEventListener('keydown', e => {
+  const k = KEY_MAP[e.key];
+  if (k) {
+    e.preventDefault();
+    keys[k] = true;
+  }
+});
+window.addEventListener('keyup', e => {
+  const k = KEY_MAP[e.key];
+  if (k) keys[k] = false;
+});
+
+// Touch controls
+function bindTouch(elemId, key) {
+  const el = document.getElementById(elemId);
+  el.addEventListener('touchstart', e => { e.preventDefault(); keys[key] = true; }, { passive: false });
+  el.addEventListener('touchend', e => { e.preventDefault(); keys[key] = false; }, { passive: false });
+  el.addEventListener('touchcancel', e => { e.preventDefault(); keys[key] = false; }, { passive: false });
+}
+bindTouch('touchLeft', 'left');
+bindTouch('touchRight', 'right');
+bindTouch('touchJump', 'jump');
+
+// =====================================================================
+// CANVAS SCALING
+// =====================================================================
+function resizeCanvas() {
+  const container = document.getElementById('gameContainer');
+  const w = Math.min(window.innerWidth, 900);
+  container.style.width = w + 'px';
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// =====================================================================
+// BOOT
+// =====================================================================
+loadSave();
+updateDeathUI();
+
+// Draw idle title frame
+ctx.fillStyle = '#1a1a2e';
+ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+ctx.fillStyle = '#ff4444';
+ctx.font = 'bold 36px Courier New';
+ctx.textAlign = 'center';
+ctx.fillText('ZYLOS RAGE', CANVAS_W / 2, CANVAS_H / 2 - 20);
+ctx.fillStyle = '#888';
+ctx.font = '16px Courier New';
+ctx.fillText('Press PLAY to suffer', CANVAS_W / 2, CANVAS_H / 2 + 20);
+
+showScreen('titleScreen');
+</script>
+</body>
+</html>

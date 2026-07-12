@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>RPS Legends - Play Online</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Consolas','Courier New',monospace;background:#0a0a1a;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center}
+canvas{display:block}
+#gc{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
+</style>
+</head>
+<body>
+<div id="gc"><canvas id="g"></canvas></div>
+<script>
+// ============================================================
+// RPS LEGENDS v4.0 — Mega Edition
+// ============================================================
+const C=document.getElementById('g'),X=C.getContext('2d');
+const TW=900,TH=700;let sc=1;
+function resize(){const w=innerWidth,h=innerHeight;sc=Math.min(w/TW,h/TH);C.width=TW*sc;C.height=TH*sc;C.style.position='absolute';C.style.left=(w-C.width)/2+'px';C.style.top=(h-C.height)/2+'px'}
+addEventListener('resize',resize);resize();
+function gmp(e){const r=C.getBoundingClientRect(),cx=(e.clientX||(e.touches&&e.touches[0].clientX))-r.left,cy=(e.clientY||(e.touches&&e.touches[0].clientY))-r.top;return{x:cx/sc,y:cy/sc}}
+const W=TW,H=TH,rand=(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pick=a=>a[Math.floor(Math.random()*a.length)],clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+
+// ============================================================
+// RARITY SYSTEM
+// ============================================================
+const RARITIES={
+  Common:  {name:'Common',  color:'#c0c0c0',weight:50},
+  Uncommon:{name:'Uncommon',color:'#3fc03f',weight:30},
+  Rare:    {name:'Rare',    color:'#4090ff',weight:15},
+  Epic:    {name:'Epic',    color:'#b040f0',weight:4},
+  Legendary:{name:'Legendary',color:'#ffaa00',weight:1},
+};
+function rarityColor(r){return RARITIES[r]?RARITIES[r].color:'#c0c0c0'}
+
+function pickRarity(floor){
+  // Higher floors = more rare items
+  const bonus=Math.min(floor/30,3); // up to +3 rarity tiers at floor 90+
+  const weights={Common:Math.max(5,50-floor*0.8),Uncommon:Math.max(5,30-floor*0.3),Rare:Math.min(40,15+floor*0.3),Epic:Math.min(30,4+floor*0.15),Legendary:Math.min(20,1+floor*0.05)};
+  const total=Object.values(weights).reduce((a,b)=>a+b,0);
+  let roll=Math.random()*total;
+  for(const [k,v] of Object.entries(weights)){roll-=v;if(roll<=0)return k}
+  return 'Common';
+}
+
+// ============================================================
+// GAME DATA
+// ============================================================
+const TYPES=['Rock','Paper','Scissors'];
+const TADV={Rock:'Scissors',Paper:'Rock',Scissors:'Paper'};
+const TYPE_COLORS={Rock:'#b48c64',Paper:'#dcdcf0',Scissors:'#c83c3c',Buff:'#ffd700',Random:'#a03cc8'};
+const STATUS_FX={
+  bleed:{name:'Bleed',color:'#dc3232',dmgPct:0.05,dur:3,desc:'Loses 5% HP/turn'},
+  burn:{name:'Burn',color:'#ff8c00',dmgPct:0.08,dur:3,desc:'Loses 8% HP/turn, ATK-10%'},
+  poison:{name:'Poison',color:'#8c00dc',dmgPct:0.06,dur:4,desc:'Loses 6% HP/turn'},
+  wrap:{name:'Wrap',color:'#3cb478',dmgPct:0.04,dur:3,desc:'Trapped, SPD halved'},
+  freeze:{name:'Freeze',color:'#64dcff',dur:1,desc:'Cannot act for 1 turn'},
+  atkDown:{name:'ATK Down',color:'#ff6464',dur:3,desc:'ATK reduced 25%'},
+  defDown:{name:'DEF Down',color:'#6464ff',dur:3,desc:'DEF reduced 25%'},
+  spdDown:{name:'SPD Down',color:'#64ff64',dur:3,desc:'SPD reduced 25%'},
+};
+
+const BIOMES=[
+  {name:'Verdant Plains',floors:[1,35],style:'bright',enemies:['Slime','Mushroom','Bee','Rabbit','Beetle','Vine','Toad','Sparrow','Snail','Fox'],bossTheme:'Nature King'},
+  {name:'Shadow Caverns',floors:[36,70],style:'dark',enemies:['Bat','Ghost','Spider','Shade','Worm','Dark Elf','Wraith','Stalker','Gargoyle','Lich'],bossTheme:'Dark Lord'},
+  {name:'Neon Grid',floors:[71,100],style:'terminal',enemies:['Virus','Drone','Glitch','Firewall','Bot','Hacker','Trojan','Worm_D','Pixel','Byte'],bossTheme:'System Admin'},
+  {name:'Crystal Depths',floors:[101,150],style:'bright',enemies:['Crystal Bat','Gem Golem','Prism Bug','Geode','Shard','Amethyst','Topaz','Ruby Crab','Sapphire','Diamond Ant'],bossTheme:'Crystal Emperor'},
+  {name:'Inferno Wastes',floors:[151,200],style:'dark',enemies:['Flame Imp','Magma Slug','Ash Wraith','Ember','Lava Crab','Fire Drake','Cinder','Blaze Fox','Pyro','Infernal'],bossTheme:'Flame Titan'},
+  {name:'Void Expanse',floors:[201,250],style:'terminal',enemies:['Null','Void Sprite','Echo','Phantom_V','Anomaly','Entropy','Rift','Zero','Abyss','Singularity'],bossTheme:'The Void'},
+  {name:'Celestial Peak',floors:[251,300],style:'bright',enemies:['Angel','Star','Comet','Nebula','Solar','Lunar','Aurora','Cosmos','Nova','Supernova'],bossTheme:'The Absolute'},
+];
+function getBiome(f){return BIOMES.find(b=>f>=b.floors[0]&&f<=b.floors[1])||BIOMES[BIOMES.length-1]}
+function getStyle(f){return getBiome(f).style}
+const STYLES={
+  bright:{bg:'#1e1e3c',panel:'rgba(50,50,90,0.88)',border:'#6464b4',text:'#fff',dim:'#c0c0c0',accent:'#28c8dc',hpBar:'#32c832',hpBg:'#282828',enemyHp:'#dc3232',gold:'#ffd700',btnN:'#3c50a0',btnH:'#5064c8',btnT:'#fff',title:'#28c8dc'},
+  dark:{bg:'#0f0a14',panel:'rgba(30,20,40,0.88)',border:'#503264',text:'#c8b4c8',dim:'#786482',accent:'#a03cc8',hpBar:'#64c864',hpBg:'#1e1e1e',enemyHp:'#c83232',gold:'#c8aa1e',btnN:'#3c1e50',btnH:'#5a3278',btnT:'#dcc8e6',title:'#a03cc8'},
+  terminal:{bg:'#0a0a0a',panel:'rgba(5,15,5,0.88)',border:'#00a028',text:'#00ff41',dim:'#00a028',accent:'#00ff41',hpBar:'#00ff41',hpBg:'#0f1e0f',enemyHp:'#00ff41',gold:'#00ff41',btnN:'#0a280a',btnH:'#0f460f',btnT:'#00ff41',title:'#00ff41'},
+  menu:{bg:'#140f1e',panel:'rgba(35,30,55,0.88)',border:'#5a468c',text:'#fff',dim:'#c0c0c0',accent:'#ffd700',hpBar:'#32c832',hpBg:'#282828',enemyHp:'#dc3232',gold:'#ffd700',btnN:'#322a5a',btnH:'#503c8c',btnT:'#fff',title:'#ffd700'},
+};
+const TYPE_SPEC={
+  Rock:{passive:'Fortress',desc:'Takes 15% less damage, deals 10% more, but 20% slower',dmgMult:1.1,defMult:0.85,spdMult:0.8},
+  Paper:{passive:'Regenerate',desc:'Heals 3% max HP per turn, but 10% more likely to be hit',healPct:0.03,dodgePen:10},
+  Scissors:{passive:'Swift Strike',desc:'+25% crit chance, +15% speed, but 20% more damage taken',critBonus:25,spdMult:1.15,dmgTaken:1.2},
+};
+// ============================================================
+// ITEM POOL — 30 items across all rarities
+// ============================================================
+function mv(name,type,dmg,pp,effect,statusChance,statusType){return{name,type,dmg,maxPp:pp,effect:effect||null,statusChance:statusChance||0,statusType:statusType||null}}
+function makeChar(name,type,hp,atk,def,spd,cost,color,moves,evo1,evo2,ability,backstory){return{name,type,hp,atk,def,spd,cost,color,moves,evo1,evo2,ability,backstory}}
+
+const FREE_ITEMS=[
+  // Common
+  {name:'Pebble Shard',rarity:'Common',desc:'ATK+2',effect:'atk+2'},
+  {name:'Leaf Wrap',rarity:'Common',desc:'DEF+2',effect:'def+2'},
+  {name:'Wind Step',rarity:'Common',desc:'SPD+2',effect:'spd+2'},
+  {name:'Cracked Stone',rarity:'Common',desc:'MaxHP+10',effect:'maxhp+10'},
+  {name:'Lucky Coin',rarity:'Common',desc:'Crit+3%',effect:'crit+3'},
+  {name:'Dusty Cape',rarity:'Common',desc:'Dodge+3%',effect:'dodge+3'},
+  // Uncommon
+  {name:'Steel Chip',rarity:'Uncommon',desc:'ATK+5',effect:'atk+5'},
+  {name:'Guard Bangle',rarity:'Uncommon',desc:'DEF+5',effect:'def+5'},
+  {name:'Swift Ring',rarity:'Uncommon',desc:'SPD+4',effect:'spd+4'},
+  {name:'Vitality Seed',rarity:'Uncommon',desc:'MaxHP+25',effect:'maxhp+25'},
+  {name:'Sharp Eye',rarity:'Uncommon',desc:'Crit+6%',effect:'crit+6'},
+  {name:'Feather Cloak',rarity:'Uncommon',desc:'Dodge+6%',effect:'dodge+6'},
+  {name:'Tri-Shard',rarity:'Uncommon',desc:'All stats+2',effect:'all+2'},
+  // Rare
+  {name:'Power Gem',rarity:'Rare',desc:'ATK+9',effect:'atk+9'},
+  {name:'Iron Aegis',rarity:'Rare',desc:'DEF+9',effect:'def+9'},
+  {name:'Mercury Boots',rarity:'Rare',desc:'SPD+8',effect:'spd+8'},
+  {name:'Life Crystal',rarity:'Rare',desc:'MaxHP+40',effect:'maxhp+40'},
+  {name:'Eagle Eye',rarity:'Rare',desc:'Crit+12%',effect:'crit+12'},
+  {name:'Shadow Veil',rarity:'Rare',desc:'Dodge+10%',effect:'dodge+10'},
+  {name:'Tri-Force Gem',rarity:'Rare',desc:'All stats+4',effect:'all+4'},
+  // Epic
+  {name:'Dragon Fang',rarity:'Epic',desc:'ATK+15, Crit+8%',effect:'atk+15_crit+8'},
+  {name:'Titan Shell',rarity:'Epic',desc:'DEF+14, MaxHP+30',effect:'def+14_maxhp+30'},
+  {name:'Phantom Soles',rarity:'Epic',desc:'SPD+12, Dodge+8%',effect:'spd+12_dodge+8'},
+  {name:'Berserker Seal',rarity:'Epic',desc:'ATK+10, 25% double-strike',effect:'atk+10_doublestrike'},
+  {name:'Voidheart',rarity:'Epic',desc:'MaxHP+60, All+3',effect:'maxhp+60_all+3'},
+  {name:'Quicksilver Orb',rarity:'Epic',desc:'10% chance to move first',effect:'priority_passive'},
+  // Legendary
+  {name:'Chaos Crown',rarity:'Legendary',desc:'All stats+8, Crit+15%',effect:'all+8_crit+15'},
+  {name:'Eternal Flame',rarity:'Legendary',desc:'ATK+20, Burn on every hit',effect:'atk+20_burn_passive'},
+  {name:'Absolute Mirror',rarity:'Legendary',desc:'Reflects 20% all damage',effect:'reflect_passive'},
+  {name:'Soul Gem',rarity:'Legendary',desc:'MaxHP+100, revive once at 30% HP',effect:'revive_passive'},
+  {name:'Infinity Loop',rarity:'Legendary',desc:'+25% Crit, double-strike, 10% move-first',effect:'ultimate_passive'},
+];
+
+function pickFreeItems(floor,count){
+  const pool=FREE_ITEMS.slice();
+  const result=[];
+  for(let i=0;i<count;i++){
+    const rar=pickRarity(floor);
+    const matching=pool.filter(x=>x.rarity===rar);
+    const chosen=matching.length?pick(matching):pick(pool);
+    result.push({...chosen});
+    const idx=pool.indexOf(chosen);
+    if(idx>=0)pool.splice(idx,1);
+  }
+  return result;
+}
+
+// ============================================================
+// 50 CHARACTERS
+// ============================================================
+const CHARS=[
+  makeChar('Stone','Rock',150,12,10,5,0,'#b48c64',[mv('Rock Throw','Rock',15,20),mv('Harden','Buff',0,15,'def+5'),mv('Boulder Smash','Rock',30,10)],'Golem','Titan','Sturdy: Survives one fatal hit per battle','A humble stone that dreamed of becoming a mountain. Slow but unbreakable.'),
+  makeChar('Blade','Scissors',120,16,5,12,0,'#c83c3c',[mv('Quick Cut','Scissors',12,25),mv('Sharpen','Buff',0,15,'atk+5'),mv('Cross Slash','Scissors',28,10)],'Shear','Guillotine','First Strike: Always attacks first','A razor-sharp blade forged in the fires of competition. Lives to cut.'),
+  makeChar('Scroll','Paper',130,10,7,8,0,'#dcdcf0',[mv('Paper Cut','Paper',13,22),mv('Fold Shield','Buff',0,15,'def+5'),mv('Origami Storm','Paper',26,10)],'Tome','Codex','Wisdom: Gains 20% more XP','An ancient scroll containing forgotten knowledge. Fragile but wise.'),
+  makeChar('Crystal','Rock',110,18,4,12,15,'#64c8ff',[mv('Gem Shard','Rock',18,18),mv('Prism Beam','Paper',14,15),mv('Diamond Crush','Rock',35,8)],'Prism','Diamond','Refract: 15% chance to reflect damage','Born from compressed starlight deep underground.'),
+  makeChar('Shadow','Scissors',100,20,3,15,15,'#643c8c',[mv('Night Slash','Scissors',20,16),mv('Vanish','Buff',0,10,'spd+8'),mv('Phantom Blade','Scissors',38,7)],'Phantom','Wraith','Stealth: 20% dodge chance','A living shadow that feeds on darkness. Deadly but frail.'),
+  makeChar('Sage','Paper',140,14,7,7,15,'#3cb478',[mv('Spell Page','Paper',16,20),mv('Heal Word','Buff',0,8,'heal30'),mv('Arcane Burst','Paper',32,9)],'Wizard','Archmage','Meditate: Restores 2 PP per turn','A wandering sage seeking ultimate knowledge.'),
+  makeChar('Ember','Rock',135,15,8,7,20,'#ff6432',[mv('Flame Rock','Rock',17,18,null,20,'burn'),mv('Heat Shield','Buff',0,12,'def+8'),mv('Eruption','Rock',40,6)],'Magma','Volcano','Overheat: Attacks gain burn chance','A smoldering stone from the earth\'s core.'),
+  makeChar('Gale','Scissors',115,17,5,14,20,'#96dcff',[mv('Wind Blade','Scissors',15,22),mv('Tailwind','Buff',0,10,'spd+6'),mv('Hurricane Cut','Scissors',34,8)],'Storm','Typhoon','Windforce: Speed boosts are doubled','A blade made of compressed wind.'),
+  makeChar('Lotus','Paper',145,12,8,6,20,'#ff96c8',[mv('Petal Dance','Paper',14,20,null,15,'poison'),mv('Bloom','Buff',0,8,'heal40'),mv('Nature\'s Wrath','Paper',30,9)],'Blossom','Sakura','Thorns: Attackers take 10% recoil','A mystical flower with healing power.'),
+  makeChar('Iron','Rock',170,14,12,3,25,'#a0a0b4',[mv('Iron Fist','Rock',20,16),mv('Metal Wall','Buff',0,10,'def+10'),mv('Steel Crash','Rock',45,5)],'Steel','Titanium','Heavy Armor: Immune to status effects','A chunk of living metal. Near indestructible.'),
+  makeChar('Fang','Scissors',105,22,4,13,25,'#c86432',[mv('Bite','Scissors',18,20,null,25,'bleed'),mv('Howl','Buff',0,12,'atk+7'),mv('Savage Rend','Scissors',42,6)],'Predator','Alpha','Bloodlust: ATK+5% per enemy killed','A feral beast driven by instinct.'),
+  makeChar('Rune','Paper',125,16,6,9,25,'#c8a0ff',[mv('Rune Bolt','Paper',17,20),mv('Enchant','Buff',0,10,'atk+6'),mv('Arcane Nova','Paper',36,7)],'Sigil','Glyph','Inscription: Moves cost 1 less PP','A floating rune of ancient power.'),
+  makeChar('Frost','Rock',130,14,9,6,30,'#a0e6ff',[mv('Ice Rock','Rock',16,20,null,20,'freeze'),mv('Frost Armor','Buff',0,10,'def+7'),mv('Avalanche','Rock',38,7)],'Glacier','Absolute Zero','Chill: 10% chance to freeze on hit','A sentient iceberg from the frozen north.'),
+  makeChar('Spark','Scissors',100,21,3,16,30,'#ffdc00',[mv('Thunder Cut','Scissors',19,18),mv('Charge','Buff',0,10,'atk+8'),mv('Lightning Blade','Scissors',40,6)],'Bolt','Thunder','Static: Attackers get SPD down','Pure electrical energy in blade form.'),
+  makeChar('Silk','Paper',135,13,6,10,30,'#ffe6f0',[mv('Thread Bind','Paper',14,20,null,20,'wrap'),mv('Cocoon','Buff',0,10,'def+6'),mv('Web Blast','Paper',28,10)],'Weaver','Arachne','Entangle: Moves have +15% status chance','Spins beautiful but deadly silk.'),
+  makeChar('Obsidian','Rock',160,16,11,4,35,'#1e1428',[mv('Dark Rock','Rock',22,14),mv('Void Shell','Buff',0,8,'def+12'),mv('Obliterate','Rock',50,4)],'Onyx','Voidstone','Absorb: Heals 5% of damage dealt','Forged in the void between worlds.'),
+  makeChar('Razor','Scissors',95,24,2,17,35,'#e6322d',[mv('Razor Wind','Scissors',22,16),mv('Whet','Buff',0,10,'atk+8'),mv('Execution','Scissors',55,4)],'Reaper','Deathblade','Execute: 2x damage below 20% HP','A cursed blade that hungers for battle.'),
+  makeChar('Oracle','Paper',140,15,7,8,35,'#c8c8ff',[mv('Foresight','Paper',16,20),mv('Prophecy','Buff',0,8,'all+3'),mv('Destiny Beam','Paper',35,8)],'Seer','Omniscient','Predict: 25% dodge, sees enemy moves','Sees all possible futures.'),
+  makeChar('Magnet','Rock',125,17,8,8,40,'#96969c',[mv('Magnetic Pulse','Rock',19,18),mv('Polarize','Buff',0,10,'def+6'),mv('Rail Gun','Rock',44,5)],'Tesla','Dynamo','Attract: Pulls enemies\' items','Controls magnetic force.'),
+  makeChar('Venom','Scissors',110,19,5,11,40,'#6e00a0',[mv('Toxic Cut','Scissors',16,20,null,35,'poison'),mv('Acid Coat','Buff',0,10,'atk+6'),mv('Venom Strike','Scissors',36,7,null,25,'poison')],'Blight','Plague','Toxic: All attacks may poison','Drips with lethal venom.'),
+  makeChar('Origami','Paper',120,14,6,11,40,'#ffc8c8',[mv('Crane Strike','Paper',15,22),mv('1000 Cranes','Buff',0,6,'heal50'),mv('Paper Dragon','Paper',38,7)],'Kirigami','Master Fold','Fold: Changes type each turn','A master of paper transformation.'),
+  makeChar('Meteor','Rock',140,20,6,7,45,'#dc6400',[mv('Space Rock','Rock',24,14),mv('Gravity Well','Buff',0,8,'def+8'),mv('Impact','Rock',52,4)],'Comet','Supernova_C','Crash: First attack deals 1.5x','Fell from the heavens.'),
+  makeChar('Ninja','Scissors',90,23,2,18,45,'#28283c',[mv('Shuriken','Scissors',14,25),mv('Smoke Bomb','Buff',0,8,'spd+10'),mv('Death Mark','Scissors',48,5)],'Assassin','Grandmaster','Shadow Step: Attacks twice at 60% power','Strikes unseen.'),
+  makeChar('Scholar','Paper',150,13,8,6,45,'#f0e6c8',[mv('Book Slam','Paper',15,20),mv('Study','Buff',0,10,'all+2'),mv('Knowledge Blast','Paper',34,8)],'Professor','Librarian','Analyze: Gains damage +5% each turn','Has read every book ever written.'),
+  makeChar('Pebble','Rock',180,10,14,3,50,'#c8b496',[mv('Roll','Rock',12,25),mv('Curl Up','Buff',0,15,'def+8'),mv('Rock Slide','Rock',35,8)],'Boulder','Mountain','Immovable: Cannot be knocked back','Small but impossibly dense.'),
+  makeChar('Katana','Scissors',85,26,2,19,50,'#e6e6f0',[mv('Iai Slash','Scissors',24,14),mv('Focus','Buff',0,8,'atk+10'),mv('1000 Cuts','Scissors',60,3)],'Nodachi','Muramasa','Bushido: Crit hits restore PP','A legendary blade with a will of its own.'),
+  makeChar('Papyrus','Paper',155,11,9,5,50,'#f0dcc8',[mv('Ancient Script','Paper',14,22),mv('Mummy Wrap','Paper',10,12,null,40,'wrap'),mv('Curse','Paper',30,8,null,30,'atkDown')],'Pharaoh','Anubis','Preservation: Status effects last 1 extra turn','Written on the walls of forgotten tombs.'),
+  makeChar('Lava','Rock',145,18,7,5,55,'#ff3200',[mv('Lava Ball','Rock',20,16,null,20,'burn'),mv('Magma Armor','Buff',0,8,'def+10'),mv('Volcanic Fury','Rock',48,5,null,30,'burn')],'Magma_C','Core','Molten: Contact damages attackers 8%','Living magma from the planet\'s core.'),
+  makeChar('Scythe','Scissors',95,25,3,14,55,'#464646',[mv('Reap','Scissors',22,16,null,15,'bleed'),mv('Soul Drain','Buff',0,6,'heal25'),mv('Final Harvest','Scissors',55,4)],'Deathscythe','Grim','Harvest: Killing heals 20% max HP','The weapon of death itself.'),
+  makeChar('Quill','Paper',130,15,6,10,55,'#283cdc',[mv('Ink Shot','Paper',16,22,null,10,'spdDown'),mv('Edit','Buff',0,10,'all+2'),mv('Masterpiece','Paper',38,6)],'Pen','Author','Rewrite: Can change move type once/battle','The pen is mightier than the sword.'),
+  makeChar('Garnet','Rock',135,16,9,7,60,'#dc1432',[mv('Ruby Ray','Rock',19,16),mv('Gem Shield','Buff',0,10,'def+8'),mv('Shatter','Rock',42,6)],'Ruby_C','Blood Diamond','Sparkle: +20% gold from battles','A gem that shines with inner fire.'),
+  makeChar('Rapier','Scissors',105,21,4,15,60,'#c8c8dc',[mv('Thrust','Scissors',17,22),mv('Riposte','Buff',0,10,'def+4'),mv('Flurry','Scissors',12,20)],'Epee','Excalibur','Parry: 30% counter on enemy physical','The duelist\'s weapon of choice.'),
+  makeChar('Talisman','Paper',145,14,8,6,60,'#ffa000',[mv('Hex','Paper',16,18,null,20,'atkDown'),mv('Ward','Buff',0,10,'def+7'),mv('Spirit Bomb','Paper',40,6)],'Amulet','Artifact_C','Protection: Immune to first status','A mystical charm of protection.'),
+  makeChar('Fossil','Rock',165,13,11,4,65,'#968c78',[mv('Ancient Strike','Rock',18,18),mv('Petrify','Rock',10,8,null,30,'freeze'),mv('Excavate','Rock',40,6)],'Relic','Primordial','Ancient: Gains +1 all stats per 10 floors','Millions of years of compressed power.'),
+  makeChar('Chakram','Scissors',110,20,5,13,65,'#dc9600',[mv('Disc Throw','Scissors',18,20),mv('Spin','Buff',0,10,'spd+7'),mv('Orbit Blade','Scissors',35,8)],'Ring Blade','Infinity Ring','Boomerang: Missed attacks hit next turn','A circular blade that always returns.'),
+  makeChar('Grimoire','Paper',160,16,7,5,65,'#500050',[mv('Dark Page','Paper',18,16,null,15,'poison'),mv('Forbidden Knowledge','Buff',0,6,'atk+10'),mv('Eldritch Blast','Paper',45,5)],'Necronomicon','Book of Fate','Forbidden: Moves deal 20% more but cost HP','A book of dark and forbidden magic.'),
+  makeChar('Marble','Rock',175,12,13,3,70,'#e6e6e6',[mv('Smooth Roll','Rock',14,22),mv('Polish','Buff',0,12,'def+6'),mv('Marble Slam','Rock',38,8)],'Alabaster','Colossus','Polished: 15% chance to reflect status','Pure white and perfectly smooth.'),
+  makeChar('Kunai','Scissors',100,22,3,16,70,'#323250',[mv('Throw','Scissors',16,24),mv('Shadow Clone','Buff',0,6,'spd+12'),mv('Lethal Aim','Scissors',45,5)],'Tanto','Masamune','Precision: Ignores 50% of enemy DEF','A throwing weapon of deadly precision.'),
+  makeChar('Scroll_S','Paper',140,15,7,8,70,'#c8f0c8',[mv('Nature Spell','Paper',17,20),mv('Regrowth','Buff',0,6,'heal40'),mv('Forest Fury','Paper',36,7)],'Druid Tome','World Tree','Symbiosis: Heals ally 5% when healing self','Contains the magic of nature itself.'),
+  makeChar('Geode','Rock',155,15,10,5,75,'#a064c8',[mv('Crystal Throw','Rock',17,18),mv('Geode Shell','Buff',0,10,'def+9'),mv('Gem Eruption','Rock',42,6)],'Amethyst_C','Infinity Stone','Surprise: Random bonus effect on attacks','Ugly outside, beautiful inside.'),
+  makeChar('Sai','Scissors',108,19,6,12,75,'#966432',[mv('Pierce','Scissors',17,20),mv('Trap','Scissors',12,12,null,25,'wrap'),mv('Triple Strike','Scissors',14,18)],'Trident','Poseidon Fork','Catch: 20% chance to disarm enemy (ATK-30% 1 turn)','A three-pronged weapon of the sea.'),
+  makeChar('Sutra','Paper',150,14,8,6,75,'#ffd700',[mv('Mantra','Paper',15,22),mv('Enlighten','Buff',0,6,'all+4'),mv('Nirvana','Paper',50,3)],'Scripture','Holy Writ','Transcend: Immune below 10% HP for 1 turn','The holiest of texts.'),
+  makeChar('Onyx','Rock',145,19,8,6,80,'#1e1e1e',[mv('Dark Smash','Rock',22,14,null,15,'defDown'),mv('Void Absorb','Buff',0,8,'heal35'),mv('Black Hole','Rock',55,3)],'Abyss Stone','Event Horizon','Dark Matter: Damage increases in dark biomes','A stone of pure darkness.'),
+  makeChar('Raptor','Scissors',92,25,2,18,80,'#64c800',[mv('Claw Swipe','Scissors',20,18,null,20,'bleed'),mv('Predator Eye','Buff',0,8,'atk+8'),mv('Pounce','Scissors',50,5)],'Velociraptor','T-Rex','Hunt: Double damage vs wounded enemies','A prehistoric predator reborn.'),
+  makeChar('Mandala','Paper',160,13,9,5,80,'#ff64ff',[mv('Pattern','Paper',15,20),mv('Meditate_M','Buff',0,8,'heal30'),mv('Cosmic Pattern','Paper',42,6)],'Yantra','Universe','Harmony: Reduces all damage taken by 10%','A cosmic pattern of infinite complexity.'),
+  makeChar('Titanium','Rock',190,14,14,2,90,'#b4b4c8',[mv('Titan Punch','Rock',20,14),mv('Titan Shield','Buff',0,8,'def+15'),mv('Titan Slam','Rock',55,4)],'Adamantium','Indestructible','Unbreakable: Cannot drop below 1 HP from single hit','The strongest metal known to exist.'),
+  makeChar('Muramasa','Scissors',80,28,1,20,90,'#dc0000',[mv('Blood Cut','Scissors',25,14,null,30,'bleed'),mv('Blood Rage','Buff',0,6,'atk+12'),mv('Demon Slash','Scissors',65,3)],'Demon Blade','Chaos Blade','Cursed: +50% ATK but loses 3% HP/turn','A cursed blade of unspeakable power.'),
+  makeChar('Akashic','Paper',170,16,8,6,90,'#ffffff',[mv('Record','Paper',18,18),mv('Archive','Buff',0,8,'all+3'),mv('Total Recall','Paper',48,5)],'Chronicle','Akashic Record','Memory: Remembers and counters repeated moves','Contains the memory of all existence.'),
+  makeChar('Chaos','Rock',160,17,7,7,100,'#ff5000',[mv('Random Strike','Random',22,18),mv('Wild Card','Random',0,12,'random_buff'),mv('Chaos Rift','Random',45,6)],'Entropy','Oblivion','Unpredictable: Type changes randomly each turn','The embodiment of chaos itself.'),
+];
+const CHAR_MAP={};CHARS.forEach(c=>CHAR_MAP[c.name]=c);
+// ============================================================
+// ENEMY & BOSS GENERATION
+// ============================================================
+function genEnemyData(name,floor,biome){
+  const type=pick(TYPES);const scale=1+floor*0.04;
+  const baseHp=30+floor*2;const baseAtk=6+floor*0.8;
+  return{name,type,hp:Math.floor(baseHp*scale*(0.8+Math.random()*0.4)),maxHp:0,atk:Math.floor(baseAtk*scale*(0.8+Math.random()*0.4)),
+    color:biome.style==='bright'?pick(['#32c832','#64b432','#c8c800','#32c8c8','#c89632']):biome.style==='dark'?pick(['#a03cc8','#6432a0','#c83232','#646496','#969696']):pick(['#00ff41','#00c832','#00a064','#32ff96','#64ffc8']),
+    isBoss:false,phase:1,statuses:[],ability:null};
+}
+function genBoss(floor){
+  const scale=1+floor*0.03;const bossNum=Math.floor(floor/10);
+  const names=['Slime King','Shadow Thief','Paper Witch','Iron Giant','Blade Dancer','Ancient Scroll','Void Walker','Storm Reaper','Cosmic Sage','The Absolute',
+    'Crystal Emperor','Flame Titan','Dark Overlord','Ice Queen','Thunder God','Nature\'s Wrath','Chaos Lord','Time Weaver','Space Bender','The Creator',
+    'Diamond King','Molten Core','Shadow Prime','Frost Monarch','Spark Overlord','Silk Empress','Obsidian Lord','Razor Queen','Oracle Supreme','The Infinite'];
+  const quotes=['You dare challenge me?!','Your treasures will be mine!','I\'ll fold you into nothing!','CRUSH. SMASH. DESTROY.',
+    'My blades dance!','I contain ancient wisdom...','The void consumes all...','Feel the tempest!',
+    'The stars foretell your defeat.','I am all types. I am THE ABSOLUTE.',
+    'My crystals will shatter you!','Burn in eternal flame!','Darkness is my domain!','Freeze in place!',
+    'Thunder strikes twice!','Nature reclaims all!','Chaos reigns supreme!','Time means nothing to me!',
+    'Space bends to my will!','I created everything... including your doom.',
+    'Diamonds are forever!','The earth\'s core answers to me!','I am the prime shadow!','Winter is eternal!',
+    'Lightning never strikes the same place... except when I command it!','My web is inescapable!',
+    'I am the void made manifest!','A thousand cuts await you!','I have seen all possible futures... you lose.',
+    'This is the final challenge. Are you ready?'];
+  const idx=Math.min(bossNum-1,names.length-1);
+  const hp=Math.floor((150+bossNum*30)*scale);const isLast=floor===300;
+  return{name:names[idx]||`Boss Lv.${bossNum}`,type:pick(TYPES),hp,maxHp:hp,atk:Math.floor((18+bossNum*3)*scale),
+    color:isLast?'#ffd700':'#ff6464',isBoss:true,quote:quotes[idx]||'Prepare yourself!',
+    phase:1,phase2Hp:isLast?Math.floor(hp*0.6):floor%50===0?Math.floor(hp*0.5):0,
+    phase2Atk:isLast?Math.floor((18+bossNum*3)*scale*1.5):Math.floor((18+bossNum*3)*scale*1.3),
+    statuses:[],ability:bossNum>5?pick(['regenerate','enrage','shield']):null,
+    dialogue:[quotes[idx]||'...','You cannot defeat me!','This isn\'t over!']};
+}
+
+// ============================================================
+// SHOP ITEMS (for Eternal Shop / regular shop)
+// ============================================================
+const SHOP_ITEMS=[
+  {name:'Healing Potion',desc:'+30 HP',cost:15,effect:'heal30',cat:'heal'},
+  {name:'Mega Potion',desc:'+80 HP',cost:35,effect:'heal80',cat:'heal'},
+  {name:'Max Potion',desc:'Full HP',cost:80,effect:'heal_full',cat:'heal'},
+  {name:'PP Restore',desc:'All PP',cost:30,effect:'pp_restore',cat:'heal'},
+  {name:'Bomb',desc:'40 damage',cost:25,effect:'bomb40',cat:'combat'},
+  {name:'Mega Bomb',desc:'100 damage',cost:55,effect:'bomb100',cat:'combat'},
+  {name:'Antidote',desc:'Cure status',cost:20,effect:'cure_status',cat:'heal'},
+  {name:'Sword Oil',desc:'ATK+5 (perm)',cost:50,effect:'atk+5',cat:'stat'},
+  {name:'Iron Shield',desc:'DEF+5 (perm)',cost:50,effect:'def+5',cat:'stat'},
+  {name:'Speed Boots',desc:'SPD+5 (perm)',cost:50,effect:'spd+5',cat:'stat'},
+  {name:'Lucky Charm',desc:'Crit+5% (perm)',cost:60,effect:'crit+5',cat:'stat'},
+  {name:'Dodge Cape',desc:'Dodge+5% (perm)',cost:60,effect:'dodge+5',cat:'stat'},
+  {name:'Life Shard',desc:'MaxHP+15 (perm)',cost:70,effect:'maxhp+15',cat:'stat'},
+  {name:'Power Ring',desc:'ATK+8 (perm)',cost:90,effect:'atk+8',cat:'stat'},
+  {name:'Fortress',desc:'DEF+8 (perm)',cost:90,effect:'def+8',cat:'stat'},
+];
+
+// Mini-shop: only buyable items (no free offers here — free picks are separate)
+const MINI_SHOP_BUYABLE=[
+  {name:'Healing Potion',desc:'+30 HP',cost:12,effect:'heal30'},
+  {name:'Mega Potion',desc:'+80 HP',cost:30,effect:'heal80'},
+  {name:'PP Restore',desc:'All PP',cost:25,effect:'pp_restore'},
+  {name:'Antidote',desc:'Cure status',cost:15,effect:'cure_status'},
+];
+// ============================================================
+// 20+ MYSTERY ENCOUNTERS
+// ============================================================
+const ENCOUNTERS=[
+  {name:'Mysterious Fountain',img:'fountain',opts:[
+    {text:'Drink deeply (60% heal, 40% poison)',result:()=>{if(Math.random()<0.6){S.hp=Math.min(S.maxHp,S.hp+60);return'Healed 60 HP!'}else{addStatus(S,'poison');return'Poisoned by tainted water!'}}},
+    {text:'Sip carefully (+25 HP, safe)',result:()=>{S.hp=Math.min(S.maxHp,S.hp+25);return'Sipped carefully — +25 HP'}},
+    {text:'Fill a bottle (get Mega Potion)',result:()=>{addInv('Mega Potion','heal80');return'Bottled the water — got Mega Potion!'}},
+    {text:'Meditate beside it (restore PP)',result:()=>{S.moves.forEach(m=>m.pp=m.maxPp);return'Calm restored all PP!'}},
+    {text:'Leave (nothing happens)',result:()=>'You stepped away cautiously'}]},
+  {name:'Wandering Merchant',img:'merchant',opts:[
+    {text:'Buy supplies (pay 20g for Mega Potion)',result:()=>{if(S.gold>=20){S.gold-=20;addInv('Mega Potion','heal80');return'Bought Mega Potion for 20g!'}return'Not enough gold!'}},
+    {text:'Trade an artifact for stats',result:()=>{if(S.artifacts.length){S.artifacts.pop();S.permAtk=(S.permAtk||0)+10;S.atk+=10;S.permDef=(S.permDef||0)+5;S.def+=5;return'Traded artifact! Perm ATK+10, DEF+5!'}return'No artifacts to trade!'}},
+    {text:'Haggle (40% get 30g, 60% lose 10g)',result:()=>{if(Math.random()<0.4){S.gold+=30;return'Haggled well! +30 gold!'}else{S.gold=Math.max(0,S.gold-10);return'Merchant offended! -10 gold'}}},
+    {text:'Rob them (30% +80g, 70% -40 HP)',result:()=>{if(Math.random()<0.3){S.gold+=80;return'Stole 80 gold!'}else{S.hp-=40;return'Caught! -40 HP'}}},
+    {text:'Ask for a blessing (random stat +4)',result:()=>{const s=pick(['atk','def','spd']);S[s]+=4;S['perm'+s.charAt(0).toUpperCase()+s.slice(1)]=(S['perm'+s.charAt(0).toUpperCase()+s.slice(1)]||0)+4;return`Merchant blessed you! Perm ${s.toUpperCase()}+4`}}]},
+  {name:'Ancient Altar',img:'altar',opts:[
+    {text:'Pray sincerely (full HP)',result:()=>{S.hp=S.maxHp;return'The altar fully healed you!'}},
+    {text:'Sacrifice HP for power (-30% HP, ATK+12)',result:()=>{S.hp=Math.floor(S.hp*0.7);S.permAtk=(S.permAtk||0)+12;S.atk+=12;return'Lost 30% HP — ATK permanently +12!'}},
+    {text:'Read the inscription (DEF+5, SPD+5 perm)',result:()=>{S.permDef=(S.permDef||0)+5;S.def+=5;S.permSpd=(S.permSpd||0)+5;S.spd+=5;return'Ancient wisdom! Perm DEF+5 SPD+5'}},
+    {text:'Smash it (50% +100g, 50% MaxHP-10)',result:()=>{if(Math.random()<0.5){S.gold+=100;return'Found 100 gold inside!'}else{S.maxHp-=10;S.hp=Math.min(S.hp,S.maxHp);return'Cursed! MaxHP permanently -10'}}},
+    {text:'Leave an offering (+15g, small blessing)',result:()=>{if(S.gold>=15){S.gold-=15;S.crit+=5;return'Offered 15g — Crit permanently +5%!'}return'You have no gold to offer'}}]},
+  {name:'Treasure Chest',img:'chest',opts:[
+    {text:'Open it freely (30-100g)',result:()=>{const g=rand(30,100);S.gold+=g;return`Found ${g} gold!`}},
+    {text:'Check for traps first (20-50g + DEF+2)',result:()=>{const g=rand(20,50);S.gold+=g;S.def+=2;return`Safe! ${g} gold + perm DEF+2`}},
+    {text:'Kick it open (60% ATK+5, 40% Mimic -25 HP)',result:()=>{if(Math.random()<0.6){S.permAtk=(S.permAtk||0)+5;S.atk+=5;return'Found a power gem! Perm ATK+5'}else{S.hp-=25;return'It was a Mimic! -25 HP'}}},
+    {text:'Listen carefully (identify contents first)',result:()=>{return'You hear coins clinking — it\'s real gold!'}},
+    {text:'Ignore and walk away',result:()=>'You walked away. But what if...'}]},
+  {name:'Training Grounds',img:'training',opts:[
+    {text:'Strength training (ATK+4 perm)',result:()=>{S.permAtk=(S.permAtk||0)+4;S.atk+=4;return'Perm ATK+4!'}},
+    {text:'Defense drills (DEF+4 perm)',result:()=>{S.permDef=(S.permDef||0)+4;S.def+=4;return'Perm DEF+4!'}},
+    {text:'Speed course (SPD+4 perm)',result:()=>{S.permSpd=(S.permSpd||0)+4;S.spd+=4;return'Perm SPD+4!'}},
+    {text:'Endurance run (MaxHP+20 perm)',result:()=>{S.maxHp+=20;S.hp=Math.min(S.hp+10,S.maxHp);return'Perm MaxHP+20!'}},
+    {text:'Full workout (all stats +2 perm)',result:()=>{S.permAtk=(S.permAtk||0)+2;S.atk+=2;S.permDef=(S.permDef||0)+2;S.def+=2;S.permSpd=(S.permSpd||0)+2;S.spd+=2;return'Perm All stats +2!'}}]},
+  {name:'Cursed Shrine',img:'shrine',opts:[
+    {text:'Accept the curse (lose 15% HP, ATK+10 perm)',result:()=>{S.hp-=Math.floor(S.maxHp*0.15);S.permAtk=(S.permAtk||0)+10;S.atk+=10;return'Cursed! -15% HP, perm ATK+10!'}},
+    {text:'Purify the shrine (cure statuses, +20 HP)',result:()=>{S.statuses=[];S.hp=Math.min(S.maxHp,S.hp+20);return'Purified! All statuses cured, +20 HP'}},
+    {text:'Study the dark arts (Crit+8% perm)',result:()=>{S.crit+=8;return'Mastered dark arts! Perm Crit+8%'}},
+    {text:'Destroy it (50% +50g, 50% -30 HP)',result:()=>{if(Math.random()<0.5){S.gold+=50;return'Curse-gold appeared! +50g'}else{S.hp-=30;return'The shrine cursed you! -30 HP'}}},
+    {text:'Flee immediately (SPD+3 from panic)',result:()=>{S.spd+=3;return'Fled! Adrenaline: Perm SPD+3'}}]},
+  {name:'Mysterious Stranger',img:'stranger',opts:[
+    {text:'Accept their gift (50% MaxHP+20, 50% poison)',result:()=>{if(Math.random()<0.5){S.maxHp+=20;S.hp+=20;return'Gift of life! Perm MaxHP+20'}else{addStatus(S,'poison');return'The gift was a trap! Poisoned!'}}},
+    {text:'Refuse politely (+20 gold)',result:()=>{S.gold+=20;return'They respected you. +20 gold'}},
+    {text:'Challenge them to a duel (50/50)',result:()=>{if(Math.random()<0.5){S.permAtk=(S.permAtk||0)+5;S.atk+=5;S.permDef=(S.permDef||0)+5;S.def+=5;return'Won the duel! Perm ATK+5, DEF+5!'}else{S.hp-=50;return'Lost the duel badly! -50 HP'}}},
+    {text:'Follow them (mysterious quest reward)',result:()=>{const r=pick(['atk','def','spd','crit']);const v=rand(5,10);if(r==='crit')S.crit+=v;else S[r]+=v;return`The quest reward: Perm ${r.toUpperCase()}+${v}!`}},
+    {text:'Ignore and pass by',result:()=>'They vanish into the mist...'}]},
+  {name:'Healing Spring',img:'spring',opts:[
+    {text:'Bathe fully (full HP + cure all statuses)',result:()=>{S.hp=S.maxHp;S.statuses=[];return'Fully restored and all statuses cured!'}},
+    {text:'Drink (heal 50 HP)',result:()=>{S.hp=Math.min(S.maxHp,S.hp+50);return'Drank from spring — +50 HP'}},
+    {text:'Bottle the water (get Max Potion)',result:()=>{addInv('Max Potion','heal_full');return'Bottled the spring water — Max Potion!'}},
+    {text:'Meditate beside it (restore all PP)',result:()=>{S.moves.forEach(m=>m.pp=m.maxPp);return'Meditation restored all PP!'}},
+    {text:'Study the spring (MaxHP+15 perm)',result:()=>{S.maxHp+=15;S.hp=Math.min(S.hp+5,S.maxHp);return'Studied the spring\'s power — perm MaxHP+15!'}}]},
+  {name:'Broken Mirror',img:'mirror',opts:[
+    {text:'Look into it (50% ATK+10, 50% ATK-5)',result:()=>{if(Math.random()<0.5){S.permAtk=(S.permAtk||0)+10;S.atk+=10;return'Saw your true power! Perm ATK+10'}else{S.atk=Math.max(1,S.atk-5);return'Saw weakness... ATK-5 (temporary)'}}},
+    {text:'Smash it (Crit+10%, 7 years bad luck lore)',result:()=>{S.crit+=10;return'Shattered! Perm Crit+10% (worth it)'}},
+    {text:'Repair it (karma: DEF+6, +30 HP)',result:()=>{S.permDef=(S.permDef||0)+6;S.def+=6;S.hp=Math.min(S.maxHp,S.hp+30);return'Karma! Perm DEF+6 and +30 HP'}},
+    {text:'Use it as a shield (DEF+4)',result:()=>{S.permDef=(S.permDef||0)+4;S.def+=4;return'Mirror shield! Perm DEF+4'}},
+    {text:'Walk past slowly',result:()=>'Nothing happened... or did it?'}]},
+  {name:'Ancient Rune Stone',img:'rune',opts:[
+    {text:'Touch it (all stats +3 perm)',result:()=>{S.permAtk=(S.permAtk||0)+3;S.atk+=3;S.permDef=(S.permDef||0)+3;S.def+=3;S.permSpd=(S.permSpd||0)+3;S.spd+=3;return'Rune power! Perm all stats +3!'}},
+    {text:'Absorb its power (MaxHP+25 perm)',result:()=>{S.maxHp+=25;S.hp+=10;return'Absorbed! Perm MaxHP+25!'}},
+    {text:'Decipher it (XP gain +20%)',result:()=>{S.xpMult=(S.xpMult||1)+0.2;return'Rune wisdom — XP gain permanently +20%!'}},
+    {text:'Offer blood (10% HP, Crit+12% perm)',result:()=>{S.hp-=Math.floor(S.maxHp*0.1);S.crit+=12;return'Blood offering — perm Crit+12%!'}},
+    {text:'Copy the rune (Dodge+8% perm)',result:()=>{S.dodge+=8;return'Memorized the rune — perm Dodge+8%!'}}]},
+  {name:'Wandering Ghost',img:'ghost',opts:[
+    {text:'Listen to its story (SPD+5 perm)',result:()=>{S.permSpd=(S.permSpd||0)+5;S.spd+=5;return'Heard the ghost\'s tale — perm SPD+5!'}},
+    {text:'Help it pass on (full HP restore)',result:()=>{S.hp=S.maxHp;return'The grateful ghost healed you fully!'}},
+    {text:'Challenge it (50% ATK+8, 50% bleed)',result:()=>{if(Math.random()<0.5){S.permAtk=(S.permAtk||0)+8;S.atk+=8;return'Defeated the ghost! Perm ATK+8'}else{addStatus(S,'bleed');return'The ghost fought back! You\'re bleeding!'}}},
+    {text:'Ignore it (nothing)',result:()=>'The ghost sighs and fades away...'},
+    {text:'Possess its knowledge (+15g, XP+50)',result:()=>{S.gold+=15;gainXP(50);return'Ghost knowledge absorbed! +15g and XP!'}}]},
+  {name:'Forbidden Library',img:'library',opts:[
+    {text:'Read the forbidden tome (ATK+8, MaxHP-10)',result:()=>{S.permAtk=(S.permAtk||0)+8;S.atk+=8;S.maxHp=Math.max(10,S.maxHp-10);S.hp=Math.min(S.hp,S.maxHp);return'Dark knowledge! Perm ATK+8, MaxHP-10'}},
+    {text:'Study safely (XP gain +30%)',result:()=>{S.xpMult=(S.xpMult||1)+0.3;return'Careful study — XP gain permanently +30%!'}},
+    {text:'Take a rare book (add to inventory)',result:()=>{addInv('Arcane Tome','all+3');return'Got Arcane Tome! (use in inventory for All+3)'}},
+    {text:'Burn it all (50% +80g, 50% burn status)',result:()=>{if(Math.random()<0.5){S.gold+=80;return'The forbidden gold inside! +80g'}else{addStatus(S,'burn');return'Flames escaped! You\'re burning!'}}},
+    {text:'Leave quietly',result:()=>'Knowledge is dangerous. You leave it behind.'}]},
+  {name:'Soul Merchant',img:'soul',opts:[
+    {text:'Trade HP for ATK (-20 maxHP, ATK+15 perm)',result:()=>{S.maxHp=Math.max(10,S.maxHp-20);S.hp=Math.min(S.hp,S.maxHp);S.permAtk=(S.permAtk||0)+15;S.atk+=15;return'Soul trade! Perm MaxHP-20, ATK+15'}},
+    {text:'Trade DEF for SPD (-5 def, SPD+12 perm)',result:()=>{S.def=Math.max(0,S.def-5);S.permSpd=(S.permSpd||0)+12;S.spd+=12;return'Trade done! Perm DEF-5, SPD+12'}},
+    {text:'Buy a soul gem (pay 50g, MaxHP+40 perm)',result:()=>{if(S.gold>=50){S.gold-=50;S.maxHp+=40;S.hp=Math.min(S.hp+20,S.maxHp);return'Bought soul gem! -50g, perm MaxHP+40'}return'Not enough gold!'}},
+    {text:'Steal from them (30% win big, 70% -50 HP)',result:()=>{if(Math.random()<0.3){S.permAtk=(S.permAtk||0)+20;S.atk+=20;return'Soul thief! Perm ATK+20!'}else{S.hp-=50;return'Caught by the soul merchant! -50 HP'}}},
+    {text:'Reject their offer',result:()=>'The merchant scowls and vanishes.'}]},
+  {name:'Cursed Gambler',img:'gambler',opts:[
+    {text:'Bet 30g on heads (50% win 90g, 50% lose 30g)',result:()=>{if(S.gold<30)return'Not enough gold to bet!';S.gold-=30;if(Math.random()<0.5){S.gold+=90;return'Heads! You won 90g!'}else return'Tails! Lost 30g.'}},
+    {text:'Bet your luck (Crit+20% or Crit-10%)',result:()=>{if(Math.random()<0.5){S.crit+=20;return'Fortune smiles! Perm Crit+20%!'}else{S.crit=Math.max(0,S.crit-10);return'Bad luck! Perm Crit-10%'}}},
+    {text:'The big bet (50g → 200g or lose all HP but 1)',result:()=>{if(S.gold<50)return'Not enough gold!';S.gold-=50;if(Math.random()<0.35){S.gold+=200;return'JACKPOT! +200g!'}else{S.hp=1;return'House wins. You nearly died.'}}},
+    {text:'Watch others play (learn, gain 10g)',result:()=>{S.gold+=10;return'Watched carefully — learned and earned 10g'}},
+    {text:'Refuse to gamble',result:()=>'You walk away with your gold intact.'}]},
+  {name:'Time Rift',img:'rift',opts:[
+    {text:'Step through (warp +3 floors ahead)',result:()=>{S.floor+=2;return'Time skipped! Advanced 3 floors ahead!'}},
+    {text:'Reach in (50% random item, 50% lose 20 HP)',result:()=>{if(Math.random()<0.5){const it=pick(FREE_ITEMS);addInv(it.name,it.effect);return`Grabbed ${it.name} from the rift!`}else{S.hp-=20;return'Something grabbed back! -20 HP'}}},
+    {text:'Study the rift (XP+100)',result:()=>{gainXP(100);return'Absorbed temporal energy — +100 XP!'}},
+    {text:'Close it (DEF+6 perm, feels safer)',result:()=>{S.permDef=(S.permDef||0)+6;S.def+=6;return'Sealed the rift — Perm DEF+6'}},
+    {text:'Ignore and pass by',result:()=>'The rift crackles and fades.'}]},
+  {name:'Sleeping Dragon',img:'dragon',opts:[
+    {text:'Steal a scale (ATK+12, 40% wake dragon -60 HP)',result:()=>{S.permAtk=(S.permAtk||0)+12;S.atk+=12;if(Math.random()<0.4){S.hp-=60;return'Dragon woke! -60 HP but you kept the scale! ATK+12'}return'Stole a scale quietly! Perm ATK+12'}},
+    {text:'Pet it gently (full HP heal)',result:()=>{S.hp=S.maxHp;return'The dragon purred! Fully healed.'}},
+    {text:'Learn from it (ATK+5, DEF+5, SPD+5 perm)',result:()=>{S.permAtk=(S.permAtk||0)+5;S.atk+=5;S.permDef=(S.permDef||0)+5;S.def+=5;S.permSpd=(S.permSpd||0)+5;S.spd+=5;return'Dragon wisdom! Perm ATK+5, DEF+5, SPD+5'}},
+    {text:'Try to ride it (30% SPD+15, 70% -40 HP)',result:()=>{if(Math.random()<0.3){S.permSpd=(S.permSpd||0)+15;S.spd+=15;return'Rode the dragon! Perm SPD+15!'}else{S.hp-=40;return'Dragon threw you off! -40 HP'}}},
+    {text:'Sneak past quietly',result:()=>'You tiptoe past the slumbering beast.'}]},
+  {name:'Celestial Observatory',img:'obs',opts:[
+    {text:'Read the stars (random permanent stat +6)',result:()=>{const s=pick(['atk','def','spd']);const key='perm'+s.charAt(0).toUpperCase()+s.slice(1);S[key]=(S[key]||0)+6;S[s]+=6;return`Stars revealed your destiny! Perm ${s.toUpperCase()}+6`}},
+    {text:'Chart a constellation (Crit+10%, Dodge+5%)',result:()=>{S.crit+=10;S.dodge+=5;return'Perm Crit+10%, Dodge+5%!'}},
+    {text:'Absorb starlight (MaxHP+30 perm)',result:()=>{S.maxHp+=30;S.hp=Math.min(S.hp+15,S.maxHp);return'Starlight infused you! Perm MaxHP+30'}},
+    {text:'Wish on a star (random big bonus)',result:()=>{const outcomes=[()=>{S.gold+=100;return'+100 gold!'}, ()=>{S.maxHp+=50;S.hp+=25;return'Perm MaxHP+50!'}, ()=>{S.atk+=10;return'Perm ATK+10!'}, ()=>{S.statuses=[];S.hp=S.maxHp;return'Full heal + status cure!'}];return pick(outcomes)()}},
+    {text:'Record your findings (XP +150)',result:()=>{gainXP(150);return'Documented discoveries — +150 XP!'}}]},
+  {name:'Enchanted Forge',img:'forge',opts:[
+    {text:'Forge an ATK rune (+12 ATK perm, -10 DEF)',result:()=>{S.permAtk=(S.permAtk||0)+12;S.atk+=12;S.def=Math.max(0,S.def-10);return'Forged ATK rune! Perm ATK+12, DEF-10'}},
+    {text:'Forge a DEF rune (+12 DEF perm, -10 ATK)',result:()=>{S.permDef=(S.permDef||0)+12;S.def+=12;S.atk=Math.max(1,S.atk-10);return'Forged DEF rune! Perm DEF+12, ATK-10'}},
+    {text:'Upgrade your moves (all move damage +3)',result:()=>{S.moves.forEach(m=>{if(m.dmg>0)m.dmg+=3});return'Forge upgraded all moves! +3 dmg each'}},
+    {text:'Smelt an artifact (get random artifact)',result:()=>{const arts=[{name:'Stone Pendant',effect:'rock_boost'},{name:'Sharp Ring',effect:'scissors_boost'},{name:'Paper Talisman',effect:'paper_boost'},{name:'Life Crystal',effect:'hp+30'},{name:'Vampire Fang',effect:'lifesteal'},{name:'Swift Cloak',effect:'swift'},{name:'Harmony Orb',effect:'harmony'}];const av=arts.filter(a=>!S.artifacts.find(x=>x.effect===a.effect));if(av.length&&S.artifacts.length<5){const a=pick(av);S.artifacts.push(a);return`Smelted ${a.name}!`}return'No artifact slots or duplicates!'}},
+    {text:'Leave the forge alone',result:()=>'Better not to tamper with unknown magic.'}]},
+  {name:'Mimic\'s Lair',img:'mimic',opts:[
+    {text:'Fight the Mimic (win: +80g, lose: -60 HP)',result:()=>{if(Math.random()<0.6){S.gold+=80;return'Defeated the Mimic! +80 gold!'}else{S.hp-=60;return'Mimic ambushed you! -60 HP'}}},
+    {text:'Trick the Mimic (SPD check, 65% win +50g)',result:()=>{if(Math.random()<0.5+S.spd*0.01){S.gold+=50;return'Outsmarted the Mimic! +50g'}else{S.hp-=30;return'Mimic was faster! -30 HP'}}},
+    {text:'Feed the Mimic (pay 20g, get alliance artifact)',result:()=>{if(S.gold>=20){S.gold-=20;addInv('Mimic Tooth','atk+6');return'Fed Mimic! Got Mimic Tooth (ATK+6)'}return'Not enough gold!'}},
+    {text:'Sneak past (Dodge check)',result:()=>{if(Math.random()*100<S.dodge+30){return'Slipped by unnoticed!'}else{S.hp-=25;return'Mimic spotted you! -25 HP'}}},
+    {text:'Run away immediately',result:()=>'You flee and live to fight another day!'}]},
+  {name:'Ancient Battlefield',img:'battle',opts:[
+    {text:'Scavenge weapons (ATK+8 perm)',result:()=>{S.permAtk=(S.permAtk||0)+8;S.atk+=8;return'Found fallen warrior\'s blade! Perm ATK+8'}},
+    {text:'Collect armor scraps (DEF+8 perm)',result:()=>{S.permDef=(S.permDef||0)+8;S.def+=8;return'Found ancient armor! Perm DEF+8'}},
+    {text:'Find a treasure (60% +70g, 40% trap -40 HP)',result:()=>{if(Math.random()<0.6){S.gold+=70;return'Found battlefield treasure! +70g'}else{S.hp-=40;return'Triggered a trap! -40 HP'}}},
+    {text:'Absorb fallen power (all stats +3 perm)',result:()=>{S.permAtk=(S.permAtk||0)+3;S.atk+=3;S.permDef=(S.permDef||0)+3;S.def+=3;S.permSpd=(S.permSpd||0)+3;S.spd+=3;return'Ancient power absorbed! Perm all stats +3'}},
+    {text:'Pay respects and leave',result:()=>'You honor the fallen and receive inner peace.'}]},
+  {name:'Void Portal',img:'void',opts:[
+    {text:'Reach in blindly (big random effect)',result:()=>{const v=Math.random();if(v<0.3){S.atk+=15;return'Drew power from the void! ATK+15!'}else if(v<0.6){S.hp-=50;return'The void reached back! -50 HP'}else{S.maxHp+=40;return'Void energy! MaxHP+40!'}}},
+    {text:'Study the portal (Dodge+12% perm)',result:()=>{S.dodge+=12;return'Studied the void\'s nature — Perm Dodge+12%!'}},
+    {text:'Drop a coin in (pay 10g, Crit+10%)',result:()=>{if(S.gold>=10){S.gold-=10;S.crit+=10;return'Coin vanished! Perm Crit+10%!'}return'No coins to spare!'}},
+    {text:'Close the portal (DEF+8 perm)',result:()=>{S.permDef=(S.permDef||0)+8;S.def+=8;return'Sealed the void — Perm DEF+8'}},
+    {text:'Step through (lose 5% HP, gain unknown power)',result:()=>{S.hp-=Math.floor(S.maxHp*0.05);const r=pick(['crit','dodge','spd']);S[r]+=rand(8,15);return`Void journey! -5% HP, Perm ${r.toUpperCase()}+bonus!`}}]},
+];
+// ============================================================
+// STATE
+// ============================================================
+let S={scene:'menu',soulCrystals:0,unlocked:['Stone','Blade','Scroll'],
+  eternals:{maxHp:0,atk:0,def:0,goldMult:0,xp:0,luck:0},
+  eternalItems:[{name:'Max HP +10',key:'maxHp',base:5},{name:'ATK +2',key:'atk',base:8},{name:'DEF +2',key:'def',base:8},
+    {name:'Gold +10%',key:'goldMult',base:10},{name:'XP +10%',key:'xp',base:12},{name:'Luck +5%',key:'luck',base:15}],
+  highestFloor:0,totalRuns:0,classicWon:false,
+  charName:null,charData:null,floor:1,hp:0,maxHp:0,atk:0,def:0,spd:0,
+  // Base stats (permanent, persists run)
+  permAtk:0,permDef:0,permSpd:0,
+  // Temporary stat modifiers (from combat buffs/debuffs)
+  tempAtk:0,tempDef:0,tempSpd:0,
+  gold:0,crit:5,dodge:0,evoStage:0,level:1,xp:0,xpNext:20,xpMult:1,
+  moves:[],inventory:[],artifacts:[],statuses:[],
+  runActive:false,mode:'classic',
+  enemy:null,combatLog:[],combatState:'choose',
+  encounter:null,showItems:false,showLog:false,showMiniShop:false,
+  messages:[],tick:0,eventLog:[],
+  settings:{difficulty:1,speed:1},scrollY:0,
+  freeItemPicks:null,freeItemFloor:-1,
+  reviveUsed:false,burnPassive:false,reflectPassive:false,doubleStrike:false,priorityPassive:false,ultimatePassive:false,
+};
+
+function loadSave(){try{const d=JSON.parse(localStorage.getItem('rps4'));if(d){S.soulCrystals=d.sc||0;S.unlocked=d.ul||['Stone','Blade','Scroll'];S.eternals=d.et||S.eternals;S.highestFloor=d.hf||0;S.totalRuns=d.tr||0;S.classicWon=d.cw||false;S.settings=d.st||S.settings}}catch(e){}}
+function save(){try{localStorage.setItem('rps4',JSON.stringify({sc:S.soulCrystals,ul:S.unlocked,et:S.eternals,hf:S.highestFloor,tr:S.totalRuns,cw:S.classicWon,st:S.settings}))}catch(e){}}
+function addMsg(t,d=180){S.messages.push({text:t,timer:d})}
+function addLog(t){S.eventLog.push({text:t,floor:S.floor});if(S.eventLog.length>50)S.eventLog.shift()}
+function addInv(name,effect){const f=S.inventory.find(x=>x.name===name);if(f)f.count++;else S.inventory.push({name,effect,count:1})}
+function addStatus(target,type){if(!target.statuses)target.statuses=[];const fx=STATUS_FX[type];if(!fx)return;if(target.statuses.find(s=>s.type===type))return;target.statuses.push({type,name:fx.name,dur:fx.dur,color:fx.color})}
+function pal(){const style=['menu','charSelect','eternalShop','howToPlay','settings','modeSelect','charShop'].includes(S.scene)?'menu':S.runActive?getStyle(S.floor):'menu';return STYLES[style]}
+function evoName(){if(!S.charData)return'';return S.evoStage===0?S.charName:S.evoStage===1?S.charData.evo1:S.charData.evo2}
+function checkUnlocks(){CHARS.forEach(c=>{if(!S.unlocked.includes(c.name)&&c.cost===0)S.unlocked.push(c.name)})}
+
+// Effective stats (base + perm + temp, clamped)
+function effAtk(){return Math.max(1,S.atk+S.tempAtk)}
+function effDef(){return Math.max(0,S.def+S.tempDef)}
+function effSpd(){return Math.max(0,S.spd+S.tempSpd)}
+
+// Reset temporary stat buffs (before boss/rival/wave)
+function resetTempStats(){S.tempAtk=0;S.tempDef=0;S.tempSpd=0}
+
+// ============================================================
+// ITEM EFFECT APPLICATION
+// ============================================================
+function applyItemEffect(effect,permanent){
+  // permanent=true means it persists (from shops, level-ups, eternal shop)
+  // permanent=false means temporary (combat items)
+  if(!effect)return'';
+  // Multi-effects (e.g. 'atk+15_crit+8')
+  if(effect.includes('_')){
+    return effect.split('_').map(e=>applyItemEffect(e,permanent)).filter(Boolean).join(', ');
+  }
+  if(effect==='heal30'){S.hp=Math.min(S.maxHp,S.hp+30);return'+30 HP'}
+  if(effect==='heal40'){S.hp=Math.min(S.maxHp,S.hp+40);return'+40 HP'}
+  if(effect==='heal50'){S.hp=Math.min(S.maxHp,S.hp+50);return'+50 HP'}
+  if(effect==='heal80'){S.hp=Math.min(S.maxHp,S.hp+80);return'+80 HP'}
+  if(effect==='heal_full'){S.hp=S.maxHp;return'Full HP!'}
+  if(effect==='heal25'){S.hp=Math.min(S.maxHp,S.hp+25);return'+25 HP'}
+  if(effect==='heal35'){S.hp=Math.min(S.maxHp,S.hp+35);return'+35 HP'}
+  if(effect==='bomb40'&&S.enemy){S.enemy.hp-=40;return'40 dmg!'}
+  if(effect==='bomb100'&&S.enemy){S.enemy.hp-=100;return'100 dmg!'}
+  if(effect==='cure_status'){S.statuses=[];return'Status cured!'}
+  if(effect==='pp_restore'){S.moves.forEach(m=>m.pp=m.maxPp);return'PP restored!'}
+  if(effect==='random_buff'){const s=['atk','def','spd'][rand(0,2)];const v=rand(3,8);if(permanent){S[s]+=v;}else{S['temp'+s.charAt(0).toUpperCase()+s.slice(1)]+=v;}return`${s.toUpperCase()}+${v}`}
+  if(effect==='lifesteal')return'';
+  // Passive item effects (legendary/epic)
+  if(effect==='doublestrike'){S.doubleStrike=true;return'Double-strike enabled!'}
+  if(effect==='priority_passive'){S.priorityPassive=true;return'10% move-first enabled!'}
+  if(effect==='revive_passive'){S.reviveUsed=false;return'Revival ready!'}
+  if(effect==='burn_passive'){S.burnPassive=true;return'Burn-on-hit enabled!'}
+  if(effect==='reflect_passive'){S.reflectPassive=true;return'20% damage reflect!'}
+  if(effect==='ultimate_passive'){S.doubleStrike=true;S.priorityPassive=true;S.crit+=25;return'Ultimate passives activated!'}
+  // Stat effects
+  const atkM=effect.match(/^atk\+(\d+)$/);if(atkM){const v=parseInt(atkM[1]);if(permanent){S.permAtk=(S.permAtk||0)+v;S.atk+=v;}else S.tempAtk+=v;return`ATK+${v}`}
+  const defM=effect.match(/^def\+(\d+)$/);if(defM){const v=parseInt(defM[1]);if(permanent){S.permDef=(S.permDef||0)+v;S.def+=v;}else S.tempDef+=v;return`DEF+${v}`}
+  const spdM=effect.match(/^spd\+(\d+)$/);if(spdM){const v=parseInt(spdM[1]);if(permanent){S.permSpd=(S.permSpd||0)+v;S.spd+=v;}else S.tempSpd+=v;return`SPD+${v}`}
+  const critM=effect.match(/^crit\+(\d+)$/);if(critM){S.crit+=parseInt(critM[1]);return`Crit+${critM[1]}%`}
+  const dodgeM=effect.match(/^dodge\+(\d+)$/);if(dodgeM){S.dodge+=parseInt(dodgeM[1]);return`Dodge+${dodgeM[1]}%`}
+  const hpM=effect.match(/^maxhp\+(\d+)$/);if(hpM){const v=parseInt(hpM[1]);S.maxHp+=v;S.hp+=Math.floor(v/2);return`MaxHP+${v}`}
+  const allM=effect.match(/^all\+(\d+)$/);if(allM){const v=parseInt(allM[1]);if(permanent){S.permAtk=(S.permAtk||0)+v;S.permDef=(S.permDef||0)+v;S.permSpd=(S.permSpd||0)+v;S.atk+=v;S.def+=v;S.spd+=v;}else{S.tempAtk+=v;S.tempDef+=v;S.tempSpd+=v;}return`All+${v}`}
+  return'';
+}
+
+// Legacy wrapper for backwards compatibility
+function applyEffect(effect){return applyItemEffect(effect,true)}
+// ============================================================
+// GAME LOGIC
+// ============================================================
+function initChar(name){
+  const d=CHAR_MAP[name];S.charName=name;S.charData=d;
+  S.maxHp=d.hp+S.eternals.maxHp*10;S.hp=S.maxHp;
+  S.atk=d.atk+S.eternals.atk*2;S.def=d.def+S.eternals.def*2;S.spd=d.spd;
+  S.permAtk=d.atk+S.eternals.atk*2;S.permDef=d.def+S.eternals.def*2;S.permSpd=d.spd;
+  S.tempAtk=0;S.tempDef=0;S.tempSpd=0;
+  S.gold=0;S.crit=5+(TYPE_SPEC[d.type].critBonus||0);S.dodge=0;S.evoStage=0;
+  S.level=1;S.xp=0;S.xpNext=20;S.xpMult=1+S.eternals.xp*0.1;
+  S.moves=d.moves.map(m=>({...m,pp:m.maxPp}));
+  S.inventory=[{name:'Healing Potion',effect:'heal30',count:3}];
+  S.artifacts=[];S.statuses=[];S.runActive=true;S.floor=1;
+  S.eventLog=[];S.showItems=false;S.showLog=false;S.showMiniShop=false;
+  S.freeItemPicks=null;S.freeItemFloor=-1;
+  S.reviveUsed=false;S.burnPassive=false;S.reflectPassive=false;
+  S.doubleStrike=false;S.priorityPassive=false;S.ultimatePassive=false;
+  if(d.ability==='Wisdom: Gains 20% more XP')S.xpMult*=1.2;
+  if(d.ability&&d.ability.includes('Stealth'))S.dodge+=20;
+  addLog(`Started run with ${name}`);
+}
+
+function gainXP(amount){
+  amount=Math.floor(amount*S.xpMult);S.xp+=amount;
+  while(S.xp>=S.xpNext){S.xp-=S.xpNext;S.level++;S.xpNext=Math.floor(S.xpNext*1.15)+5;
+    // Level-up stats are permanent
+    S.maxHp+=5;S.hp=Math.min(S.hp+5,S.maxHp);S.atk+=1;S.permAtk+=1;S.def+=1;S.permDef+=1;
+    if(S.level%3===0){S.spd+=1;S.permSpd+=1}
+    addMsg(`Level Up! Lv.${S.level}`);addLog(`Reached Level ${S.level}`);
+    if(S.level%5===0&&S.moves.length<6){
+      const newMoves=[mv('Power Strike',S.charData.type,20+S.level,12),mv('Guard','Buff',0,10,'def+'+(3+Math.floor(S.level/5))),
+        mv('Drain Hit',S.charData.type,15+Math.floor(S.level*0.5),10,'lifesteal'),mv('Status Strike',S.charData.type,12+Math.floor(S.level*0.3),14,null,30,pick(['bleed','burn','poison']))];
+      const nm=pick(newMoves);nm.name=nm.name+' '+['II','III','IV','V','VI'][Math.floor(S.level/5)-1];
+      S.pendingMove=nm;
+    }
+  }
+}
+
+function processStatuses(target,isPlayer){
+  if(!target.statuses)return;
+  target.statuses=target.statuses.filter(s=>{
+    const fx=STATUS_FX[s.type];
+    if(fx&&fx.dmgPct){
+      const dmg=Math.max(1,Math.floor((isPlayer?S.maxHp:target.maxHp)*fx.dmgPct));
+      if(isPlayer)S.hp-=dmg;else target.hp-=dmg;
+      S.combatLog.push({msg:`${fx.name}: ${dmg} damage`,color:fx.color});
+    }
+    s.dur--;return s.dur>0;
+  });
+}
+
+function calcDmg(baseDmg,moveType,atkStat,defStat,targetType,isPlayer){
+  let dmg=baseDmg+atkStat-Math.floor(defStat/2);
+  let mult=1.0;let aType=moveType==='Random'?pick(TYPES):moveType;
+  if(TADV[aType]===targetType)mult=1.5;
+  else if(TADV[targetType]===aType)mult=0.6;
+  if(isPlayer){
+    const spec=TYPE_SPEC[S.charData.type];
+    if(spec.dmgMult)mult*=spec.dmgMult;
+  }
+  for(const a of S.artifacts){
+    if(a.effect==='rock_boost'&&aType==='Rock')mult*=1.2;
+    if(a.effect==='scissors_boost'&&aType==='Scissors')mult*=1.2;
+    if(a.effect==='paper_boost'&&aType==='Paper')mult*=1.2;
+  }
+  if(!isPlayer)mult*=[0.8,1,1.3,1.6][S.settings.difficulty];
+  const isCrit=Math.random()*100<(isPlayer?S.crit:5);
+  if(isCrit)mult*=1.5;
+  if(isPlayer&&S.statuses.find(s=>s.type==='burn'))mult*=0.9;
+  dmg=Math.max(1,Math.floor(dmg*mult));
+  return{dmg,isSuper:mult>1.3&&!isCrit,isCrit,aType};
+}
+
+function enemyTurn(){
+  const e=S.enemy;if(!e||e.hp<=0)return;
+  if(e.ability==='regenerate')e.hp=Math.min(e.maxHp,e.hp+Math.floor(e.maxHp*0.03));
+  if(e.ability==='enrage'&&e.hp<e.maxHp*0.3)e.atk=Math.floor(e.atk*1.05);
+  processStatuses(e,false);if(e.hp<=0)return;
+  if(e.statuses&&e.statuses.find(s=>s.type==='freeze')){S.combatLog.push({msg:'Enemy is frozen!',color:'#64dcff'});return}
+  if(Math.random()*100<S.dodge){S.combatLog.push({msg:'You dodged!',color:'#28c8dc'});return}
+  let eType=e.type==='Random'?pick(TYPES):e.type;
+  const spec=TYPE_SPEC[S.charData.type];
+  let dmg=Math.max(1,e.atk-Math.floor(effDef()/3));
+  if(spec.defMult)dmg=Math.floor(dmg*spec.defMult);
+  if(spec.dmgTaken)dmg=Math.floor(dmg*spec.dmgTaken);
+  for(const a of S.artifacts){if(a.effect==='harmony')dmg=Math.floor(dmg*0.9)}
+  if(S.charData.ability&&S.charData.ability.includes('Harmony'))dmg=Math.floor(dmg*0.9);
+  if(TADV[eType]===S.charData.type){dmg=Math.floor(dmg*1.3);S.combatLog.push({msg:`Enemy ${eType}! Super effective! ${dmg} dmg!`,color:'#dc3232'})}
+  else S.combatLog.push({msg:`Enemy attacks! ${dmg} dmg!`,color:'#f08c1e'});
+  // Reflect passive
+  if(S.reflectPassive){const ref=Math.floor(dmg*0.2);e.hp-=ref;S.combatLog.push({msg:`Reflected ${ref} dmg!`,color:'#b040f0'})}
+  S.hp-=dmg;
+  // Revive passive
+  if(S.hp<=0&&!S.reviveUsed){S.hp=Math.floor(S.maxHp*0.3);S.reviveUsed=true;S.combatLog.push({msg:'Soul Gem activated! Revived at 30% HP!',color:'#ffaa00'})}
+  if(S.charData.ability&&S.charData.ability.includes('Thorns'))e.hp-=Math.max(1,Math.floor(dmg*0.1));
+  if(S.charData.ability&&S.charData.ability.includes('Static'))addStatus(e,'spdDown');
+}
+
+function advanceFloor(){
+  S.floor++;S.showMiniShop=false;
+  if(S.floor>S.highestFloor){S.highestFloor=S.floor}
+  if(S.floor===25&&S.evoStage===0){S.evoStage=1;S.maxHp+=30;S.hp=Math.min(S.hp+30,S.maxHp);S.atk+=5;S.permAtk+=5;S.def+=3;S.permDef+=3;addMsg(`EVOLVED into ${evoName()}!`);addLog(`Evolved into ${evoName()}`)}
+  else if(S.floor===50&&S.evoStage===1){S.evoStage=2;S.maxHp+=50;S.hp=Math.min(S.hp+50,S.maxHp);S.atk+=8;S.permAtk+=8;S.def+=5;S.permDef+=5;addMsg(`FINAL EVOLUTION: ${evoName()}!`);addLog(`Final evolution: ${evoName()}`)}
+  const maxFloor=S.mode==='classic'?300:Infinity;
+  if(S.floor>maxFloor&&S.mode==='classic'){handleVictory();return}
+  if(S.mode==='endless'&&S.floor>300&&S.floor%50===1){addMsg('Difficulty increased!');addLog('Endless: difficulty spike!')}
+  if(S.floor%10===0)startCombat(true);
+  else if(S.floor%25===0&&S.floor%10!==0)startRival();
+  else if(S.floor%5===0&&S.floor%10!==0){S.scene='shop';S.scrollY=0}
+  else if(Math.random()<0.22)startEncounter();
+  else startCombat(false);
+}
+
+function startCombat(isBoss){
+  // Reset temp stats before boss/rival
+  if(isBoss)resetTempStats();
+  if(isBoss){S.enemy=genBoss(S.floor)}
+  else{
+    const biome=getBiome(S.floor);const eName=pick(biome.enemies);
+    S.enemy=genEnemyData(eName,S.floor,biome);S.enemy.maxHp=S.enemy.hp;
+  }
+  S.combatLog=[];S.combatState='choose';S.showItems=false;S.scene='combat';
+  if(S.enemy.isBoss){
+    // Clear status effects after last boss (end of boss fight handled in afterCombatWin)
+    S.combatLog.push({msg:`BOSS: ${S.enemy.name}!`,color:'#ffd700'});
+    if(S.enemy.quote)S.combatLog.push({msg:`"${S.enemy.quote}"`,color:'#ffdc00'});
+    addLog(`Boss fight: ${S.enemy.name}`);
+  }
+  if(TYPE_SPEC[S.charData.type].healPct)S.hp=Math.min(S.maxHp,S.hp+Math.floor(S.maxHp*TYPE_SPEC[S.charData.type].healPct));
+  if(S.charData.ability&&S.charData.ability.includes('Meditate'))S.moves.forEach(m=>{if(m.pp<m.maxPp)m.pp=Math.min(m.maxPp,m.pp+2)});
+}
+
+function startRival(){
+  resetTempStats();
+  const r=Math.random();
+  let rType;
+  if(r<0.7)rType=TADV[S.charData.type];
+  else if(r<0.9)rType=S.charData.type;
+  else rType=Object.keys(TADV).find(k=>TADV[k]===S.charData.type);
+  const scale=1+S.floor*0.04;const hp=Math.floor((100+S.floor*2)*scale);
+  S.enemy={name:'RIVAL',type:rType,hp,maxHp:hp,atk:Math.floor((12+S.floor*0.7)*scale),
+    color:'#ff3264',isBoss:false,isRival:true,phase:1,statuses:[],
+    quote:'We meet again! This time I won\'t lose!'};
+  S.combatLog=[{msg:'RIVAL BATTLE!',color:'#ff3264'},{msg:`"${S.enemy.quote}"`,color:'#ffdc00'}];
+  S.combatState='choose';S.showItems=false;S.scene='combat';addLog('Rival battle!');
+}
+
+function startEncounter(){S.encounter=pick(ENCOUNTERS);S.scene='encounter'}
+
+function afterCombatWin(){
+  const e=S.enemy;
+  const ge=Math.floor((10+rand(5,15)+S.floor*2)*(1+S.eternals.goldMult*0.1));
+  S.gold+=ge;
+  if(S.charData.ability&&S.charData.ability.includes('Sparkle'))S.gold+=Math.floor(ge*0.2);
+  const xpGain=5+S.floor+rand(0,5)+(e.isBoss?S.floor:0);
+  gainXP(xpGain);
+  S.combatLog.push({msg:`+${ge}g +${Math.floor(xpGain*S.xpMult)}xp`,color:'#ffd700'});
+  addLog(`Defeated ${e.name} (+${ge}g)`);
+  if(e.isBoss){
+    // Clear statuses after boss fight only
+    S.statuses=[];
+    S.combatLog.push({msg:'BOSS DEFEATED! Statuses cleared!',color:'#ffd700'});
+    S.moves.forEach(m=>m.pp=m.maxPp);addMsg('PP fully restored!');
+  }
+  if(e.isRival){S.combatLog.push({msg:'RIVAL DEFEATED!',color:'#ff3264'});S.gold+=50}
+  // Artifact drop
+  if(Math.random()<0.08+S.eternals.luck*0.05&&S.artifacts.length<5){
+    const arts=[{name:'Stone Pendant',effect:'rock_boost'},{name:'Sharp Ring',effect:'scissors_boost'},{name:'Paper Talisman',effect:'paper_boost'},
+      {name:'Life Crystal',effect:'hp+30'},{name:'Vampire Fang',effect:'lifesteal'},{name:'Swift Cloak',effect:'swift'},{name:'Harmony Orb',effect:'harmony'}];
+    const avail=arts.filter(a=>!S.artifacts.find(x=>x.effect===a.effect));
+    if(avail.length){const a=pick(avail);S.artifacts.push(a);addMsg(`Found artifact: ${a.name}!`)}
+  }
+  S.combatState='result';
+  // Generate free item picks for mini-shop (4 items)
+  if(S.freeItemFloor!==S.floor){
+    S.freeItemPicks=pickFreeItems(S.floor,4);
+    S.freeItemFloor=S.floor;
+  }
+}
+
+function handleDeath(){
+  const cr=Math.floor(S.floor/5)+(S.floor>=50?10:0)+(S.floor>=100?20:0);
+  S.soulCrystals+=cr;S.totalRuns++;checkUnlocks();save();
+  addMsg(`+${cr} Soul Crystals`);addLog(`Defeated at Floor ${S.floor}`);
+  S.runActive=false;S.scene='death';
+}
+
+function handleVictory(){
+  const cr=Math.floor(S.floor/5)+30;S.soulCrystals+=cr;S.totalRuns++;
+  S.classicWon=true;checkUnlocks();save();S.runActive=false;S.scene='victory';
+}
+// ============================================================
+// DRAWING UTILITIES
+// ============================================================
+let btns=[];let mX=0,mY=0;
+function clrBtns(){btns=[]}
+function addBtn(x,y,w,h,act,id){btns.push({x,y,w,h,action:act,id})}
+function mIn(x,y,w,h){return mX>=x&&mX<=x+w&&mY>=y&&mY<=y+h}
+function dRect(x,y,w,h,c,r=0){X.fillStyle=c;if(r){X.beginPath();X.roundRect(x,y,w,h,r);X.fill()}else X.fillRect(x,y,w,h)}
+function dBorder(x,y,w,h,c,lw=2,r=0){X.strokeStyle=c;X.lineWidth=lw;if(r){X.beginPath();X.roundRect(x,y,w,h,r);X.stroke()}else X.strokeRect(x,y,w,h)}
+function dText(t,x,y,c,sz=16,al='left',b=false){X.fillStyle=c;X.font=`${b?'bold ':''}${sz}px Consolas,monospace`;X.textAlign=al;X.textBaseline='top';X.fillText(t,x,y);X.textAlign='left'}
+function dPanel(x,y,w,h,p){dRect(x,y,w,h,p.panel,6);dBorder(x,y,w,h,p.border,2,6)}
+function dBtn(x,y,w,h,txt,p,act,id,en=true){const hv=mIn(x,y,w,h);dRect(x,y,w,h,!en?'#404040':hv?p.btnH:p.btnN,8);dBorder(x,y,w,h,p.border,2,8);dText(txt,x+w/2,y+h/2-8,en?p.btnT:'#808080',14,'center',true);if(en)addBtn(x,y,w,h,act,id)}
+function dHpBar(x,y,w,h,cur,max,p,ie=false){dRect(x,y,w,h,p.hpBg,4);if(max>0){const r=Math.max(0,cur/max);let c=ie?p.enemyHp:p.hpBar;if(r<0.3)c='#dc3232';else if(r<0.6)c='#f0c828';if(r>0)dRect(x,y,Math.floor(w*r),h,c,4)}dBorder(x,y,w,h,p.border,1,4)}
+function dXpBar(x,y,w,h){dRect(x,y,w,h,'#1e1e3c',3);const r=S.xpNext>0?S.xp/S.xpNext:0;dRect(x,y,Math.floor(w*r),h,'#6496ff',3);dBorder(x,y,w,h,'#4664b4',1,3)}
+function dRarityTag(x,y,rarity){const c=rarityColor(rarity);dRect(x,y,70,14,c+'33',3);dBorder(x,y,70,14,c,1,3);dText(rarity,x+35,y+2,c,9,'center',true)}
+function dScanlines(){X.fillStyle='rgba(0,0,0,0.12)';for(let y=0;y<H;y+=3)X.fillRect(0,y,W,1)}
+function dStatuses(x,y,statuses){if(!statuses)return;statuses.forEach((s,i)=>{if(i>4)return;dRect(x+i*50,y,46,16,s.color,3);dText(`${s.name}${s.dur}`,x+i*50+3,y+2,'#fff',10)})}
+
+function dChar(cx,cy,sz,col,sty,evo=0){
+  if(sty==='terminal'){dText('  O  ',cx-18,cy-sz/2,col,sz/3);dText(' /|\\ ',cx-18,cy-sz/2+sz/3,col,sz/3);dText(' / \\ ',cx-18,cy-sz/2+sz*2/3,col,sz/3);return}
+  const hr=sz*0.25,hy=cy-sz/2;
+  if(evo>=1){X.globalAlpha=0.15+evo*0.05;X.fillStyle=col;X.beginPath();X.arc(cx,cy-sz/4,sz*0.7,0,Math.PI*2);X.fill();X.globalAlpha=1}
+  dRect(cx-sz/4,hy+hr,sz/2,sz*0.4,col);
+  X.fillStyle=col;X.beginPath();X.arc(cx,hy,hr,0,Math.PI*2);X.fill();
+  X.fillStyle='#fff';X.beginPath();X.arc(cx-hr/3,hy-2,Math.max(2,hr/5),0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(cx+hr/3,hy-2,Math.max(2,hr/5),0,Math.PI*2);X.fill();
+  X.fillStyle='#000';X.beginPath();X.arc(cx-hr/3,hy-2,Math.max(1,hr/8),0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(cx+hr/3,hy-2,Math.max(1,hr/8),0,Math.PI*2);X.fill();
+  X.strokeStyle=col;X.lineWidth=3;const ly=hy+hr+sz*0.4;
+  X.beginPath();X.moveTo(cx-sz/6,ly);X.lineTo(cx-sz/4,ly+sz/3);X.stroke();
+  X.beginPath();X.moveTo(cx+sz/6,ly);X.lineTo(cx+sz/4,ly+sz/3);X.stroke();
+  if(evo>=2){X.fillStyle='#ffd700';X.beginPath();X.moveTo(cx-hr,hy-hr);X.lineTo(cx-hr/2,hy-hr-12);X.lineTo(cx,hy-hr-5);X.lineTo(cx+hr/2,hy-hr-12);X.lineTo(cx+hr,hy-hr);X.closePath();X.fill()}
+}
+
+function dEnemy(cx,cy,sz,name,col,sty){
+  if(sty==='terminal'){dText('  ???  ',cx-28,cy-sz/2,col,12);dText(' (o_o) ',cx-28,cy-sz/2+14,col,12);dText('  /|\\  ',cx-28,cy-sz/2+28,col,12);dText('  / \\  ',cx-28,cy-sz/2+42,col,12);return}
+  const fierce=S.floor>150;
+  X.fillStyle=col;X.beginPath();X.arc(cx,cy,sz/3,0,Math.PI*2);X.fill();
+  X.strokeStyle='rgba(255,255,255,0.3)';X.lineWidth=2;X.beginPath();X.arc(cx,cy,sz/3,0,Math.PI*2);X.stroke();
+  const eyeSize=fierce?sz/8:sz/10;
+  X.fillStyle=fierce?'#ff0000':'#fff';X.beginPath();X.arc(cx-sz/7,cy-sz/10,eyeSize,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(cx+sz/7,cy-sz/10,eyeSize,0,Math.PI*2);X.fill();
+  X.fillStyle='#000';X.beginPath();X.arc(cx-sz/7,cy-sz/10,eyeSize/2,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(cx+sz/7,cy-sz/10,eyeSize/2,0,Math.PI*2);X.fill();
+  if(fierce){X.strokeStyle='#fff';X.lineWidth=1;X.beginPath();X.moveTo(cx-sz/6,cy+sz/8);X.lineTo(cx,cy+sz/6);X.lineTo(cx+sz/6,cy+sz/8);X.stroke()}
+  dText(name,cx,cy+sz/2+5,col,10,'center');
+}
+
+function dEncounterImg(cx,cy,type,p){
+  const sz=40;X.fillStyle=p.accent;
+  if(type==='fountain'){X.beginPath();X.moveTo(cx,cy-sz);X.bezierCurveTo(cx-sz,cy-sz/2,cx-sz,cy+sz/2,cx,cy+sz);X.bezierCurveTo(cx+sz,cy+sz/2,cx+sz,cy-sz/2,cx,cy-sz);X.fill();dText('~',cx,cy-8,p.bg,20,'center')}
+  else if(type==='chest'){dRect(cx-sz,cy-sz/2,sz*2,sz,p.gold,4);dRect(cx-5,cy-5,10,10,'#000')}
+  else if(type==='training'){dRect(cx-5,cy-sz,10,sz*2,'#8b4513');dRect(cx-sz/2,cy-sz/3,sz,sz*2/3,p.accent,4)}
+  else if(type==='void'){X.fillStyle='#5000a0';X.beginPath();X.arc(cx,cy,sz*0.8,0,Math.PI*2);X.fill();X.fillStyle='#000';X.beginPath();X.arc(cx,cy,sz*0.4,0,Math.PI*2);X.fill();dText('∞',cx,cy-10,p.accent,22,'center')}
+  else if(type==='dragon'){X.fillStyle='#c83200';X.beginPath();X.arc(cx,cy,sz*0.7,0,Math.PI*2);X.fill();dText('🐉',cx-14,cy-16,p.accent,28,'left')}
+  else if(type==='ghost'){X.fillStyle='rgba(200,200,255,0.5)';X.beginPath();X.arc(cx,cy-sz/4,sz/2,0,Math.PI*2);X.fill();dText('👻',cx-10,cy-sz/4-10,'rgba(200,200,255,0.9)',22,'left')}
+  else if(type==='mimic'){dRect(cx-sz,cy-sz/2,sz*2,sz,p.gold,4);dBorder(cx-sz,cy-sz/2,sz*2,sz,'#dc0000',3,4);dText('!',cx,cy-sz/2-8,'#dc0000',20,'center',true)}
+  else{X.beginPath();X.arc(cx,cy,sz/2,0,Math.PI*2);X.fill()}
+}
+// ============================================================
+// COMBAT MOVE EXECUTION
+// ============================================================
+function doMove(i){
+  const m=S.moves[i];if(m.pp<=0)return;m.pp--;
+  const e=S.enemy;
+  if(S.statuses.find(s=>s.type==='freeze')){
+    S.combatLog.push({msg:'You are frozen!',color:'#64dcff'});
+    S.statuses=S.statuses.filter(s=>s.type!=='freeze');
+    enemyTurn();if(S.hp<=0)handleDeath();return;
+  }
+  processStatuses(S,true);if(S.hp<=0){handleDeath();return}
+  if(S.charData.ability&&S.charData.ability.includes('Cursed'))S.hp-=Math.floor(S.maxHp*0.03);
+  if(m.type==='Buff'||(m.effect&&m.dmg===0)){
+    // Buff moves are temporary in combat, permanent from shop
+    const r=applyItemEffect(m.effect,false);
+    S.combatLog.push({msg:r||m.name,color:'#28c8dc'});addLog(`Used ${m.name}: ${r}`);
+  }else{
+    const{dmg,isSuper,isCrit,aType}=calcDmg(m.dmg,m.type,effAtk(),0,e.type,true);
+    // Double strike: from ability or item
+    let hits=1;
+    const hasDoubleStrike=S.doubleStrike||(S.charData.ability&&S.charData.ability.includes('Attacks twice'));
+    if(hasDoubleStrike)hits=2;
+    else if(S.charData.ability&&S.charData.ability.includes('Shadow Step'))hits=2;
+    let totalDmg=0;
+    for(let h=0;h<hits;h++){
+      let d=hits>1?Math.floor(dmg*0.6):dmg;
+      e.hp-=d;totalDmg+=d;
+      const statusChanceBonus=S.charData.ability&&S.charData.ability.includes('status chance')?15:0;
+      const entangleBonus=S.charData.ability&&S.charData.ability.includes('Entangle')?15:0;
+      if(m.statusType&&Math.random()*100<(m.statusChance+statusChanceBonus+entangleBonus))addStatus(e,m.statusType);
+      if(S.burnPassive&&Math.random()<0.4)addStatus(e,'burn');
+    }
+    // After-hit double-strike from Epic item (25% chance)
+    if(!hasDoubleStrike&&S.doubleStrike===false&&S.charData.ability&&!S.charData.ability.includes('Shadow')&&Math.random()<0.25){
+      const bonus=Math.floor(dmg*0.5);e.hp-=bonus;totalDmg+=bonus;
+      S.combatLog.push({msg:`Double-strike! +${bonus} bonus dmg!`,color:'#b040f0'});
+    }
+    let msg=`${m.name}! `;if(hits>1)msg+=`x${hits} `;if(isSuper)msg+='SUPER! ';if(isCrit)msg+='CRIT! ';msg+=`${totalDmg} dmg`;
+    S.combatLog.push({msg,color:isCrit?'#ffd700':isSuper?'#28c8dc':'#32c832'});
+    addLog(`${m.name}: ${totalDmg} dmg to ${e.name}`);
+    if(m.effect==='lifesteal'||S.artifacts.find(a=>a.effect==='lifesteal')){S.hp=Math.min(S.maxHp,S.hp+Math.max(1,Math.floor(totalDmg*0.1)))}
+    if(S.charData.ability&&S.charData.ability.includes('Absorb'))S.hp=Math.min(S.maxHp,S.hp+Math.floor(totalDmg*0.05));
+    if(S.charData.ability&&S.charData.ability.includes('Execute')&&e.hp>0&&e.hp<e.maxHp*0.2){e.hp-=totalDmg;S.combatLog.push({msg:'EXECUTE!',color:'#dc0000'})}
+  }
+  if(e.hp<=0){
+    if(e.isBoss&&e.phase===1&&e.phase2Hp>0){
+      e.phase=2;e.hp=e.phase2Hp;e.maxHp=e.phase2Hp;e.atk=e.phase2Atk;e.statuses=[];
+      S.combatLog.push({msg:'PHASE 2!',color:'#dc3232'});
+      if(e.dialogue&&e.dialogue[1])S.combatLog.push({msg:`"${e.dialogue[1]}"`,color:'#ffdc00'});
+    }else afterCombatWin();
+  }else{
+    // Priority passive: 10% chance to move again before enemy
+    if(S.priorityPassive&&Math.random()<0.1){
+      S.combatLog.push({msg:'Priority strike! Moving first!',color:'#ffaa00'});
+      // Just skip the enemy turn this round (already attacked, so no second attack, just enemy skips)
+    }else{
+      enemyTurn();if(S.hp<=0)handleDeath();
+    }
+  }
+}
+
+function doRun(){
+  if(S.enemy.isBoss){S.combatLog.push({msg:"Can't run from boss!",color:'#dc3232'});return}
+  if(S.enemy.isRival){S.combatLog.push({msg:"Can't run from rival!",color:'#dc3232'});return}
+  if(Math.random()<0.5+effSpd()*0.02){S.combatLog.push({msg:'Escaped!',color:'#32c832'});addLog('Escaped from battle');S.combatState='result'}
+  else{S.combatLog.push({msg:"Couldn't escape!",color:'#dc3232'});enemyTurn();if(S.hp<=0)handleDeath()}
+}
+// ============================================================
+// SCENE DRAWING
+// ============================================================
+function drawMenu(){
+  const p=STYLES.menu;dRect(0,0,W,H,p.bg);
+  dText('='.repeat(50),W/2,30,'#00ff41',14,'center');
+  dText('RPS LEGENDS',W/2,55,p.gold,38,'center',true);
+  dText('v4.0 — Mega Edition',W/2,100,p.dim,16,'center');
+  dText('='.repeat(50),W/2,122,'#00ff41',14,'center');
+  dText(`Soul Crystals: ${S.soulCrystals}`,W/2,148,'#a03cc8',16,'center');
+  dText(`Highest Floor: ${S.highestFloor} | Runs: ${S.totalRuns}`,W/2,170,p.dim,13,'center');
+  const bw=280,bx=W/2-bw/2;
+  dBtn(bx,210,bw,44,'New Run',p,()=>{S.scene='modeSelect'},'m1');
+  dBtn(bx,264,bw,44,'Eternal Shop',p,()=>{S.scene='eternalShop';S.scrollY=0},'m2');
+  dBtn(bx,318,bw,44,'Character Shop',p,()=>{S.scene='charShop';S.scrollY=0},'m3');
+  dBtn(bx,372,bw,44,'How to Play',p,()=>{S.scene='howToPlay';S.scrollY=0},'m4');
+  dBtn(bx,426,bw,44,'Settings',p,()=>{S.scene='settings'},'m5');
+  dText('Rock',100,400,'#b48c64',12,'center');dText('Paper',W-100,350,'#dcdcf0',12,'center');dText('Scissors',130,320,'#c83c3c',12,'center');
+}
+
+function drawModeSelect(){
+  const p=STYLES.menu;dRect(0,0,W,H,p.bg);
+  dText('Select Mode',W/2,30,p.title,28,'center',true);
+  const bw=300,bx=W/2-bw/2;
+  dBtn(bx,100,bw,60,'Classic (300 Floors)',p,()=>{S.mode='classic';S.scene='charSelect'},'mode_c');
+  dText('Battle through 300 floors. Defeat The Absolute!',W/2,170,p.dim,13,'center');
+  if(S.classicWon){
+    dBtn(bx,220,bw,60,'Endless Mode',p,()=>{S.mode='endless';S.scene='charSelect'},'mode_e');
+    dText('No end. Difficulty spikes every 50 floors past 300.',W/2,290,p.dim,13,'center');
+  }else{dRect(bx,220,bw,60,'#303030',8);dText('Endless Mode',W/2,240,'#808080',16,'center',true);dText('Beat Classic Mode to unlock!',W/2,290,'#808080',13,'center')}
+  dBtn(bx,340,bw,44,'Back',p,()=>{S.scene='menu'},'mode_b');
+}
+
+function drawCharSelect(){
+  const p=STYLES.menu;dRect(0,0,W,H,p.bg);
+  dText('Choose Character',W/2,10,p.title,24,'center',true);
+  const cw=140,ch=180,perRow=5;
+  const avail=CHARS.filter(c=>S.unlocked.includes(c.name));
+  const sx=W/2-(Math.min(perRow,avail.length)*(cw+10))/2;
+  avail.forEach((c,i)=>{
+    const col=i%perRow,row=Math.floor(i/perRow);
+    const x=sx+col*(cw+10),y=40+row*(ch+8);
+    if(y>H-50)return;
+    dPanel(x,y,cw,ch,p);
+    dChar(x+cw/2,y+45,35,c.color,'bright',0);
+    dText(c.name,x+cw/2,y+75,c.color,12,'center',true);
+    dText(c.type,x+cw/2,y+90,p.dim,10,'center');
+    dText(`HP:${c.hp} A:${c.atk}`,x+5,y+105,p.dim,9);
+    dText(`D:${c.def} S:${c.spd}`,x+5,y+117,p.dim,9);
+    dText(c.ability?c.ability.split(':')[0]:'',x+cw/2,y+132,p.accent,9,'center');
+    if(mIn(x,y,cw,ch)){dRect(10,H-65,W-20,55,p.panel,6);dText(c.backstory||'',20,H-60,p.text,11);dText(`Ability: ${c.ability||'None'}`,20,H-44,p.accent,11);dText(`Specialty: ${TYPE_SPEC[c.type].desc}`,20,H-28,p.dim,10)}
+    addBtn(x,y,cw,ch,()=>{initChar(c.name);startCombat(false)},'cs_'+c.name);
+  });
+  dBtn(20,H-30,100,25,'Back',p,()=>{S.scene='modeSelect'},'cs_bk');
+}
+
+function drawCharShop(){
+  const p=STYLES.menu;dRect(0,0,W,H,p.bg);
+  dText('Character Shop',W/2,10,p.title,24,'center',true);
+  dText(`Soul Crystals: ${S.soulCrystals}`,W/2,38,'#a03cc8',16,'center');
+  const locked=CHARS.filter(c=>c.cost>0&&!S.unlocked.includes(c.name));
+  const perRow=4,cw=200,ch=55;
+  locked.forEach((c,i)=>{
+    const col=i%perRow,row=Math.floor(i/perRow);
+    const x=15+col*(cw+10),y=65+row*(ch+5);
+    if(y>H-50)return;
+    const canBuy=S.soulCrystals>=c.cost;
+    const hv=mIn(x,y,cw,ch);
+    dRect(x,y,cw,ch,!canBuy?'#303030':hv?p.btnH:p.btnN,6);dBorder(x,y,cw,ch,p.border,1,6);
+    dText(c.name,x+5,y+3,c.color,13,undefined,true);
+    dText(`${c.type} | ${c.cost} SC`,x+5,y+20,canBuy?p.dim:'#606060',11);
+    dText(c.ability?c.ability.split(':')[0]:'',x+5,y+35,p.accent,9);
+    if(canBuy)addBtn(x,y,cw,ch,()=>{S.soulCrystals-=c.cost;S.unlocked.push(c.name);save();addMsg(`Unlocked ${c.name}!`)},'cshop_'+c.name);
+  });
+  dBtn(W/2-60,H-35,120,28,'Back',p,()=>{S.scene='menu'},'cshop_bk');
+}
+
+function drawCombat(){
+  const sty=getStyle(S.floor),p=pal();dRect(0,0,W,H,p.bg);if(sty==='terminal')dScanlines();
+  const e=S.enemy;if(!e)return;
+  const biome=getBiome(S.floor);
+  dText(e.isBoss?`*** BOSS — FLOOR ${S.floor} ***`:`Floor ${S.floor}`,W/2,5,p.title,18,'center',true);
+  dText(biome.name,W-10,5,p.accent,12,'right');
+  // Player panel
+  dPanel(10,28,270,165,p);
+  dText(`${evoName()} Lv.${S.level}`,18,32,S.charData.color,14,undefined,true);
+  dChar(145,105,45,S.charData.color,sty,S.evoStage);
+  dText(`HP:${Math.max(0,S.hp)}/${S.maxHp}`,18,148,p.text,11);
+  dHpBar(18,162,252,12,S.hp,S.maxHp,p);
+  dText(`A:${effAtk()} D:${effDef()} S:${effSpd()}`,18,178,p.dim,10);
+  if(S.tempAtk!==0||S.tempDef!==0||S.tempSpd!==0)dText(`Temp: A${S.tempAtk>=0?'+':''}${S.tempAtk} D${S.tempDef>=0?'+':''}${S.tempDef} S${S.tempSpd>=0?'+':''}${S.tempSpd}`,18,188,'#ffd700',9);
+  dXpBar(18,199,140,8);dText(`Lv${S.level} ${S.xp}/${S.xpNext}xp`,162,196,p.dim,9);
+  dStatuses(18,210,S.statuses);
+  // Enemy panel
+  dPanel(W-280,28,270,165,p);
+  dText(e.name,W-272,32,e.color,14,undefined,true);
+  dText(`Type: ${e.type}`,W-272,50,p.dim,11);
+  dEnemy(W-145,112,55,e.name,e.color,sty);
+  dText(`HP:${Math.max(0,e.hp)}/${e.maxHp}`,W-272,148,p.text,11);
+  dHpBar(W-272,162,252,12,e.hp,e.maxHp,p,true);
+  dStatuses(W-272,180,e.statuses);
+  if(e.isRival)dText('RIVAL',W/2,60,'#ff3264',20,'center',true);
+  dText('VS',W/2,95,p.accent,20,'center',true);
+  // Combat log
+  dPanel(10,228,W-20,88,p);
+  S.combatLog.slice(-4).forEach((l,i)=>dText(l.msg,18,233+i*20,l.color,11));
+  // Action area
+  if(S.combatState==='choose'){
+    S.moves.forEach((m,i)=>{
+      const col=i%3,row=Math.floor(i/3);
+      const bx=10+col*170,by=326+row*55,bw=165,bh=50;
+      const ok=m.pp>0;const hv=mIn(bx,by,bw,bh);
+      dRect(bx,by,bw,bh,!ok?'#303030':hv?p.btnH:p.btnN,6);dBorder(bx,by,bw,bh,p.border,1,6);
+      dText(m.name,bx+5,by+3,ok?p.btnT:'#808080',12,undefined,true);
+      const info=`${m.type} ${m.dmg>0?m.dmg+'dmg':m.effect||'buff'} PP:${m.pp}/${m.maxPp}`;
+      dText(info,bx+5,by+20,ok?p.dim:'#505050',9);
+      if(m.statusType)dText(`${STATUS_FX[m.statusType].name} ${m.statusChance}%`,bx+5,by+34,STATUS_FX[m.statusType].color,9);
+      if(ok)addBtn(bx,by,bw,bh,()=>doMove(i),'mv_'+i);
+    });
+    const ay=S.moves.length>3?436:380;
+    const ic=S.inventory.reduce((s,it)=>s+(it.count||1),0);
+    dBtn(10,ay,100,30,`Items(${ic})`,p,()=>{S.showItems=true},'c_it');
+    dBtn(115,ay,80,30,'Run',p,()=>doRun(),'c_run');
+    dBtn(200,ay,80,30,'Log',p,()=>{S.showLog=true},'c_log');
+    dText(`Gold: ${S.gold}`,W-140,ay,p.gold,13);
+  }
+  if(S.combatState==='result'){
+    dBtn(W/2-130,H-50,120,38,'Item Shop',p,()=>{S.showMiniShop=true},'c_ms');
+    dBtn(W/2+10,H-50,120,38,'Continue',p,()=>{if(S.pendingMove)S.scene='learnMove';else advanceFloor()},'c_cont');
+  }
+  if(S.artifacts.length){dText('Artifacts:',W-250,326,p.dim,10);S.artifacts.forEach((a,i)=>dText(`${a.name}`,W-250,338+i*13,p.accent,10))}
+  // Passive indicators
+  const passives=[];
+  if(S.doubleStrike)passives.push('[2x]');if(S.priorityPassive)passives.push('[Prio]');if(S.burnPassive)passives.push('[Burn]');if(S.reflectPassive)passives.push('[Refl]');if(!S.reviveUsed&&S.reviveUsed!==undefined)passives.push('[Rev]');
+  if(passives.length)dText(passives.join(' '),W-260,326+S.artifacts.length*13+10,RARITIES.Epic.color,9);
+  if(S.showItems)drawItemOverlay();
+  if(S.showLog)drawLogOverlay();
+  if(S.showMiniShop)drawMiniShop();
+}
+
+function drawItemOverlay(){
+  const p=pal();dRect(0,0,W,H,'rgba(0,0,0,0.6)');dPanel(150,80,W-300,H-160,p);
+  dText('Inventory',W/2,90,p.title,20,'center',true);
+  if(!S.inventory.length)dText('Empty!',W/2,200,p.dim,16,'center');
+  else S.inventory.forEach((it,i)=>{const y=115+i*36;dBtn(170,y,W-340,30,`${it.name} x${it.count||1}`,p,()=>{
+    const r=applyItemEffect(it.effect,false);
+    S.combatLog.push({msg:r||it.name,color:'#32c832'});addLog(`Used ${it.name}: ${r}`);
+    it.count=(it.count||1)-1;if(it.count<=0)S.inventory.splice(i,1);S.showItems=false;
+    enemyTurn();if(S.hp<=0)handleDeath();
+  },'it_'+i)});
+  dBtn(W/2-50,H-95,100,28,'Close',p,()=>{S.showItems=false},'it_cl');
+}
+
+function drawLogOverlay(){
+  const p=pal();dRect(0,0,W,H,'rgba(0,0,0,0.6)');dPanel(100,40,W-200,H-80,p);
+  dText('Event Log',W/2,50,p.title,20,'center',true);
+  S.eventLog.slice(-20).forEach((e,i)=>dText(`F${e.floor}: ${e.text}`,120,75+i*22,p.text,11));
+  dBtn(W/2-50,H-55,100,28,'Close',p,()=>{S.showLog=false},'log_cl');
+}
+// ============================================================
+// MINI-SHOP (reworked: buyables + 4 free item picks)
+// ============================================================
+function drawMiniShop(){
+  const p=pal();dRect(0,0,W,H,'rgba(0,0,0,0.75)');
+  dPanel(80,20,W-160,H-40,p);
+  dText(`Item Shop  |  Gold: ${S.gold}`,W/2,30,p.gold,17,'center',true);
+
+  // -- BUYABLE SECTION --
+  dText('— Buy —',W/2,58,p.accent,12,'center');
+  MINI_SHOP_BUYABLE.forEach((it,i)=>{
+    const x=100,y=75+i*38,w=W-200,h=34;const ok=S.gold>=it.cost;
+    dRect(x,y,w,h,ok?p.btnN:'#2a2a2a',6);dBorder(x,y,w,h,p.border,1,6);
+    dText(`${it.name}  (${it.desc})`,x+8,y+4,ok?p.btnT:'#666',13,undefined,true);
+    dText(`${it.cost}g`,x+w-50,y+4,ok?p.gold:'#555',13);
+    if(ok)addBtn(x,y,w,h,()=>{
+      S.gold-=it.cost;applyItemEffect(it.effect,true);
+      addMsg(`${it.name}!`);addLog(`Bought ${it.name}`);
+    },'ms_'+i);
+  });
+
+  // -- FREE PICK SECTION --
+  const fy=75+MINI_SHOP_BUYABLE.length*38+10;
+  dText('— Free Item Pick (choose 1) —',W/2,fy,p.accent,12,'center');
+  if(!S.freeItemPicks||S.freeItemPicks.length===0){
+    dText('Already picked this floor!',W/2,fy+20,p.dim,12,'center');
+  }else{
+    S.freeItemPicks.forEach((it,i)=>{
+      const cols=2,cw=(W-200)/cols-5;
+      const col=i%cols,row=Math.floor(i/cols);
+      const x=100+col*(cw+5),y=fy+20+row*60;
+      const hv=mIn(x,y,cw,55);
+      const rc=rarityColor(it.rarity);
+      dRect(x,y,cw,55,hv?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.3)',6);
+      dBorder(x,y,cw,55,rc,2,6);
+      dText(it.name,x+6,y+4,rc,13,undefined,true);
+      dRarityTag(x+cw-76,y+4,it.rarity);
+      dText(it.desc,x+6,y+22,p.dim,10);
+      dText('Click to take FREE',x+6,y+38,'#32c832',9);
+      addBtn(x,y,cw,55,()=>{
+        const r=applyItemEffect(it.effect,true);
+        addMsg(`Got ${it.name}! ${r}`);addLog(`Free item: ${it.name}`);
+        S.freeItemPicks=null;S.showMiniShop=false;
+      },'msfree_'+i);
+    });
+  }
+  dBtn(W/2-55,H-55,110,30,'Close',p,()=>{S.showMiniShop=false},'ms_cl');
+}
+
+// ============================================================
+// SHOP (every 5 floors)
+// ============================================================
+function drawShop(){
+  const sty=getStyle(S.floor),p=pal();dRect(0,0,W,H,p.bg);if(sty==='terminal')dScanlines();
+  dText(`SHOP | Gold: ${S.gold}`,W/2,10,p.gold,20,'center',true);
+  dText(`HP: ${S.hp}/${S.maxHp}`,30,35,p.text,12);dHpBar(30,50,180,10,S.hp,S.maxHp,p);
+  SHOP_ITEMS.forEach((it,i)=>{const y=70+i*38;const ok=S.gold>=it.cost;const hv=mIn(25,y,W-50,34);
+    dRect(25,y,W-50,34,!ok?'#282828':hv?p.btnH:p.btnN,4);dBorder(25,y,W-50,34,p.border,1,4);
+    dText(it.name,35,y+2,ok?p.btnT:'#808080',13,undefined,true);dText(it.desc,35,y+18,p.dim,10);
+    dText(`${it.cost}g`,W-80,y+8,ok?p.gold:'#808080',13);
+    if(ok)addBtn(25,y,W-50,34,()=>{
+      S.gold-=it.cost;applyItemEffect(it.effect,true);addMsg(`${it.name}!`);addLog(`Shop: ${it.name}`);
+    },'sh_'+i);
+  });
+  dBtn(W/2-80,H-40,160,32,'Leave Shop',p,()=>advanceFloor(),'sh_lv');
+}
+
+// ============================================================
+// ENCOUNTER SCENE
+// ============================================================
+function drawEncounter(){
+  const sty=getStyle(S.floor),p=pal();dRect(0,0,W,H,p.bg);if(sty==='terminal')dScanlines();
+  const e=S.encounter;if(!e)return;
+  dPanel(50,25,W-100,H-50,p);
+  // Mysterious atmosphere
+  dText('~ Mystery Event ~',W/2,32,p.dim,11,'center');
+  dText(e.name,W/2,50,p.title,22,'center',true);
+  dEncounterImg(W/2,118,e.img,p);
+  // Show options (up to 5)
+  const visibleOpts=e.opts.slice(0,5);
+  visibleOpts.forEach((o,i)=>{
+    const y=190+i*50;
+    dBtn(80,y,W-160,42,`${i+1}. ${o.text}`,p,()=>{
+      const r=o.result();addMsg(r);addLog(`${e.name}: ${o.text} -> ${r}`);
+      // Small chance of bonus artifact
+      if(Math.random()<0.1&&S.artifacts.length<5){
+        const arts=[{name:'Stone Pendant',effect:'rock_boost'},{name:'Sharp Ring',effect:'scissors_boost'},{name:'Paper Talisman',effect:'paper_boost'},{name:'Life Crystal',effect:'hp+30'}];
+        const av=arts.filter(a=>!S.artifacts.find(x=>x.effect===a.effect));
+        if(av.length){const a=pick(av);S.artifacts.push(a);addMsg(`Found: ${a.name}!`)}
+      }
+      advanceFloor();
+    },'enc_'+i);
+  });
+  dText('Floor '+S.floor,W-70,H-42,p.dim,10);
+}
+
+// ============================================================
+// LEARN MOVE SCENE
+// ============================================================
+function drawLearnMove(){
+  const p=pal();dRect(0,0,W,H,p.bg);dPanel(100,100,W-200,400,p);
+  dText('Learn New Move?',W/2,115,p.title,22,'center',true);
+  const nm=S.pendingMove;if(!nm)return;
+  dText(`${nm.name} — ${nm.type} ${nm.dmg}dmg PP:${nm.maxPp}`,W/2,160,p.accent,16,'center');
+  if(nm.statusType)dText(`${STATUS_FX[nm.statusType].name} ${nm.statusChance}%`,W/2,180,STATUS_FX[nm.statusType].color,13,'center');
+  dText('Replace which move?',W/2,210,p.text,14,'center');
+  S.moves.forEach((m,i)=>{dBtn(150,240+i*45,W-300,38,`${m.name} (${m.type} ${m.dmg}dmg PP:${m.maxPp})`,p,()=>{S.moves[i]={...nm,pp:nm.maxPp};S.pendingMove=null;addMsg(`Learned ${nm.name}!`);addLog(`Learned ${nm.name}`);advanceFloor()},'lm_'+i)});
+  dBtn(W/2-80,240+S.moves.length*45+10,160,36,"Don't Learn",p,()=>{S.pendingMove=null;advanceFloor()},'lm_no');
+}
+
+// ============================================================
+// ETERNAL SHOP
+// ============================================================
+function drawEternalShop(){
+  const p=STYLES.menu;dRect(0,0,W,H,p.bg);
+  dText('Eternal Shop',W/2,15,p.title,24,'center',true);
+  dText(`Soul Crystals: ${S.soulCrystals}`,W/2,45,'#a03cc8',16,'center');
+  dText('Upgrades persist across all runs!',W/2,68,p.dim,12,'center');
+  S.eternalItems.forEach((u,i)=>{const lv=S.eternals[u.key]||0;const cost=u.base*(lv+1);const ok=S.soulCrystals>=cost;
+    const y=90+i*58;dBtn(100,y,W-200,50,`${u.name} (Lv.${lv}) — ${cost} SC`,p,()=>{
+      if(S.soulCrystals>=cost){S.soulCrystals-=cost;S.eternals[u.key]=(S.eternals[u.key]||0)+1;save();addMsg('Upgraded!')}
+    },'es_'+i,ok);
+  });
+  dBtn(W/2-60,H-45,120,32,'Back',p,()=>{S.scene='menu'},'es_bk');
+}
+
+// ============================================================
+// SETTINGS
+// ============================================================
+function drawSettings(){
+  const p=STYLES.menu;dRect(0,0,W,H,p.bg);
+  dText('Settings',W/2,30,p.title,28,'center',true);
+  const diffs=['Easy','Normal','Hard','Extreme'];
+  dText('Difficulty:',W/2,100,p.text,18,'center');
+  diffs.forEach((d,i)=>{const x=W/2-200+i*100;
+    const sel=S.settings.difficulty===i;
+    dBtn(x,130,90,35,d,p,()=>{S.settings.difficulty=i;save()},'sd_'+i);
+    if(sel)dBorder(x,130,90,35,'#ffd700',3,8);
+  });
+  const speeds=['0.5x','1x','1.5x','2x'];
+  dText('Game Speed:',W/2,200,p.text,18,'center');
+  speeds.forEach((s,i)=>{const x=W/2-200+i*100;const vals=[0.5,1,1.5,2];
+    const sel=S.settings.speed===vals[i];
+    dBtn(x,230,90,35,s,p,()=>{S.settings.speed=vals[i];save()},'ss_'+i);
+    if(sel)dBorder(x,230,90,35,'#ffd700',3,8);
+  });
+  dBtn(W/2-60,350,120,38,'Back',p,()=>{S.scene='menu'},'set_bk');
+}
+// ============================================================
+// HOW TO PLAY (full updated guide)
+// ============================================================
+function drawHowToPlay(){
+  const p=STYLES.menu;dRect(0,0,W,H,p.bg);
+  dText('How to Play — RPS Legends v4.0',W/2,8,p.title,20,'center',true);
+  const sections=[
+    {title:'BASICS',color:p.accent,lines:[
+      'Rock beats Scissors (1.5x) | Scissors beats Paper (1.5x) | Paper beats Rock (1.5x)',
+      'Weak matchup = 0.6x damage. CRITS deal 1.5x damage.',
+    ]},
+    {title:'TYPE SPECIALTIES',color:'#28c8dc',lines:[
+      'Rock: +10% dmg, -15% dmg taken, -20% speed (tank playstyle)',
+      'Paper: Heals 3% HP/turn passively, but easier to hit',
+      'Scissors: +25% crit chance, +15% speed, but 20% more dmg taken',
+    ]},
+    {title:'ITEM RARITY',color:RARITIES.Legendary.color,lines:[
+      'Common (white) | Uncommon (green) | Rare (blue) | Epic (purple) | Legendary (gold)',
+      'After each battle win: open the Item Shop to BUY potions/antidotes AND pick 1 FREE item.',
+      'Free items use the rarity system — later floors drop rarer items!',
+      'Epic/Legendary items grant powerful passives: double-strike, reflect, auto-revive, etc.',
+    ]},
+    {title:'STAT SYSTEM',color:'#ffd700',lines:[
+      'Permanent stats: from level-ups, evolutions, shops, Eternal Shop — never reset.',
+      'Temporary stats: from combat buff moves (Harden, Sharpen, etc.) — reset before boss/rival.',
+      'The stat display shows effective ATK/DEF/SPD including all modifiers.',
+    ]},
+    {title:'STATUS EFFECTS',color:'#dc3232',lines:[
+      'Bleed/Burn/Poison/Wrap/Freeze carry over between regular battles (no auto-clear).',
+      'Buy Antidote in the Item Shop to cure status effects.',
+      'Boss fight defeat CLEARS all your status effects (reward for winning).',
+      'Freeze skips one action. Burn also reduces your ATK by 10%.',
+    ]},
+    {title:'PROGRESSION',color:'#32c832',lines:[
+      '300 floors Classic + Endless Mode (unlock after beating Classic).',
+      'Boss every 10 floors | Regular Shop every 5 floors | Rival every 25 floors.',
+      'Evolve at Floor 25 (Stage 1) and Floor 50 (Final). Big stat boosts!',
+      'Level up gains permanent stat increases. Learn new moves every 5 levels.',
+    ]},
+    {title:'BIOMES',color:'#a03cc8',lines:[
+      'Plains(1-35) Caverns(36-70) Grid(71-100) Crystal(101-150)',
+      'Inferno(151-200) Void(201-250) Celestial(251-300)',
+      'Each biome has unique enemies and visual style.',
+    ]},
+    {title:'META PROGRESSION',color:'#c8aa1e',lines:[
+      'Soul Crystals earned from runs → spend in Eternal Shop for permanent upgrades.',
+      'Character Shop: unlock all 50 characters with Soul Crystals.',
+      'Artifacts drop from battles — up to 5 equipped at once.',
+    ]},
+  ];
+  let y=32;
+  if(!S._htpScroll)S._htpScroll=0;
+  X.save();X.beginPath();X.rect(0,30,W,H-60);X.clip();
+  const offsetY=S._htpScroll||0;
+  sections.forEach(sec=>{
+    dText(sec.title,40,y+offsetY,sec.color,13,undefined,true);y+=18;
+    sec.lines.forEach(l=>{dText('  '+l,40,y+offsetY,p.text,10);y+=14});
+    y+=6;
+  });
+  X.restore();
+  dBtn(W/2-100,H-38,90,28,'Scroll Up',p,()=>{S._htpScroll=(S._htpScroll||0)+60},'htp_u');
+  dBtn(W/2+10,H-38,90,28,'Scroll Down',p,()=>{S._htpScroll=(S._htpScroll||0)-60},'htp_d');
+  dBtn(W-130,H-38,110,28,'Back',p,()=>{S.scene='menu';S._htpScroll=0},'htp_bk');
+}
+
+// ============================================================
+// DEATH / VICTORY
+// ============================================================
+function drawDeath(){
+  dRect(0,0,W,H,'#0f0505');
+  dText('DEFEATED',W/2,80,'#dc3232',36,'center',true);
+  const cr=Math.floor(S.floor/5)+(S.floor>=50?10:0)+(S.floor>=100?20:0);
+  [`Floor ${S.floor}`,`${evoName()} Lv.${S.level}`,`Gold: ${S.gold}`,`+${cr} Soul Crystals`].forEach((l,i)=>dText(l,W/2,170+i*30,'#e0e0e0',18,'center'));
+  dBtn(W/2-100,350,200,44,'Return to Menu',STYLES.menu,()=>{S.runActive=false;S.scene='menu'},'d_m');
+}
+
+function drawVictory(){
+  dRect(0,0,W,H,'#050519');
+  dText('VICTORY!',W/2,60,'#ffd700',40,'center',true);
+  dText('Conquered all 300 floors!',W/2,115,'#28c8dc',20,'center');
+  const cr=Math.floor(S.floor/5)+30;
+  [`${evoName()} Lv.${S.level}`,`HP: ${S.hp}/${S.maxHp}`,`Gold: ${S.gold}`,`+${cr} Soul Crystals`,'Endless Mode Unlocked!'].forEach((l,i)=>dText(l,W/2,170+i*30,'#e0e0e0',18,'center'));
+  dBtn(W/2-100,370,200,44,'Return to Menu',STYLES.menu,()=>{S.runActive=false;S.scene='menu'},'v_m');
+}
+
+function drawMsgs(){
+  let y=H-60;
+  S.messages.slice().reverse().slice(0,3).forEach(m=>{
+    dRect(15,y,W-30,24,'rgba(0,0,0,0.75)',4);dText(m.text,25,y+4,'#ffd700',12);y-=28;
+  });
+}
+
+// ============================================================
+// INPUT
+// ============================================================
+function handleClick(ex,ey){mX=ex;mY=ey;for(let i=btns.length-1;i>=0;i--){const b=btns[i];if(ex>=b.x&&ex<=b.x+b.w&&ey>=b.y&&ey<=b.y+b.h){b.action();return}}}
+C.addEventListener('mousemove',e=>{const p=gmp(e);mX=p.x;mY=p.y});
+C.addEventListener('click',e=>{const p=gmp(e);handleClick(p.x,p.y)});
+C.addEventListener('touchstart',e=>{e.preventDefault();const p=gmp(e);handleClick(p.x,p.y)},{passive:false});
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+loadSave();
+function loop(){
+  S.tick++;X.save();X.scale(sc,sc);clrBtns();
+  const s=S.scene;
+  if(s==='menu')drawMenu();
+  else if(s==='modeSelect')drawModeSelect();
+  else if(s==='charSelect')drawCharSelect();
+  else if(s==='charShop')drawCharShop();
+  else if(s==='combat')drawCombat();
+  else if(s==='shop')drawShop();
+  else if(s==='encounter')drawEncounter();
+  else if(s==='eternalShop')drawEternalShop();
+  else if(s==='howToPlay')drawHowToPlay();
+  else if(s==='settings')drawSettings();
+  else if(s==='death')drawDeath();
+  else if(s==='victory')drawVictory();
+  else if(s==='learnMove')drawLearnMove();
+  drawMsgs();
+  S.messages=S.messages.filter(m=>{m.timer--;return m.timer>0});
+  X.restore();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
