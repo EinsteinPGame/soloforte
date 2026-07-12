@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>RPS Legends - Play Online</title>
+<title>RPS Legends v5.0 - Play Online</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Consolas','Courier New',monospace;background:#0a0a1a;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center}
@@ -15,14 +15,486 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// RPS LEGENDS v4.0 — Mega Edition
+// RPS LEGENDS v5.0 — Ultimate Edition
+// 150+ move animations, Web Audio, enemy tiers, mobile, shop rework
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
-const TW=900,TH=700;let sc=1;
-function resize(){const w=innerWidth,h=innerHeight;sc=Math.min(w/TW,h/TH);C.width=TW*sc;C.height=TH*sc;C.style.position='absolute';C.style.left=(w-C.width)/2+'px';C.style.top=(h-C.height)/2+'px'}
+const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
+const TW=isMobile?600:900,TH=isMobile?500:700;let sc=1;
+function resize(){const w=innerWidth,h=innerHeight;sc=Math.min(w/TW,h/TH);if(isMobile)sc=Math.max(sc,Math.min(w/TW,h/TH)*1.05);C.width=TW*sc;C.height=TH*sc;C.style.position='absolute';C.style.left=(w-C.width)/2+'px';C.style.top=(h-C.height)/2+'px'}
 addEventListener('resize',resize);resize();
 function gmp(e){const r=C.getBoundingClientRect(),cx=(e.clientX||(e.touches&&e.touches[0].clientX))-r.left,cy=(e.clientY||(e.touches&&e.touches[0].clientY))-r.top;return{x:cx/sc,y:cy/sc}}
 const W=TW,H=TH,rand=(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pick=a=>a[Math.floor(Math.random()*a.length)],clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+
+// ============================================================
+// WEB AUDIO API — SFX SYSTEM
+// ============================================================
+const SFX={
+  ctx:null,
+  _init(){if(!this.ctx)try{this.ctx=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}},
+  _tone(freq,dur,type,vol,delay){
+    this._init();if(!this.ctx)return;
+    const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type=type||'sine';o.frequency.setValueAtTime(freq,this.ctx.currentTime);
+    g.gain.setValueAtTime(vol||0.15,this.ctx.currentTime+(delay||0));
+    g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+(delay||0)+dur);
+    o.connect(g);g.connect(this.ctx.destination);
+    o.start(this.ctx.currentTime+(delay||0));o.stop(this.ctx.currentTime+(delay||0)+dur);
+  },
+  _noise(dur,vol){
+    this._init();if(!this.ctx)return;
+    const bufSz=this.ctx.sampleRate*dur;const buf=this.ctx.createBuffer(1,bufSz,this.ctx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<bufSz;i++)d[i]=(Math.random()*2-1)*(vol||0.1);
+    const s=this.ctx.createBufferSource();const g=this.ctx.createGain();
+    s.buffer=buf;g.gain.setValueAtTime(vol||0.1,this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+dur);
+    s.connect(g);g.connect(this.ctx.destination);s.start();s.stop(this.ctx.currentTime+dur);
+  },
+  click(){this._tone(800,0.05,'square',0.06)},
+  hit(type){
+    if(type==='Rock'){this._tone(120,0.15,'sine',0.2);this._noise(0.1,0.12)}
+    else if(type==='Paper'){this._tone(400,0.12,'sine',0.1);this._tone(600,0.08,'sine',0.08,0.04)}
+    else if(type==='Scissors'){this._tone(900,0.08,'sawtooth',0.12);this._tone(1200,0.06,'sawtooth',0.1,0.03)}
+    else{this._tone(300,0.12,'triangle',0.12)}
+  },
+  crit(){this._tone(600,0.1,'sawtooth',0.25);this._tone(900,0.15,'square',0.2,0.05);this._noise(0.08,0.15)},
+  superEffective(){this._tone(500,0.08,'square',0.2);this._tone(700,0.1,'square',0.18,0.08);this._tone(1000,0.12,'square',0.15,0.16)},
+  buff(){this._tone(400,0.1,'sine',0.12);this._tone(500,0.1,'sine',0.1,0.1);this._tone(600,0.12,'sine',0.08,0.2)},
+  heal(){this._tone(440,0.12,'sine',0.1);this._tone(550,0.12,'sine',0.08,0.12);this._tone(660,0.15,'sine',0.06,0.24)},
+  statusApplied(){this._tone(150,0.2,'sawtooth',0.1);this._tone(120,0.15,'square',0.08,0.1)},
+  death(){this._tone(300,0.15,'sine',0.2);this._tone(200,0.2,'sine',0.15,0.15);this._tone(100,0.3,'sine',0.1,0.35)},
+  victory(){[523,659,784,1047].forEach((f,i)=>this._tone(f,0.2,'sine',0.15,i*0.15))},
+  bossAppear(){this._tone(80,0.3,'sawtooth',0.25);this._tone(60,0.4,'sawtooth',0.2,0.3);this._noise(0.2,0.1)},
+  levelUp(){[440,554,659,880].forEach((f,i)=>this._tone(f,0.15,'triangle',0.12,i*0.1))},
+  coin(){this._tone(1200,0.08,'square',0.1);this._tone(1600,0.1,'square',0.08,0.08)},
+  pickup(){this._tone(800,0.06,'sine',0.1);this._tone(1000,0.08,'sine',0.08,0.06)},
+};
+
+// ============================================================
+// MOVE ANIMATION SYSTEM — 150+ unique move animations
+// ============================================================
+const ANIM_TYPES={projectile:1,slash:2,burst:3,buff:4,beam:5,special:6};
+// Map every move name to animation config: {type, color, color2, particles, size, speed, extra}
+const MOVE_ANIMS={
+  // Stone (Rock)
+  'Rock Throw':{type:'projectile',color:'#b48c64',color2:'#8a6a48',particles:'rocks',size:12},
+  'Harden':{type:'buff',color:'#b48c64',color2:'#d4b896'},
+  'Boulder Smash':{type:'burst',color:'#b48c64',color2:'#6e5030',particles:'rocks',size:20},
+  // Blade (Scissors)
+  'Quick Cut':{type:'slash',color:'#c83c3c',color2:'#ff6666'},
+  'Sharpen':{type:'buff',color:'#c83c3c',color2:'#ff8888'},
+  'Cross Slash':{type:'slash',color:'#ff3333',color2:'#ff6666',particles:'sparks',size:16},
+  // Scroll (Paper)
+  'Paper Cut':{type:'projectile',color:'#dcdcf0',color2:'#ffffff',particles:'paper'},
+  'Fold Shield':{type:'buff',color:'#dcdcf0',color2:'#ffffff'},
+  'Origami Storm':{type:'burst',color:'#dcdcf0',color2:'#b0b0d0',particles:'paper',size:22},
+  // Crystal (Rock)
+  'Gem Shard':{type:'projectile',color:'#64c8ff',color2:'#88ddff',particles:'crystals'},
+  'Prism Beam':{type:'beam',color:'#64c8ff',color2:'#ff88ff',particles:'sparkle'},
+  'Diamond Crush':{type:'burst',color:'#64c8ff',color2:'#aaffff',particles:'crystals',size:20},
+  // Shadow (Scissors)
+  'Night Slash':{type:'slash',color:'#643c8c',color2:'#9060c0',particles:'shadow'},
+  'Vanish':{type:'buff',color:'#643c8c',color2:'#a070d0'},
+  'Phantom Blade':{type:'slash',color:'#8a50c0',color2:'#c080ff',particles:'shadow',size:18},
+  // Sage (Paper)
+  'Spell Page':{type:'projectile',color:'#3cb478',color2:'#60e0a0',particles:'magic'},
+  'Heal Word':{type:'buff',color:'#3cb478',color2:'#80ffc0',extra:'heal'},
+  'Arcane Burst':{type:'burst',color:'#3cb478',color2:'#40ff90',particles:'magic',size:20},
+  // Ember (Rock)
+  'Flame Rock':{type:'projectile',color:'#ff6432',color2:'#ffaa00',particles:'fire'},
+  'Heat Shield':{type:'buff',color:'#ff6432',color2:'#ff9960'},
+  'Eruption':{type:'burst',color:'#ff3200',color2:'#ff8c00',particles:'fire',size:24},
+  // Gale (Scissors)
+  'Wind Blade':{type:'slash',color:'#96dcff',color2:'#c0eeff',particles:'wind'},
+  'Tailwind':{type:'buff',color:'#96dcff',color2:'#d0f0ff'},
+  'Hurricane Cut':{type:'slash',color:'#60c8f0',color2:'#90e0ff',particles:'wind',size:18},
+  // Lotus (Paper)
+  'Petal Dance':{type:'burst',color:'#ff96c8',color2:'#ffc0e0',particles:'petals'},
+  'Bloom':{type:'buff',color:'#ff96c8',color2:'#ffd0e8',extra:'heal'},
+  "Nature's Wrath":{type:'burst',color:'#40c040',color2:'#ff96c8',particles:'petals',size:20},
+  // Iron (Rock)
+  'Iron Fist':{type:'projectile',color:'#a0a0b4',color2:'#c0c0d0',particles:'metal'},
+  'Metal Wall':{type:'buff',color:'#a0a0b4',color2:'#d0d0e0'},
+  'Steel Crash':{type:'burst',color:'#808096',color2:'#c0c0d0',particles:'metal',size:22},
+  // Fang (Scissors)
+  'Bite':{type:'slash',color:'#c86432',color2:'#ff8040',particles:'blood'},
+  'Howl':{type:'buff',color:'#c86432',color2:'#ff9060'},
+  'Savage Rend':{type:'slash',color:'#ff4020',color2:'#c86432',particles:'blood',size:18},
+  // Rune (Paper)
+  'Rune Bolt':{type:'beam',color:'#c8a0ff',color2:'#e0c0ff',particles:'magic'},
+  'Enchant':{type:'buff',color:'#c8a0ff',color2:'#e0d0ff'},
+  'Arcane Nova':{type:'burst',color:'#c8a0ff',color2:'#f0e0ff',particles:'magic',size:22},
+  // Frost (Rock)
+  'Ice Rock':{type:'projectile',color:'#a0e6ff',color2:'#d0f0ff',particles:'ice'},
+  'Frost Armor':{type:'buff',color:'#a0e6ff',color2:'#d0f8ff'},
+  'Avalanche':{type:'burst',color:'#80d0ff',color2:'#ffffff',particles:'ice',size:22},
+  // Spark (Scissors)
+  'Thunder Cut':{type:'slash',color:'#ffdc00',color2:'#ffffff',particles:'lightning'},
+  'Charge':{type:'buff',color:'#ffdc00',color2:'#ffee60'},
+  'Lightning Blade':{type:'beam',color:'#ffdc00',color2:'#ffffff',particles:'lightning',size:16},
+  // Silk (Paper)
+  'Thread Bind':{type:'projectile',color:'#ffe6f0',color2:'#ffffff',particles:'thread'},
+  'Cocoon':{type:'buff',color:'#ffe6f0',color2:'#ffffff'},
+  'Web Blast':{type:'burst',color:'#ffe6f0',color2:'#ffd0e0',particles:'thread',size:18},
+  // Obsidian (Rock)
+  'Dark Rock':{type:'projectile',color:'#1e1428',color2:'#5030a0',particles:'dark'},
+  'Void Shell':{type:'buff',color:'#3c2050',color2:'#6040a0'},
+  'Obliterate':{type:'burst',color:'#000000',color2:'#5000a0',particles:'dark',size:26},
+  // Razor (Scissors)
+  'Razor Wind':{type:'slash',color:'#e6322d',color2:'#ff6060',particles:'sparks'},
+  'Whet':{type:'buff',color:'#e6322d',color2:'#ff8080'},
+  'Execution':{type:'special',color:'#ff0000',color2:'#880000',particles:'blood',size:20,extra:'execute'},
+  // Oracle (Paper)
+  'Foresight':{type:'beam',color:'#c8c8ff',color2:'#ffffff',particles:'sparkle'},
+  'Prophecy':{type:'buff',color:'#c8c8ff',color2:'#e0e0ff'},
+  'Destiny Beam':{type:'beam',color:'#8888ff',color2:'#ffffff',particles:'sparkle',size:16},
+  // Magnet (Rock)
+  'Magnetic Pulse':{type:'burst',color:'#96969c',color2:'#c0c0ff',particles:'lightning'},
+  'Polarize':{type:'buff',color:'#96969c',color2:'#c0c0c0'},
+  'Rail Gun':{type:'beam',color:'#96969c',color2:'#ffffff',particles:'metal',size:14},
+  // Venom (Scissors)
+  'Toxic Cut':{type:'slash',color:'#6e00a0',color2:'#a040ff',particles:'poison'},
+  'Acid Coat':{type:'buff',color:'#6e00a0',color2:'#a060ff'},
+  'Venom Strike':{type:'slash',color:'#8000c0',color2:'#c060ff',particles:'poison',size:16},
+  // Origami (Paper)
+  'Crane Strike':{type:'projectile',color:'#ffc8c8',color2:'#ffffff',particles:'paper'},
+  '1000 Cranes':{type:'buff',color:'#ffc8c8',color2:'#ffffff',extra:'heal'},
+  'Paper Dragon':{type:'special',color:'#ff4040',color2:'#ffc8c8',particles:'paper',size:22,extra:'dragon'},
+  // Meteor (Rock)
+  'Space Rock':{type:'projectile',color:'#dc6400',color2:'#ff9030',particles:'fire',size:16},
+  'Gravity Well':{type:'buff',color:'#dc6400',color2:'#ffaa40'},
+  'Impact':{type:'special',color:'#ff3200',color2:'#ffcc00',particles:'fire',size:28,extra:'impact'},
+  // Ninja (Scissors)
+  'Shuriken':{type:'projectile',color:'#28283c',color2:'#505078',particles:'metal',size:8},
+  'Smoke Bomb':{type:'buff',color:'#555555',color2:'#888888',extra:'smoke'},
+  'Death Mark':{type:'special',color:'#ff0000',color2:'#28283c',particles:'shadow',size:16,extra:'mark'},
+  // Scholar (Paper)
+  'Book Slam':{type:'projectile',color:'#f0e6c8',color2:'#d0c0a0',particles:'paper',size:14},
+  'Study':{type:'buff',color:'#f0e6c8',color2:'#fff0d0'},
+  'Knowledge Blast':{type:'burst',color:'#f0e6c8',color2:'#ffffff',particles:'magic',size:20},
+  // Pebble (Rock)
+  'Roll':{type:'projectile',color:'#c8b496',color2:'#a09070',particles:'rocks',size:10},
+  'Curl Up':{type:'buff',color:'#c8b496',color2:'#e0d0b0'},
+  'Rock Slide':{type:'burst',color:'#c8b496',color2:'#a09070',particles:'rocks',size:20},
+  // Katana (Scissors)
+  'Iai Slash':{type:'slash',color:'#e6e6f0',color2:'#ffffff',particles:'sparks',size:18},
+  'Focus':{type:'buff',color:'#e6e6f0',color2:'#ffffff'},
+  '1000 Cuts':{type:'special',color:'#ffffff',color2:'#c83c3c',particles:'sparks',size:14,extra:'multiSlash'},
+  // Papyrus (Paper)
+  'Ancient Script':{type:'projectile',color:'#f0dcc8',color2:'#c8b098',particles:'paper'},
+  'Mummy Wrap':{type:'projectile',color:'#f0dcc8',color2:'#c8a070',particles:'thread',size:10},
+  'Curse':{type:'special',color:'#5000a0',color2:'#a040ff',particles:'dark',size:14,extra:'curse'},
+  // Lava (Rock)
+  'Lava Ball':{type:'projectile',color:'#ff3200',color2:'#ff8c00',particles:'fire',size:14},
+  'Magma Armor':{type:'buff',color:'#ff3200',color2:'#ff6400'},
+  'Volcanic Fury':{type:'burst',color:'#ff0000',color2:'#ff6400',particles:'fire',size:26},
+  // Scythe (Scissors)
+  'Reap':{type:'slash',color:'#464646',color2:'#808080',particles:'shadow'},
+  'Soul Drain':{type:'buff',color:'#464646',color2:'#808080',extra:'heal'},
+  'Final Harvest':{type:'slash',color:'#202020',color2:'#646464',particles:'shadow',size:20},
+  // Quill (Paper)
+  'Ink Shot':{type:'projectile',color:'#283cdc',color2:'#5060ff',particles:'ink'},
+  'Edit':{type:'buff',color:'#283cdc',color2:'#6080ff'},
+  'Masterpiece':{type:'burst',color:'#283cdc',color2:'#80a0ff',particles:'ink',size:20},
+  // Garnet (Rock)
+  'Ruby Ray':{type:'beam',color:'#dc1432',color2:'#ff5050',particles:'crystals'},
+  'Gem Shield':{type:'buff',color:'#dc1432',color2:'#ff6464'},
+  'Shatter':{type:'burst',color:'#dc1432',color2:'#ff3050',particles:'crystals',size:22},
+  // Rapier (Scissors)
+  'Thrust':{type:'slash',color:'#c8c8dc',color2:'#e0e0ff',particles:'sparks',size:10},
+  'Riposte':{type:'buff',color:'#c8c8dc',color2:'#e0e0f0'},
+  'Flurry':{type:'special',color:'#c8c8dc',color2:'#ffffff',particles:'sparks',size:8,extra:'multiSlash'},
+  // Talisman (Paper)
+  'Hex':{type:'special',color:'#ffa000',color2:'#ff6000',particles:'magic',size:14,extra:'curse'},
+  'Ward':{type:'buff',color:'#ffa000',color2:'#ffc040'},
+  'Spirit Bomb':{type:'burst',color:'#ffa000',color2:'#ffdd00',particles:'magic',size:24},
+  // Fossil (Rock)
+  'Ancient Strike':{type:'projectile',color:'#968c78',color2:'#b4a890',particles:'rocks'},
+  'Petrify':{type:'special',color:'#888070',color2:'#c0b8a0',particles:'ice',size:14,extra:'freeze'},
+  'Excavate':{type:'burst',color:'#968c78',color2:'#c8c0b0',particles:'rocks',size:20},
+  // Chakram (Scissors)
+  'Disc Throw':{type:'projectile',color:'#dc9600',color2:'#ffb830',particles:'metal',size:10},
+  'Spin':{type:'buff',color:'#dc9600',color2:'#ffc840'},
+  'Orbit Blade':{type:'special',color:'#dc9600',color2:'#ffcc40',particles:'metal',size:12,extra:'orbit'},
+  // Grimoire (Paper)
+  'Dark Page':{type:'projectile',color:'#500050',color2:'#a000a0',particles:'dark'},
+  'Forbidden Knowledge':{type:'buff',color:'#500050',color2:'#800080'},
+  'Eldritch Blast':{type:'beam',color:'#500050',color2:'#c000c0',particles:'dark',size:16},
+  // Marble (Rock)
+  'Smooth Roll':{type:'projectile',color:'#e6e6e6',color2:'#ffffff',particles:'rocks',size:12},
+  'Polish':{type:'buff',color:'#e6e6e6',color2:'#ffffff'},
+  'Marble Slam':{type:'burst',color:'#e6e6e6',color2:'#ffffff',particles:'rocks',size:20},
+  // Kunai (Scissors)
+  'Throw':{type:'projectile',color:'#323250',color2:'#505078',particles:'metal',size:8},
+  'Shadow Clone':{type:'buff',color:'#323250',color2:'#505078',extra:'smoke'},
+  'Lethal Aim':{type:'slash',color:'#323250',color2:'#ff0000',particles:'sparks',size:14},
+  // Scroll_S (Paper)
+  'Nature Spell':{type:'projectile',color:'#c8f0c8',color2:'#e0ffe0',particles:'petals'},
+  'Regrowth':{type:'buff',color:'#c8f0c8',color2:'#e0ffe0',extra:'heal'},
+  'Forest Fury':{type:'burst',color:'#40a040',color2:'#80ff80',particles:'petals',size:20},
+  // Geode (Rock)
+  'Crystal Throw':{type:'projectile',color:'#a064c8',color2:'#c090e0',particles:'crystals'},
+  'Geode Shell':{type:'buff',color:'#a064c8',color2:'#c0a0e0'},
+  'Gem Eruption':{type:'burst',color:'#a064c8',color2:'#e0c0ff',particles:'crystals',size:22},
+  // Sai (Scissors)
+  'Pierce':{type:'slash',color:'#966432',color2:'#c08850',particles:'sparks'},
+  'Trap':{type:'projectile',color:'#966432',color2:'#c08850',particles:'thread',size:10},
+  'Triple Strike':{type:'special',color:'#966432',color2:'#c08850',particles:'sparks',size:10,extra:'multiSlash'},
+  // Sutra (Paper)
+  'Mantra':{type:'beam',color:'#ffd700',color2:'#ffffff',particles:'sparkle'},
+  'Enlighten':{type:'buff',color:'#ffd700',color2:'#ffee80'},
+  'Nirvana':{type:'burst',color:'#ffd700',color2:'#ffffff',particles:'sparkle',size:26},
+  // Onyx (Rock)
+  'Dark Smash':{type:'projectile',color:'#1e1e1e',color2:'#5a5a5a',particles:'dark',size:14},
+  'Void Absorb':{type:'buff',color:'#1e1e1e',color2:'#404040',extra:'heal'},
+  'Black Hole':{type:'special',color:'#000000',color2:'#5000a0',particles:'dark',size:28,extra:'blackhole'},
+  // Raptor (Scissors)
+  'Claw Swipe':{type:'slash',color:'#64c800',color2:'#90ff30',particles:'blood'},
+  'Predator Eye':{type:'buff',color:'#64c800',color2:'#a0ff60'},
+  'Pounce':{type:'slash',color:'#64c800',color2:'#c0ff80',particles:'blood',size:18},
+  // Mandala (Paper)
+  'Pattern':{type:'beam',color:'#ff64ff',color2:'#ffc0ff',particles:'sparkle'},
+  'Meditate_M':{type:'buff',color:'#ff64ff',color2:'#ffa0ff',extra:'heal'},
+  'Cosmic Pattern':{type:'burst',color:'#ff64ff',color2:'#ffffff',particles:'sparkle',size:24},
+  // Titanium (Rock)
+  'Titan Punch':{type:'projectile',color:'#b4b4c8',color2:'#d0d0e0',particles:'metal',size:16},
+  'Titan Shield':{type:'buff',color:'#b4b4c8',color2:'#e0e0f0'},
+  'Titan Slam':{type:'burst',color:'#b4b4c8',color2:'#ffffff',particles:'metal',size:26},
+  // Muramasa (Scissors)
+  'Blood Cut':{type:'slash',color:'#dc0000',color2:'#ff4040',particles:'blood',size:16},
+  'Blood Rage':{type:'buff',color:'#dc0000',color2:'#ff5050'},
+  'Demon Slash':{type:'slash',color:'#ff0000',color2:'#880000',particles:'blood',size:22},
+  // Akashic (Paper)
+  'Record':{type:'beam',color:'#ffffff',color2:'#aaaaff',particles:'sparkle'},
+  'Archive':{type:'buff',color:'#ffffff',color2:'#ddddff'},
+  'Total Recall':{type:'burst',color:'#ffffff',color2:'#8888ff',particles:'magic',size:24},
+  // Chaos (Rock)
+  'Random Strike':{type:'special',color:'#ff5000',color2:'#00ff50',particles:'chaos',size:16,extra:'chaos'},
+  'Wild Card':{type:'buff',color:'#ff5000',color2:'#50ff00'},
+  'Chaos Rift':{type:'special',color:'#ff0000',color2:'#0000ff',particles:'chaos',size:24,extra:'chaos'},
+  // Generic fallbacks for level-up moves
+  'Power Strike':{type:'projectile',color:'#ffaa00',color2:'#ffdd44',particles:'fire',size:14},
+  'Guard':{type:'buff',color:'#4488ff',color2:'#88bbff'},
+  'Drain Hit':{type:'slash',color:'#00cc66',color2:'#44ff88',particles:'magic'},
+  'Status Strike':{type:'slash',color:'#ff6600',color2:'#ffaa44',particles:'sparks'},
+};
+
+// Animation state
+let animState=null; // {active, t, duration, type, fromX, fromY, toX, toY, color, color2, particles, size, extra, particleList}
+
+function getAnimConfig(moveName){
+  // Try exact match first, then try prefix match for level-up moves (e.g., "Power Strike II")
+  if(MOVE_ANIMS[moveName])return MOVE_ANIMS[moveName];
+  const base=moveName.replace(/\s+(II|III|IV|V|VI)$/,'');
+  if(MOVE_ANIMS[base])return MOVE_ANIMS[base];
+  // Default based on type
+  return{type:'projectile',color:'#ffffff',color2:'#aaaaaa',particles:'sparks',size:10};
+}
+
+function startMoveAnim(moveName,isPlayerAttack,moveType){
+  const cfg=getAnimConfig(moveName);
+  const pX=isMobile?100:145, pY=isMobile?80:105;
+  const eX=isMobile?W-100:W-145, eY=isMobile?80:112;
+  const fromX=isPlayerAttack?pX:eX, fromY=isPlayerAttack?pY:eY;
+  const toX=isPlayerAttack?eX:pX, toY=isPlayerAttack?eY:pY;
+  const dur=moveType==='Buff'?400:600;
+  animState={
+    active:true,t:0,duration:dur,
+    type:cfg.type,fromX,fromY,toX,toY,
+    color:cfg.color||'#fff',color2:cfg.color2||'#aaa',
+    particles:cfg.particles||'sparks',size:cfg.size||12,
+    extra:cfg.extra||null,
+    isBuff:moveType==='Buff'||(cfg.extra==='heal'),
+    particleList:[]
+  };
+  // Pre-generate particles
+  for(let i=0;i<20;i++){
+    animState.particleList.push({
+      x:0,y:0,vx:(Math.random()-0.5)*4,vy:(Math.random()-0.5)*4,
+      life:0.3+Math.random()*0.7,sz:2+Math.random()*4,
+      color:Math.random()>0.5?cfg.color:cfg.color2
+    });
+  }
+}
+
+function updateAndDrawAnim(){
+  if(!animState||!animState.active)return false;
+  const a=animState;
+  const dt=16.67/a.duration;
+  a.t+=dt;
+  if(a.t>=1){a.active=false;return false}
+  const t=a.t;
+  const midX=(a.fromX+a.toX)/2, midY=(a.fromY+a.toY)/2;
+
+  X.save();
+  X.globalAlpha=1;
+
+  if(a.isBuff||a.type==='buff'){
+    // Buff/heal: glow aura on caster
+    const cx=a.fromX,cy=a.fromY;
+    const rad=30+t*25;
+    const g=X.createRadialGradient(cx,cy,5,cx,cy,rad);
+    g.addColorStop(0,a.color+'88');g.addColorStop(0.5,a.color+'44');g.addColorStop(1,a.color+'00');
+    X.fillStyle=g;X.beginPath();X.arc(cx,cy,rad,0,Math.PI*2);X.fill();
+    // Rising particles
+    for(let i=0;i<8;i++){
+      const px=cx+(Math.sin(t*10+i*0.8))*20;
+      const py=cy-t*60-i*5;
+      X.globalAlpha=1-t;
+      X.fillStyle=a.color2;
+      X.beginPath();X.arc(px,py,3,0,Math.PI*2);X.fill();
+    }
+  }else if(a.type==='projectile'){
+    // Projectile: flies from attacker to target
+    const px=a.fromX+(a.toX-a.fromX)*t;
+    const py=a.fromY+(a.toY-a.fromY)*t-Math.sin(t*Math.PI)*30;
+    const sz=a.size;
+    X.fillStyle=a.color;X.beginPath();X.arc(px,py,sz,0,Math.PI*2);X.fill();
+    X.fillStyle=a.color2;X.beginPath();X.arc(px,py,sz*0.6,0,Math.PI*2);X.fill();
+    // Trail
+    for(let i=0;i<5;i++){
+      const tt=Math.max(0,t-i*0.03);
+      const tx=a.fromX+(a.toX-a.fromX)*tt;
+      const ty=a.fromY+(a.toY-a.fromY)*tt-Math.sin(tt*Math.PI)*30;
+      X.globalAlpha=0.5-i*0.1;
+      X.fillStyle=a.color;X.beginPath();X.arc(tx,ty,sz*(1-i*0.15),0,Math.PI*2);X.fill();
+    }
+  }else if(a.type==='slash'){
+    // Slash: blade/cut effect on target
+    const cx=a.toX,cy=a.toY;
+    const progress=t<0.4?t/0.4:1;
+    const fade=t>0.6?(1-(t-0.6)/0.4):1;
+    X.globalAlpha=fade;
+    X.strokeStyle=a.color;X.lineWidth=3+a.size*0.3;X.lineCap='round';
+    // Draw slash lines
+    const ang=Math.PI*0.25;
+    const len=30+a.size;
+    X.beginPath();
+    X.moveTo(cx-Math.cos(ang)*len*progress,cy-Math.sin(ang)*len*progress);
+    X.lineTo(cx+Math.cos(ang)*len*progress,cy+Math.sin(ang)*len*progress);
+    X.stroke();
+    X.strokeStyle=a.color2;X.lineWidth=2;
+    X.beginPath();
+    X.moveTo(cx-Math.cos(-ang)*len*progress*0.8,cy-Math.sin(-ang)*len*progress*0.8);
+    X.lineTo(cx+Math.cos(-ang)*len*progress*0.8,cy+Math.sin(-ang)*len*progress*0.8);
+    X.stroke();
+    // Impact sparks
+    if(t>0.3){
+      a.particleList.forEach((p,i)=>{
+        const pt=t-0.3;
+        const px=cx+p.vx*pt*40;
+        const py=cy+p.vy*pt*40;
+        X.globalAlpha=fade*p.life*(1-pt*1.5);
+        X.fillStyle=p.color;
+        X.beginPath();X.arc(px,py,p.sz*(1-pt),0,Math.PI*2);X.fill();
+      });
+    }
+  }else if(a.type==='burst'){
+    // Burst: explosion at target
+    const cx=a.toX,cy=a.toY;
+    const expand=t<0.5?t/0.5:1;
+    const fade=t>0.5?(1-(t-0.5)/0.5):1;
+    const rad=(a.size||20)*expand*2;
+    X.globalAlpha=fade*0.6;
+    const g=X.createRadialGradient(cx,cy,0,cx,cy,rad);
+    g.addColorStop(0,a.color2);g.addColorStop(0.5,a.color);g.addColorStop(1,a.color+'00');
+    X.fillStyle=g;X.beginPath();X.arc(cx,cy,rad,0,Math.PI*2);X.fill();
+    // Particles fly outward
+    a.particleList.forEach((p,i)=>{
+      const px=cx+p.vx*expand*30;
+      const py=cy+p.vy*expand*30;
+      X.globalAlpha=fade*0.8;
+      X.fillStyle=p.color;
+      X.beginPath();X.arc(px,py,p.sz,0,Math.PI*2);X.fill();
+    });
+  }else if(a.type==='beam'){
+    // Beam: line from caster to target
+    const progress=t<0.4?t/0.4:1;
+    const fade=t>0.7?(1-(t-0.7)/0.3):1;
+    const endX=a.fromX+(a.toX-a.fromX)*progress;
+    const endY=a.fromY+(a.toY-a.fromY)*progress;
+    X.globalAlpha=fade;
+    X.strokeStyle=a.color;X.lineWidth=a.size||8;X.lineCap='round';
+    X.beginPath();X.moveTo(a.fromX,a.fromY);X.lineTo(endX,endY);X.stroke();
+    X.strokeStyle=a.color2;X.lineWidth=(a.size||8)*0.4;
+    X.beginPath();X.moveTo(a.fromX,a.fromY);X.lineTo(endX,endY);X.stroke();
+    // Sparkles along beam
+    if(progress>0.5){
+      for(let i=0;i<6;i++){
+        const bt=i/6*progress;
+        const bx=a.fromX+(a.toX-a.fromX)*bt+(Math.random()-0.5)*10;
+        const by=a.fromY+(a.toY-a.fromY)*bt+(Math.random()-0.5)*10;
+        X.globalAlpha=fade*0.7;
+        X.fillStyle=a.color2;
+        X.beginPath();X.arc(bx,by,2+Math.random()*2,0,Math.PI*2);X.fill();
+      }
+    }
+  }else if(a.type==='special'){
+    const cx=a.toX,cy=a.toY;
+    if(a.extra==='blackhole'){
+      // Swirling vortex
+      const rad=15+t*30;
+      for(let i=0;i<12;i++){
+        const ang=i/12*Math.PI*2+t*10;
+        const r=rad*(1-t*0.3);
+        const px=cx+Math.cos(ang)*r;
+        const py=cy+Math.sin(ang)*r;
+        X.globalAlpha=0.8-t*0.6;
+        X.fillStyle=i%2?a.color:a.color2;
+        X.beginPath();X.arc(px,py,3+t*2,0,Math.PI*2);X.fill();
+      }
+      X.globalAlpha=0.5;X.fillStyle='#000';
+      X.beginPath();X.arc(cx,cy,10+t*10,0,Math.PI*2);X.fill();
+    }else if(a.extra==='chaos'){
+      // Random colors and positions
+      for(let i=0;i<15;i++){
+        const px=cx+(Math.random()-0.5)*60;
+        const py=cy+(Math.random()-0.5)*60;
+        X.globalAlpha=0.7*(1-t);
+        X.fillStyle=`hsl(${Math.random()*360},80%,60%)`;
+        X.beginPath();X.arc(px,py,2+Math.random()*5,0,Math.PI*2);X.fill();
+      }
+    }else if(a.extra==='multiSlash'){
+      // Rapid slash lines
+      const nSlashes=Math.floor(t*8)+1;
+      for(let i=0;i<nSlashes;i++){
+        const sx=cx+(Math.random()-0.5)*40;
+        const sy=cy+(Math.random()-0.5)*40;
+        const ang=Math.random()*Math.PI;
+        const len=15+Math.random()*15;
+        X.globalAlpha=0.8*(1-t);
+        X.strokeStyle=Math.random()>0.5?a.color:a.color2;
+        X.lineWidth=2;X.lineCap='round';
+        X.beginPath();X.moveTo(sx-Math.cos(ang)*len,sy-Math.sin(ang)*len);
+        X.lineTo(sx+Math.cos(ang)*len,sy+Math.sin(ang)*len);X.stroke();
+      }
+    }else if(a.extra==='orbit'){
+      // Spinning disc around target
+      for(let i=0;i<3;i++){
+        const ang=t*Math.PI*4+i*(Math.PI*2/3);
+        const r=25+Math.sin(t*Math.PI)*10;
+        const px=cx+Math.cos(ang)*r;
+        const py=cy+Math.sin(ang)*r;
+        X.globalAlpha=0.8*(1-t*0.5);
+        X.fillStyle=a.color;
+        X.beginPath();X.arc(px,py,a.size||6,0,Math.PI*2);X.fill();
+      }
+    }else{
+      // Default special: burst + slash combo
+      const fade=t>0.6?(1-(t-0.6)/0.4):1;
+      X.globalAlpha=fade*0.7;
+      const g=X.createRadialGradient(cx,cy,0,cx,cy,30+t*20);
+      g.addColorStop(0,a.color2);g.addColorStop(1,a.color+'00');
+      X.fillStyle=g;X.beginPath();X.arc(cx,cy,30+t*20,0,Math.PI*2);X.fill();
+      // Slash
+      X.strokeStyle=a.color;X.lineWidth=3;
+      X.beginPath();X.moveTo(cx-20,cy-20);X.lineTo(cx+20,cy+20);X.stroke();
+    }
+  }
+
+  X.restore();
+  return true;
+}
 
 // ============================================================
 // RARITY SYSTEM
@@ -37,8 +509,6 @@ const RARITIES={
 function rarityColor(r){return RARITIES[r]?RARITIES[r].color:'#c0c0c0'}
 
 function pickRarity(floor){
-  // Higher floors = more rare items
-  const bonus=Math.min(floor/30,3); // up to +3 rarity tiers at floor 90+
   const weights={Common:Math.max(5,50-floor*0.8),Uncommon:Math.max(5,30-floor*0.3),Rare:Math.min(40,15+floor*0.3),Epic:Math.min(30,4+floor*0.15),Legendary:Math.min(20,1+floor*0.05)};
   const total=Object.values(weights).reduce((a,b)=>a+b,0);
   let roll=Math.random()*total;
@@ -92,14 +562,12 @@ function mv(name,type,dmg,pp,effect,statusChance,statusType){return{name,type,dm
 function makeChar(name,type,hp,atk,def,spd,cost,color,moves,evo1,evo2,ability,backstory){return{name,type,hp,atk,def,spd,cost,color,moves,evo1,evo2,ability,backstory}}
 
 const FREE_ITEMS=[
-  // Common
   {name:'Pebble Shard',rarity:'Common',desc:'ATK+2',effect:'atk+2'},
   {name:'Leaf Wrap',rarity:'Common',desc:'DEF+2',effect:'def+2'},
   {name:'Wind Step',rarity:'Common',desc:'SPD+2',effect:'spd+2'},
   {name:'Cracked Stone',rarity:'Common',desc:'MaxHP+10',effect:'maxhp+10'},
   {name:'Lucky Coin',rarity:'Common',desc:'Crit+3%',effect:'crit+3'},
   {name:'Dusty Cape',rarity:'Common',desc:'Dodge+3%',effect:'dodge+3'},
-  // Uncommon
   {name:'Steel Chip',rarity:'Uncommon',desc:'ATK+5',effect:'atk+5'},
   {name:'Guard Bangle',rarity:'Uncommon',desc:'DEF+5',effect:'def+5'},
   {name:'Swift Ring',rarity:'Uncommon',desc:'SPD+4',effect:'spd+4'},
@@ -107,7 +575,6 @@ const FREE_ITEMS=[
   {name:'Sharp Eye',rarity:'Uncommon',desc:'Crit+6%',effect:'crit+6'},
   {name:'Feather Cloak',rarity:'Uncommon',desc:'Dodge+6%',effect:'dodge+6'},
   {name:'Tri-Shard',rarity:'Uncommon',desc:'All stats+2',effect:'all+2'},
-  // Rare
   {name:'Power Gem',rarity:'Rare',desc:'ATK+9',effect:'atk+9'},
   {name:'Iron Aegis',rarity:'Rare',desc:'DEF+9',effect:'def+9'},
   {name:'Mercury Boots',rarity:'Rare',desc:'SPD+8',effect:'spd+8'},
@@ -115,14 +582,12 @@ const FREE_ITEMS=[
   {name:'Eagle Eye',rarity:'Rare',desc:'Crit+12%',effect:'crit+12'},
   {name:'Shadow Veil',rarity:'Rare',desc:'Dodge+10%',effect:'dodge+10'},
   {name:'Tri-Force Gem',rarity:'Rare',desc:'All stats+4',effect:'all+4'},
-  // Epic
   {name:'Dragon Fang',rarity:'Epic',desc:'ATK+15, Crit+8%',effect:'atk+15_crit+8'},
   {name:'Titan Shell',rarity:'Epic',desc:'DEF+14, MaxHP+30',effect:'def+14_maxhp+30'},
   {name:'Phantom Soles',rarity:'Epic',desc:'SPD+12, Dodge+8%',effect:'spd+12_dodge+8'},
   {name:'Berserker Seal',rarity:'Epic',desc:'ATK+10, 25% double-strike',effect:'atk+10_doublestrike'},
   {name:'Voidheart',rarity:'Epic',desc:'MaxHP+60, All+3',effect:'maxhp+60_all+3'},
   {name:'Quicksilver Orb',rarity:'Epic',desc:'10% chance to move first',effect:'priority_passive'},
-  // Legendary
   {name:'Chaos Crown',rarity:'Legendary',desc:'All stats+8, Crit+15%',effect:'all+8_crit+15'},
   {name:'Eternal Flame',rarity:'Legendary',desc:'ATK+20, Burn on every hit',effect:'atk+20_burn_passive'},
   {name:'Absolute Mirror',rarity:'Legendary',desc:'Reflects 20% all damage',effect:'reflect_passive'},
@@ -235,27 +700,8 @@ function genBoss(floor){
 }
 
 // ============================================================
-// SHOP ITEMS (for Eternal Shop / regular shop)
+// MINI-SHOP BUYABLE ITEMS (the ONLY shop now)
 // ============================================================
-const SHOP_ITEMS=[
-  {name:'Healing Potion',desc:'+30 HP',cost:15,effect:'heal30',cat:'heal'},
-  {name:'Mega Potion',desc:'+80 HP',cost:35,effect:'heal80',cat:'heal'},
-  {name:'Max Potion',desc:'Full HP',cost:80,effect:'heal_full',cat:'heal'},
-  {name:'PP Restore',desc:'All PP',cost:30,effect:'pp_restore',cat:'heal'},
-  {name:'Bomb',desc:'40 damage',cost:25,effect:'bomb40',cat:'combat'},
-  {name:'Mega Bomb',desc:'100 damage',cost:55,effect:'bomb100',cat:'combat'},
-  {name:'Antidote',desc:'Cure status',cost:20,effect:'cure_status',cat:'heal'},
-  {name:'Sword Oil',desc:'ATK+5 (perm)',cost:50,effect:'atk+5',cat:'stat'},
-  {name:'Iron Shield',desc:'DEF+5 (perm)',cost:50,effect:'def+5',cat:'stat'},
-  {name:'Speed Boots',desc:'SPD+5 (perm)',cost:50,effect:'spd+5',cat:'stat'},
-  {name:'Lucky Charm',desc:'Crit+5% (perm)',cost:60,effect:'crit+5',cat:'stat'},
-  {name:'Dodge Cape',desc:'Dodge+5% (perm)',cost:60,effect:'dodge+5',cat:'stat'},
-  {name:'Life Shard',desc:'MaxHP+15 (perm)',cost:70,effect:'maxhp+15',cat:'stat'},
-  {name:'Power Ring',desc:'ATK+8 (perm)',cost:90,effect:'atk+8',cat:'stat'},
-  {name:'Fortress',desc:'DEF+8 (perm)',cost:90,effect:'def+8',cat:'stat'},
-];
-
-// Mini-shop: only buyable items (no free offers here — free picks are separate)
 const MINI_SHOP_BUYABLE=[
   {name:'Healing Potion',desc:'+30 HP',cost:12,effect:'heal30'},
   {name:'Mega Potion',desc:'+80 HP',cost:30,effect:'heal80'},
@@ -347,7 +793,7 @@ const ENCOUNTERS=[
   {name:'Cursed Gambler',img:'gambler',opts:[
     {text:'Bet 30g on heads (50% win 90g, 50% lose 30g)',result:()=>{if(S.gold<30)return'Not enough gold to bet!';S.gold-=30;if(Math.random()<0.5){S.gold+=90;return'Heads! You won 90g!'}else return'Tails! Lost 30g.'}},
     {text:'Bet your luck (Crit+20% or Crit-10%)',result:()=>{if(Math.random()<0.5){S.crit+=20;return'Fortune smiles! Perm Crit+20%!'}else{S.crit=Math.max(0,S.crit-10);return'Bad luck! Perm Crit-10%'}}},
-    {text:'The big bet (50g → 200g or lose all HP but 1)',result:()=>{if(S.gold<50)return'Not enough gold!';S.gold-=50;if(Math.random()<0.35){S.gold+=200;return'JACKPOT! +200g!'}else{S.hp=1;return'House wins. You nearly died.'}}},
+    {text:'The big bet (50g -> 200g or lose all HP but 1)',result:()=>{if(S.gold<50)return'Not enough gold!';S.gold-=50;if(Math.random()<0.35){S.gold+=200;return'JACKPOT! +200g!'}else{S.hp=1;return'House wins. You nearly died.'}}},
     {text:'Watch others play (learn, gain 10g)',result:()=>{S.gold+=10;return'Watched carefully — learned and earned 10g'}},
     {text:'Refuse to gamble',result:()=>'You walk away with your gold intact.'}]},
   {name:'Time Rift',img:'rift',opts:[
@@ -402,9 +848,7 @@ let S={scene:'menu',soulCrystals:0,unlocked:['Stone','Blade','Scroll'],
     {name:'Gold +10%',key:'goldMult',base:10},{name:'XP +10%',key:'xp',base:12},{name:'Luck +5%',key:'luck',base:15}],
   highestFloor:0,totalRuns:0,classicWon:false,
   charName:null,charData:null,floor:1,hp:0,maxHp:0,atk:0,def:0,spd:0,
-  // Base stats (permanent, persists run)
   permAtk:0,permDef:0,permSpd:0,
-  // Temporary stat modifiers (from combat buffs/debuffs)
   tempAtk:0,tempDef:0,tempSpd:0,
   gold:0,crit:5,dodge:0,evoStage:0,level:1,xp:0,xpNext:20,xpMult:1,
   moves:[],inventory:[],artifacts:[],statuses:[],
@@ -412,72 +856,64 @@ let S={scene:'menu',soulCrystals:0,unlocked:['Stone','Blade','Scroll'],
   enemy:null,combatLog:[],combatState:'choose',
   encounter:null,showItems:false,showLog:false,showMiniShop:false,
   messages:[],tick:0,eventLog:[],
-  settings:{difficulty:1,speed:1},scrollY:0,
+  settings:{difficulty:1,speed:1,musicOn:false},scrollY:0,
   freeItemPicks:null,freeItemFloor:-1,
   reviveUsed:false,burnPassive:false,reflectPassive:false,doubleStrike:false,priorityPassive:false,ultimatePassive:false,
 };
 
-function loadSave(){try{const d=JSON.parse(localStorage.getItem('rps4'));if(d){S.soulCrystals=d.sc||0;S.unlocked=d.ul||['Stone','Blade','Scroll'];S.eternals=d.et||S.eternals;S.highestFloor=d.hf||0;S.totalRuns=d.tr||0;S.classicWon=d.cw||false;S.settings=d.st||S.settings}}catch(e){}}
-function save(){try{localStorage.setItem('rps4',JSON.stringify({sc:S.soulCrystals,ul:S.unlocked,et:S.eternals,hf:S.highestFloor,tr:S.totalRuns,cw:S.classicWon,st:S.settings}))}catch(e){}}
+// Backward-compatible save loading: accepts both rps4 (v4) and rps5 (v5) keys
+function loadSave(){try{const d=JSON.parse(localStorage.getItem('rps5'))||JSON.parse(localStorage.getItem('rps4'));if(d){S.soulCrystals=d.sc||0;S.unlocked=d.ul||['Stone','Blade','Scroll'];S.eternals=d.et||S.eternals;S.highestFloor=d.hf||0;S.totalRuns=d.tr||0;S.classicWon=d.cw||false;S.settings=d.st||S.settings;if(!S.settings.musicOn)S.settings.musicOn=false}}catch(e){}}
+function save(){try{localStorage.setItem('rps5',JSON.stringify({sc:S.soulCrystals,ul:S.unlocked,et:S.eternals,hf:S.highestFloor,tr:S.totalRuns,cw:S.classicWon,st:S.settings}))}catch(e){}}
 function addMsg(t,d=180){S.messages.push({text:t,timer:d})}
 function addLog(t){S.eventLog.push({text:t,floor:S.floor});if(S.eventLog.length>50)S.eventLog.shift()}
 function addInv(name,effect){const f=S.inventory.find(x=>x.name===name);if(f)f.count++;else S.inventory.push({name,effect,count:1})}
-function addStatus(target,type){if(!target.statuses)target.statuses=[];const fx=STATUS_FX[type];if(!fx)return;if(target.statuses.find(s=>s.type===type))return;target.statuses.push({type,name:fx.name,dur:fx.dur,color:fx.color})}
+function addStatus(target,type){if(!target.statuses)target.statuses=[];const fx=STATUS_FX[type];if(!fx)return;if(target.statuses.find(s=>s.type===type))return;target.statuses.push({type,name:fx.name,dur:fx.dur,color:fx.color});SFX.statusApplied()}
 function pal(){const style=['menu','charSelect','eternalShop','howToPlay','settings','modeSelect','charShop'].includes(S.scene)?'menu':S.runActive?getStyle(S.floor):'menu';return STYLES[style]}
 function evoName(){if(!S.charData)return'';return S.evoStage===0?S.charName:S.evoStage===1?S.charData.evo1:S.charData.evo2}
 function checkUnlocks(){CHARS.forEach(c=>{if(!S.unlocked.includes(c.name)&&c.cost===0)S.unlocked.push(c.name)})}
 
-// Effective stats (base + perm + temp, clamped)
 function effAtk(){return Math.max(1,S.atk+S.tempAtk)}
 function effDef(){return Math.max(0,S.def+S.tempDef)}
 function effSpd(){return Math.max(0,S.spd+S.tempSpd)}
-
-// Reset temporary stat buffs (before boss/rival/wave)
 function resetTempStats(){S.tempAtk=0;S.tempDef=0;S.tempSpd=0}
 
 // ============================================================
 // ITEM EFFECT APPLICATION
 // ============================================================
 function applyItemEffect(effect,permanent){
-  // permanent=true means it persists (from shops, level-ups, eternal shop)
-  // permanent=false means temporary (combat items)
   if(!effect)return'';
-  // Multi-effects (e.g. 'atk+15_crit+8')
   if(effect.includes('_')){
     return effect.split('_').map(e=>applyItemEffect(e,permanent)).filter(Boolean).join(', ');
   }
-  if(effect==='heal30'){S.hp=Math.min(S.maxHp,S.hp+30);return'+30 HP'}
-  if(effect==='heal40'){S.hp=Math.min(S.maxHp,S.hp+40);return'+40 HP'}
-  if(effect==='heal50'){S.hp=Math.min(S.maxHp,S.hp+50);return'+50 HP'}
-  if(effect==='heal80'){S.hp=Math.min(S.maxHp,S.hp+80);return'+80 HP'}
-  if(effect==='heal_full'){S.hp=S.maxHp;return'Full HP!'}
-  if(effect==='heal25'){S.hp=Math.min(S.maxHp,S.hp+25);return'+25 HP'}
-  if(effect==='heal35'){S.hp=Math.min(S.maxHp,S.hp+35);return'+35 HP'}
+  if(effect==='heal30'){S.hp=Math.min(S.maxHp,S.hp+30);SFX.heal();return'+30 HP'}
+  if(effect==='heal40'){S.hp=Math.min(S.maxHp,S.hp+40);SFX.heal();return'+40 HP'}
+  if(effect==='heal50'){S.hp=Math.min(S.maxHp,S.hp+50);SFX.heal();return'+50 HP'}
+  if(effect==='heal80'){S.hp=Math.min(S.maxHp,S.hp+80);SFX.heal();return'+80 HP'}
+  if(effect==='heal_full'){S.hp=S.maxHp;SFX.heal();return'Full HP!'}
+  if(effect==='heal25'){S.hp=Math.min(S.maxHp,S.hp+25);SFX.heal();return'+25 HP'}
+  if(effect==='heal35'){S.hp=Math.min(S.maxHp,S.hp+35);SFX.heal();return'+35 HP'}
   if(effect==='bomb40'&&S.enemy){S.enemy.hp-=40;return'40 dmg!'}
   if(effect==='bomb100'&&S.enemy){S.enemy.hp-=100;return'100 dmg!'}
   if(effect==='cure_status'){S.statuses=[];return'Status cured!'}
   if(effect==='pp_restore'){S.moves.forEach(m=>m.pp=m.maxPp);return'PP restored!'}
-  if(effect==='random_buff'){const s=['atk','def','spd'][rand(0,2)];const v=rand(3,8);if(permanent){S[s]+=v;}else{S['temp'+s.charAt(0).toUpperCase()+s.slice(1)]+=v;}return`${s.toUpperCase()}+${v}`}
+  if(effect==='random_buff'){const s=['atk','def','spd'][rand(0,2)];const v=rand(3,8);if(permanent){S[s]+=v;}else{S['temp'+s.charAt(0).toUpperCase()+s.slice(1)]+=v;}SFX.buff();return`${s.toUpperCase()}+${v}`}
   if(effect==='lifesteal')return'';
-  // Passive item effects (legendary/epic)
   if(effect==='doublestrike'){S.doubleStrike=true;return'Double-strike enabled!'}
   if(effect==='priority_passive'){S.priorityPassive=true;return'10% move-first enabled!'}
   if(effect==='revive_passive'){S.reviveUsed=false;return'Revival ready!'}
   if(effect==='burn_passive'){S.burnPassive=true;return'Burn-on-hit enabled!'}
   if(effect==='reflect_passive'){S.reflectPassive=true;return'20% damage reflect!'}
   if(effect==='ultimate_passive'){S.doubleStrike=true;S.priorityPassive=true;S.crit+=25;return'Ultimate passives activated!'}
-  // Stat effects
-  const atkM=effect.match(/^atk\+(\d+)$/);if(atkM){const v=parseInt(atkM[1]);if(permanent){S.permAtk=(S.permAtk||0)+v;S.atk+=v;}else S.tempAtk+=v;return`ATK+${v}`}
-  const defM=effect.match(/^def\+(\d+)$/);if(defM){const v=parseInt(defM[1]);if(permanent){S.permDef=(S.permDef||0)+v;S.def+=v;}else S.tempDef+=v;return`DEF+${v}`}
-  const spdM=effect.match(/^spd\+(\d+)$/);if(spdM){const v=parseInt(spdM[1]);if(permanent){S.permSpd=(S.permSpd||0)+v;S.spd+=v;}else S.tempSpd+=v;return`SPD+${v}`}
+  const atkM=effect.match(/^atk\+(\d+)$/);if(atkM){const v=parseInt(atkM[1]);if(permanent){S.permAtk=(S.permAtk||0)+v;S.atk+=v;}else S.tempAtk+=v;SFX.buff();return`ATK+${v}`}
+  const defM=effect.match(/^def\+(\d+)$/);if(defM){const v=parseInt(defM[1]);if(permanent){S.permDef=(S.permDef||0)+v;S.def+=v;}else S.tempDef+=v;SFX.buff();return`DEF+${v}`}
+  const spdM=effect.match(/^spd\+(\d+)$/);if(spdM){const v=parseInt(spdM[1]);if(permanent){S.permSpd=(S.permSpd||0)+v;S.spd+=v;}else S.tempSpd+=v;SFX.buff();return`SPD+${v}`}
   const critM=effect.match(/^crit\+(\d+)$/);if(critM){S.crit+=parseInt(critM[1]);return`Crit+${critM[1]}%`}
   const dodgeM=effect.match(/^dodge\+(\d+)$/);if(dodgeM){S.dodge+=parseInt(dodgeM[1]);return`Dodge+${dodgeM[1]}%`}
   const hpM=effect.match(/^maxhp\+(\d+)$/);if(hpM){const v=parseInt(hpM[1]);S.maxHp+=v;S.hp+=Math.floor(v/2);return`MaxHP+${v}`}
-  const allM=effect.match(/^all\+(\d+)$/);if(allM){const v=parseInt(allM[1]);if(permanent){S.permAtk=(S.permAtk||0)+v;S.permDef=(S.permDef||0)+v;S.permSpd=(S.permSpd||0)+v;S.atk+=v;S.def+=v;S.spd+=v;}else{S.tempAtk+=v;S.tempDef+=v;S.tempSpd+=v;}return`All+${v}`}
+  const allM=effect.match(/^all\+(\d+)$/);if(allM){const v=parseInt(allM[1]);if(permanent){S.permAtk=(S.permAtk||0)+v;S.permDef=(S.permDef||0)+v;S.permSpd=(S.permSpd||0)+v;S.atk+=v;S.def+=v;S.spd+=v;}else{S.tempAtk+=v;S.tempDef+=v;S.tempSpd+=v;}SFX.buff();return`All+${v}`}
   return'';
 }
 
-// Legacy wrapper for backwards compatibility
 function applyEffect(effect){return applyItemEffect(effect,true)}
 // ============================================================
 // GAME LOGIC
@@ -505,10 +941,10 @@ function initChar(name){
 function gainXP(amount){
   amount=Math.floor(amount*S.xpMult);S.xp+=amount;
   while(S.xp>=S.xpNext){S.xp-=S.xpNext;S.level++;S.xpNext=Math.floor(S.xpNext*1.15)+5;
-    // Level-up stats are permanent
     S.maxHp+=5;S.hp=Math.min(S.hp+5,S.maxHp);S.atk+=1;S.permAtk+=1;S.def+=1;S.permDef+=1;
     if(S.level%3===0){S.spd+=1;S.permSpd+=1}
     addMsg(`Level Up! Lv.${S.level}`);addLog(`Reached Level ${S.level}`);
+    SFX.levelUp();
     if(S.level%5===0&&S.moves.length<6){
       const newMoves=[mv('Power Strike',S.charData.type,20+S.level,12),mv('Guard','Buff',0,10,'def+'+(3+Math.floor(S.level/5))),
         mv('Drain Hit',S.charData.type,15+Math.floor(S.level*0.5),10,'lifesteal'),mv('Status Strike',S.charData.type,12+Math.floor(S.level*0.3),14,null,30,pick(['bleed','burn','poison']))];
@@ -553,6 +989,79 @@ function calcDmg(baseDmg,moveType,atkStat,defStat,targetType,isPlayer){
   return{dmg,isSuper:mult>1.3&&!isCrit,isCrit,aType};
 }
 
+// Pending move execution (called after animation completes)
+let pendingMoveAction=null;
+
+function doMove(i){
+  if(S.combatState==='animating')return; // Block input during animation
+  const m=S.moves[i];if(m.pp<=0)return;
+  // Start animation, then execute move after it completes
+  S.combatState='animating';
+  const moveType=m.type==='Buff'||(m.effect&&m.dmg===0)?'Buff':m.type;
+  startMoveAnim(m.name,true,moveType);
+  SFX.click();
+  pendingMoveAction=()=>executeMoveLogic(i);
+}
+
+function executeMoveLogic(i){
+  const m=S.moves[i];m.pp--;
+  const e=S.enemy;
+  if(S.statuses.find(s=>s.type==='freeze')){
+    S.combatLog.push({msg:'You are frozen!',color:'#64dcff'});
+    S.statuses=S.statuses.filter(s=>s.type!=='freeze');
+    enemyTurn();if(S.hp<=0)handleDeath();else S.combatState='choose';return;
+  }
+  processStatuses(S,true);if(S.hp<=0){handleDeath();return}
+  if(S.charData.ability&&S.charData.ability.includes('Cursed'))S.hp-=Math.floor(S.maxHp*0.03);
+  if(m.type==='Buff'||(m.effect&&m.dmg===0)){
+    const r=applyItemEffect(m.effect,false);
+    S.combatLog.push({msg:r||m.name,color:'#28c8dc'});addLog(`Used ${m.name}: ${r}`);
+    SFX.buff();
+  }else{
+    const{dmg,isSuper,isCrit,aType}=calcDmg(m.dmg,m.type,effAtk(),0,e.type,true);
+    let hits=1;
+    const hasDoubleStrike=S.doubleStrike||(S.charData.ability&&S.charData.ability.includes('Attacks twice'));
+    if(hasDoubleStrike)hits=2;
+    else if(S.charData.ability&&S.charData.ability.includes('Shadow Step'))hits=2;
+    let totalDmg=0;
+    for(let h=0;h<hits;h++){
+      let d=hits>1?Math.floor(dmg*0.6):dmg;
+      e.hp-=d;totalDmg+=d;
+      const statusChanceBonus=S.charData.ability&&S.charData.ability.includes('status chance')?15:0;
+      const entangleBonus=S.charData.ability&&S.charData.ability.includes('Entangle')?15:0;
+      if(m.statusType&&Math.random()*100<(m.statusChance+statusChanceBonus+entangleBonus))addStatus(e,m.statusType);
+      if(S.burnPassive&&Math.random()<0.4)addStatus(e,'burn');
+    }
+    if(!hasDoubleStrike&&S.doubleStrike===false&&S.charData.ability&&!S.charData.ability.includes('Shadow')&&Math.random()<0.25){
+      const bonus=Math.floor(dmg*0.5);e.hp-=bonus;totalDmg+=bonus;
+      S.combatLog.push({msg:`Double-strike! +${bonus} bonus dmg!`,color:'#b040f0'});
+    }
+    let msg=`${m.name}! `;if(hits>1)msg+=`x${hits} `;if(isSuper)msg+='SUPER! ';if(isCrit)msg+='CRIT! ';msg+=`${totalDmg} dmg`;
+    S.combatLog.push({msg,color:isCrit?'#ffd700':isSuper?'#28c8dc':'#32c832'});
+    addLog(`${m.name}: ${totalDmg} dmg to ${e.name}`);
+    // SFX
+    if(isCrit)SFX.crit();else if(isSuper)SFX.superEffective();else SFX.hit(aType);
+    if(m.effect==='lifesteal'||S.artifacts.find(a=>a.effect==='lifesteal')){S.hp=Math.min(S.maxHp,S.hp+Math.max(1,Math.floor(totalDmg*0.1)))}
+    if(S.charData.ability&&S.charData.ability.includes('Absorb'))S.hp=Math.min(S.maxHp,S.hp+Math.floor(totalDmg*0.05));
+    if(S.charData.ability&&S.charData.ability.includes('Execute')&&e.hp>0&&e.hp<e.maxHp*0.2){e.hp-=totalDmg;S.combatLog.push({msg:'EXECUTE!',color:'#dc0000'})}
+  }
+  if(e.hp<=0){
+    if(e.isBoss&&e.phase===1&&e.phase2Hp>0){
+      e.phase=2;e.hp=e.phase2Hp;e.maxHp=e.phase2Hp;e.atk=e.phase2Atk;e.statuses=[];
+      S.combatLog.push({msg:'PHASE 2!',color:'#dc3232'});
+      if(e.dialogue&&e.dialogue[1])S.combatLog.push({msg:`"${e.dialogue[1]}"`,color:'#ffdc00'});
+      S.combatState='choose';
+    }else{afterCombatWin()}
+  }else{
+    if(S.priorityPassive&&Math.random()<0.1){
+      S.combatLog.push({msg:'Priority strike! Moving first!',color:'#ffaa00'});
+      S.combatState='choose';
+    }else{
+      enemyTurn();if(S.hp<=0)handleDeath();else S.combatState='choose';
+    }
+  }
+}
+
 function enemyTurn(){
   const e=S.enemy;if(!e||e.hp<=0)return;
   if(e.ability==='regenerate')e.hp=Math.min(e.maxHp,e.hp+Math.floor(e.maxHp*0.03));
@@ -569,10 +1078,9 @@ function enemyTurn(){
   if(S.charData.ability&&S.charData.ability.includes('Harmony'))dmg=Math.floor(dmg*0.9);
   if(TADV[eType]===S.charData.type){dmg=Math.floor(dmg*1.3);S.combatLog.push({msg:`Enemy ${eType}! Super effective! ${dmg} dmg!`,color:'#dc3232'})}
   else S.combatLog.push({msg:`Enemy attacks! ${dmg} dmg!`,color:'#f08c1e'});
-  // Reflect passive
   if(S.reflectPassive){const ref=Math.floor(dmg*0.2);e.hp-=ref;S.combatLog.push({msg:`Reflected ${ref} dmg!`,color:'#b040f0'})}
   S.hp-=dmg;
-  // Revive passive
+  SFX.hit(eType);
   if(S.hp<=0&&!S.reviveUsed){S.hp=Math.floor(S.maxHp*0.3);S.reviveUsed=true;S.combatLog.push({msg:'Soul Gem activated! Revived at 30% HP!',color:'#ffaa00'})}
   if(S.charData.ability&&S.charData.ability.includes('Thorns'))e.hp-=Math.max(1,Math.floor(dmg*0.1));
   if(S.charData.ability&&S.charData.ability.includes('Static'))addStatus(e,'spdDown');
@@ -588,22 +1096,24 @@ function advanceFloor(){
   if(S.mode==='endless'&&S.floor>300&&S.floor%50===1){addMsg('Difficulty increased!');addLog('Endless: difficulty spike!')}
   if(S.floor%10===0)startCombat(true);
   else if(S.floor%25===0&&S.floor%10!==0)startRival();
-  else if(S.floor%5===0&&S.floor%10!==0){S.scene='shop';S.scrollY=0}
+  // v5.0: Removed regular shop. Floor%5 now shows mini-shop (encounter or combat)
+  else if(S.floor%5===0&&S.floor%10!==0){
+    // Instead of old shop, start a regular combat (mini-shop appears after winning)
+    startCombat(false);
+  }
   else if(Math.random()<0.22)startEncounter();
   else startCombat(false);
 }
 
 function startCombat(isBoss){
-  // Reset temp stats before boss/rival
   if(isBoss)resetTempStats();
-  if(isBoss){S.enemy=genBoss(S.floor)}
+  if(isBoss){S.enemy=genBoss(S.floor);SFX.bossAppear()}
   else{
     const biome=getBiome(S.floor);const eName=pick(biome.enemies);
     S.enemy=genEnemyData(eName,S.floor,biome);S.enemy.maxHp=S.enemy.hp;
   }
   S.combatLog=[];S.combatState='choose';S.showItems=false;S.scene='combat';
   if(S.enemy.isBoss){
-    // Clear status effects after last boss (end of boss fight handled in afterCombatWin)
     S.combatLog.push({msg:`BOSS: ${S.enemy.name}!`,color:'#ffd700'});
     if(S.enemy.quote)S.combatLog.push({msg:`"${S.enemy.quote}"`,color:'#ffdc00'});
     addLog(`Boss fight: ${S.enemy.name}`);
@@ -632,28 +1142,25 @@ function startEncounter(){S.encounter=pick(ENCOUNTERS);S.scene='encounter'}
 function afterCombatWin(){
   const e=S.enemy;
   const ge=Math.floor((10+rand(5,15)+S.floor*2)*(1+S.eternals.goldMult*0.1));
-  S.gold+=ge;
+  S.gold+=ge;SFX.coin();
   if(S.charData.ability&&S.charData.ability.includes('Sparkle'))S.gold+=Math.floor(ge*0.2);
   const xpGain=5+S.floor+rand(0,5)+(e.isBoss?S.floor:0);
   gainXP(xpGain);
   S.combatLog.push({msg:`+${ge}g +${Math.floor(xpGain*S.xpMult)}xp`,color:'#ffd700'});
   addLog(`Defeated ${e.name} (+${ge}g)`);
   if(e.isBoss){
-    // Clear statuses after boss fight only
     S.statuses=[];
     S.combatLog.push({msg:'BOSS DEFEATED! Statuses cleared!',color:'#ffd700'});
     S.moves.forEach(m=>m.pp=m.maxPp);addMsg('PP fully restored!');
   }
   if(e.isRival){S.combatLog.push({msg:'RIVAL DEFEATED!',color:'#ff3264'});S.gold+=50}
-  // Artifact drop
   if(Math.random()<0.08+S.eternals.luck*0.05&&S.artifacts.length<5){
     const arts=[{name:'Stone Pendant',effect:'rock_boost'},{name:'Sharp Ring',effect:'scissors_boost'},{name:'Paper Talisman',effect:'paper_boost'},
       {name:'Life Crystal',effect:'hp+30'},{name:'Vampire Fang',effect:'lifesteal'},{name:'Swift Cloak',effect:'swift'},{name:'Harmony Orb',effect:'harmony'}];
     const avail=arts.filter(a=>!S.artifacts.find(x=>x.effect===a.effect));
-    if(avail.length){const a=pick(avail);S.artifacts.push(a);addMsg(`Found artifact: ${a.name}!`)}
+    if(avail.length){const a=pick(avail);S.artifacts.push(a);addMsg(`Found artifact: ${a.name}!`);SFX.pickup()}
   }
   S.combatState='result';
-  // Generate free item picks for mini-shop (4 items)
   if(S.freeItemFloor!==S.floor){
     S.freeItemPicks=pickFreeItems(S.floor,4);
     S.freeItemFloor=S.floor;
@@ -664,25 +1171,29 @@ function handleDeath(){
   const cr=Math.floor(S.floor/5)+(S.floor>=50?10:0)+(S.floor>=100?20:0);
   S.soulCrystals+=cr;S.totalRuns++;checkUnlocks();save();
   addMsg(`+${cr} Soul Crystals`);addLog(`Defeated at Floor ${S.floor}`);
+  SFX.death();
   S.runActive=false;S.scene='death';
 }
 
 function handleVictory(){
   const cr=Math.floor(S.floor/5)+30;S.soulCrystals+=cr;S.totalRuns++;
   S.classicWon=true;checkUnlocks();save();S.runActive=false;S.scene='victory';
+  SFX.victory();
 }
 // ============================================================
 // DRAWING UTILITIES
 // ============================================================
 let btns=[];let mX=0,mY=0;
+const FS=isMobile?0.85:1; // Font scale factor for mobile
+const BS=isMobile?1.15:1; // Button scale factor for mobile
 function clrBtns(){btns=[]}
 function addBtn(x,y,w,h,act,id){btns.push({x,y,w,h,action:act,id})}
 function mIn(x,y,w,h){return mX>=x&&mX<=x+w&&mY>=y&&mY<=y+h}
 function dRect(x,y,w,h,c,r=0){X.fillStyle=c;if(r){X.beginPath();X.roundRect(x,y,w,h,r);X.fill()}else X.fillRect(x,y,w,h)}
 function dBorder(x,y,w,h,c,lw=2,r=0){X.strokeStyle=c;X.lineWidth=lw;if(r){X.beginPath();X.roundRect(x,y,w,h,r);X.stroke()}else X.strokeRect(x,y,w,h)}
-function dText(t,x,y,c,sz=16,al='left',b=false){X.fillStyle=c;X.font=`${b?'bold ':''}${sz}px Consolas,monospace`;X.textAlign=al;X.textBaseline='top';X.fillText(t,x,y);X.textAlign='left'}
+function dText(t,x,y,c,sz=16,al='left',b=false){X.fillStyle=c;X.font=`${b?'bold ':''}${Math.round(sz*FS)}px Consolas,monospace`;X.textAlign=al;X.textBaseline='top';X.fillText(t,x,y);X.textAlign='left'}
 function dPanel(x,y,w,h,p){dRect(x,y,w,h,p.panel,6);dBorder(x,y,w,h,p.border,2,6)}
-function dBtn(x,y,w,h,txt,p,act,id,en=true){const hv=mIn(x,y,w,h);dRect(x,y,w,h,!en?'#404040':hv?p.btnH:p.btnN,8);dBorder(x,y,w,h,p.border,2,8);dText(txt,x+w/2,y+h/2-8,en?p.btnT:'#808080',14,'center',true);if(en)addBtn(x,y,w,h,act,id)}
+function dBtn(x,y,w,h,txt,p,act,id,en=true){const bw=w,bh=Math.max(h,isMobile?44:h);const hv=mIn(x,y,bw,bh);dRect(x,y,bw,bh,!en?'#404040':hv?p.btnH:p.btnN,8);dBorder(x,y,bw,bh,p.border,2,8);dText(txt,x+bw/2,y+bh/2-8,en?p.btnT:'#808080',14,'center',true);if(en)addBtn(x,y,bw,bh,act,id)}
 function dHpBar(x,y,w,h,cur,max,p,ie=false){dRect(x,y,w,h,p.hpBg,4);if(max>0){const r=Math.max(0,cur/max);let c=ie?p.enemyHp:p.hpBar;if(r<0.3)c='#dc3232';else if(r<0.6)c='#f0c828';if(r>0)dRect(x,y,Math.floor(w*r),h,c,4)}dBorder(x,y,w,h,p.border,1,4)}
 function dXpBar(x,y,w,h){dRect(x,y,w,h,'#1e1e3c',3);const r=S.xpNext>0?S.xp/S.xpNext:0;dRect(x,y,Math.floor(w*r),h,'#6496ff',3);dBorder(x,y,w,h,'#4664b4',1,3)}
 function dRarityTag(x,y,rarity){const c=rarityColor(rarity);dRect(x,y,70,14,c+'33',3);dBorder(x,y,70,14,c,1,3);dText(rarity,x+35,y+2,c,9,'center',true)}
@@ -705,18 +1216,108 @@ function dChar(cx,cy,sz,col,sty,evo=0){
   if(evo>=2){X.fillStyle='#ffd700';X.beginPath();X.moveTo(cx-hr,hy-hr);X.lineTo(cx-hr/2,hy-hr-12);X.lineTo(cx,hy-hr-5);X.lineTo(cx+hr/2,hy-hr-12);X.lineTo(cx+hr,hy-hr);X.closePath();X.fill()}
 }
 
-function dEnemy(cx,cy,sz,name,col,sty){
-  if(sty==='terminal'){dText('  ???  ',cx-28,cy-sz/2,col,12);dText(' (o_o) ',cx-28,cy-sz/2+14,col,12);dText('  /|\\  ',cx-28,cy-sz/2+28,col,12);dText('  / \\  ',cx-28,cy-sz/2+42,col,12);return}
-  const fierce=S.floor>150;
-  X.fillStyle=col;X.beginPath();X.arc(cx,cy,sz/3,0,Math.PI*2);X.fill();
-  X.strokeStyle='rgba(255,255,255,0.3)';X.lineWidth=2;X.beginPath();X.arc(cx,cy,sz/3,0,Math.PI*2);X.stroke();
-  const eyeSize=fierce?sz/8:sz/10;
-  X.fillStyle=fierce?'#ff0000':'#fff';X.beginPath();X.arc(cx-sz/7,cy-sz/10,eyeSize,0,Math.PI*2);X.fill();
-  X.beginPath();X.arc(cx+sz/7,cy-sz/10,eyeSize,0,Math.PI*2);X.fill();
-  X.fillStyle='#000';X.beginPath();X.arc(cx-sz/7,cy-sz/10,eyeSize/2,0,Math.PI*2);X.fill();
-  X.beginPath();X.arc(cx+sz/7,cy-sz/10,eyeSize/2,0,Math.PI*2);X.fill();
-  if(fierce){X.strokeStyle='#fff';X.lineWidth=1;X.beginPath();X.moveTo(cx-sz/6,cy+sz/8);X.lineTo(cx,cy+sz/6);X.lineTo(cx+sz/6,cy+sz/8);X.stroke()}
-  dText(name,cx,cy+sz/2+5,col,10,'center');
+// ============================================================
+// ENEMY DRAWING — TIERED VISUALS (Feature #3)
+// ============================================================
+function dEnemy(cx,cy,sz,name,col,sty,enemyData){
+  const bob=Math.sin(S.tick*0.05)*3; // Idle bobbing for all enemies
+  cy+=bob;
+
+  if(sty==='terminal'){
+    if(enemyData&&enemyData.isBoss){
+      dText(' [====] ',cx-38,cy-sz/2,col,14);dText(' (O__O) ',cx-38,cy-sz/2+16,col,14);
+      dText('  /||\\  ',cx-38,cy-sz/2+32,col,14);dText('  /  \\  ',cx-38,cy-sz/2+48,col,14);
+    }else if(enemyData&&enemyData.isRival){
+      dText('  (!)  ',cx-28,cy-sz/2,col,12);dText(' (>_<) ',cx-28,cy-sz/2+14,'#ff3264',12);
+      dText('  /|\\  ',cx-28,cy-sz/2+28,col,12);dText('  / \\  ',cx-28,cy-sz/2+42,col,12);
+    }else{
+      dText('  ???  ',cx-28,cy-sz/2,col,12);dText(' (o_o) ',cx-28,cy-sz/2+14,col,12);
+      dText('  /|\\  ',cx-28,cy-sz/2+28,col,12);dText('  / \\  ',cx-28,cy-sz/2+42,col,12);
+    }
+    return;
+  }
+
+  const isBoss=enemyData&&enemyData.isBoss;
+  const isRival=enemyData&&enemyData.isRival;
+  const phase2=isBoss&&enemyData.phase===2;
+
+  if(isBoss){
+    // BOSS: Full detailed sprite with armor, glowing eyes, particle aura
+    const bsz=sz*0.55;
+    // Particle aura
+    X.globalAlpha=0.2+Math.sin(S.tick*0.08)*0.1;
+    const auraCol=phase2?'#ff0000':col;
+    for(let i=0;i<8;i++){
+      const ang=S.tick*0.03+i*(Math.PI/4);
+      const r=bsz+10+Math.sin(S.tick*0.05+i)*5;
+      X.fillStyle=auraCol;
+      X.beginPath();X.arc(cx+Math.cos(ang)*r,cy+Math.sin(ang)*r,3+Math.random()*2,0,Math.PI*2);X.fill();
+    }
+    X.globalAlpha=1;
+    // Body (armored)
+    const bodyCol=phase2?'#880000':col;
+    X.fillStyle=bodyCol;
+    X.beginPath();X.arc(cx,cy-bsz*0.3,bsz*0.5,0,Math.PI*2);X.fill(); // Head
+    // Armor body
+    dRect(cx-bsz*0.45,cy-bsz*0.1,bsz*0.9,bsz*0.7,bodyCol,4);
+    // Armor lines
+    X.strokeStyle=phase2?'#ff4444':'rgba(255,255,255,0.3)';X.lineWidth=2;
+    X.beginPath();X.moveTo(cx-bsz*0.4,cy);X.lineTo(cx+bsz*0.4,cy);X.stroke();
+    X.beginPath();X.moveTo(cx,cy-bsz*0.1);X.lineTo(cx,cy+bsz*0.5);X.stroke();
+    // Arms
+    X.strokeStyle=bodyCol;X.lineWidth=4;
+    X.beginPath();X.moveTo(cx-bsz*0.45,cy+bsz*0.1);X.lineTo(cx-bsz*0.7,cy+bsz*0.5);X.stroke();
+    X.beginPath();X.moveTo(cx+bsz*0.45,cy+bsz*0.1);X.lineTo(cx+bsz*0.7,cy+bsz*0.5);X.stroke();
+    // Legs
+    X.beginPath();X.moveTo(cx-bsz*0.2,cy+bsz*0.6);X.lineTo(cx-bsz*0.3,cy+bsz);X.stroke();
+    X.beginPath();X.moveTo(cx+bsz*0.2,cy+bsz*0.6);X.lineTo(cx+bsz*0.3,cy+bsz);X.stroke();
+    // Glowing eyes
+    const eyeGlow=phase2?'#ff0000':'#ffff00';
+    X.fillStyle=eyeGlow;
+    X.shadowColor=eyeGlow;X.shadowBlur=8;
+    X.beginPath();X.arc(cx-bsz*0.15,cy-bsz*0.35,bsz*0.08,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(cx+bsz*0.15,cy-bsz*0.35,bsz*0.08,0,Math.PI*2);X.fill();
+    X.shadowBlur=0;
+    // Crown/horns for boss
+    X.fillStyle=phase2?'#ff3333':'#ffd700';
+    X.beginPath();X.moveTo(cx-bsz*0.3,cy-bsz*0.6);X.lineTo(cx-bsz*0.15,cy-bsz*0.9);X.lineTo(cx,cy-bsz*0.65);X.fill();
+    X.beginPath();X.moveTo(cx+bsz*0.3,cy-bsz*0.6);X.lineTo(cx+bsz*0.15,cy-bsz*0.9);X.lineTo(cx,cy-bsz*0.65);X.fill();
+  }else if(isRival){
+    // RIVAL: More detailed, pulsing red aura, body + arms + weapon
+    const rsz=sz*0.42;
+    // Pulsing red aura
+    X.globalAlpha=0.15+Math.sin(S.tick*0.1)*0.1;
+    X.fillStyle='#ff3264';
+    X.beginPath();X.arc(cx,cy,rsz*1.5,0,Math.PI*2);X.fill();
+    X.globalAlpha=1;
+    // Body
+    X.fillStyle=col;
+    X.beginPath();X.arc(cx,cy-rsz*0.4,rsz*0.4,0,Math.PI*2);X.fill(); // Head
+    dRect(cx-rsz*0.35,cy-rsz*0.1,rsz*0.7,rsz*0.6,col,3);
+    // Arms
+    X.strokeStyle=col;X.lineWidth=3;
+    X.beginPath();X.moveTo(cx-rsz*0.35,cy+rsz*0.1);X.lineTo(cx-rsz*0.6,cy+rsz*0.5);X.stroke();
+    X.beginPath();X.moveTo(cx+rsz*0.35,cy+rsz*0.1);X.lineTo(cx+rsz*0.6,cy+rsz*0.5);X.stroke();
+    // Weapon (sword)
+    X.strokeStyle='#c0c0c0';X.lineWidth=2;
+    X.beginPath();X.moveTo(cx+rsz*0.6,cy+rsz*0.5);X.lineTo(cx+rsz*0.8,cy);X.stroke();
+    // Eyes (angry)
+    X.fillStyle='#ff0000';
+    X.beginPath();X.arc(cx-rsz*0.12,cy-rsz*0.45,rsz*0.08,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(cx+rsz*0.12,cy-rsz*0.45,rsz*0.08,0,Math.PI*2);X.fill();
+  }else{
+    // BASIC ENEMY: Simple circle with eyes + idle bob (already applied)
+    const fierce=S.floor>150;
+    X.fillStyle=col;X.beginPath();X.arc(cx,cy,sz/3,0,Math.PI*2);X.fill();
+    X.strokeStyle='rgba(255,255,255,0.3)';X.lineWidth=2;X.beginPath();X.arc(cx,cy,sz/3,0,Math.PI*2);X.stroke();
+    const eyeSize=fierce?sz/8:sz/10;
+    X.fillStyle=fierce?'#ff0000':'#fff';X.beginPath();X.arc(cx-sz/7,cy-sz/10,eyeSize,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(cx+sz/7,cy-sz/10,eyeSize,0,Math.PI*2);X.fill();
+    X.fillStyle='#000';X.beginPath();X.arc(cx-sz/7,cy-sz/10,eyeSize/2,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(cx+sz/7,cy-sz/10,eyeSize/2,0,Math.PI*2);X.fill();
+    if(fierce){X.strokeStyle='#fff';X.lineWidth=1;X.beginPath();X.moveTo(cx-sz/6,cy+sz/8);X.lineTo(cx,cy+sz/6);X.lineTo(cx+sz/6,cy+sz/8);X.stroke()}
+  }
+  dText(name,cx,cy+sz/2+8,col,10,'center');
 }
 
 function dEncounterImg(cx,cy,type,p){
@@ -724,75 +1325,17 @@ function dEncounterImg(cx,cy,type,p){
   if(type==='fountain'){X.beginPath();X.moveTo(cx,cy-sz);X.bezierCurveTo(cx-sz,cy-sz/2,cx-sz,cy+sz/2,cx,cy+sz);X.bezierCurveTo(cx+sz,cy+sz/2,cx+sz,cy-sz/2,cx,cy-sz);X.fill();dText('~',cx,cy-8,p.bg,20,'center')}
   else if(type==='chest'){dRect(cx-sz,cy-sz/2,sz*2,sz,p.gold,4);dRect(cx-5,cy-5,10,10,'#000')}
   else if(type==='training'){dRect(cx-5,cy-sz,10,sz*2,'#8b4513');dRect(cx-sz/2,cy-sz/3,sz,sz*2/3,p.accent,4)}
-  else if(type==='void'){X.fillStyle='#5000a0';X.beginPath();X.arc(cx,cy,sz*0.8,0,Math.PI*2);X.fill();X.fillStyle='#000';X.beginPath();X.arc(cx,cy,sz*0.4,0,Math.PI*2);X.fill();dText('∞',cx,cy-10,p.accent,22,'center')}
-  else if(type==='dragon'){X.fillStyle='#c83200';X.beginPath();X.arc(cx,cy,sz*0.7,0,Math.PI*2);X.fill();dText('🐉',cx-14,cy-16,p.accent,28,'left')}
-  else if(type==='ghost'){X.fillStyle='rgba(200,200,255,0.5)';X.beginPath();X.arc(cx,cy-sz/4,sz/2,0,Math.PI*2);X.fill();dText('👻',cx-10,cy-sz/4-10,'rgba(200,200,255,0.9)',22,'left')}
+  else if(type==='void'){X.fillStyle='#5000a0';X.beginPath();X.arc(cx,cy,sz*0.8,0,Math.PI*2);X.fill();X.fillStyle='#000';X.beginPath();X.arc(cx,cy,sz*0.4,0,Math.PI*2);X.fill();dText('*',cx,cy-10,p.accent,22,'center')}
+  else if(type==='dragon'){X.fillStyle='#c83200';X.beginPath();X.arc(cx,cy,sz*0.7,0,Math.PI*2);X.fill();dText('D',cx,cy-10,'#ff6400',28,'center',true)}
+  else if(type==='ghost'){X.fillStyle='rgba(200,200,255,0.5)';X.beginPath();X.arc(cx,cy-sz/4,sz/2,0,Math.PI*2);X.fill();dText('G',cx,cy-sz/4-6,'rgba(200,200,255,0.9)',22,'center',true)}
   else if(type==='mimic'){dRect(cx-sz,cy-sz/2,sz*2,sz,p.gold,4);dBorder(cx-sz,cy-sz/2,sz*2,sz,'#dc0000',3,4);dText('!',cx,cy-sz/2-8,'#dc0000',20,'center',true)}
   else{X.beginPath();X.arc(cx,cy,sz/2,0,Math.PI*2);X.fill()}
 }
 // ============================================================
-// COMBAT MOVE EXECUTION
+// COMBAT MOVE EXECUTION (with animation integration)
 // ============================================================
-function doMove(i){
-  const m=S.moves[i];if(m.pp<=0)return;m.pp--;
-  const e=S.enemy;
-  if(S.statuses.find(s=>s.type==='freeze')){
-    S.combatLog.push({msg:'You are frozen!',color:'#64dcff'});
-    S.statuses=S.statuses.filter(s=>s.type!=='freeze');
-    enemyTurn();if(S.hp<=0)handleDeath();return;
-  }
-  processStatuses(S,true);if(S.hp<=0){handleDeath();return}
-  if(S.charData.ability&&S.charData.ability.includes('Cursed'))S.hp-=Math.floor(S.maxHp*0.03);
-  if(m.type==='Buff'||(m.effect&&m.dmg===0)){
-    // Buff moves are temporary in combat, permanent from shop
-    const r=applyItemEffect(m.effect,false);
-    S.combatLog.push({msg:r||m.name,color:'#28c8dc'});addLog(`Used ${m.name}: ${r}`);
-  }else{
-    const{dmg,isSuper,isCrit,aType}=calcDmg(m.dmg,m.type,effAtk(),0,e.type,true);
-    // Double strike: from ability or item
-    let hits=1;
-    const hasDoubleStrike=S.doubleStrike||(S.charData.ability&&S.charData.ability.includes('Attacks twice'));
-    if(hasDoubleStrike)hits=2;
-    else if(S.charData.ability&&S.charData.ability.includes('Shadow Step'))hits=2;
-    let totalDmg=0;
-    for(let h=0;h<hits;h++){
-      let d=hits>1?Math.floor(dmg*0.6):dmg;
-      e.hp-=d;totalDmg+=d;
-      const statusChanceBonus=S.charData.ability&&S.charData.ability.includes('status chance')?15:0;
-      const entangleBonus=S.charData.ability&&S.charData.ability.includes('Entangle')?15:0;
-      if(m.statusType&&Math.random()*100<(m.statusChance+statusChanceBonus+entangleBonus))addStatus(e,m.statusType);
-      if(S.burnPassive&&Math.random()<0.4)addStatus(e,'burn');
-    }
-    // After-hit double-strike from Epic item (25% chance)
-    if(!hasDoubleStrike&&S.doubleStrike===false&&S.charData.ability&&!S.charData.ability.includes('Shadow')&&Math.random()<0.25){
-      const bonus=Math.floor(dmg*0.5);e.hp-=bonus;totalDmg+=bonus;
-      S.combatLog.push({msg:`Double-strike! +${bonus} bonus dmg!`,color:'#b040f0'});
-    }
-    let msg=`${m.name}! `;if(hits>1)msg+=`x${hits} `;if(isSuper)msg+='SUPER! ';if(isCrit)msg+='CRIT! ';msg+=`${totalDmg} dmg`;
-    S.combatLog.push({msg,color:isCrit?'#ffd700':isSuper?'#28c8dc':'#32c832'});
-    addLog(`${m.name}: ${totalDmg} dmg to ${e.name}`);
-    if(m.effect==='lifesteal'||S.artifacts.find(a=>a.effect==='lifesteal')){S.hp=Math.min(S.maxHp,S.hp+Math.max(1,Math.floor(totalDmg*0.1)))}
-    if(S.charData.ability&&S.charData.ability.includes('Absorb'))S.hp=Math.min(S.maxHp,S.hp+Math.floor(totalDmg*0.05));
-    if(S.charData.ability&&S.charData.ability.includes('Execute')&&e.hp>0&&e.hp<e.maxHp*0.2){e.hp-=totalDmg;S.combatLog.push({msg:'EXECUTE!',color:'#dc0000'})}
-  }
-  if(e.hp<=0){
-    if(e.isBoss&&e.phase===1&&e.phase2Hp>0){
-      e.phase=2;e.hp=e.phase2Hp;e.maxHp=e.phase2Hp;e.atk=e.phase2Atk;e.statuses=[];
-      S.combatLog.push({msg:'PHASE 2!',color:'#dc3232'});
-      if(e.dialogue&&e.dialogue[1])S.combatLog.push({msg:`"${e.dialogue[1]}"`,color:'#ffdc00'});
-    }else afterCombatWin();
-  }else{
-    // Priority passive: 10% chance to move again before enemy
-    if(S.priorityPassive&&Math.random()<0.1){
-      S.combatLog.push({msg:'Priority strike! Moving first!',color:'#ffaa00'});
-      // Just skip the enemy turn this round (already attacked, so no second attack, just enemy skips)
-    }else{
-      enemyTurn();if(S.hp<=0)handleDeath();
-    }
-  }
-}
-
 function doRun(){
+  if(S.combatState==='animating')return;
   if(S.enemy.isBoss){S.combatLog.push({msg:"Can't run from boss!",color:'#dc3232'});return}
   if(S.enemy.isRival){S.combatLog.push({msg:"Can't run from rival!",color:'#dc3232'});return}
   if(Math.random()<0.5+effSpd()*0.02){S.combatLog.push({msg:'Escaped!',color:'#32c832'});addLog('Escaped from battle');S.combatState='result'}
@@ -803,74 +1346,81 @@ function doRun(){
 // ============================================================
 function drawMenu(){
   const p=STYLES.menu;dRect(0,0,W,H,p.bg);
-  dText('='.repeat(50),W/2,30,'#00ff41',14,'center');
-  dText('RPS LEGENDS',W/2,55,p.gold,38,'center',true);
-  dText('v4.0 — Mega Edition',W/2,100,p.dim,16,'center');
-  dText('='.repeat(50),W/2,122,'#00ff41',14,'center');
-  dText(`Soul Crystals: ${S.soulCrystals}`,W/2,148,'#a03cc8',16,'center');
-  dText(`Highest Floor: ${S.highestFloor} | Runs: ${S.totalRuns}`,W/2,170,p.dim,13,'center');
-  const bw=280,bx=W/2-bw/2;
-  dBtn(bx,210,bw,44,'New Run',p,()=>{S.scene='modeSelect'},'m1');
-  dBtn(bx,264,bw,44,'Eternal Shop',p,()=>{S.scene='eternalShop';S.scrollY=0},'m2');
-  dBtn(bx,318,bw,44,'Character Shop',p,()=>{S.scene='charShop';S.scrollY=0},'m3');
-  dBtn(bx,372,bw,44,'How to Play',p,()=>{S.scene='howToPlay';S.scrollY=0},'m4');
-  dBtn(bx,426,bw,44,'Settings',p,()=>{S.scene='settings'},'m5');
-  dText('Rock',100,400,'#b48c64',12,'center');dText('Paper',W-100,350,'#dcdcf0',12,'center');dText('Scissors',130,320,'#c83c3c',12,'center');
+  const mw=isMobile?200:280;
+  dText('='.repeat(isMobile?30:50),W/2,30,'#00ff41',14,'center');
+  dText('RPS LEGENDS',W/2,55,p.gold,isMobile?28:38,'center',true);
+  dText('v5.0 — Ultimate Edition',W/2,isMobile?85:100,p.dim,isMobile?12:16,'center');
+  dText('='.repeat(isMobile?30:50),W/2,isMobile?102:122,'#00ff41',14,'center');
+  dText(`Soul Crystals: ${S.soulCrystals}`,W/2,isMobile?118:148,'#a03cc8',isMobile?13:16,'center');
+  dText(`Highest Floor: ${S.highestFloor} | Runs: ${S.totalRuns}`,W/2,isMobile?135:170,p.dim,isMobile?10:13,'center');
+  const bw=mw,bx=W/2-bw/2;
+  const bh=isMobile?40:44,gap=isMobile?46:54;
+  const by0=isMobile?160:210;
+  dBtn(bx,by0,bw,bh,'New Run',p,()=>{S.scene='modeSelect'},'m1');
+  dBtn(bx,by0+gap,bw,bh,'Eternal Shop',p,()=>{S.scene='eternalShop';S.scrollY=0},'m2');
+  dBtn(bx,by0+gap*2,bw,bh,'Character Shop',p,()=>{S.scene='charShop';S.scrollY=0},'m3');
+  dBtn(bx,by0+gap*3,bw,bh,'How to Play',p,()=>{S.scene='howToPlay';S.scrollY=0},'m4');
+  dBtn(bx,by0+gap*4,bw,bh,'Settings',p,()=>{S.scene='settings'},'m5');
 }
 
 function drawModeSelect(){
   const p=STYLES.menu;dRect(0,0,W,H,p.bg);
-  dText('Select Mode',W/2,30,p.title,28,'center',true);
-  const bw=300,bx=W/2-bw/2;
-  dBtn(bx,100,bw,60,'Classic (300 Floors)',p,()=>{S.mode='classic';S.scene='charSelect'},'mode_c');
-  dText('Battle through 300 floors. Defeat The Absolute!',W/2,170,p.dim,13,'center');
+  dText('Select Mode',W/2,30,p.title,isMobile?22:28,'center',true);
+  const bw=isMobile?250:300,bx=W/2-bw/2;
+  dBtn(bx,100,bw,isMobile?50:60,'Classic (300 Floors)',p,()=>{S.mode='classic';S.scene='charSelect'},'mode_c');
+  dText('Battle through 300 floors. Defeat The Absolute!',W/2,isMobile?158:170,p.dim,isMobile?10:13,'center');
   if(S.classicWon){
-    dBtn(bx,220,bw,60,'Endless Mode',p,()=>{S.mode='endless';S.scene='charSelect'},'mode_e');
-    dText('No end. Difficulty spikes every 50 floors past 300.',W/2,290,p.dim,13,'center');
-  }else{dRect(bx,220,bw,60,'#303030',8);dText('Endless Mode',W/2,240,'#808080',16,'center',true);dText('Beat Classic Mode to unlock!',W/2,290,'#808080',13,'center')}
-  dBtn(bx,340,bw,44,'Back',p,()=>{S.scene='menu'},'mode_b');
+    dBtn(bx,isMobile?190:220,bw,isMobile?50:60,'Endless Mode',p,()=>{S.mode='endless';S.scene='charSelect'},'mode_e');
+    dText('No end. Difficulty spikes every 50 floors past 300.',W/2,isMobile?248:290,p.dim,isMobile?10:13,'center');
+  }else{dRect(bx,isMobile?190:220,bw,isMobile?50:60,'#303030',8);dText('Endless Mode',W/2,isMobile?205:240,'#808080',16,'center',true);dText('Beat Classic Mode to unlock!',W/2,isMobile?248:290,'#808080',13,'center')}
+  dBtn(bx,isMobile?290:340,bw,44,'Back',p,()=>{S.scene='menu'},'mode_b');
 }
 
 function drawCharSelect(){
   const p=STYLES.menu;dRect(0,0,W,H,p.bg);
-  dText('Choose Character',W/2,10,p.title,24,'center',true);
-  const cw=140,ch=180,perRow=5;
+  dText('Choose Character',W/2,10,p.title,isMobile?18:24,'center',true);
+  const perRow=isMobile?2:5;
+  const cw=isMobile?Math.floor((W-30)/2):140,ch=isMobile?100:180;
   const avail=CHARS.filter(c=>S.unlocked.includes(c.name));
-  const sx=W/2-(Math.min(perRow,avail.length)*(cw+10))/2;
+  const sx=isMobile?10:W/2-(Math.min(perRow,avail.length)*(cw+10))/2;
   avail.forEach((c,i)=>{
     const col=i%perRow,row=Math.floor(i/perRow);
-    const x=sx+col*(cw+10),y=40+row*(ch+8);
-    if(y>H-50)return;
+    const x=sx+col*(cw+10),y=35+row*(ch+8)+(S._csScroll||0);
+    if(y>H-40||y<30)return;
     dPanel(x,y,cw,ch,p);
-    dChar(x+cw/2,y+45,35,c.color,'bright',0);
-    dText(c.name,x+cw/2,y+75,c.color,12,'center',true);
-    dText(c.type,x+cw/2,y+90,p.dim,10,'center');
-    dText(`HP:${c.hp} A:${c.atk}`,x+5,y+105,p.dim,9);
-    dText(`D:${c.def} S:${c.spd}`,x+5,y+117,p.dim,9);
-    dText(c.ability?c.ability.split(':')[0]:'',x+cw/2,y+132,p.accent,9,'center');
-    if(mIn(x,y,cw,ch)){dRect(10,H-65,W-20,55,p.panel,6);dText(c.backstory||'',20,H-60,p.text,11);dText(`Ability: ${c.ability||'None'}`,20,H-44,p.accent,11);dText(`Specialty: ${TYPE_SPEC[c.type].desc}`,20,H-28,p.dim,10)}
-    addBtn(x,y,cw,ch,()=>{initChar(c.name);startCombat(false)},'cs_'+c.name);
+    if(!isMobile)dChar(x+cw/2,y+45,35,c.color,'bright',0);
+    dText(c.name,x+cw/2,y+(isMobile?8:75),c.color,isMobile?11:12,'center',true);
+    dText(c.type,x+cw/2,y+(isMobile?22:90),p.dim,isMobile?9:10,'center');
+    dText(`HP:${c.hp} A:${c.atk}`,x+5,y+(isMobile?36:105),p.dim,9);
+    dText(`D:${c.def} S:${c.spd}`,x+5,y+(isMobile?48:117),p.dim,9);
+    dText(c.ability?c.ability.split(':')[0]:'',x+cw/2,y+(isMobile?62:132),p.accent,9,'center');
+    if(!isMobile&&mIn(x,y,cw,ch)){dRect(10,H-65,W-20,55,p.panel,6);dText(c.backstory||'',20,H-60,p.text,11);dText(`Ability: ${c.ability||'None'}`,20,H-44,p.accent,11);dText(`Specialty: ${TYPE_SPEC[c.type].desc}`,20,H-28,p.dim,10)}
+    addBtn(x,y,cw,ch,()=>{SFX.click();initChar(c.name);startCombat(false)},'cs_'+c.name);
   });
-  dBtn(20,H-30,100,25,'Back',p,()=>{S.scene='modeSelect'},'cs_bk');
+  if(isMobile){
+    dBtn(10,H-35,80,30,'Up',p,()=>{S._csScroll=(S._csScroll||0)+100},'cs_up');
+    dBtn(100,H-35,80,30,'Down',p,()=>{S._csScroll=(S._csScroll||0)-100},'cs_dn');
+  }
+  dBtn(W-(isMobile?90:120),H-35,isMobile?80:100,28,'Back',p,()=>{S.scene='modeSelect';S._csScroll=0},'cs_bk');
 }
 
 function drawCharShop(){
   const p=STYLES.menu;dRect(0,0,W,H,p.bg);
-  dText('Character Shop',W/2,10,p.title,24,'center',true);
+  dText('Character Shop',W/2,10,p.title,isMobile?18:24,'center',true);
   dText(`Soul Crystals: ${S.soulCrystals}`,W/2,38,'#a03cc8',16,'center');
   const locked=CHARS.filter(c=>c.cost>0&&!S.unlocked.includes(c.name));
-  const perRow=4,cw=200,ch=55;
+  const perRow=isMobile?2:4,cw=isMobile?Math.floor((W-30)/2):200,ch=55;
   locked.forEach((c,i)=>{
     const col=i%perRow,row=Math.floor(i/perRow);
-    const x=15+col*(cw+10),y=65+row*(ch+5);
+    const x=(isMobile?10:15)+col*(cw+10),y=65+row*(ch+5);
     if(y>H-50)return;
     const canBuy=S.soulCrystals>=c.cost;
     const hv=mIn(x,y,cw,ch);
     dRect(x,y,cw,ch,!canBuy?'#303030':hv?p.btnH:p.btnN,6);dBorder(x,y,cw,ch,p.border,1,6);
-    dText(c.name,x+5,y+3,c.color,13,undefined,true);
-    dText(`${c.type} | ${c.cost} SC`,x+5,y+20,canBuy?p.dim:'#606060',11);
+    dText(c.name,x+5,y+3,c.color,isMobile?11:13,undefined,true);
+    dText(`${c.type} | ${c.cost} SC`,x+5,y+20,canBuy?p.dim:'#606060',isMobile?9:11);
     dText(c.ability?c.ability.split(':')[0]:'',x+5,y+35,p.accent,9);
-    if(canBuy)addBtn(x,y,cw,ch,()=>{S.soulCrystals-=c.cost;S.unlocked.push(c.name);save();addMsg(`Unlocked ${c.name}!`)},'cshop_'+c.name);
+    if(canBuy)addBtn(x,y,cw,ch,()=>{SFX.coin();S.soulCrystals-=c.cost;S.unlocked.push(c.name);save();addMsg(`Unlocked ${c.name}!`)},'cshop_'+c.name);
   });
   dBtn(W/2-60,H-35,120,28,'Back',p,()=>{S.scene='menu'},'cshop_bk');
 }
@@ -879,149 +1429,156 @@ function drawCombat(){
   const sty=getStyle(S.floor),p=pal();dRect(0,0,W,H,p.bg);if(sty==='terminal')dScanlines();
   const e=S.enemy;if(!e)return;
   const biome=getBiome(S.floor);
-  dText(e.isBoss?`*** BOSS — FLOOR ${S.floor} ***`:`Floor ${S.floor}`,W/2,5,p.title,18,'center',true);
-  dText(biome.name,W-10,5,p.accent,12,'right');
+  const M=isMobile;
+  dText(e.isBoss?`*** BOSS — FLOOR ${S.floor} ***`:`Floor ${S.floor}`,W/2,5,p.title,M?14:18,'center',true);
+  dText(biome.name,W-10,5,p.accent,M?9:12,'right');
   // Player panel
-  dPanel(10,28,270,165,p);
-  dText(`${evoName()} Lv.${S.level}`,18,32,S.charData.color,14,undefined,true);
-  dChar(145,105,45,S.charData.color,sty,S.evoStage);
-  dText(`HP:${Math.max(0,S.hp)}/${S.maxHp}`,18,148,p.text,11);
-  dHpBar(18,162,252,12,S.hp,S.maxHp,p);
-  dText(`A:${effAtk()} D:${effDef()} S:${effSpd()}`,18,178,p.dim,10);
-  if(S.tempAtk!==0||S.tempDef!==0||S.tempSpd!==0)dText(`Temp: A${S.tempAtk>=0?'+':''}${S.tempAtk} D${S.tempDef>=0?'+':''}${S.tempDef} S${S.tempSpd>=0?'+':''}${S.tempSpd}`,18,188,'#ffd700',9);
-  dXpBar(18,199,140,8);dText(`Lv${S.level} ${S.xp}/${S.xpNext}xp`,162,196,p.dim,9);
-  dStatuses(18,210,S.statuses);
+  const panW=M?Math.floor(W/2-15):270, panH=M?110:165;
+  dPanel(10,M?22:28,panW,panH,p);
+  dText(`${evoName()} Lv.${S.level}`,18,M?26:32,S.charData.color,M?11:14,undefined,true);
+  if(!M)dChar(145,105,45,S.charData.color,sty,S.evoStage);
+  dText(`HP:${Math.max(0,S.hp)}/${S.maxHp}`,18,M?42:148,p.text,M?9:11);
+  dHpBar(18,M?54:162,panW-20,M?10:12,S.hp,S.maxHp,p);
+  dText(`A:${effAtk()} D:${effDef()} S:${effSpd()}`,18,M?68:178,p.dim,M?8:10);
+  if(!M){
+    if(S.tempAtk!==0||S.tempDef!==0||S.tempSpd!==0)dText(`Temp: A${S.tempAtk>=0?'+':''}${S.tempAtk} D${S.tempDef>=0?'+':''}${S.tempDef} S${S.tempSpd>=0?'+':''}${S.tempSpd}`,18,188,'#ffd700',9);
+    dXpBar(18,199,140,8);dText(`Lv${S.level} ${S.xp}/${S.xpNext}xp`,162,196,p.dim,9);
+    dStatuses(18,210,S.statuses);
+  }else{
+    dXpBar(18,80,panW-20,6);
+    dStatuses(18,90,S.statuses);
+  }
   // Enemy panel
-  dPanel(W-280,28,270,165,p);
-  dText(e.name,W-272,32,e.color,14,undefined,true);
-  dText(`Type: ${e.type}`,W-272,50,p.dim,11);
-  dEnemy(W-145,112,55,e.name,e.color,sty);
-  dText(`HP:${Math.max(0,e.hp)}/${e.maxHp}`,W-272,148,p.text,11);
-  dHpBar(W-272,162,252,12,e.hp,e.maxHp,p,true);
-  dStatuses(W-272,180,e.statuses);
-  if(e.isRival)dText('RIVAL',W/2,60,'#ff3264',20,'center',true);
-  dText('VS',W/2,95,p.accent,20,'center',true);
+  const epx=M?W/2+5:W-280;
+  dPanel(epx,M?22:28,panW,panH,p);
+  dText(e.name,epx+8,M?26:32,e.color,M?11:14,undefined,true);
+  dText(`Type: ${e.type}`,epx+8,M?40:50,p.dim,M?9:11);
+  if(!M)dEnemy(W-145,112,55,e.name,e.color,sty,e);else dEnemy(epx+panW/2,75,40,e.name,e.color,sty,e);
+  dText(`HP:${Math.max(0,e.hp)}/${e.maxHp}`,epx+8,M?90:148,p.text,M?9:11);
+  dHpBar(epx+8,M?102:162,panW-20,M?10:12,e.hp,e.maxHp,p,true);
+  if(!M)dStatuses(W-272,180,e.statuses);
+  if(e.isRival)dText('RIVAL',W/2,M?20:60,'#ff3264',M?14:20,'center',true);
+  if(!M)dText('VS',W/2,95,p.accent,20,'center',true);
   // Combat log
-  dPanel(10,228,W-20,88,p);
-  S.combatLog.slice(-4).forEach((l,i)=>dText(l.msg,18,233+i*20,l.color,11));
+  const logY=M?panH+28:228, logH=M?60:88;
+  dPanel(10,logY,W-20,logH,p);
+  S.combatLog.slice(M?-2:-4).forEach((l,i)=>dText(l.msg,18,logY+5+i*(M?16:20),l.color,M?9:11));
+  // Draw animation overlay
+  if(animState&&animState.active)updateAndDrawAnim();
   // Action area
-  if(S.combatState==='choose'){
+  const actY=logY+logH+5;
+  if(S.combatState==='choose'||S.combatState==='animating'){
+    const moveCols=M?2:3;
+    const bw=M?Math.floor((W-30)/2):165, bh=M?44:50;
     S.moves.forEach((m,i)=>{
-      const col=i%3,row=Math.floor(i/3);
-      const bx=10+col*170,by=326+row*55,bw=165,bh=50;
-      const ok=m.pp>0;const hv=mIn(bx,by,bw,bh);
+      const col=i%moveCols,row=Math.floor(i/moveCols);
+      const bx=10+col*(bw+5),by=actY+row*(bh+5);
+      const ok=m.pp>0&&S.combatState==='choose';const hv=mIn(bx,by,bw,bh);
       dRect(bx,by,bw,bh,!ok?'#303030':hv?p.btnH:p.btnN,6);dBorder(bx,by,bw,bh,p.border,1,6);
-      dText(m.name,bx+5,by+3,ok?p.btnT:'#808080',12,undefined,true);
+      dText(m.name,bx+5,by+3,ok?p.btnT:'#808080',M?10:12,undefined,true);
       const info=`${m.type} ${m.dmg>0?m.dmg+'dmg':m.effect||'buff'} PP:${m.pp}/${m.maxPp}`;
-      dText(info,bx+5,by+20,ok?p.dim:'#505050',9);
-      if(m.statusType)dText(`${STATUS_FX[m.statusType].name} ${m.statusChance}%`,bx+5,by+34,STATUS_FX[m.statusType].color,9);
+      dText(info,bx+5,by+(M?18:20),ok?p.dim:'#505050',M?7:9);
+      if(!M&&m.statusType)dText(`${STATUS_FX[m.statusType].name} ${m.statusChance}%`,bx+5,by+34,STATUS_FX[m.statusType].color,9);
       if(ok)addBtn(bx,by,bw,bh,()=>doMove(i),'mv_'+i);
     });
-    const ay=S.moves.length>3?436:380;
+    const moveRows=Math.ceil(S.moves.length/moveCols);
+    const ay=actY+moveRows*(bh+5)+5;
     const ic=S.inventory.reduce((s,it)=>s+(it.count||1),0);
-    dBtn(10,ay,100,30,`Items(${ic})`,p,()=>{S.showItems=true},'c_it');
-    dBtn(115,ay,80,30,'Run',p,()=>doRun(),'c_run');
-    dBtn(200,ay,80,30,'Log',p,()=>{S.showLog=true},'c_log');
-    dText(`Gold: ${S.gold}`,W-140,ay,p.gold,13);
+    const abw=M?Math.floor((W-30)/3):100, abh=M?38:30;
+    dBtn(10,ay,abw,abh,`Items(${ic})`,p,()=>{S.showItems=true},'c_it');
+    dBtn(15+abw,ay,abw,abh,'Run',p,()=>doRun(),'c_run');
+    dBtn(20+abw*2,ay,abw,abh,'Log',p,()=>{S.showLog=true},'c_log');
+    dText(`Gold: ${S.gold}`,W-140,ay,p.gold,M?11:13);
   }
   if(S.combatState==='result'){
-    dBtn(W/2-130,H-50,120,38,'Item Shop',p,()=>{S.showMiniShop=true},'c_ms');
-    dBtn(W/2+10,H-50,120,38,'Continue',p,()=>{if(S.pendingMove)S.scene='learnMove';else advanceFloor()},'c_cont');
+    const rbw=M?Math.floor((W-30)/2):120, rbh=M?44:38;
+    dBtn(W/2-rbw-5,H-rbh-10,rbw,rbh,'Item Shop',p,()=>{S.showMiniShop=true},'c_ms');
+    dBtn(W/2+5,H-rbh-10,rbw,rbh,'Continue',p,()=>{if(S.pendingMove)S.scene='learnMove';else advanceFloor()},'c_cont');
   }
-  if(S.artifacts.length){dText('Artifacts:',W-250,326,p.dim,10);S.artifacts.forEach((a,i)=>dText(`${a.name}`,W-250,338+i*13,p.accent,10))}
-  // Passive indicators
-  const passives=[];
-  if(S.doubleStrike)passives.push('[2x]');if(S.priorityPassive)passives.push('[Prio]');if(S.burnPassive)passives.push('[Burn]');if(S.reflectPassive)passives.push('[Refl]');if(!S.reviveUsed&&S.reviveUsed!==undefined)passives.push('[Rev]');
-  if(passives.length)dText(passives.join(' '),W-260,326+S.artifacts.length*13+10,RARITIES.Epic.color,9);
+  if(!M&&S.artifacts.length){dText('Artifacts:',W-250,326,p.dim,10);S.artifacts.forEach((a,i)=>dText(`${a.name}`,W-250,338+i*13,p.accent,10))}
+  if(!M){
+    const passives=[];
+    if(S.doubleStrike)passives.push('[2x]');if(S.priorityPassive)passives.push('[Prio]');if(S.burnPassive)passives.push('[Burn]');if(S.reflectPassive)passives.push('[Refl]');if(!S.reviveUsed&&S.reviveUsed!==undefined)passives.push('[Rev]');
+    if(passives.length)dText(passives.join(' '),W-260,326+S.artifacts.length*13+10,RARITIES.Epic.color,9);
+  }
   if(S.showItems)drawItemOverlay();
   if(S.showLog)drawLogOverlay();
   if(S.showMiniShop)drawMiniShop();
 }
 
 function drawItemOverlay(){
-  const p=pal();dRect(0,0,W,H,'rgba(0,0,0,0.6)');dPanel(150,80,W-300,H-160,p);
-  dText('Inventory',W/2,90,p.title,20,'center',true);
-  if(!S.inventory.length)dText('Empty!',W/2,200,p.dim,16,'center');
-  else S.inventory.forEach((it,i)=>{const y=115+i*36;dBtn(170,y,W-340,30,`${it.name} x${it.count||1}`,p,()=>{
+  const p=pal();dRect(0,0,W,H,'rgba(0,0,0,0.6)');
+  const ox=isMobile?30:150,oy=isMobile?30:80,ow=W-ox*2,oh=H-oy*2;
+  dPanel(ox,oy,ow,oh,p);
+  dText('Inventory',W/2,oy+10,p.title,20,'center',true);
+  if(!S.inventory.length)dText('Empty!',W/2,oy+80,p.dim,16,'center');
+  else S.inventory.forEach((it,i)=>{const y=oy+35+i*40;dBtn(ox+20,y,ow-40,34,`${it.name} x${it.count||1}`,p,()=>{
     const r=applyItemEffect(it.effect,false);
     S.combatLog.push({msg:r||it.name,color:'#32c832'});addLog(`Used ${it.name}: ${r}`);
     it.count=(it.count||1)-1;if(it.count<=0)S.inventory.splice(i,1);S.showItems=false;
-    enemyTurn();if(S.hp<=0)handleDeath();
+    enemyTurn();if(S.hp<=0)handleDeath();else S.combatState='choose';
   },'it_'+i)});
-  dBtn(W/2-50,H-95,100,28,'Close',p,()=>{S.showItems=false},'it_cl');
+  dBtn(W/2-50,oy+oh-35,100,28,'Close',p,()=>{S.showItems=false},'it_cl');
 }
 
 function drawLogOverlay(){
-  const p=pal();dRect(0,0,W,H,'rgba(0,0,0,0.6)');dPanel(100,40,W-200,H-80,p);
-  dText('Event Log',W/2,50,p.title,20,'center',true);
-  S.eventLog.slice(-20).forEach((e,i)=>dText(`F${e.floor}: ${e.text}`,120,75+i*22,p.text,11));
-  dBtn(W/2-50,H-55,100,28,'Close',p,()=>{S.showLog=false},'log_cl');
+  const p=pal();dRect(0,0,W,H,'rgba(0,0,0,0.6)');
+  const ox=isMobile?20:100,oy=isMobile?20:40,ow=W-ox*2,oh=H-oy*2;
+  dPanel(ox,oy,ow,oh,p);
+  dText('Event Log',W/2,oy+10,p.title,20,'center',true);
+  S.eventLog.slice(-20).forEach((e,i)=>dText(`F${e.floor}: ${e.text}`,ox+20,oy+35+i*22,p.text,isMobile?9:11));
+  dBtn(W/2-50,oy+oh-35,100,28,'Close',p,()=>{S.showLog=false},'log_cl');
 }
 // ============================================================
-// MINI-SHOP (reworked: buyables + 4 free item picks)
+// MINI-SHOP (the ONLY shop in v5.0)
 // ============================================================
 function drawMiniShop(){
   const p=pal();dRect(0,0,W,H,'rgba(0,0,0,0.75)');
-  dPanel(80,20,W-160,H-40,p);
-  dText(`Item Shop  |  Gold: ${S.gold}`,W/2,30,p.gold,17,'center',true);
+  const M=isMobile;
+  const ox=M?20:80,oy=M?10:20,ow=W-ox*2,oh=H-oy*2;
+  dPanel(ox,oy,ow,oh,p);
+  dText(`Item Shop  |  Gold: ${S.gold}`,W/2,oy+10,p.gold,M?13:17,'center',true);
 
   // -- BUYABLE SECTION --
-  dText('— Buy —',W/2,58,p.accent,12,'center');
+  dText('-- Buy --',W/2,oy+32,p.accent,M?10:12,'center');
   MINI_SHOP_BUYABLE.forEach((it,i)=>{
-    const x=100,y=75+i*38,w=W-200,h=34;const ok=S.gold>=it.cost;
+    const x=ox+15,y=oy+48+i*(M?34:38),w=ow-30,h=M?30:34;const ok=S.gold>=it.cost;
     dRect(x,y,w,h,ok?p.btnN:'#2a2a2a',6);dBorder(x,y,w,h,p.border,1,6);
-    dText(`${it.name}  (${it.desc})`,x+8,y+4,ok?p.btnT:'#666',13,undefined,true);
-    dText(`${it.cost}g`,x+w-50,y+4,ok?p.gold:'#555',13);
+    dText(`${it.name}  (${it.desc})`,x+8,y+4,ok?p.btnT:'#666',M?10:13,undefined,true);
+    dText(`${it.cost}g`,x+w-50,y+4,ok?p.gold:'#555',M?10:13);
     if(ok)addBtn(x,y,w,h,()=>{
-      S.gold-=it.cost;applyItemEffect(it.effect,true);
+      SFX.coin();S.gold-=it.cost;applyItemEffect(it.effect,true);
       addMsg(`${it.name}!`);addLog(`Bought ${it.name}`);
     },'ms_'+i);
   });
 
   // -- FREE PICK SECTION --
-  const fy=75+MINI_SHOP_BUYABLE.length*38+10;
-  dText('— Free Item Pick (choose 1) —',W/2,fy,p.accent,12,'center');
+  const fy=oy+48+MINI_SHOP_BUYABLE.length*(M?34:38)+10;
+  dText('-- Free Item Pick (choose 1) --',W/2,fy,p.accent,M?10:12,'center');
   if(!S.freeItemPicks||S.freeItemPicks.length===0){
     dText('Already picked this floor!',W/2,fy+20,p.dim,12,'center');
   }else{
+    const cols=M?1:2;
     S.freeItemPicks.forEach((it,i)=>{
-      const cols=2,cw=(W-200)/cols-5;
+      const cw=M?(ow-30):(ow-40)/cols-5;
       const col=i%cols,row=Math.floor(i/cols);
-      const x=100+col*(cw+5),y=fy+20+row*60;
-      const hv=mIn(x,y,cw,55);
+      const x=ox+15+col*(cw+5),y=fy+18+row*(M?46:60);
+      const hv=mIn(x,y,cw,M?42:55);
       const rc=rarityColor(it.rarity);
-      dRect(x,y,cw,55,hv?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.3)',6);
-      dBorder(x,y,cw,55,rc,2,6);
-      dText(it.name,x+6,y+4,rc,13,undefined,true);
+      dRect(x,y,cw,M?42:55,hv?'rgba(255,255,255,0.08)':'rgba(0,0,0,0.3)',6);
+      dBorder(x,y,cw,M?42:55,rc,2,6);
+      dText(it.name,x+6,y+4,rc,M?10:13,undefined,true);
       dRarityTag(x+cw-76,y+4,it.rarity);
-      dText(it.desc,x+6,y+22,p.dim,10);
-      dText('Click to take FREE',x+6,y+38,'#32c832',9);
-      addBtn(x,y,cw,55,()=>{
-        const r=applyItemEffect(it.effect,true);
+      dText(it.desc,x+6,y+(M?18:22),p.dim,M?8:10);
+      dText('Click to take FREE',x+6,y+(M?30:38),'#32c832',M?7:9);
+      addBtn(x,y,cw,M?42:55,()=>{
+        SFX.pickup();const r=applyItemEffect(it.effect,true);
         addMsg(`Got ${it.name}! ${r}`);addLog(`Free item: ${it.name}`);
         S.freeItemPicks=null;S.showMiniShop=false;
       },'msfree_'+i);
     });
   }
-  dBtn(W/2-55,H-55,110,30,'Close',p,()=>{S.showMiniShop=false},'ms_cl');
-}
-
-// ============================================================
-// SHOP (every 5 floors)
-// ============================================================
-function drawShop(){
-  const sty=getStyle(S.floor),p=pal();dRect(0,0,W,H,p.bg);if(sty==='terminal')dScanlines();
-  dText(`SHOP | Gold: ${S.gold}`,W/2,10,p.gold,20,'center',true);
-  dText(`HP: ${S.hp}/${S.maxHp}`,30,35,p.text,12);dHpBar(30,50,180,10,S.hp,S.maxHp,p);
-  SHOP_ITEMS.forEach((it,i)=>{const y=70+i*38;const ok=S.gold>=it.cost;const hv=mIn(25,y,W-50,34);
-    dRect(25,y,W-50,34,!ok?'#282828':hv?p.btnH:p.btnN,4);dBorder(25,y,W-50,34,p.border,1,4);
-    dText(it.name,35,y+2,ok?p.btnT:'#808080',13,undefined,true);dText(it.desc,35,y+18,p.dim,10);
-    dText(`${it.cost}g`,W-80,y+8,ok?p.gold:'#808080',13);
-    if(ok)addBtn(25,y,W-50,34,()=>{
-      S.gold-=it.cost;applyItemEffect(it.effect,true);addMsg(`${it.name}!`);addLog(`Shop: ${it.name}`);
-    },'sh_'+i);
-  });
-  dBtn(W/2-80,H-40,160,32,'Leave Shop',p,()=>advanceFloor(),'sh_lv');
+  dBtn(W/2-55,oy+oh-35,110,30,'Close',p,()=>{S.showMiniShop=false},'ms_cl');
 }
 
 // ============================================================
@@ -1030,18 +1587,18 @@ function drawShop(){
 function drawEncounter(){
   const sty=getStyle(S.floor),p=pal();dRect(0,0,W,H,p.bg);if(sty==='terminal')dScanlines();
   const e=S.encounter;if(!e)return;
-  dPanel(50,25,W-100,H-50,p);
-  // Mysterious atmosphere
+  const M=isMobile;
+  dPanel(M?20:50,25,W-(M?40:100),H-50,p);
   dText('~ Mystery Event ~',W/2,32,p.dim,11,'center');
-  dText(e.name,W/2,50,p.title,22,'center',true);
-  dEncounterImg(W/2,118,e.img,p);
-  // Show options (up to 5)
+  dText(e.name,W/2,50,p.title,M?16:22,'center',true);
+  if(!M)dEncounterImg(W/2,118,e.img,p);
   const visibleOpts=e.opts.slice(0,5);
+  const optY0=M?80:190;
   visibleOpts.forEach((o,i)=>{
-    const y=190+i*50;
-    dBtn(80,y,W-160,42,`${i+1}. ${o.text}`,p,()=>{
+    const y=optY0+i*(M?44:50);
+    dBtn(M?30:80,y,W-(M?60:160),M?40:42,`${i+1}. ${o.text}`,p,()=>{
+      SFX.click();
       const r=o.result();addMsg(r);addLog(`${e.name}: ${o.text} -> ${r}`);
-      // Small chance of bonus artifact
       if(Math.random()<0.1&&S.artifacts.length<5){
         const arts=[{name:'Stone Pendant',effect:'rock_boost'},{name:'Sharp Ring',effect:'scissors_boost'},{name:'Paper Talisman',effect:'paper_boost'},{name:'Life Crystal',effect:'hp+30'}];
         const av=arts.filter(a=>!S.artifacts.find(x=>x.effect===a.effect));
@@ -1057,13 +1614,13 @@ function drawEncounter(){
 // LEARN MOVE SCENE
 // ============================================================
 function drawLearnMove(){
-  const p=pal();dRect(0,0,W,H,p.bg);dPanel(100,100,W-200,400,p);
+  const p=pal();dRect(0,0,W,H,p.bg);dPanel(isMobile?20:100,100,W-(isMobile?40:200),400,p);
   dText('Learn New Move?',W/2,115,p.title,22,'center',true);
   const nm=S.pendingMove;if(!nm)return;
-  dText(`${nm.name} — ${nm.type} ${nm.dmg}dmg PP:${nm.maxPp}`,W/2,160,p.accent,16,'center');
+  dText(`${nm.name} — ${nm.type} ${nm.dmg}dmg PP:${nm.maxPp}`,W/2,160,p.accent,isMobile?12:16,'center');
   if(nm.statusType)dText(`${STATUS_FX[nm.statusType].name} ${nm.statusChance}%`,W/2,180,STATUS_FX[nm.statusType].color,13,'center');
   dText('Replace which move?',W/2,210,p.text,14,'center');
-  S.moves.forEach((m,i)=>{dBtn(150,240+i*45,W-300,38,`${m.name} (${m.type} ${m.dmg}dmg PP:${m.maxPp})`,p,()=>{S.moves[i]={...nm,pp:nm.maxPp};S.pendingMove=null;addMsg(`Learned ${nm.name}!`);addLog(`Learned ${nm.name}`);advanceFloor()},'lm_'+i)});
+  S.moves.forEach((m,i)=>{dBtn(isMobile?40:150,240+i*45,W-(isMobile?80:300),38,`${m.name} (${m.type} ${m.dmg}dmg PP:${m.maxPp})`,p,()=>{S.moves[i]={...nm,pp:nm.maxPp};S.pendingMove=null;addMsg(`Learned ${nm.name}!`);addLog(`Learned ${nm.name}`);advanceFloor()},'lm_'+i)});
   dBtn(W/2-80,240+S.moves.length*45+10,160,36,"Don't Learn",p,()=>{S.pendingMove=null;advanceFloor()},'lm_no');
 }
 
@@ -1072,12 +1629,12 @@ function drawLearnMove(){
 // ============================================================
 function drawEternalShop(){
   const p=STYLES.menu;dRect(0,0,W,H,p.bg);
-  dText('Eternal Shop',W/2,15,p.title,24,'center',true);
+  dText('Eternal Shop',W/2,15,p.title,isMobile?18:24,'center',true);
   dText(`Soul Crystals: ${S.soulCrystals}`,W/2,45,'#a03cc8',16,'center');
   dText('Upgrades persist across all runs!',W/2,68,p.dim,12,'center');
   S.eternalItems.forEach((u,i)=>{const lv=S.eternals[u.key]||0;const cost=u.base*(lv+1);const ok=S.soulCrystals>=cost;
-    const y=90+i*58;dBtn(100,y,W-200,50,`${u.name} (Lv.${lv}) — ${cost} SC`,p,()=>{
-      if(S.soulCrystals>=cost){S.soulCrystals-=cost;S.eternals[u.key]=(S.eternals[u.key]||0)+1;save();addMsg('Upgraded!')}
+    const y=90+i*(isMobile?50:58);dBtn(isMobile?30:100,y,W-(isMobile?60:200),isMobile?44:50,`${u.name} (Lv.${lv}) — ${cost} SC`,p,()=>{
+      if(S.soulCrystals>=cost){SFX.coin();S.soulCrystals-=cost;S.eternals[u.key]=(S.eternals[u.key]||0)+1;save();addMsg('Upgraded!')}
     },'es_'+i,ok);
   });
   dBtn(W/2-60,H-45,120,32,'Back',p,()=>{S.scene='menu'},'es_bk');
@@ -1088,71 +1645,55 @@ function drawEternalShop(){
 // ============================================================
 function drawSettings(){
   const p=STYLES.menu;dRect(0,0,W,H,p.bg);
-  dText('Settings',W/2,30,p.title,28,'center',true);
+  dText('Settings',W/2,30,p.title,isMobile?22:28,'center',true);
   const diffs=['Easy','Normal','Hard','Extreme'];
-  dText('Difficulty:',W/2,100,p.text,18,'center');
+  dText('Difficulty:',W/2,isMobile?80:100,p.text,isMobile?14:18,'center');
   diffs.forEach((d,i)=>{const x=W/2-200+i*100;
     const sel=S.settings.difficulty===i;
-    dBtn(x,130,90,35,d,p,()=>{S.settings.difficulty=i;save()},'sd_'+i);
-    if(sel)dBorder(x,130,90,35,'#ffd700',3,8);
+    dBtn(x,isMobile?100:130,90,35,d,p,()=>{S.settings.difficulty=i;save()},'sd_'+i);
+    if(sel)dBorder(x,isMobile?100:130,90,35,'#ffd700',3,8);
   });
   const speeds=['0.5x','1x','1.5x','2x'];
-  dText('Game Speed:',W/2,200,p.text,18,'center');
+  dText('Game Speed:',W/2,isMobile?160:200,p.text,isMobile?14:18,'center');
   speeds.forEach((s,i)=>{const x=W/2-200+i*100;const vals=[0.5,1,1.5,2];
     const sel=S.settings.speed===vals[i];
-    dBtn(x,230,90,35,s,p,()=>{S.settings.speed=vals[i];save()},'ss_'+i);
-    if(sel)dBorder(x,230,90,35,'#ffd700',3,8);
+    dBtn(x,isMobile?180:230,90,35,s,p,()=>{S.settings.speed=vals[i];save()},'ss_'+i);
+    if(sel)dBorder(x,isMobile?180:230,90,35,'#ffd700',3,8);
   });
-  dBtn(W/2-60,350,120,38,'Back',p,()=>{S.scene='menu'},'set_bk');
+  dBtn(W/2-60,isMobile?280:350,120,38,'Back',p,()=>{S.scene='menu'},'set_bk');
 }
 // ============================================================
-// HOW TO PLAY (full updated guide)
+// HOW TO PLAY (updated for v5.0)
 // ============================================================
 function drawHowToPlay(){
   const p=STYLES.menu;dRect(0,0,W,H,p.bg);
-  dText('How to Play — RPS Legends v4.0',W/2,8,p.title,20,'center',true);
+  dText('How to Play — RPS Legends v5.0',W/2,8,p.title,isMobile?14:20,'center',true);
   const sections=[
     {title:'BASICS',color:p.accent,lines:[
       'Rock beats Scissors (1.5x) | Scissors beats Paper (1.5x) | Paper beats Rock (1.5x)',
       'Weak matchup = 0.6x damage. CRITS deal 1.5x damage.',
     ]},
     {title:'TYPE SPECIALTIES',color:'#28c8dc',lines:[
-      'Rock: +10% dmg, -15% dmg taken, -20% speed (tank playstyle)',
+      'Rock: +10% dmg, -15% dmg taken, -20% speed',
       'Paper: Heals 3% HP/turn passively, but easier to hit',
       'Scissors: +25% crit chance, +15% speed, but 20% more dmg taken',
     ]},
     {title:'ITEM RARITY',color:RARITIES.Legendary.color,lines:[
       'Common (white) | Uncommon (green) | Rare (blue) | Epic (purple) | Legendary (gold)',
-      'After each battle win: open the Item Shop to BUY potions/antidotes AND pick 1 FREE item.',
-      'Free items use the rarity system — later floors drop rarer items!',
-      'Epic/Legendary items grant powerful passives: double-strike, reflect, auto-revive, etc.',
+      'After each battle win: open Item Shop to BUY potions AND pick 1 FREE item.',
+      'Epic/Legendary items grant powerful passives.',
     ]},
-    {title:'STAT SYSTEM',color:'#ffd700',lines:[
-      'Permanent stats: from level-ups, evolutions, shops, Eternal Shop — never reset.',
-      'Temporary stats: from combat buff moves (Harden, Sharpen, etc.) — reset before boss/rival.',
-      'The stat display shows effective ATK/DEF/SPD including all modifiers.',
-    ]},
-    {title:'STATUS EFFECTS',color:'#dc3232',lines:[
-      'Bleed/Burn/Poison/Wrap/Freeze carry over between regular battles (no auto-clear).',
-      'Buy Antidote in the Item Shop to cure status effects.',
-      'Boss fight defeat CLEARS all your status effects (reward for winning).',
-      'Freeze skips one action. Burn also reduces your ATK by 10%.',
+    {title:'v5.0 CHANGES',color:'#ff5000',lines:[
+      'Every move now has unique visual animations!',
+      'Procedural sound effects via Web Audio API.',
+      'Bosses and rivals have detailed visual tiers.',
+      'Mobile-optimized layout with larger tap targets.',
+      'Regular shop removed — mini-shop is the only shop now.',
     ]},
     {title:'PROGRESSION',color:'#32c832',lines:[
       '300 floors Classic + Endless Mode (unlock after beating Classic).',
-      'Boss every 10 floors | Regular Shop every 5 floors | Rival every 25 floors.',
-      'Evolve at Floor 25 (Stage 1) and Floor 50 (Final). Big stat boosts!',
-      'Level up gains permanent stat increases. Learn new moves every 5 levels.',
-    ]},
-    {title:'BIOMES',color:'#a03cc8',lines:[
-      'Plains(1-35) Caverns(36-70) Grid(71-100) Crystal(101-150)',
-      'Inferno(151-200) Void(201-250) Celestial(251-300)',
-      'Each biome has unique enemies and visual style.',
-    ]},
-    {title:'META PROGRESSION',color:'#c8aa1e',lines:[
-      'Soul Crystals earned from runs → spend in Eternal Shop for permanent upgrades.',
-      'Character Shop: unlock all 50 characters with Soul Crystals.',
-      'Artifacts drop from battles — up to 5 equipped at once.',
+      'Boss every 10 floors | Rival every 25 floors.',
+      'Evolve at Floor 25 (Stage 1) and Floor 50 (Final).',
     ]},
   ];
   let y=32;
@@ -1161,7 +1702,7 @@ function drawHowToPlay(){
   const offsetY=S._htpScroll||0;
   sections.forEach(sec=>{
     dText(sec.title,40,y+offsetY,sec.color,13,undefined,true);y+=18;
-    sec.lines.forEach(l=>{dText('  '+l,40,y+offsetY,p.text,10);y+=14});
+    sec.lines.forEach(l=>{dText('  '+l,40,y+offsetY,p.text,isMobile?8:10);y+=14});
     y+=6;
   });
   X.restore();
@@ -1175,32 +1716,36 @@ function drawHowToPlay(){
 // ============================================================
 function drawDeath(){
   dRect(0,0,W,H,'#0f0505');
-  dText('DEFEATED',W/2,80,'#dc3232',36,'center',true);
+  dText('DEFEATED',W/2,80,'#dc3232',isMobile?28:36,'center',true);
   const cr=Math.floor(S.floor/5)+(S.floor>=50?10:0)+(S.floor>=100?20:0);
-  [`Floor ${S.floor}`,`${evoName()} Lv.${S.level}`,`Gold: ${S.gold}`,`+${cr} Soul Crystals`].forEach((l,i)=>dText(l,W/2,170+i*30,'#e0e0e0',18,'center'));
+  [`Floor ${S.floor}`,`${evoName()} Lv.${S.level}`,`Gold: ${S.gold}`,`+${cr} Soul Crystals`].forEach((l,i)=>dText(l,W/2,170+i*30,'#e0e0e0',isMobile?14:18,'center'));
   dBtn(W/2-100,350,200,44,'Return to Menu',STYLES.menu,()=>{S.runActive=false;S.scene='menu'},'d_m');
 }
 
 function drawVictory(){
   dRect(0,0,W,H,'#050519');
-  dText('VICTORY!',W/2,60,'#ffd700',40,'center',true);
-  dText('Conquered all 300 floors!',W/2,115,'#28c8dc',20,'center');
+  dText('VICTORY!',W/2,60,'#ffd700',isMobile?30:40,'center',true);
+  dText('Conquered all 300 floors!',W/2,115,'#28c8dc',isMobile?14:20,'center');
   const cr=Math.floor(S.floor/5)+30;
-  [`${evoName()} Lv.${S.level}`,`HP: ${S.hp}/${S.maxHp}`,`Gold: ${S.gold}`,`+${cr} Soul Crystals`,'Endless Mode Unlocked!'].forEach((l,i)=>dText(l,W/2,170+i*30,'#e0e0e0',18,'center'));
+  [`${evoName()} Lv.${S.level}`,`HP: ${S.hp}/${S.maxHp}`,`Gold: ${S.gold}`,`+${cr} Soul Crystals`,'Endless Mode Unlocked!'].forEach((l,i)=>dText(l,W/2,170+i*30,'#e0e0e0',isMobile?14:18,'center'));
   dBtn(W/2-100,370,200,44,'Return to Menu',STYLES.menu,()=>{S.runActive=false;S.scene='menu'},'v_m');
 }
 
 function drawMsgs(){
   let y=H-60;
   S.messages.slice().reverse().slice(0,3).forEach(m=>{
-    dRect(15,y,W-30,24,'rgba(0,0,0,0.75)',4);dText(m.text,25,y+4,'#ffd700',12);y-=28;
+    dRect(15,y,W-30,24,'rgba(0,0,0,0.75)',4);dText(m.text,25,y+4,'#ffd700',isMobile?10:12);y-=28;
   });
 }
 
 // ============================================================
 // INPUT
 // ============================================================
-function handleClick(ex,ey){mX=ex;mY=ey;for(let i=btns.length-1;i>=0;i--){const b=btns[i];if(ex>=b.x&&ex<=b.x+b.w&&ey>=b.y&&ey<=b.y+b.h){b.action();return}}}
+function handleClick(ex,ey){
+  mX=ex;mY=ey;
+  SFX._init(); // Init audio context on first user gesture
+  for(let i=btns.length-1;i>=0;i--){const b=btns[i];if(ex>=b.x&&ex<=b.x+b.w&&ey>=b.y&&ey<=b.y+b.h){b.action();return}}
+}
 C.addEventListener('mousemove',e=>{const p=gmp(e);mX=p.x;mY=p.y});
 C.addEventListener('click',e=>{const p=gmp(e);handleClick(p.x,p.y)});
 C.addEventListener('touchstart',e=>{e.preventDefault();const p=gmp(e);handleClick(p.x,p.y)},{passive:false});
@@ -1211,13 +1756,21 @@ C.addEventListener('touchstart',e=>{e.preventDefault();const p=gmp(e);handleClic
 loadSave();
 function loop(){
   S.tick++;X.save();X.scale(sc,sc);clrBtns();
+
+  // Check if animation completed and execute pending move
+  if(animState&&!animState.active&&pendingMoveAction){
+    const action=pendingMoveAction;
+    pendingMoveAction=null;
+    animState=null;
+    action();
+  }
+
   const s=S.scene;
   if(s==='menu')drawMenu();
   else if(s==='modeSelect')drawModeSelect();
   else if(s==='charSelect')drawCharSelect();
   else if(s==='charShop')drawCharShop();
   else if(s==='combat')drawCombat();
-  else if(s==='shop')drawShop();
   else if(s==='encounter')drawEncounter();
   else if(s==='eternalShop')drawEternalShop();
   else if(s==='howToPlay')drawHowToPlay();
