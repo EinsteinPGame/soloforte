@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Piano Sheets - SoloForte AI</title>
+  <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -170,76 +171,73 @@
       font-size: 0.9rem;
     }
 
-    /* ── Modal ── */
-    .modal-overlay {
+    /* ── Sheet Music Overlay ── */
+    .sheet-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.75);
+      background: #0a0a1a;
       z-index: 1000;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      backdrop-filter: blur(4px);
+      overflow-y: auto;
+      animation: sheetIn 0.25s ease;
     }
-    .modal-overlay.open {
-      display: flex;
-    }
-    .modal {
-      background: #12122a;
-      border: 1px solid #2a2a4a;
-      border-radius: 16px;
-      padding: 36px 32px;
-      max-width: 520px;
-      width: 100%;
-      text-align: center;
-      position: relative;
-      animation: modalIn 0.2s ease;
-    }
-    @keyframes modalIn {
-      from { opacity: 0; transform: scale(0.93) translateY(12px); }
-      to   { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    .modal-close {
-      position: absolute;
-      top: 16px;
-      right: 18px;
-      background: none;
-      border: none;
-      color: #555577;
-      font-size: 1.4rem;
-      cursor: pointer;
-      line-height: 1;
-      transition: color 0.2s;
-    }
-    .modal-close:hover { color: #e0e0e0; }
-    .modal-icon {
-      font-size: 3rem;
-      margin-bottom: 16px;
+    .sheet-overlay.open {
       display: block;
     }
-    .modal h2 {
-      font-size: 1.25rem;
-      color: #d0d0f0;
-      margin-bottom: 6px;
+    @keyframes sheetIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
     }
-    .modal .modal-nickname {
-      font-size: 0.9rem;
+
+    .sheet-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 50%, #0d0d2b 100%);
+      padding: 20px 28px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .sheet-header .back-btn {
+      padding: 8px 20px;
+      background: linear-gradient(90deg, #7b68ee, #00d4ff);
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      white-space: nowrap;
+    }
+    .sheet-header .back-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 15px rgba(123, 104, 238, 0.4);
+    }
+    .sheet-header-info h2 {
+      font-size: 1.3rem;
+      color: #d0d0f0;
+      font-weight: 700;
+    }
+    .sheet-header-info .sheet-composer {
+      font-size: 0.88rem;
       color: #7b68ee;
       font-style: italic;
-      margin-bottom: 20px;
     }
-    .modal .modal-body {
-      font-size: 0.95rem;
-      color: #8888aa;
-      line-height: 1.7;
-      background: #0d0d22;
-      border: 1px dashed #2a2a4a;
-      border-radius: 10px;
-      padding: 20px;
+
+    .sheet-render-area {
+      max-width: 960px;
+      margin: 32px auto;
+      padding: 40px 32px;
+      background: #fff;
+      border-radius: 16px;
+      min-height: 300px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
     }
-    .modal .modal-body strong {
-      color: #a0a0cc;
+    .sheet-render-area svg {
+      width: 100% !important;
     }
 
     /* ── Footer ── */
@@ -255,19 +253,21 @@
     /* ── Responsive ── */
     @media (max-width: 600px) {
       .header h1 { font-size: 2rem; }
-      .modal { padding: 28px 20px; }
+      .sheet-render-area { padding: 20px 12px; margin: 16px 8px; }
+      .sheet-header { padding: 14px 16px; gap: 12px; }
+      .sheet-header-info h2 { font-size: 1.05rem; }
     }
   </style>
 </head>
 <body>
 
-  <div class="header">
+  <div class="header" id="mainHeader">
     <a href="index.html" class="back-link">&#8592; Back to SoloForte AI</a>
-    <h1>Piano Sheets 🎹</h1>
+    <h1>Piano Sheets</h1>
     <p class="subtitle">Your personal piano sheet music library</p>
   </div>
 
-  <div class="search-bar-wrap">
+  <div class="search-bar-wrap" id="searchWrap">
     <input
       type="text"
       class="search-bar"
@@ -277,20 +277,21 @@
     >
   </div>
 
-  <div class="library">
+  <div class="library" id="librarySection">
     <div class="sheet-grid" id="sheetGrid">
 
       <div class="sheet-card"
            data-title="River Flows in You"
            data-nickname="The YIRUMA Song"
            data-composer="Yiruma"
-           data-difficulty="intermediate">
+           data-difficulty="intermediate"
+           data-song-id="river-flows">
         <div class="card-title">River Flows in You</div>
         <div class="card-nickname">"The YIRUMA Song"</div>
         <div class="card-composer">Yiruma</div>
         <div class="card-footer">
           <span class="difficulty intermediate">Intermediate</span>
-          <button class="view-btn" onclick="openModal('River Flows in You', '&quot;The YIRUMA Song&quot;')">View Sheet</button>
+          <button class="view-btn" onclick="openSheet('river-flows')">View Sheet</button>
         </div>
       </div>
 
@@ -298,27 +299,29 @@
            data-title="Moonlight Sonata (1st Movement)"
            data-nickname="That Beethoven one"
            data-composer="Ludwig van Beethoven"
-           data-difficulty="intermediate">
+           data-difficulty="intermediate"
+           data-song-id="moonlight">
         <div class="card-title">Moonlight Sonata (1st Movement)</div>
         <div class="card-nickname">"That Beethoven one"</div>
         <div class="card-composer">Ludwig van Beethoven</div>
         <div class="card-footer">
           <span class="difficulty intermediate">Intermediate</span>
-          <button class="view-btn" onclick="openModal('Moonlight Sonata (1st Movement)', '&quot;That Beethoven one&quot;')">View Sheet</button>
+          <button class="view-btn" onclick="openSheet('moonlight')">View Sheet</button>
         </div>
       </div>
 
       <div class="sheet-card"
-           data-title="Für Elise"
+           data-title="F&uuml;r Elise"
            data-nickname="The iconic beginner piece"
            data-composer="Ludwig van Beethoven"
-           data-difficulty="beginner">
+           data-difficulty="beginner"
+           data-song-id="fur-elise">
         <div class="card-title">F&uuml;r Elise</div>
         <div class="card-nickname">"The iconic beginner piece"</div>
         <div class="card-composer">Ludwig van Beethoven</div>
         <div class="card-footer">
           <span class="difficulty beginner">Beginner</span>
-          <button class="view-btn" onclick="openModal('F\u00FCr Elise', '&quot;The iconic beginner piece&quot;')">View Sheet</button>
+          <button class="view-btn" onclick="openSheet('fur-elise')">View Sheet</button>
         </div>
       </div>
 
@@ -326,13 +329,14 @@
            data-title="Canon in D"
            data-nickname="The wedding song"
            data-composer="Johann Pachelbel"
-           data-difficulty="intermediate">
+           data-difficulty="intermediate"
+           data-song-id="canon-d">
         <div class="card-title">Canon in D</div>
         <div class="card-nickname">"The wedding song"</div>
         <div class="card-composer">Johann Pachelbel</div>
         <div class="card-footer">
           <span class="difficulty intermediate">Intermediate</span>
-          <button class="view-btn" onclick="openModal('Canon in D', '&quot;The wedding song&quot;')">View Sheet</button>
+          <button class="view-btn" onclick="openSheet('canon-d')">View Sheet</button>
         </div>
       </div>
 
@@ -340,13 +344,14 @@
            data-title="Unravel (Tokyo Ghoul OP)"
            data-nickname="Unravel"
            data-composer="TK (Tooru Kitajima)"
-           data-difficulty="advanced">
+           data-difficulty="advanced"
+           data-song-id="unravel">
         <div class="card-title">Unravel (Tokyo Ghoul OP)</div>
         <div class="card-nickname">"Unravel"</div>
         <div class="card-composer">TK (Tooru Kitajima)</div>
         <div class="card-footer">
           <span class="difficulty advanced">Advanced</span>
-          <button class="view-btn" onclick="openModal('Unravel (Tokyo Ghoul OP)', '&quot;Unravel&quot;')">View Sheet</button>
+          <button class="view-btn" onclick="openSheet('unravel')">View Sheet</button>
         </div>
       </div>
 
@@ -354,12 +359,13 @@
            data-title="Counting Stars"
            data-nickname=""
            data-composer="OneRepublic"
-           data-difficulty="intermediate">
+           data-difficulty="intermediate"
+           data-song-id="counting-stars">
         <div class="card-title">Counting Stars</div>
         <div class="card-composer">OneRepublic</div>
         <div class="card-footer">
           <span class="difficulty intermediate">Intermediate</span>
-          <button class="view-btn" onclick="openModal('Counting Stars', '')">View Sheet</button>
+          <button class="view-btn" onclick="openSheet('counting-stars')">View Sheet</button>
         </div>
       </div>
 
@@ -367,43 +373,231 @@
            data-title="Rewrite the Stars"
            data-nickname=""
            data-composer="Zac Efron &amp; Zendaya (The Greatest Showman)"
-           data-difficulty="intermediate">
+           data-difficulty="intermediate"
+           data-song-id="rewrite-stars">
         <div class="card-title">Rewrite the Stars</div>
         <div class="card-composer">Zac Efron &amp; Zendaya (The Greatest Showman)</div>
         <div class="card-footer">
           <span class="difficulty intermediate">Intermediate</span>
-          <button class="view-btn" onclick="openModal('Rewrite the Stars', '')">View Sheet</button>
+          <button class="view-btn" onclick="openSheet('rewrite-stars')">View Sheet</button>
         </div>
       </div>
 
     </div>
 
     <div class="empty-state" id="emptyState">
-      <span class="empty-icon">🎵</span>
+      <span class="empty-icon">&#127925;</span>
       <h3>No sheets found</h3>
       <p>Try a different search term, or ask to add more songs!</p>
     </div>
   </div>
 
-  <!-- Modal -->
-  <div class="modal-overlay" id="modalOverlay" onclick="handleOverlayClick(event)">
-    <div class="modal" id="modal">
-      <button class="modal-close" onclick="closeModal()" aria-label="Close">&times;</button>
-      <span class="modal-icon">🎹</span>
-      <h2 id="modalTitle"></h2>
-      <div class="modal-nickname" id="modalNickname"></div>
-      <div class="modal-body">
-        <strong>Sheet music will be added soon!</strong><br><br>
-        Tell me which songs you want and I'll get the sheets loaded in. This is just a placeholder for now — the library is ready to go once you confirm your song list.
+  <!-- Sheet Music Overlay -->
+  <div class="sheet-overlay" id="sheetOverlay">
+    <div class="sheet-header">
+      <button class="back-btn" onclick="closeSheet()">&#8592; Back to Library</button>
+      <div class="sheet-header-info">
+        <h2 id="sheetTitle"></h2>
+        <span class="sheet-composer" id="sheetComposer"></span>
       </div>
     </div>
+    <div class="sheet-render-area" id="sheetRenderArea"></div>
   </div>
 
-  <footer>
+  <footer id="mainFooter">
     <p>&copy; 2026 SoloForte AI &mdash; <a href="index.html">Back to Home</a></p>
   </footer>
 
   <script>
+    // ── Song ABC Notation Data ──
+    const songData = {
+      'river-flows': {
+        title: 'River Flows in You',
+        composer: 'Yiruma',
+        abc: `X:1
+T:River Flows in You
+C:Yiruma
+M:4/4
+L:1/8
+Q:1/4=68
+K:A
+%% staves {1}
+V:1 clef=treble
+|: z2 ec BA ce | dc BA GA Bc |
+| z2 ec BA ce | dc BA GA B2 |
+| z2 ec BA ce | dc BA GA Bc |
+| z2 ec BA ce | dc BA GA B2 |
+| A2 ce ac'e'c' | b2 ag fe d2 |
+| A2 ce ac'e'c' | b2 ag fe d2 |
+| e4 c4 | d4 B4 |
+| A2 ce ac'e'c' | b2 ag fe d2 |
+| e4 a4 | e4 a4 |
+| A2 ec BA ce | dc BA GA Bc |
+| A2 ec BA ce | dc BA GA B2 |
+| a4 g2 fe | d4 c2 BA |
+| a4 g2 fe | d4 e4 |
+| A2 ce a2 c'e' | c'2 ba ge d2 |
+| A2 ce a2 c'e' | c'2 ba ge d2 |
+| e'4 c'4 | d'4 b4 |
+| a4 g2 fe | d4 c2 BA |
+| A8 | A8 :|`
+      },
+      'moonlight': {
+        title: 'Moonlight Sonata (1st Movement)',
+        composer: 'Ludwig van Beethoven',
+        abc: `X:1
+T:Moonlight Sonata - 1st Movement
+C:Ludwig van Beethoven
+M:4/4
+L:1/8
+Q:1/4=56
+K:C#min
+%% staves {1}
+V:1 clef=treble
+| E3 G ^A E G ^A | E3 G ^A E G ^A |
+| E3 G B E G B | E3 G B E G B |
+| ^D3 ^F B ^D ^F B | ^D3 ^F B ^D ^F B |
+| E3 G c E G c | E3 G c E G c |
+| E3 A c E A c | E3 A c E A c |
+| ^D3 ^F B ^D ^F B | E3 G B E G B |
+| E3 A c E A c | ^D3 ^F B ^D ^F B |
+| E3 G B E G B | E3 G ^A E G ^A |
+| E3 G B E G B | E3 G B E G B |
+| ^F3 A c ^F A c | ^F3 A c ^F A c |
+| E3 G B E G B | E3 G B E G B |
+| ^D3 ^F B ^D ^F B | ^D3 ^F B ^D ^F B |
+| E3 G ^A E G ^A | E3 G ^A E G ^A |
+| E3 G B E G B | E3 G B E G B |
+| E3 A c E A c | E3 A c E A c |
+| ^D3 ^F B ^D ^F B | ^D3 ^F B ^D ^F B |
+| C3 E ^G C E ^G | C4 z4 |`
+      },
+      'fur-elise': {
+        title: 'Fur Elise',
+        composer: 'Ludwig van Beethoven',
+        abc: `X:1
+T:Fur Elise
+C:Ludwig van Beethoven
+M:3/8
+L:1/16
+Q:3/8=40
+K:Am
+|: e^d | eB dc | A2 z CEA | B2 z E^GB | c2 z Ee^d |
+| e^d eB dc | A2 z CEA | B2 z EcB | A2 z2 :|
+|: z2 | Bc d2 e2 | c3 d ef | B3 c de | A3 z Ee |
+| e2 ^d2 e2 | e2 ^d2 e2 | e^d eB dc | A2 z CEA |
+| B2 z E^GB | c2 z Ee^d | e^d eB dc | A2 z CEA |
+| B2 z EcB | A2 z2 :|
+|: z2 | e^d eB dc | A2 z CEA | B2 z E^GB | c2 z Ee^d |
+| e^d eB dc | A2 z CEA | B2 z EcB | A4 z2 |
+| e^d eB dc | A2 z CEA | B2 z E^GB | c2 z Ee^d |
+| e^d eB dc | A2 z CEA | B2 z EcB | A4 :|`
+      },
+      'canon-d': {
+        title: 'Canon in D',
+        composer: 'Johann Pachelbel',
+        abc: `X:1
+T:Canon in D
+C:Johann Pachelbel
+M:4/4
+L:1/8
+Q:1/4=72
+K:D
+|: f'4 e'4 | d'4 c'4 | b4 a4 | b4 c'4 |
+| d'4 c'4 | b4 a4 | g4 f4 | g4 a4 |
+| d2 fg a2 ga | b2 ag f2 de |
+| f2 ef g2 fg | a2 gf e2 de |
+| f2 ed c2 de | d2 cd B2 cd |
+| e2 de f2 ef | g2 fe d2 f2 |
+| a4 g4 | f4 e4 | d4 c4 | d4 e4 |
+| d'2 c'd' e'2 c'd' | b2 c'd' a2 ba |
+| g2 ab a2 gf | g2 fg a2 ba |
+| b2 c'd' a2 ba | g2 fg a2 gf |
+| e2 fg f2 ed | e2 fg a4 |
+| d'2 c'b a2 ba | g2 fg e2 fg |
+| a4 b4 | a4 g4 | f4 e4 | d8 :|`
+      },
+      'unravel': {
+        title: 'Unravel (Tokyo Ghoul OP)',
+        composer: 'TK (Tooru Kitajima)',
+        abc: `X:1
+T:Unravel (Tokyo Ghoul OP)
+C:TK (Tooru Kitajima)
+M:4/4
+L:1/8
+Q:1/4=132
+K:Cm
+| z4 G2 AB | c2 B2 G4 |
+| z4 G2 AB | c2 d2 e2 d2 |
+| c2 B2 G4 | z4 G2 AB |
+| c2 d2 e2 g2 | f2 e2 d4 |
+| z2 cd e2 g2 | f2 e2 d2 c2 |
+| B2 A2 G4 | z4 G2 AB |
+| c2 B2 G2 E2 | G4 z4 |
+| z2 cd e2 g2 | g2 f2 e2 d2 |
+| e8 | z4 G2 AB |
+| c2 B2 c2 d2 | e2 d2 c2 B2 |
+| c2 d2 e2 g2 | g2 f2 e2 d2 |
+| c4 B4 | c8 |
+| z2 ef g2 a2 | g2 f2 e2 d2 |
+| e2 f2 g2 c'2 | c'2 b2 a2 g2 |
+| a2 b2 c'4 | b2 a2 g4 |
+| e2 f2 g2 a2 | g2 f2 e2 d2 |
+| c8 | c8 |`
+      },
+      'counting-stars': {
+        title: 'Counting Stars',
+        composer: 'OneRepublic',
+        abc: `X:1
+T:Counting Stars
+C:OneRepublic (Ryan Tedder)
+M:4/4
+L:1/8
+Q:1/4=122
+K:Am
+%% Intro / Verse melody
+| z4 A,2 C2 | E4 E4 | z2 EE D2 C2 | A,4 z4 |
+| z4 A,2 C2 | E4 E2 F2 | E2 D2 C2 A,2 | A,4 z4 |
+%% Pre-chorus
+| z2 EE E2 FG | A4 A2 GF | E4 D2 C2 | C4 z4 |
+| z2 EE E2 FG | A4 A2 GF | E4 E4 | z8 |
+%% Chorus - "Lately I been, I been losing sleep"
+| A4 A2 c2 | c2 BA G2 E2 | E4 z2 EF | G4 G2 A2 |
+| A4 A2 c2 | c2 BA G2 E2 | E4 D2 C2 | C4 z4 |
+| A4 A2 c2 | c2 BA G2 E2 | E4 z2 EF | G4 G2 A2 |
+| A4 A2 c2 | c2 BA G2 E2 | E4 D2 C2 | A,4 z4 |
+%% Post-chorus
+| z2 A,C E2 D2 | C2 A,2 z4 | z2 A,C E2 D2 | C2 A,2 A,4 |
+| z2 A,C E2 F2 | E2 D2 C2 A,2 | C4 D4 | E8 |`
+      },
+      'rewrite-stars': {
+        title: 'Rewrite the Stars',
+        composer: 'Zac Efron & Zendaya (The Greatest Showman)',
+        abc: `X:1
+T:Rewrite the Stars
+C:Benj Pasek & Justin Paul (The Greatest Showman)
+M:4/4
+L:1/8
+Q:1/4=76
+K:G
+%% Verse - "You know I want you"
+| z4 B,2 D2 | G4 G2 A2 | B4 A2 G2 | E4 z4 |
+| z4 B,2 D2 | G4 G2 A2 | B4 A2 G2 | D4 z4 |
+%% Pre-chorus - "All I want is to fly with you"
+| z2 de d2 B2 | A4 z2 GA | B2 AG E2 D2 | D4 z4 |
+| z2 de d2 B2 | A4 A2 B2 | c4 B2 A2 | B4 z4 |
+%% Chorus - "What if we rewrite the stars"
+| d4 d2 e2 | d2 B2 A2 G2 | A4 z2 GA | B2 AG E2 D2 |
+| d4 d2 e2 | d2 B2 A2 G2 | A4 A2 B2 | G4 z4 |
+| d4 d2 e2 | d2 B2 A2 G2 | A4 z2 GA | B2 AG E2 D2 |
+| d4 d2 e2 | d2 B2 A2 B2 | c4 B2 A2 | G4 z4 |
+%% Bridge / outro melody
+| B2 c2 d4 | e2 d2 B4 | A2 B2 c4 | B2 A2 G4 |
+| B2 c2 d4 | e2 d2 B4 | A4 G4 | G8 |`
+      }
+    };
+
+    // ── Search ──
     const searchInput = document.getElementById('searchInput');
     const sheetGrid   = document.getElementById('sheetGrid');
     const emptyState  = document.getElementById('emptyState');
@@ -430,24 +624,40 @@
       emptyState.style.display = visible === 0 ? 'block' : 'none';
     });
 
-    function openModal(title, nickname) {
-      document.getElementById('modalTitle').textContent = title;
-      document.getElementById('modalNickname').innerHTML = nickname;
-      document.getElementById('modalOverlay').classList.add('open');
+    // ── Sheet Music View ──
+    function openSheet(songId) {
+      const song = songData[songId];
+      if (!song) return;
+
+      document.getElementById('sheetTitle').textContent = song.title;
+      document.getElementById('sheetComposer').textContent = song.composer;
+
+      const overlay = document.getElementById('sheetOverlay');
+      overlay.classList.add('open');
       document.body.style.overflow = 'hidden';
+
+      // Render ABC after overlay is visible
+      setTimeout(() => {
+        ABCJS.renderAbc('sheetRenderArea', song.abc, {
+          responsive: 'resize',
+          staffwidth: 800,
+          paddingtop: 10,
+          paddingbottom: 20,
+          paddingleft: 10,
+          paddingright: 10,
+          scale: 1.1
+        });
+      }, 50);
     }
 
-    function closeModal() {
-      document.getElementById('modalOverlay').classList.remove('open');
+    function closeSheet() {
+      document.getElementById('sheetOverlay').classList.remove('open');
+      document.getElementById('sheetRenderArea').innerHTML = '';
       document.body.style.overflow = '';
     }
 
-    function handleOverlayClick(e) {
-      if (e.target === document.getElementById('modalOverlay')) closeModal();
-    }
-
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') closeSheet();
     });
   </script>
 </body>
