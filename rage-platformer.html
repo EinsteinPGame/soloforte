@@ -346,6 +346,16 @@ const DUAL_DEATH_MSGS = [
   "Split personality, united in failure.",
 ];
 
+// Level 6 loop death messages
+const LOOP_DEATH_MSGS = [
+  "You've been here before... or have you?",
+  "Déjà vu is just a bug in the matrix.",
+  "The portal sends its regards.",
+  "Maybe try the portal again. Or don't. It doesn't matter.",
+  "Going in circles? No, that's impossible... right?",
+  "Have you tried... just going through the portal?",
+];
+
 // =====================================================================
 // SAVE SYSTEM (per-player)
 // =====================================================================
@@ -915,12 +925,51 @@ function buildLevel5() {
   };
 }
 
+// Level 6 - The Loop
+function buildLevel6() {
+  const groundY = CANVAS_H - 40;
+  return {
+    bg: '#1a1a2e',
+    isLoop: true,
+    loopCount: 0,
+    loopTarget: 5,
+    spawnX: 40,
+    spawnY: groundY - 40,
+    endX: CANVAS_W - 60,
+    endY: groundY - 220,
+    spikes: makeSpikeRow(groundY, 0, CANVAS_W),
+    ceilingSpikes: [],
+    deathCeiling: 0,
+    platforms: [
+      // Ground with gaps
+      { id: 'g1', x: 0, y: groundY, w: 160, h: 40, type: 'normal', color: '#3a3a5a' },
+      { id: 'g2', x: 200, y: groundY, w: 180, h: 40, type: 'normal', color: '#3a3a5a' },
+      { id: 'g3', x: 420, y: groundY, w: 140, h: 40, type: 'normal', color: '#3a3a5a' },
+      { id: 'g4', x: 600, y: groundY, w: 160, h: 40, type: 'normal', color: '#3a3a5a' },
+      { id: 'g5', x: 800, y: groundY, w: 100, h: 40, type: 'normal', color: '#3a3a5a' },
+      // Mid platforms - easy jumps
+      { id: 'p1', x: 100, y: groundY - 70, w: 100, h: 16, type: 'normal', color: '#445566' },
+      { id: 'p2', x: 260, y: groundY - 90, w: 110, h: 16, type: 'normal', color: '#445566' },
+      { id: 'p3', x: 430, y: groundY - 120, w: 100, h: 16, type: 'normal', color: '#445566' },
+      { id: 'p4', x: 570, y: groundY - 150, w: 120, h: 16, type: 'normal', color: '#445566' },
+      // Moving platform for variety
+      { id: 'mp1', x: 680, y: groundY - 180, w: 80, h: 16, type: 'moving_h', color: '#5566aa',
+        origX: 680, moveTarget: 760, moveSpeed: 1.5, state: 'active' },
+      // Final platform leading to the gate
+      { id: 'end', x: CANVAS_W - 120, y: groundY - 220, w: 120, h: 16, type: 'normal', color: '#335533' },
+    ],
+    movingSpikes: [],
+    levelSpikes: [],
+  };
+}
+
 function getLevel(n) {
   if (n === 0) return buildLevel1();
   if (n === 1) return buildLevel2();
   if (n === 2) return buildLevel3();
   if (n === 3) return buildLevel4();
   if (n === 4) return buildLevel5();
+  if (n === 5) return buildLevel6();
   return buildSimpleLevel(n);
 }
 
@@ -1027,6 +1076,10 @@ function initLevel(n) {
     level.arenaSpawnInterval = 900;
     level.arenaProjectiles = [];
     level.arenaEdgeWarnings = [];
+  }
+  // Reset loop state for Level 6
+  if (level.isLoop) {
+    level.loopCount = 0;
   }
   resetPlayer(level.spawnX, level.spawnY - player.h);
   // Reset player2 for dual player levels
@@ -1203,7 +1256,15 @@ function updatePlayer(dt) {
     // Win check
     const ex = level.endX, ey = level.endY;
     if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H)) {
-      winLevel();
+      if (level.isLoop && level.loopCount < level.loopTarget - 1) {
+        level.loopCount++;
+        player.x = level.spawnX;
+        player.y = level.spawnY - player.h;
+        player.vx = 0;
+        player.vy = 0;
+      } else {
+        winLevel();
+      }
     }
   }
 }
@@ -1980,6 +2041,8 @@ function winMessage() {
     ["30 seconds of survival. You barely made it out alive. {d} deaths say everything.","The arena spared you. This time.","Survived the gauntlet. Don't expect applause. You took {d} deaths to do it.","The spikes eventually let you go. Charity."],
     // Level 5
     ["You found the real one. Eventually. After {d} deaths of guessing. Genius.","All 7 shards collected. The real you was hiding all along.","Process of elimination. Took {d} deaths but you got there.","The illusions couldn't fool you forever. Just for {d} deaths."],
+    // Level 6
+    ["You walked through the same portal 5 times. That's it. That's the whole level. {d} deaths for THAT.","The secret was... there was no secret. Just persistence. And {d} deaths.","No hidden exits. No secret paths. Just the portal. 5 times. You're welcome."],
     ["Did you Google the solution?","Honestly surprised you made it."],
     ["OK that one was actually hard. You still took too long though."],
     ["Are you cheating? No? Then how are you this slow?"],
@@ -2125,6 +2188,30 @@ function drawGate(x, y, isEnd) {
   ctx.font = 'bold 8px Courier New';
   ctx.textAlign = 'center';
   ctx.fillText(isEnd ? 'END' : 'START', x + GATE_W / 2, y - 4);
+}
+
+function drawLoopGate(x, y) {
+  const pulse = 0.6 + 0.4 * Math.sin(Date.now() / 200);
+  const color = `rgba(255,215,0,${pulse})`;
+  const glow = '#ffd700';
+  // Glow
+  ctx.shadowColor = glow;
+  ctx.shadowBlur = 24 + 8 * Math.sin(Date.now() / 150);
+  // Posts
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 5, GATE_H);
+  ctx.fillRect(x + GATE_W - 5, y, 5, GATE_H);
+  // Top bar
+  ctx.fillRect(x, y, GATE_W, 6);
+  // Inner glow fill
+  ctx.fillStyle = `rgba(255,215,0,${0.15 + 0.1 * pulse})`;
+  ctx.fillRect(x + 5, y + 6, GATE_W - 10, GATE_H - 6);
+  ctx.shadowBlur = 0;
+  // Label
+  ctx.fillStyle = glow;
+  ctx.font = 'bold 8px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('END', x + GATE_W / 2, y - 4);
 }
 
 function drawPlatform(p) {
@@ -2608,7 +2695,11 @@ function render() {
     }
   }
   if (!level.isArena && !level.isIllusion) {
-    drawGate(level.endX, level.endY, true);
+    if (level.isLoop && level.loopCount >= level.loopTarget - 1) {
+      drawLoopGate(level.endX, level.endY);
+    } else {
+      drawGate(level.endX, level.endY, true);
+    }
   } else if (level.isArena && level.arenaGateSpawned) {
     drawGate(level.endX, level.endY, true);
   } else if (level.isIllusion && level.illusionPhase === 2 && level.phase2GateSpawned) {
@@ -2786,6 +2877,7 @@ function showDeath() {
   if (currentLevel === 2) msgs = DUAL_DEATH_MSGS;
   else if (currentLevel === 3) msgs = ARENA_DEATH_MSGS;
   else if (currentLevel === 4) msgs = ILLUSION_DEATH_MSGS;
+  else if (currentLevel === 5) msgs = LOOP_DEATH_MSGS;
   let msg = msgs[Math.floor(Math.random() * msgs.length)];
   msg = msg.replace('{n}', saveData.totalDeaths);
   document.getElementById('deathMsg').textContent = msg;
