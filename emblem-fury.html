@@ -77,15 +77,15 @@ canvas{display:block}
   <div class="char-select">
     <div class="char-card" onclick="selectChar(0)" style="border-color:#4488ff">
       <h3 style="color:#4488ff">HAWK</h3>
-      <p>Skill: Feather spread (3 projectiles)<br>Ultimate: Dive-bomb AoE<br>15 kills to charge ult</p>
+      <p>Skill: Feather spread (3 projectiles)<br>Ultimate: Dive-bomb AoE<br>Skill: 8s CD | Ult: 30s CD</p>
     </div>
     <div class="char-card" onclick="selectChar(1)" style="border-color:#ff6622">
       <h3 style="color:#ff6622">BLAZE</h3>
-      <p>Skill: Fire burst (close AoE)<br>Ultimate: Flame tornado<br>15 kills to charge ult</p>
+      <p>Skill: Fire burst (close AoE)<br>Ultimate: Flame tornado<br>Skill: 8s CD | Ult: 30s CD</p>
     </div>
     <div class="char-card" onclick="selectChar(2)" style="border-color:#aa44ff">
       <h3 style="color:#aa44ff">PHANTOM</h3>
-      <p>Skill: Invincible dash<br>Ultimate: Invisibility + 3x damage<br>15 kills to charge ult</p>
+      <p>Skill: Invincible dash<br>Ultimate: Invisibility + 3x damage<br>Skill: 8s CD | Ult: 30s CD</p>
     </div>
   </div>
 </div>
@@ -296,6 +296,32 @@ function playSound(type, opts = {}) {
       o2.start(now + 0.2); o2.stop(now + 0.6);
       break;
     }
+    case 'headshot': {
+      const o = audioCtx.createOscillator();
+      o.type = 'sine'; o.frequency.setValueAtTime(600, now);
+      o.frequency.exponentialRampToValueAtTime(1200, now + 0.08);
+      o.connect(g);
+      g.gain.setValueAtTime(0.3, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      o.start(now); o.stop(now + 0.12);
+      const o2h = audioCtx.createOscillator();
+      const g2h = audioCtx.createGain();
+      o2h.type = 'triangle'; o2h.frequency.value = 1800;
+      o2h.connect(g2h); g2h.connect(audioCtx.destination);
+      g2h.gain.setValueAtTime(0.15, now + 0.05);
+      g2h.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      o2h.start(now + 0.05); o2h.stop(now + 0.15);
+      break;
+    }
+    case 'bossWarning': {
+      const o = audioCtx.createOscillator();
+      o.type = 'square'; o.frequency.value = 110;
+      o.connect(g);
+      g.gain.setValueAtTime(0.2, now);
+      g.gain.linearRampToValueAtTime(0.001, now + 0.3);
+      o.start(now); o.stop(now + 0.3);
+      break;
+    }
   }
 }
 
@@ -381,33 +407,11 @@ function generateMap() {
       }
     }
   }
-  // Central 4x4 room (walls from 10-13 on each axis)
-  const walls = [
-    // Central room walls
-    [10,10,10,13,2],[13,10,13,13,2],[10,10,13,10,2],[10,13,13,13,2],
-    // 4 pillars scattered for cover (2x2 blocks)
-    [4,4,5,5,3],[18,4,19,5,3],[4,18,5,19,3],[18,18,19,19,3],
-    // Small cover walls (1-2 blocks)
-    [7,2,7,2,1],[16,2,16,2,1],
-    [2,7,2,7,1],[21,7,21,7,1],
-    [2,16,2,16,1],[21,16,21,16,1],
-    [7,21,7,21,1],[16,21,16,21,1],
-  ];
-
-  for (const [x1,y1,x2,y2,t] of walls) {
-    const minX = Math.min(x1,x2), maxX = Math.max(x1,x2);
-    const minY = Math.min(y1,y2), maxY = Math.max(y1,y2);
-    for (let y = minY; y <= maxY && y < MAP_H; y++) {
-      for (let x = minX; x <= maxX && x < MAP_W; x++) {
-        MAP[y][x] = t;
-      }
-    }
-  }
-  // 4 doorways in central room (center of each wall)
-  MAP[10][11] = 0; MAP[10][12] = 0; // north doorway
-  MAP[13][11] = 0; MAP[13][12] = 0; // south doorway
-  MAP[11][10] = 0; MAP[12][10] = 0; // west doorway
-  MAP[11][13] = 0; MAP[12][13] = 0; // east doorway
+  // Open arena: 4 small 1x1 pillars spread symmetrically
+  MAP[6][6] = 3;
+  MAP[6][17] = 3;
+  MAP[17][6] = 3;
+  MAP[17][17] = 3;
 }
 generateMap();
 
@@ -438,6 +442,7 @@ const player = {
   level: 1, xp: 0, xpNeeded: 15,
   kills: 0, ultKills: 0,
   skillCooldown: 0, skillMaxCooldown: 8000,
+  ultCooldown: 0, ultMaxCooldown: 30000,
   ultCharge: 0, ultNeeded: 15,
   ultActive: false, ultTimer: 0,
   invisible: false, invisTimer: 0,
@@ -530,6 +535,12 @@ const player = {
   immuneToSlow: false,
   immuneToBurn: false,
   voidPhase: 0,
+  // Kill streaks & headshot flash
+  killStreakCount: 0, killStreakTimer: 0,
+  killStreakText: '', killStreakTextTimer: 0,
+  headshotFlash: 0,
+  // Weapon bob
+  weaponBobPhase: 0,
 };
 
 // ── CHARACTERS ──
@@ -652,6 +663,9 @@ let damageNumbers = [];
 let activeBoss = null;
 let bossDeathTimer = 0;
 let bossDespawnTimer = 0;
+let bossWarningTimer = 0;
+let bossWarningActive = false;
+let bossWarningPendingIdx = -1;
 
 // ── INPUT ──
 const keys = {};
@@ -867,13 +881,15 @@ function updateMobileButtons() {
   // Skill icon based on character
   const skNames = ['FAN', 'FIRE', 'DASH'];
   skillBtn.querySelector('.sk-icon').textContent = skNames[player.character] || 'Q';
-  // Ult button state
-  if (player.ultKills >= player.ultNeeded) {
+  // Ult button state (cooldown-based)
+  if (player.ultCooldown <= 0) {
     ultBtn.classList.add('charged');
     ultBtn.classList.remove('grayed');
+    ultBtn.querySelector('span').textContent = 'ULT';
   } else {
     ultBtn.classList.remove('charged');
     ultBtn.classList.add('grayed');
+    ultBtn.querySelector('span').textContent = Math.ceil(player.ultCooldown / 1000) + 's';
   }
 }
 
@@ -1034,6 +1050,16 @@ function castPlayerRay(angle, w, critBonus) {
     for (const ph of pierceHits) {
       const isCrit = Math.random() * 100 < (player.crit + (critBonus || 0)) * (1 + player.allStatsBuff);
       let dmg = calcDamage(w.damage, isCrit);
+      // Headshot check for pierce
+      const pSpriteH = (ph.enemy.size || 0.4) / ph.dist;
+      const pHitFraction = 0.5 + player.pitch / (pSpriteH * 1.5 + 0.01);
+      const pIsHeadshot = pHitFraction < 0.25;
+      if (pIsHeadshot) {
+        dmg = Math.floor(dmg * 2);
+        playSound('headshot');
+        player.headshotFlash = 50;
+        addDamageNumber(ph.enemy.x, ph.enemy.y - 0.3, 0, false, 'HEADSHOT!');
+      }
       damageEnemy(ph.enemy, dmg, isCrit);
       addDamageNumber(ph.enemy.x, ph.enemy.y, dmg, isCrit);
       applyOnHitEffects(ph.enemy, w, dmg, isCrit);
@@ -1044,6 +1070,22 @@ function castPlayerRay(angle, w, critBonus) {
   if (hitEnemy) {
     const isCrit = Math.random() * 100 < (player.crit + (critBonus || 0)) * (1 + player.allStatsBuff);
     let dmg = calcDamage(w.damage, isCrit);
+
+    // Headshot check: pitch determines vertical hit position on enemy sprite
+    // Enemy sprite occupies a vertical range; top 25% = headshot
+    // The sprite's vertical center is at horizon; pitch shifts where we aim
+    // hitFraction: 0 = top of sprite, 1 = bottom of sprite
+    const spriteH = (hitEnemy.size || 0.4) / bestDist;
+    const aimOffset = player.pitch; // positive pitch = looking down, negative = looking up
+    const hitFraction = 0.5 + aimOffset / (spriteH * 1.5 + 0.01);
+    const isHeadshot = hitFraction < 0.25;
+
+    if (isHeadshot) {
+      dmg = Math.floor(dmg * 2);
+      playSound('headshot');
+      player.headshotFlash = 50; // white screen flash
+      addDamageNumber(hitEnemy.x, hitEnemy.y - 0.3, 0, false, 'HEADSHOT!');
+    }
 
     // Execute check
     if (player.executeThreshold > 0 && hitEnemy.hp / hitEnemy.maxHp < player.executeThreshold) {
@@ -1057,7 +1099,7 @@ function castPlayerRay(angle, w, critBonus) {
       dmg = hitEnemy.hp + 1;
     }
 
-    damageEnemy(hitEnemy, dmg, isCrit);
+    damageEnemy(hitEnemy, dmg, isCrit, isHeadshot);
     addDamageNumber(hitEnemy.x, hitEnemy.y, dmg, isCrit);
     applyOnHitEffects(hitEnemy, w, dmg, isCrit);
   }
@@ -1233,8 +1275,21 @@ function damageEnemy(e, dmg, isCrit) {
 function onEnemyKill(e) {
   totalKills++;
   player.kills++;
-  player.ultKills++;
   if (e.isBoss) playSound('bossDeath'); else playSound('enemyDeath');
+
+  // Kill streak tracking
+  if (player.killStreakTimer > 0) {
+    player.killStreakCount++;
+  } else {
+    player.killStreakCount = 1;
+  }
+  player.killStreakTimer = 3000;
+  const streakNames = { 2: 'DOUBLE KILL', 3: 'TRIPLE KILL', 4: 'RAMPAGE', 5: 'UNSTOPPABLE' };
+  if (player.killStreakCount >= 2) {
+    const streakKey = Math.min(player.killStreakCount, 5);
+    player.killStreakText = streakNames[streakKey] || 'UNSTOPPABLE';
+    player.killStreakTextTimer = 1500;
+  }
 
   let xpGain = e.xp || 5;
   if (player.doubleXPTimer > 0) xpGain *= 2;
@@ -1347,8 +1402,8 @@ function chainLightning(source, dmg, targets) {
   }
 }
 
-function addDamageNumber(x, y, dmg, isCrit) {
-  damageNumbers.push({ x, y, dmg, isCrit, life: 800, vy: -0.01 });
+function addDamageNumber(x, y, dmg, isCrit, customText) {
+  damageNumbers.push({ x, y, dmg, isCrit, life: 800, vy: -0.01, customText: customText || null });
 }
 
 function spawnExplosion(x, y, color) {
@@ -1465,8 +1520,8 @@ function useSkill() {
 }
 
 function useUltimate() {
-  if (player.ultKills < player.ultNeeded) return;
-  player.ultKills = 0;
+  if (player.ultCooldown > 0) return;
+  player.ultCooldown = player.ultMaxCooldown;
   player.ultActive = true;
   playSound('ultimate');
 
@@ -1893,26 +1948,47 @@ function spawnEnemies(dt) {
     }
   }
 
-  // Boss spawning (cycles after all 10 with 2x stats)
-  if (!activeBoss) {
+  // Boss spawning (cycles after all 10 with 2x stats) with 10s warning
+  if (!activeBoss && !bossWarningActive) {
     const bossCount = BOSSES.length;
     const cycle = Math.floor(nextBossIndex / bossCount);
     const localIdx = nextBossIndex % bossCount;
     const bossInfo = BOSSES[localIdx];
-    // For cycle 0 use original times; for subsequent cycles add cycle * last boss time
     const cycleTimeOffset = cycle * BOSSES[bossCount - 1].time;
     const spawnTime = bossInfo.time + cycleTimeOffset;
-    if (gameTime / 1000 >= spawnTime) {
+    // Start warning 10 seconds before spawn time
+    if (gameTime / 1000 >= spawnTime - 10 && gameTime / 1000 < spawnTime) {
+      bossWarningActive = true;
+      bossWarningTimer = (spawnTime - gameTime / 1000) * 1000;
+      bossWarningPendingIdx = nextBossIndex;
+    } else if (gameTime / 1000 >= spawnTime) {
       spawnBoss(nextBossIndex);
       nextBossIndex++;
     }
   }
 
-  // Difficulty increase
+  // Boss warning countdown
+  if (bossWarningActive) {
+    const prevSec = Math.ceil(bossWarningTimer / 1000);
+    bossWarningTimer -= dt;
+    const curSec = Math.ceil(bossWarningTimer / 1000);
+    // Play warning sound each second tick
+    if (curSec !== prevSec && curSec >= 0) {
+      playSound('bossWarning');
+    }
+    if (bossWarningTimer <= 0) {
+      bossWarningActive = false;
+      spawnBoss(bossWarningPendingIdx);
+      nextBossIndex++;
+      bossWarningPendingIdx = -1;
+    }
+  }
+
+  // Difficulty increase (+8% every 25s)
   difficultyTimer -= dt;
   if (difficultyTimer <= 0) {
-    difficultyTimer = 30000;
-    difficultyMult += 0.05;
+    difficultyTimer = 25000;
+    difficultyMult += 0.08;
   }
 }
 
@@ -2004,14 +2080,37 @@ function showEmblemSelect() {
     const nextLv = currentLv + 1;
     let perkText = getEmblemPerk(em.name, nextLv);
 
+    // Find the next perk milestone after nextLv
+    let nextPerkPreview = '';
+    if (nextLv >= 20) {
+      nextPerkPreview = '<p style="color:#888;margin-top:4px;font-size:0.7rem">Max perks reached -- stat buff only</p>';
+    } else {
+      const perkMilestones = getEmblemPerkMilestones(em.name);
+      let foundNext = false;
+      for (const ms of perkMilestones) {
+        if (ms.level > nextLv) {
+          nextPerkPreview = `<p style="color:#aaa;margin-top:4px;font-size:0.7rem">Next perk at Lv${ms.level}: ${ms.desc}</p>`;
+          foundNext = true;
+          break;
+        }
+      }
+      if (!foundNext && nextLv < 20) {
+        nextPerkPreview = '<p style="color:#888;margin-top:4px;font-size:0.7rem">Max perks reached -- stat buff only</p>';
+      }
+    }
+
+    const currentLvInfo = currentLv > 0 ? `<p style="color:#999;font-size:0.7rem">Current: Lv${currentLv}</p>` : '';
+
     const card = document.createElement('div');
     card.className = 'emblem-card';
     card.style.borderColor = em.color;
     card.innerHTML = `
       <div class="em-icon">${em.icon}</div>
       <h4 style="color:${em.color}">${em.name} Lv${nextLv}</h4>
+      ${currentLvInfo}
       <p>${em.desc} (+${em.perLevel})</p>
-      ${perkText ? `<p style="color:${em.color};margin-top:6px">${perkText}</p>` : ''}
+      ${perkText ? `<p style="color:${em.color};margin-top:6px;font-weight:bold">${perkText}</p>` : ''}
+      ${nextPerkPreview}
     `;
     card.onclick = () => pickEmblem(i);
     container.appendChild(card);
@@ -2032,6 +2131,23 @@ function getEmblemPerk(name, level) {
     'Dragon': {3:'Breath attack cone',5:'+10% dmg reduction',8:'Breath applies burn',10:'Dragon Rage <30%',13:'+20% dmg reduction',15:'Wing Buffet knockback',18:'Dragon Form ult',20:'Ancient Dragon +30%'},
   };
   return perks[name]?.[level] || (level > 20 ? `+${EMBLEM_TYPES.find(e=>e.name===name).desc}` : '');
+}
+
+function getEmblemPerkMilestones(name) {
+  const allPerks = {
+    'Sword': {3:'Melee bonus dmg',5:'10% parry',8:'Parry reflects',10:'+15% crit',13:'Cleave attacks',15:'Deflect while moving',18:'Execute <15% HP',20:'Blade Storm'},
+    'Fire': {3:'15% burn chance',5:'Burning +20% dmg',8:'Kill burn = explode',10:'All attacks burn',13:'Burn +50%',15:'Fire aura',18:'Burn spreads',20:'Infinite burn stacks'},
+    'Ice': {3:'10% slow',5:'Frozen +30% dmg',8:'Slow on hit (2s)',10:'Freeze on crit (1s)',13:'Ice armor -15%',15:'Shatter explosion',18:'Blizzard aura',20:'Absolute Zero'},
+    'Thunder': {3:'Chain lightning x2',5:'Speed +10%',8:'Chain x4',10:'Lightning every 5s',13:'15% stun',15:'10% dodge',18:'Chain on kill',20:'Storm mode'},
+    'Shadow': {3:'Crit = 2x',5:'5% crit lifesteal',8:'Backstab bonus',10:'Crit resets skill',13:'Shadow step',15:'Crit = 2.5x',18:'Mark of Death',20:'Assassinate <30%'},
+    'Shield': {3:'Regen 1%/5s',5:'-5% damage',8:'10% stun attacker',10:'Shield bash',13:'Regen 2%/5s',15:'-10% damage',18:'Revive (30% HP)',20:'Fortress mode'},
+    'Wind': {3:'Shockwave behind hits',5:'+15% proj speed',8:'Crescent echo blade',10:'+25% attack speed',13:'Larger shockwaves',15:'Wind dash trail',18:'Crescents bounce walls',20:'Storm of Blades'},
+    'Death': {3:'15% Wither DoT',5:'Wither stacks x3',8:'Execute <20% HP',10:'Soul Harvest on kill',13:'Wither stacks x5',15:"Reaper's Scythe AoE",18:'Death Mark +30% dmg',20:'Soul Reaper heal'},
+    'Holy': {3:'Heal 2% HP on kill',5:'Purify debuffs',8:'10% Blind enemies',10:'Divine Shield',13:'Heal 5% HP on kill',15:'Judgment beam',18:'Aura of healing',20:'Resurrection'},
+    'Dragon': {3:'Breath attack cone',5:'+10% dmg reduction',8:'Breath applies burn',10:'Dragon Rage <30%',13:'+20% dmg reduction',15:'Wing Buffet knockback',18:'Dragon Form ult',20:'Ancient Dragon +30%'},
+  };
+  const perks = allPerks[name] || {};
+  return Object.entries(perks).map(([lv, desc]) => ({ level: parseInt(lv), desc })).sort((a, b) => a.level - b.level);
 }
 
 function pickEmblem(typeIdx) {
@@ -2764,10 +2880,19 @@ function render() {
 
     ctx.save();
     ctx.globalAlpha = dn.life / 800;
-    ctx.fillStyle = dn.isCrit ? '#ff0' : '#fff';
-    ctx.font = `bold ${dn.isCrit ? 18 : 14}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText((dn.isCrit ? 'CRIT ' : '') + dn.dmg, screenX, screenY);
+    if (dn.customText) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 20px monospace';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#ff8800';
+      ctx.shadowBlur = 8;
+      ctx.fillText(dn.customText, screenX, screenY - 15);
+    } else {
+      ctx.fillStyle = dn.isCrit ? '#ff0' : '#fff';
+      ctx.font = `bold ${dn.isCrit ? 18 : 14}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText((dn.isCrit ? 'CRIT ' : '') + dn.dmg, screenX, screenY);
+    }
     ctx.restore();
   }
 
@@ -2860,6 +2985,55 @@ function render() {
     ctx.restore();
   }
 
+  // ── HEADSHOT FLASH ──
+  if (player.headshotFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = player.headshotFlash / 50 * 0.3;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  // ── KILL STREAK TEXT ──
+  if (player.killStreakTextTimer > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, player.killStreakTextTimer / 500);
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 36px monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 15;
+    ctx.fillText(player.killStreakText, W/2, H * 0.35);
+    ctx.restore();
+  }
+
+  // ── BOSS WARNING ──
+  if (bossWarningActive && bossWarningTimer > 0) {
+    const warnSec = Math.ceil(bossWarningTimer / 1000);
+    // Pulsing red text
+    const pulse = 0.6 + Math.sin(gameTime / 150) * 0.4;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#ff0000';
+    ctx.font = 'bold 32px monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 20;
+    ctx.fillText(`BOSS SPAWNING IN ${warnSec}...`, W/2, 100);
+    ctx.restore();
+
+    // Red pulsing screen edges
+    ctx.save();
+    ctx.globalAlpha = pulse * 0.15;
+    const edgeW = 40;
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(0, 0, edgeW, H);
+    ctx.fillRect(W - edgeW, 0, edgeW, H);
+    ctx.fillRect(0, 0, W, edgeW);
+    ctx.fillRect(0, H - edgeW, W, edgeW);
+    ctx.restore();
+  }
+
   // ── ULTIMATE EFFECTS ──
   if (player.ultActive && player.character === 1) {
     // Flame tornado visual
@@ -2922,9 +3096,10 @@ function drawWeaponView() {
   const w = getWeapon();
   if (!w) return;
 
-  const weaponBob = player.moving ? Math.sin(player.bobPhase) * 8 : 0;
-  const weaponX = W / 2;
-  const weaponY = H * 0.78 + weaponBob;
+  const weaponBobY = player.moving ? Math.sin(player.weaponBobPhase) * 6 : 0;
+  const weaponBobX = player.moving ? Math.cos(player.weaponBobPhase * 0.5) * 3 : 0;
+  const weaponX = W / 2 + weaponBobX;
+  const weaponY = H * 0.78 + weaponBobY;
   const wc = w.color || '#888';
 
   ctx.save();
@@ -3148,39 +3323,73 @@ function drawHUD() {
   ctx.textAlign = 'center';
   ctx.fillText(`Lv${player.level}  ${player.xp}/${player.xpNeeded} XP`, W/2, H - xpH - 4);
 
-  // Skill icon + cooldown (bottom left)
+  // Skill icon + cooldown (bottom left) with circular cooldown overlay
   const skillX = 15, skillY = H - 90;
   const charInfo = CHARACTERS[player.character];
-  ctx.fillStyle = player.skillCooldown > 0 ? '#444' : charInfo.color;
-  ctx.fillRect(skillX, skillY, 50, 50);
+  const skillCenterX = skillX + 25, skillCenterY = skillY + 25, skillR = 25;
+
+  // Draw circular skill button
+  ctx.beginPath();
+  ctx.arc(skillCenterX, skillCenterY, skillR, 0, Math.PI * 2);
+  ctx.fillStyle = player.skillCooldown > 0 ? '#333' : charInfo.color;
+  ctx.fill();
   ctx.strokeStyle = '#888';
-  ctx.strokeRect(skillX, skillY, 50, 50);
-  ctx.fillStyle = '#fff';
-  ctx.font = '10px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText('[Q] ' + charInfo.skillName, skillX + 25, skillY + 30);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Circular cooldown overlay (clock wipe)
   if (player.skillCooldown > 0) {
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
     const cdRatio = player.skillCooldown / player.skillMaxCooldown;
-    ctx.fillRect(skillX, skillY, 50, 50 * cdRatio);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(skillCenterX, skillCenterY);
+    ctx.arc(skillCenterX, skillCenterY, skillR, -Math.PI/2, -Math.PI/2 + cdRatio * Math.PI * 2);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fill();
+    ctx.restore();
+    // Cooldown seconds text
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 14px monospace';
-    ctx.fillText(Math.ceil(player.skillCooldown / 1000) + 's', skillX + 25, skillY + 22);
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.ceil(player.skillCooldown / 1000) + 's', skillCenterX, skillCenterY + 5);
+  } else {
+    ctx.fillStyle = '#fff';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('[Q]', skillCenterX, skillCenterY + 3);
   }
 
-  // Ultimate charge (under skill)
-  const ultY = skillY + 56;
-  ctx.fillStyle = '#333';
-  ctx.fillRect(skillX, ultY, 50, 10);
-  const ultRatio = Math.min(1, player.ultKills / player.ultNeeded);
-  ctx.fillStyle = ultRatio >= 1 ? '#ffd700' : '#886600';
-  ctx.fillRect(skillX, ultY, 50 * ultRatio, 10);
-  ctx.strokeStyle = '#666';
-  ctx.strokeRect(skillX, ultY, 50, 10);
-  ctx.fillStyle = '#fff';
-  ctx.font = '8px monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(`[E] ULT ${player.ultKills}/${player.ultNeeded}`, skillX + 25, ultY + 8);
+  // Ultimate icon with circular cooldown (under skill)
+  const ultCenterX = skillX + 25, ultCenterY = skillY + 62, ultR = 18;
+  ctx.beginPath();
+  ctx.arc(ultCenterX, ultCenterY, ultR, 0, Math.PI * 2);
+  ctx.fillStyle = player.ultCooldown <= 0 ? '#ffd700' : '#333';
+  ctx.fill();
+  ctx.strokeStyle = player.ultCooldown <= 0 ? '#ffd700' : '#666';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  if (player.ultCooldown > 0) {
+    const ultCdRatio = player.ultCooldown / player.ultMaxCooldown;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(ultCenterX, ultCenterY);
+    ctx.arc(ultCenterX, ultCenterY, ultR, -Math.PI/2, -Math.PI/2 + ultCdRatio * Math.PI * 2);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.ceil(player.ultCooldown / 1000) + 's', ultCenterX, ultCenterY + 4);
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('[E]', ultCenterX, ultCenterY + 3);
+  }
 
   // Character name
   ctx.fillStyle = charInfo.color;
@@ -3338,9 +3547,19 @@ function gameLoop(time) {
 
   // ── COOLDOWNS & TIMERS ──
   player.skillCooldown = Math.max(0, player.skillCooldown - dt);
+  player.ultCooldown = Math.max(0, player.ultCooldown - dt);
   player.muzzleFlash = Math.max(0, player.muzzleFlash - dt * 3);
   player.screenShake = Math.max(0, player.screenShake - dt * 0.02);
   player.damageVignette = Math.max(0, player.damageVignette - dt);
+  player.headshotFlash = Math.max(0, player.headshotFlash - dt * 2);
+  // Kill streak timer
+  if (player.killStreakTimer > 0) {
+    player.killStreakTimer -= dt;
+    if (player.killStreakTimer <= 0) player.killStreakCount = 0;
+  }
+  if (player.killStreakTextTimer > 0) player.killStreakTextTimer -= dt;
+  // Weapon bob while moving
+  if (player.moving) player.weaponBobPhase += dt * 0.008;
 
   if (player.ultActive) {
     player.ultTimer -= dt;
