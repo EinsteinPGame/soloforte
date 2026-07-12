@@ -139,18 +139,235 @@ function resize() {
 resize();
 window.addEventListener('resize', resize);
 
+// ── AUDIO SYSTEM ──
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function initAudio() { if (!audioCtx) audioCtx = new AudioCtx(); }
+
+function playSound(type, opts = {}) {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const g = audioCtx.createGain();
+  g.connect(audioCtx.destination);
+
+  switch(type) {
+    case 'shoot': {
+      const pitch = opts.pitch || 800;
+      const n = audioCtx.createBufferSource();
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.08, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (d.length * 0.3));
+      n.buffer = buf;
+      const filt = audioCtx.createBiquadFilter();
+      filt.type = 'bandpass'; filt.frequency.value = pitch; filt.Q.value = 1;
+      n.connect(filt); filt.connect(g);
+      g.gain.setValueAtTime(0.25, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      n.start(now); n.stop(now + 0.08);
+      break;
+    }
+    case 'hit': {
+      const o = audioCtx.createOscillator();
+      o.type = 'sine'; o.frequency.setValueAtTime(150, now);
+      o.frequency.exponentialRampToValueAtTime(60, now + 0.1);
+      o.connect(g);
+      g.gain.setValueAtTime(0.3, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      o.start(now); o.stop(now + 0.1);
+      break;
+    }
+    case 'enemyDeath': {
+      const o = audioCtx.createOscillator();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(400, now);
+      o.frequency.exponentialRampToValueAtTime(80, now + 0.3);
+      o.connect(g);
+      g.gain.setValueAtTime(0.2, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      o.start(now); o.stop(now + 0.3);
+      break;
+    }
+    case 'playerHurt': {
+      const o = audioCtx.createOscillator();
+      o.type = 'square'; o.frequency.setValueAtTime(80, now);
+      o.frequency.setValueAtTime(60, now + 0.05);
+      o.connect(g);
+      g.gain.setValueAtTime(0.2, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      o.start(now); o.stop(now + 0.15);
+      break;
+    }
+    case 'levelUp': {
+      [523, 659, 784, 1047].forEach((freq, i) => {
+        const o = audioCtx.createOscillator();
+        const gg = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = freq;
+        o.connect(gg); gg.connect(audioCtx.destination);
+        gg.gain.setValueAtTime(0.15, now + i * 0.1);
+        gg.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.15);
+        o.start(now + i * 0.1); o.stop(now + i * 0.1 + 0.15);
+      });
+      break;
+    }
+    case 'bossSpawn': {
+      const o = audioCtx.createOscillator();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(50, now);
+      o.frequency.linearRampToValueAtTime(40, now + 0.6);
+      o.connect(g);
+      g.gain.setValueAtTime(0.3, now);
+      g.gain.linearRampToValueAtTime(0.001, now + 0.8);
+      o.start(now); o.stop(now + 0.8);
+      // Warning tone
+      const w = audioCtx.createOscillator();
+      const wg = audioCtx.createGain();
+      w.type = 'square'; w.frequency.value = 220;
+      w.connect(wg); wg.connect(audioCtx.destination);
+      wg.gain.setValueAtTime(0, now); wg.gain.linearRampToValueAtTime(0.15, now + 0.2);
+      wg.gain.linearRampToValueAtTime(0, now + 0.5);
+      wg.gain.linearRampToValueAtTime(0.15, now + 0.6);
+      wg.gain.linearRampToValueAtTime(0, now + 0.9);
+      w.start(now); w.stop(now + 0.9);
+      break;
+    }
+    case 'bossDeath': {
+      for (let i = 0; i < 5; i++) {
+        const n = audioCtx.createBufferSource();
+        const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1) * Math.exp(-j / (d.length * 0.4));
+        n.buffer = buf;
+        const gg = audioCtx.createGain();
+        n.connect(gg); gg.connect(audioCtx.destination);
+        gg.gain.setValueAtTime(0.25 - i * 0.04, now + i * 0.12);
+        gg.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.15);
+        n.start(now + i * 0.12); n.stop(now + i * 0.12 + 0.15);
+      }
+      break;
+    }
+    case 'pickupWeapon': {
+      const o = audioCtx.createOscillator();
+      o.type = 'triangle'; o.frequency.setValueAtTime(1200, now);
+      o.frequency.exponentialRampToValueAtTime(2400, now + 0.08);
+      o.connect(g);
+      g.gain.setValueAtTime(0.15, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+      o.start(now); o.stop(now + 0.12);
+      break;
+    }
+    case 'emblemSelect': {
+      [800, 1000, 1200, 1600].forEach((freq, i) => {
+        const o = audioCtx.createOscillator();
+        const gg = audioCtx.createGain();
+        o.type = 'sine'; o.frequency.value = freq;
+        o.connect(gg); gg.connect(audioCtx.destination);
+        gg.gain.setValueAtTime(0.1, now + i * 0.06);
+        gg.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.2);
+        o.start(now + i * 0.06); o.stop(now + i * 0.06 + 0.2);
+      });
+      break;
+    }
+    case 'skillUse': {
+      const n = audioCtx.createBufferSource();
+      const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) {
+        const t = i / audioCtx.sampleRate;
+        d[i] = Math.sin(t * 3000 * Math.exp(-t * 10)) * Math.exp(-t * 8) * 0.5;
+      }
+      n.buffer = buf;
+      n.connect(g); g.gain.value = 0.3;
+      n.start(now); n.stop(now + 0.15);
+      break;
+    }
+    case 'ultimate': {
+      const o1 = audioCtx.createOscillator();
+      o1.type = 'sawtooth'; o1.frequency.setValueAtTime(100, now);
+      o1.frequency.linearRampToValueAtTime(600, now + 0.3);
+      o1.connect(g);
+      g.gain.setValueAtTime(0.25, now);
+      g.gain.linearRampToValueAtTime(0.001, now + 0.5);
+      o1.start(now); o1.stop(now + 0.5);
+      const o2 = audioCtx.createOscillator();
+      const g2 = audioCtx.createGain();
+      o2.type = 'sine'; o2.frequency.value = 800;
+      o2.connect(g2); g2.connect(audioCtx.destination);
+      g2.gain.setValueAtTime(0, now + 0.2);
+      g2.gain.linearRampToValueAtTime(0.2, now + 0.35);
+      g2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      o2.start(now + 0.2); o2.stop(now + 0.6);
+      break;
+    }
+  }
+}
+
+// ── BACKGROUND MUSIC ──
+let bgmPlaying = false;
+let bgmNodes = [];
+let bgmBossMode = false;
+
+function startBGM(bossMode) {
+  if (!audioCtx) return;
+  stopBGM();
+  bgmPlaying = true;
+  bgmBossMode = bossMode;
+  const tempo = bossMode ? 0.18 : 0.28;
+
+  // Bass line
+  const bassOsc = audioCtx.createOscillator();
+  const bassGain = audioCtx.createGain();
+  bassOsc.type = 'sawtooth';
+  bassOsc.frequency.value = bossMode ? 55 : 45;
+  bassGain.gain.value = 0.06;
+  bassOsc.connect(bassGain);
+  bassGain.connect(audioCtx.destination);
+  bassOsc.start();
+  bgmNodes.push(bassOsc, bassGain);
+
+  // Kick pattern using oscillator
+  const scheduleKick = () => {
+    if (!bgmPlaying) return;
+    const now = audioCtx.currentTime;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(150, now);
+    o.frequency.exponentialRampToValueAtTime(30, now + 0.08);
+    o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.12, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    o.start(now); o.stop(now + 0.1);
+    bgmTimeout = setTimeout(scheduleKick, tempo * 1000);
+  };
+  scheduleKick();
+}
+
+let bgmTimeout = null;
+function stopBGM() {
+  bgmPlaying = false;
+  if (bgmTimeout) { clearTimeout(bgmTimeout); bgmTimeout = null; }
+  for (const n of bgmNodes) { try { n.stop(); } catch(e) {} try { n.disconnect(); } catch(e) {} }
+  bgmNodes = [];
+}
+
+// Init audio on first user interaction
+['click','touchstart','keydown'].forEach(evt => {
+  document.addEventListener(evt, function audioInit() {
+    initAudio();
+    document.removeEventListener(evt, audioInit);
+  }, { once: true });
+});
+
 // ── CONSTANTS ──
 const TILE = 1;
 const FOV = Math.PI / 3;
 const HALF_FOV = FOV / 2;
 const MAX_DEPTH = 20;
-const MOVE_SPEED = 0.04;
-const ROT_SPEED = 0.003;
-const MOUSE_SENS = 0.002;
+const MOVE_SPEED = 0.025;
+const ROT_SPEED = 0.002;
+const MOUSE_SENS = 0.0012;
 
 // ── MAP ──
-const MAP_W = 40;
-const MAP_H = 40;
+const MAP_W = 24;
+const MAP_H = 24;
 const MAP = [];
 
 function generateMap() {
@@ -164,24 +381,17 @@ function generateMap() {
       }
     }
   }
-  // Inner walls - arena layout
+  // Central 4x4 room (walls from 10-13 on each axis)
   const walls = [
-    // Outer corridors
-    [5,5,5,15,1],[5,5,15,5,1],[35,5,35,15,1],[25,5,35,5,1],
-    [5,25,5,35,1],[5,35,15,35,1],[35,25,35,35,1],[25,35,35,35,1],
-    // Central structure
-    [15,15,15,25,2],[25,15,25,25,2],[15,15,25,15,2],[15,25,25,25,2],
-    // Pillars
-    [10,10,11,11,3],[30,10,31,11,3],[10,30,11,31,3],[30,30,31,31,3],
-    [20,10,21,11,3],[10,20,11,21,3],[30,20,31,21,3],[20,30,21,31,3],
-    // Cross corridors
-    [18,1,18,13,1],[22,1,22,13,1],[18,27,18,39,1],[22,27,22,39,1],
-    [1,18,13,18,1],[1,22,13,22,1],[27,18,39,18,1],[27,22,39,22,1],
-    // Corner rooms
-    [7,7,8,8,2],[32,7,33,8,2],[7,32,8,33,2],[32,32,33,33,2],
-    // Extra pillars for cover
-    [14,3,15,4,3],[26,3,27,4,3],[14,36,15,37,3],[26,36,27,37,3],
-    [3,14,4,15,3],[36,14,37,15,3],[3,26,4,27,3],[36,26,37,27,3],
+    // Central room walls
+    [10,10,10,13,2],[13,10,13,13,2],[10,10,13,10,2],[10,13,13,13,2],
+    // 4 pillars scattered for cover (2x2 blocks)
+    [4,4,5,5,3],[18,4,19,5,3],[4,18,5,19,3],[18,18,19,19,3],
+    // Small cover walls (1-2 blocks)
+    [7,2,7,2,1],[16,2,16,2,1],
+    [2,7,2,7,1],[21,7,21,7,1],
+    [2,16,2,16,1],[21,16,21,16,1],
+    [7,21,7,21,1],[16,21,16,21,1],
   ];
 
   for (const [x1,y1,x2,y2,t] of walls) {
@@ -193,10 +403,11 @@ function generateMap() {
       }
     }
   }
-  // Openings in central structure
-  MAP[15][20] = 0; MAP[25][20] = 0; MAP[20][15] = 0; MAP[20][25] = 0;
-  // Corridor openings
-  MAP[18][20] = 0; MAP[22][20] = 0; MAP[20][18] = 0; MAP[20][22] = 0;
+  // 4 doorways in central room (center of each wall)
+  MAP[10][11] = 0; MAP[10][12] = 0; // north doorway
+  MAP[13][11] = 0; MAP[13][12] = 0; // south doorway
+  MAP[11][10] = 0; MAP[12][10] = 0; // west doorway
+  MAP[11][13] = 0; MAP[12][13] = 0; // east doorway
 }
 generateMap();
 
@@ -221,7 +432,7 @@ let paused = false;
 
 // ── PLAYER ──
 const player = {
-  x: 20.5, y: 20.5, angle: 0, z: 0,
+  x: 12.5, y: 12.5, angle: 0, z: 0, pitch: 0,
   hp: 100, maxHp: 100,
   atk: 10, def: 0, spd: 1, crit: 5,
   level: 1, xp: 0, xpNeeded: 15,
@@ -446,6 +657,7 @@ let bossDespawnTimer = 0;
 const keys = {};
 let mouseDown = false;
 let mouseDx = 0;
+let mouseDy = 0;
 let pointerLocked = false;
 
 document.addEventListener('keydown', e => {
@@ -461,6 +673,7 @@ document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 document.addEventListener('mousemove', e => {
   if (pointerLocked && gameState === 'playing') {
     mouseDx += e.movementX;
+    mouseDy += e.movementY;
   }
 });
 document.addEventListener('mousedown', e => {
@@ -716,6 +929,8 @@ function selectChar(idx) {
   document.getElementById('title-screen').style.display = 'none';
   gameState = 'playing';
   if (!isTouchDevice) C.requestPointerLock();
+  initAudio();
+  startBGM(false);
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
 }
@@ -750,6 +965,7 @@ function playerShoot() {
   player.fireTimer = Math.floor(w.fireRate / player.atkSpdMult);
   player.muzzleFlash = 100;
   player.bobPhase += 0.5;
+  playSound('shoot', { pitch: w.fireRate < 200 ? 1200 : w.fireRate < 600 ? 800 : 500 });
 
   // Dual daggers high crit bonus
   let critBonus = w.highCrit || 0;
@@ -1007,6 +1223,7 @@ function damageEnemy(e, dmg, isCrit) {
 
   e.hp -= dmg;
   e.hitFlash = 100;
+  playSound('hit');
 
   if (e.hp <= 0) {
     onEnemyKill(e);
@@ -1017,6 +1234,7 @@ function onEnemyKill(e) {
   totalKills++;
   player.kills++;
   player.ultKills++;
+  if (e.isBoss) playSound('bossDeath'); else playSound('enemyDeath');
 
   let xpGain = e.xp || 5;
   if (player.doubleXPTimer > 0) xpGain *= 2;
@@ -1105,6 +1323,7 @@ function onEnemyKill(e) {
     player.xp -= player.xpNeeded;
     player.level++;
     player.xpNeeded = 10 + player.level * 5;
+    playSound('levelUp');
     showEmblemSelect();
   }
 }
@@ -1212,6 +1431,7 @@ function useSkill() {
   if (player.skillCooldown > 0) return;
   const cd = player.halfCooldownTimer > 0 ? player.skillMaxCooldown / 2 : player.skillMaxCooldown;
   player.skillCooldown = cd;
+  playSound('skillUse');
 
   switch (player.character) {
     case 0: // Hawk - feather spread
@@ -1248,6 +1468,7 @@ function useUltimate() {
   if (player.ultKills < player.ultNeeded) return;
   player.ultKills = 0;
   player.ultActive = true;
+  playSound('ultimate');
 
   switch (player.character) {
     case 0: // Hawk - dive bomb
@@ -1616,6 +1837,7 @@ function enemyShoot(e, d) {
   player.hp -= dmg;
   player.damageVignette = 300;
   player.screenShake = 3;
+  playSound('playerHurt');
 
   // Bone Cage thorns: reflect damage back to attacker
   if (player.thornsDmg) {
@@ -1735,6 +1957,8 @@ function spawnBoss(idx) {
     activeBoss = { isDuoBoss: true, flame: flameBoss, frost: frostBoss,
       weaponReward: b.weaponReward, armorReward: b.armorReward, hp: 1 };
     bossDespawnTimer = 150000;
+    playSound('bossSpawn');
+    startBGM(true);
     return;
   }
 
@@ -1754,6 +1978,8 @@ function spawnBoss(idx) {
   enemies.push(boss);
   activeBoss = boss;
   bossDespawnTimer = 120000; // 2 minutes to kill
+  playSound('bossSpawn');
+  startBGM(true);
 }
 
 // ── EMBLEM SYSTEM ──
@@ -1813,6 +2039,8 @@ function pickEmblem(typeIdx) {
   if (!player.emblems[em.name]) player.emblems[em.name] = 0;
   player.emblems[em.name]++;
   const lv = player.emblems[em.name];
+
+  playSound('emblemSelect');
 
   // Apply stat
   switch (em.stat) {
@@ -2080,6 +2308,7 @@ function checkPickups() {
       if (p.type === 'weapon') {
         const wt = { ...WEAPON_TYPES[p.weaponType] };
         player.weapons.push(wt);
+        playSound('pickupWeapon');
       }
       pickups.splice(i, 1);
     }
@@ -2090,6 +2319,7 @@ function checkPickups() {
 function gameOver() {
   gameState = 'dead';
   paused = true;
+  stopBGM();
   const screen = document.getElementById('death-screen');
   screen.style.display = 'flex';
   const timeStr = `${Math.floor(gameTime/60000)}m ${Math.floor((gameTime%60000)/1000)}s`;
@@ -2148,18 +2378,19 @@ function render() {
   ctx.translate(shakeX, shakeY);
 
   // Sky / ceiling
-  const skyGrad = ctx.createLinearGradient(0, 0, 0, H/2);
+  const horizonY = H / 2 + player.pitch * H;
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, horizonY);
   skyGrad.addColorStop(0, '#0a0a15');
   skyGrad.addColorStop(1, '#151525');
   ctx.fillStyle = skyGrad;
-  ctx.fillRect(0, 0, W, H/2);
+  ctx.fillRect(0, 0, W, horizonY);
 
   // Floor
-  const floorGrad = ctx.createLinearGradient(0, H/2, 0, H);
+  const floorGrad = ctx.createLinearGradient(0, horizonY, 0, H);
   floorGrad.addColorStop(0, '#1a1a1a');
   floorGrad.addColorStop(1, '#0a0808');
   ctx.fillStyle = floorGrad;
-  ctx.fillRect(0, H/2, W, H/2);
+  ctx.fillRect(0, horizonY, W, H - horizonY);
 
   // Walls - raycasting
   const numRays = Math.min(W, 600);
@@ -2177,7 +2408,7 @@ function render() {
     if (hit.type === 0) continue;
 
     const wallH = Math.min(H * 2, (H * 0.8) / correctedDist);
-    const wallTop = (H - wallH) / 2;
+    const wallTop = (H - wallH) / 2 + player.pitch * H;
 
     const wc = WALL_COLORS[hit.type] || WALL_COLORS[1];
     const shade = Math.max(0.15, 1 - correctedDist / MAX_DEPTH);
@@ -2239,7 +2470,7 @@ function render() {
       const e = s.entity;
       const spriteH = Math.min(H, (H * (e.size || 0.4)) / s.dist);
       const spriteW = spriteH * 0.7;
-      const spriteTop = (H - spriteH) / 2;
+      const spriteTop = (H - spriteH) / 2 + player.pitch * H;
 
       // Check z-buffer
       const rayIdx = Math.floor(screenX / stripW);
@@ -2255,25 +2486,201 @@ function render() {
       ctx.save();
       ctx.globalAlpha = shade;
 
-      // Body
-      ctx.fillStyle = color;
-      ctx.fillRect(screenX - spriteW/2, spriteTop + spriteH * 0.2, spriteW, spriteH * 0.6);
+      // Parse base color into RGB for shading
+      const bc = color;
+      const tmpC = document.createElement('canvas').getContext('2d');
+      tmpC.fillStyle = bc;
+      const bcHex = tmpC.fillStyle;
+      const cr = parseInt(bcHex.slice(1,3),16), cg = parseInt(bcHex.slice(3,5),16), cb = parseInt(bcHex.slice(5,7),16);
+      const light = `rgb(${Math.min(255,cr+50)},${Math.min(255,cg+50)},${Math.min(255,cb+50)})`;
+      const dark = `rgb(${Math.max(0,cr-40)},${Math.max(0,cg-40)},${Math.max(0,cb-40)})`;
+      const mid = bc;
 
-      // Head
       const headR = spriteW * 0.35;
-      ctx.beginPath();
-      ctx.arc(screenX, spriteTop + spriteH * 0.15, headR, 0, Math.PI * 2);
-      ctx.fill();
+      const eName = (e.name || '').replace(/\+/g, '');
 
-      // Eyes (red dots)
-      ctx.fillStyle = '#f00';
-      ctx.fillRect(screenX - headR * 0.4, spriteTop + spriteH * 0.12, headR * 0.25, headR * 0.2);
-      ctx.fillRect(screenX + headR * 0.15, spriteTop + spriteH * 0.12, headR * 0.25, headR * 0.2);
-
-      // Legs
-      ctx.fillStyle = color;
-      ctx.fillRect(screenX - spriteW * 0.3, spriteTop + spriteH * 0.8, spriteW * 0.2, spriteH * 0.2);
-      ctx.fillRect(screenX + spriteW * 0.1, spriteTop + spriteH * 0.8, spriteW * 0.2, spriteH * 0.2);
+      if (eName === 'Grunt') {
+        // Humanoid with helmet, holding pistol
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.2, spriteW*0.7, spriteH*0.55);
+        ctx.fillStyle = mid;
+        ctx.fillRect(screenX - spriteW*0.3, spriteTop + spriteH*0.25, spriteW*0.6, spriteH*0.45);
+        // Helmet (flat top head)
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - headR*1.1, spriteTop + spriteH*0.05, headR*2.2, headR*0.6);
+        ctx.fillStyle = mid;
+        ctx.beginPath(); ctx.arc(screenX, spriteTop + spriteH*0.15, headR, 0, Math.PI*2); ctx.fill();
+        // Eyes (narrow slits)
+        ctx.fillStyle = '#ff3300';
+        ctx.fillRect(screenX - headR*0.45, spriteTop + spriteH*0.13, headR*0.3, headR*0.12);
+        ctx.fillRect(screenX + headR*0.15, spriteTop + spriteH*0.13, headR*0.3, headR*0.12);
+        // Pistol in right hand
+        ctx.fillStyle = '#888';
+        ctx.fillRect(screenX + spriteW*0.3, spriteTop + spriteH*0.4, spriteW*0.2, spriteH*0.08);
+        ctx.fillRect(screenX + spriteW*0.4, spriteTop + spriteH*0.4, spriteW*0.06, spriteH*0.12);
+        // Legs
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.25, spriteTop + spriteH*0.78, spriteW*0.18, spriteH*0.22);
+        ctx.fillRect(screenX + spriteW*0.07, spriteTop + spriteH*0.78, spriteW*0.18, spriteH*0.22);
+      } else if (eName === 'Shotgunner') {
+        // Stockier, wider shoulders, shotgun
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.45, spriteTop + spriteH*0.18, spriteW*0.9, spriteH*0.58);
+        ctx.fillStyle = mid;
+        ctx.fillRect(screenX - spriteW*0.38, spriteTop + spriteH*0.22, spriteW*0.76, spriteH*0.5);
+        // Broad shoulders
+        ctx.fillStyle = light;
+        ctx.fillRect(screenX - spriteW*0.48, spriteTop + spriteH*0.18, spriteW*0.96, spriteH*0.08);
+        // Head
+        ctx.fillStyle = mid;
+        ctx.beginPath(); ctx.arc(screenX, spriteTop + spriteH*0.14, headR*0.9, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ff0';
+        ctx.fillRect(screenX - headR*0.35, spriteTop + spriteH*0.12, headR*0.2, headR*0.15);
+        ctx.fillRect(screenX + headR*0.15, spriteTop + spriteH*0.12, headR*0.2, headR*0.15);
+        // Shotgun (double barrel)
+        ctx.fillStyle = '#777';
+        ctx.fillRect(screenX + spriteW*0.3, spriteTop + spriteH*0.35, spriteW*0.28, spriteH*0.05);
+        ctx.fillRect(screenX + spriteW*0.3, spriteTop + spriteH*0.41, spriteW*0.28, spriteH*0.05);
+        ctx.fillStyle = '#664';
+        ctx.fillRect(screenX + spriteW*0.25, spriteTop + spriteH*0.46, spriteW*0.1, spriteH*0.12);
+        // Thick legs
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.3, spriteTop + spriteH*0.78, spriteW*0.24, spriteH*0.22);
+        ctx.fillRect(screenX + spriteW*0.06, spriteTop + spriteH*0.78, spriteW*0.24, spriteH*0.22);
+      } else if (eName === 'Rifleman') {
+        // Tall, slim, long rifle
+        ctx.fillStyle = mid;
+        ctx.fillRect(screenX - spriteW*0.25, spriteTop + spriteH*0.2, spriteW*0.5, spriteH*0.55);
+        ctx.fillStyle = light;
+        ctx.fillRect(screenX - spriteW*0.2, spriteTop + spriteH*0.25, spriteW*0.4, spriteH*0.15);
+        // Head
+        ctx.fillStyle = mid;
+        ctx.beginPath(); ctx.arc(screenX, spriteTop + spriteH*0.14, headR*0.85, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#f00';
+        ctx.fillRect(screenX - headR*0.3, spriteTop + spriteH*0.12, headR*0.18, headR*0.12);
+        ctx.fillRect(screenX + headR*0.12, spriteTop + spriteH*0.12, headR*0.18, headR*0.12);
+        // Long rifle
+        ctx.fillStyle = '#666';
+        ctx.fillRect(screenX + spriteW*0.2, spriteTop + spriteH*0.32, spriteW*0.4, spriteH*0.04);
+        ctx.fillStyle = '#554';
+        ctx.fillRect(screenX + spriteW*0.15, spriteTop + spriteH*0.36, spriteW*0.1, spriteH*0.1);
+        // Slim legs
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.18, spriteTop + spriteH*0.78, spriteW*0.14, spriteH*0.22);
+        ctx.fillRect(screenX + spriteW*0.04, spriteTop + spriteH*0.78, spriteW*0.14, spriteH*0.22);
+      } else if (eName === 'Sniper') {
+        // Crouched pose, scope visible
+        ctx.fillStyle = mid;
+        ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.35, spriteW*0.7, spriteH*0.35);
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.3, spriteTop + spriteH*0.4, spriteW*0.6, spriteH*0.25);
+        // Crouched head (lower)
+        ctx.fillStyle = mid;
+        ctx.beginPath(); ctx.arc(screenX - spriteW*0.05, spriteTop + spriteH*0.3, headR*0.8, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#0ff';
+        ctx.fillRect(screenX - spriteW*0.05 - headR*0.25, spriteTop + spriteH*0.28, headR*0.5, headR*0.1);
+        // Scoped rifle
+        ctx.fillStyle = '#555';
+        ctx.fillRect(screenX + spriteW*0.1, spriteTop + spriteH*0.33, spriteW*0.45, spriteH*0.04);
+        // Scope circle
+        ctx.strokeStyle = '#88f';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(screenX + spriteW*0.5, spriteTop + spriteH*0.33, spriteH*0.04, 0, Math.PI*2); ctx.stroke();
+        // Bent legs
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.3, spriteTop + spriteH*0.72, spriteW*0.25, spriteH*0.12);
+        ctx.fillRect(screenX + spriteW*0.05, spriteTop + spriteH*0.72, spriteW*0.25, spriteH*0.12);
+        ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.82, spriteW*0.15, spriteH*0.18);
+        ctx.fillRect(screenX + spriteW*0.2, spriteTop + spriteH*0.82, spriteW*0.15, spriteH*0.18);
+      } else if (eName === 'Heavy') {
+        // Very wide and big, gun with barrel
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.5, spriteTop + spriteH*0.15, spriteW, spriteH*0.65);
+        ctx.fillStyle = mid;
+        ctx.fillRect(screenX - spriteW*0.45, spriteTop + spriteH*0.2, spriteW*0.9, spriteH*0.55);
+        ctx.fillStyle = light;
+        ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.3, spriteW*0.7, spriteH*0.15);
+        // Small head on big body
+        ctx.fillStyle = mid;
+        ctx.beginPath(); ctx.arc(screenX, spriteTop + spriteH*0.12, headR*0.7, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#f00';
+        ctx.fillRect(screenX - headR*0.3, spriteTop + spriteH*0.1, headR*0.15, headR*0.1);
+        ctx.fillRect(screenX + headR*0.15, spriteTop + spriteH*0.1, headR*0.15, headR*0.1);
+        // Big gun with visible barrel
+        ctx.fillStyle = '#666';
+        ctx.fillRect(screenX + spriteW*0.3, spriteTop + spriteH*0.35, spriteW*0.35, spriteH*0.1);
+        ctx.fillStyle = '#444';
+        ctx.beginPath(); ctx.arc(screenX + spriteW*0.65, spriteTop + spriteH*0.4, spriteH*0.05, 0, Math.PI*2); ctx.fill();
+        // Wide legs
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.8, spriteW*0.28, spriteH*0.2);
+        ctx.fillRect(screenX + spriteW*0.07, spriteTop + spriteH*0.8, spriteW*0.28, spriteH*0.2);
+      } else if (eName === 'Bomber') {
+        // Medium with visible bomb in hand
+        ctx.fillStyle = mid;
+        ctx.fillRect(screenX - spriteW*0.3, spriteTop + spriteH*0.2, spriteW*0.6, spriteH*0.55);
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.2, spriteW*0.1, spriteH*0.3);
+        ctx.fillRect(screenX + spriteW*0.25, spriteTop + spriteH*0.2, spriteW*0.1, spriteH*0.3);
+        // Head
+        ctx.fillStyle = mid;
+        ctx.beginPath(); ctx.arc(screenX, spriteTop + spriteH*0.15, headR, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#ff4400';
+        ctx.fillRect(screenX - headR*0.35, spriteTop + spriteH*0.13, headR*0.22, headR*0.15);
+        ctx.fillRect(screenX + headR*0.13, spriteTop + spriteH*0.13, headR*0.22, headR*0.15);
+        // Bomb in hand (circle)
+        ctx.fillStyle = '#333';
+        ctx.beginPath(); ctx.arc(screenX + spriteW*0.45, spriteTop + spriteH*0.35, spriteH*0.07, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#ff8800';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(screenX + spriteW*0.45, spriteTop + spriteH*0.28); ctx.lineTo(screenX + spriteW*0.5, spriteTop + spriteH*0.22); ctx.stroke();
+        // Legs
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.25, spriteTop + spriteH*0.78, spriteW*0.18, spriteH*0.22);
+        ctx.fillRect(screenX + spriteW*0.07, spriteTop + spriteH*0.78, spriteW*0.18, spriteH*0.22);
+      } else if (eName === 'Assassin') {
+        // Thin, hunched, dual daggers
+        ctx.fillStyle = mid;
+        ctx.fillRect(screenX - spriteW*0.2, spriteTop + spriteH*0.25, spriteW*0.4, spriteH*0.45);
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.22, spriteTop + spriteH*0.3, spriteW*0.44, spriteH*0.15);
+        // Hunched head (forward)
+        ctx.fillStyle = mid;
+        ctx.beginPath(); ctx.arc(screenX + spriteW*0.05, spriteTop + spriteH*0.2, headR*0.75, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#f0f';
+        ctx.fillRect(screenX - headR*0.15, spriteTop + spriteH*0.18, headR*0.12, headR*0.08);
+        ctx.fillRect(screenX + headR*0.15, spriteTop + spriteH*0.18, headR*0.12, headR*0.08);
+        // Dual daggers
+        ctx.fillStyle = '#ccc';
+        ctx.save(); ctx.translate(screenX - spriteW*0.35, spriteTop + spriteH*0.38); ctx.rotate(-0.4);
+        ctx.fillRect(0, 0, spriteW*0.25, spriteH*0.03); ctx.restore();
+        ctx.save(); ctx.translate(screenX + spriteW*0.15, spriteTop + spriteH*0.38); ctx.rotate(0.4);
+        ctx.fillRect(0, 0, spriteW*0.25, spriteH*0.03); ctx.restore();
+        // Thin legs
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.15, spriteTop + spriteH*0.72, spriteW*0.1, spriteH*0.28);
+        ctx.fillRect(screenX + spriteW*0.05, spriteTop + spriteH*0.72, spriteW*0.1, spriteH*0.28);
+      } else {
+        // Default: generic humanoid (for Ronin, Demolitionist, Pyro, Ranger, Sentinel, Rogue, Berserker, Wraith, Skeleton, bosses)
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.2, spriteW*0.7, spriteH*0.58);
+        ctx.fillStyle = mid;
+        ctx.fillRect(screenX - spriteW*0.3, spriteTop + spriteH*0.24, spriteW*0.6, spriteH*0.5);
+        // Head
+        ctx.fillStyle = mid;
+        ctx.beginPath(); ctx.arc(screenX, spriteTop + spriteH*0.15, headR, 0, Math.PI*2); ctx.fill();
+        // Eyes
+        ctx.fillStyle = '#f00';
+        ctx.fillRect(screenX - headR*0.4, spriteTop + spriteH*0.12, headR*0.25, headR*0.15);
+        ctx.fillRect(screenX + headR*0.15, spriteTop + spriteH*0.12, headR*0.25, headR*0.15);
+        // Weapon
+        ctx.fillStyle = '#999';
+        ctx.fillRect(screenX + spriteW*0.25, spriteTop + spriteH*0.38, spriteW*0.22, spriteH*0.06);
+        // Legs
+        ctx.fillStyle = dark;
+        ctx.fillRect(screenX - spriteW*0.25, spriteTop + spriteH*0.8, spriteW*0.18, spriteH*0.2);
+        ctx.fillRect(screenX + spriteW*0.07, spriteTop + spriteH*0.8, spriteW*0.18, spriteH*0.2);
+      }
 
       // Boss crown
       if (e.isBoss) {
@@ -2331,10 +2738,11 @@ function render() {
       ctx.fillStyle = '#0f0';
       ctx.strokeStyle = '#0f0';
       ctx.lineWidth = 2;
-      ctx.strokeRect(screenX - size/2, H/2 - size/2, size, size);
+      const pickupY = H/2 + player.pitch * H;
+      ctx.strokeRect(screenX - size/2, pickupY - size/2, size, size);
       ctx.font = `${size * 0.6}px monospace`;
       ctx.textAlign = 'center';
-      ctx.fillText('W', screenX, H/2 + size * 0.2);
+      ctx.fillText('W', screenX, pickupY + size * 0.2);
       ctx.restore();
     }
   }
@@ -2352,7 +2760,7 @@ function render() {
     if (Math.abs(angleDiff) > HALF_FOV) continue;
 
     const screenX = W/2 + (angleDiff / HALF_FOV) * (W/2);
-    const screenY = H/2 - (H * 0.3) / d + (1 - dn.life / 800) * -30;
+    const screenY = H/2 + player.pitch * H - (H * 0.3) / d + (1 - dn.life / 800) * -30;
 
     ctx.save();
     ctx.globalAlpha = dn.life / 800;
@@ -2376,7 +2784,7 @@ function render() {
     if (Math.abs(angleDiff) > HALF_FOV) continue;
 
     const screenX = W/2 + (angleDiff / HALF_FOV) * (W/2);
-    const screenY = H/2;
+    const screenY = H/2 + player.pitch * H;
 
     ctx.save();
     ctx.globalAlpha = p.life / 500;
@@ -2399,7 +2807,7 @@ function render() {
 
     const screenX = W/2 + (angleDiff / HALF_FOV) * (W/2);
     const spriteSize = Math.min(60, 30 / d);
-    const screenY = H/2;
+    const screenY = H/2 + player.pitch * H;
 
     ctx.save();
     ctx.globalAlpha = Math.min(1, c.life / 500);
@@ -2616,16 +3024,32 @@ function drawWeaponView() {
     ctx.fillRect(weaponX - 6, weaponY + 10, 12, 20);
   }
 
-  // Crosshair
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-  ctx.lineWidth = 1;
-  const ch = 12;
+  // Crosshair (centered on screen, not affected by pitch)
+  const ch = 14;
+  const chGap = 4;
+  // Dark outline
+  ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(W/2 - ch, H/2); ctx.lineTo(W/2 - 4, H/2);
-  ctx.moveTo(W/2 + 4, H/2); ctx.lineTo(W/2 + ch, H/2);
-  ctx.moveTo(W/2, H/2 - ch); ctx.lineTo(W/2, H/2 - 4);
-  ctx.moveTo(W/2, H/2 + 4); ctx.lineTo(W/2, H/2 + ch);
+  ctx.moveTo(W/2 - ch, H/2); ctx.lineTo(W/2 - chGap, H/2);
+  ctx.moveTo(W/2 + chGap, H/2); ctx.lineTo(W/2 + ch, H/2);
+  ctx.moveTo(W/2, H/2 - ch); ctx.lineTo(W/2, H/2 - chGap);
+  ctx.moveTo(W/2, H/2 + chGap); ctx.lineTo(W/2, H/2 + ch);
   ctx.stroke();
+  // White inner
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(W/2 - ch, H/2); ctx.lineTo(W/2 - chGap, H/2);
+  ctx.moveTo(W/2 + chGap, H/2); ctx.lineTo(W/2 + ch, H/2);
+  ctx.moveTo(W/2, H/2 - ch); ctx.lineTo(W/2, H/2 - chGap);
+  ctx.moveTo(W/2, H/2 + chGap); ctx.lineTo(W/2, H/2 + ch);
+  ctx.stroke();
+  // Center dot
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath();
+  ctx.arc(W/2, H/2, 1.5, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.restore();
 }
@@ -2901,7 +3325,9 @@ function gameLoop(time) {
 
   // Mouse look
   player.angle += mouseDx * MOUSE_SENS;
+  player.pitch = clamp(player.pitch - mouseDy * MOUSE_SENS * 0.7, -0.5, 0.5);
   mouseDx = 0;
+  mouseDy = 0;
 
   // Bob
   if (player.moving) player.bobPhase += 0.15;
@@ -3206,6 +3632,7 @@ function gameLoop(time) {
         applyArmorReward(activeBoss.armorReward);
       }
       activeBoss = null;
+      startBGM(false);
       showBossReward();
     }
   } else if (activeBoss && activeBoss.hp <= 0) {
@@ -3217,6 +3644,7 @@ function gameLoop(time) {
       applyArmorReward(activeBoss.armorReward);
     }
     activeBoss = null;
+    startBGM(false);
     showBossReward();
   }
 
