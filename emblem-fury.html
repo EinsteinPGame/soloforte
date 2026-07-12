@@ -44,15 +44,23 @@ canvas{display:block}
 .stat-item .value{color:#0f0;font-size:1.1rem}
 #close-inv{position:fixed;top:15px;right:20px;font-size:2rem;cursor:pointer;color:#888;z-index:91}
 #close-inv:hover{color:#fff}
-.mobile-controls{display:none;position:fixed;bottom:0;left:0;width:100%;height:40%;z-index:50;pointer-events:none}
-.mobile-controls *{pointer-events:auto}
-#joystick-zone{position:fixed;bottom:20px;left:20px;width:140px;height:140px;border:2px solid rgba(255,255,255,0.2);border-radius:50%;z-index:50;display:none}
-#joystick-knob{width:50px;height:50px;background:rgba(255,255,255,0.3);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
-#mobile-shoot{position:fixed;bottom:30px;right:30px;width:80px;height:80px;border:2px solid rgba(255,0,0,0.4);border-radius:50%;z-index:50;display:none;font-size:1.5rem;color:rgba(255,100,100,0.7);line-height:80px;text-align:center;background:rgba(100,0,0,0.2)}
-#mobile-skill{position:fixed;bottom:130px;right:30px;width:60px;height:60px;border:2px solid rgba(0,200,255,0.4);border-radius:50%;z-index:50;display:none;font-size:0.8rem;color:rgba(0,200,255,0.7);line-height:60px;text-align:center;background:rgba(0,50,100,0.2)}
-#mobile-ult{position:fixed;bottom:130px;right:110px;width:60px;height:60px;border:2px solid rgba(255,200,0,0.4);border-radius:50%;z-index:50;display:none;font-size:0.8rem;color:rgba(255,200,0,0.7);line-height:60px;text-align:center;background:rgba(100,80,0,0.2)}
+/* Brawl Stars-style dual joystick mobile controls */
+.mobile-controls-container{display:none;position:fixed;top:0;left:0;width:100%;height:100%;z-index:50;pointer-events:none}
+.mobile-controls-container *{pointer-events:auto}
+.joystick-base{position:fixed;width:120px;height:120px;border:2px solid rgba(255,255,255,0.25);border-radius:50%;background:rgba(255,255,255,0.05)}
+.joystick-thumb{width:44px;height:44px;background:rgba(255,255,255,0.4);border-radius:50%;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
+#move-joystick{bottom:30px;left:25px;z-index:51}
+#aim-joystick{bottom:30px;right:25px;z-index:51}
+#aim-line{position:fixed;pointer-events:none;z-index:49;display:none}
+#mobile-skill-btn{position:fixed;bottom:170px;right:35px;width:56px;height:56px;border:2px solid rgba(0,200,255,0.5);border-radius:50%;z-index:52;font-size:0.75rem;color:rgba(0,200,255,0.8);display:flex;align-items:center;justify-content:center;background:rgba(0,50,100,0.3);flex-direction:column;line-height:1.1}
+#mobile-skill-btn .cd-overlay{position:absolute;top:0;left:0;width:100%;height:100%;border-radius:50%;background:rgba(0,0,0,0.6);clip-path:none;pointer-events:none;display:none}
+#mobile-ult-btn{position:fixed;bottom:240px;right:35px;width:56px;height:56px;border:2px solid rgba(255,200,0,0.4);border-radius:50%;z-index:52;font-size:0.75rem;color:rgba(255,200,0,0.6);display:flex;align-items:center;justify-content:center;background:rgba(100,80,0,0.2);flex-direction:column;line-height:1.1}
+#mobile-ult-btn.charged{border-color:rgba(255,220,0,0.9);color:rgba(255,220,0,1);background:rgba(120,100,0,0.4);animation:ultPulse 1.2s infinite}
+#mobile-ult-btn.grayed{opacity:0.4}
+#mobile-inv-btn{position:fixed;top:12px;right:12px;width:40px;height:40px;border:1px solid rgba(255,255,255,0.3);border-radius:8px;z-index:52;font-size:0.9rem;color:rgba(255,255,255,0.6);display:flex;align-items:center;justify-content:center;background:rgba(40,40,60,0.5)}
+@keyframes ultPulse{0%,100%{box-shadow:0 0 8px rgba(255,200,0,0.3)}50%{box-shadow:0 0 20px rgba(255,200,0,0.7)}}
 @media(max-width:800px),(pointer:coarse){
-  #joystick-zone,#mobile-shoot,#mobile-skill,#mobile-ult{display:block}
+  .mobile-controls-container{display:block}
 }
 </style>
 </head>
@@ -106,10 +114,14 @@ canvas{display:block}
   <div id="inv-content"></div>
 </div>
 
-<div id="joystick-zone"><div id="joystick-knob"></div></div>
-<div id="mobile-shoot">FIRE</div>
-<div id="mobile-skill">SKL</div>
-<div id="mobile-ult">ULT</div>
+<div class="mobile-controls-container">
+  <div id="move-joystick" class="joystick-base"><div id="move-thumb" class="joystick-thumb"></div></div>
+  <div id="aim-joystick" class="joystick-base"><div id="aim-thumb" class="joystick-thumb"></div></div>
+  <canvas id="aim-line" width="1" height="1"></canvas>
+  <div id="mobile-skill-btn"><span class="sk-icon">Q</span><div class="cd-overlay"></div></div>
+  <div id="mobile-ult-btn" class="grayed"><span>ULT</span></div>
+  <div id="mobile-inv-btn">INV</div>
+</div>
 
 <script>
 // ============================================================
@@ -302,6 +314,11 @@ const player = {
   dragonWingBuffet: false, wingBuffetTimer: 0, wingBuffetCD: 12000,
   dragonForm: false, dragonFormTimer: 0,
   ancientDragon: false,
+  // New boss armor properties
+  thornsDmg: false,
+  immuneToSlow: false,
+  immuneToBurn: false,
+  voidPhase: 0,
 };
 
 // ── CHARACTERS ──
@@ -337,6 +354,11 @@ const BOSS_WEAPONS = [
   { name: 'Colossus Cannon', damage: 70, fireRate: 1000, range: 15, spread: 0, aoe: 4, color: '#aaa', ammo: 20, projCount: 1 },
   { name: 'Shadow Blade', damage: 45, fireRate: 250, range: 10, spread: 0, aoe: 0, color: '#606', ammo: Infinity, projCount: 1, execute: 0.2 },
   { name: "Drake's Fury", damage: 20, fireRate: 60, range: 5, spread: 0.1, aoe: 0, color: '#f80', ammo: 100, projCount: 1, burn: true },
+  { name: 'Storm Hammer', damage: 45, fireRate: 600, range: 12, spread: 0, aoe: 0, color: '#4af', ammo: Infinity, projCount: 1, chainLightning: true },
+  { name: "Reaper's Edge", damage: 50, fireRate: 400, range: 4, spread: 0, aoe: 0, color: '#a4a', ammo: Infinity, projCount: 1, scytheLifesteal: 0.15 },
+  { name: 'Crystal Lance', damage: 55, fireRate: 500, range: 16, spread: 0, aoe: 0, color: '#8ef', ammo: Infinity, projCount: 1, pierce: true, freeze: true },
+  { name: 'Void Blade', damage: 60, fireRate: 350, range: 10, spread: 0, aoe: 0, color: '#a0f', ammo: Infinity, projCount: 1, ignoreArmor: true },
+  { name: 'Fusion Core', damage: 35, fireRate: 200, range: 10, spread: 0.04, aoe: 0, color: '#fa0', ammo: Infinity, projCount: 1, fusionAlternate: true },
 ];
 
 const ARMORS = [
@@ -345,6 +367,11 @@ const ARMORS = [
   { name: 'Iron Shell', def: 5, special: '+25% max HP' },
   { name: 'Shadow Cloak', def: 5, special: '+20% crit chance' },
   { name: 'Drake Scale', def: 10, special: 'Fire immune + burn aura' },
+  { name: "Titan's Mantle", def: 12, special: '+15% all stats' },
+  { name: 'Bone Cage', def: 18, special: '+20% damage reduction + thorns' },
+  { name: 'Crystal Shell', def: 25, special: 'Immune to slow/freeze, +30% defense' },
+  { name: 'Void Cloak', def: 8, special: '10% phase through damage' },
+  { name: 'Duality Plate', def: 15, special: '+15% fire/ice dmg, immune to burn/freeze' },
 ];
 
 // ── ENEMIES ──
@@ -373,6 +400,11 @@ const BOSSES = [
   { name: 'Iron Colossus', hp: 800, speed: 0.006, damage: 40, fireRate: 2500, range: 15, color: '#aab', size: 0.9, weaponReward: 2, armorReward: 2, time: 360 },
   { name: 'Shadow Lord', hp: 350, speed: 0.025, damage: 35, fireRate: 600, range: 10, color: '#606', size: 0.7, weaponReward: 3, armorReward: 3, time: 480 },
   { name: 'Inferno Drake', hp: 600, speed: 0.015, damage: 25, fireRate: 300, range: 8, color: '#f60', size: 0.85, weaponReward: 4, armorReward: 4, time: 600 },
+  { name: 'Storm Titan', hp: 1000, speed: 0.005, damage: 45, fireRate: 2000, range: 12, color: '#4af', size: 0.95, weaponReward: 5, armorReward: 5, time: 720 },
+  { name: 'Bone Reaper', hp: 700, speed: 0.018, damage: 35, fireRate: 1200, range: 10, color: '#dda', size: 0.75, weaponReward: 6, armorReward: 6, time: 840 },
+  { name: 'Crystal Golem', hp: 1200, speed: 0.006, damage: 30, fireRate: 1800, range: 10, color: '#8ef', size: 0.9, weaponReward: 7, armorReward: 7, time: 960 },
+  { name: 'Void Walker', hp: 650, speed: 0.022, damage: 40, fireRate: 800, range: 12, color: '#a0f', size: 0.7, weaponReward: 8, armorReward: 8, time: 1080 },
+  { name: 'Flame & Frost', hp: 500, speed: 0.018, damage: 30, fireRate: 600, range: 10, color: '#fa0', size: 0.75, weaponReward: 9, armorReward: 9, time: 1200, duo: true },
 ];
 
 // ── EMBLEMS ──
@@ -435,7 +467,7 @@ document.addEventListener('mousedown', e => {
   if (gameState === 'playing') {
     mouseDown = true;
     if (!pointerLocked) {
-      C.requestPointerLock();
+      if (!isTouchDevice) C.requestPointerLock();
     }
   }
 });
@@ -444,68 +476,198 @@ document.addEventListener('pointerlockchange', () => {
   pointerLocked = document.pointerLockElement === C;
 });
 
-// ── MOBILE CONTROLS ──
-let joystickActive = false;
+// ── BRAWL STARS-STYLE MOBILE CONTROLS ──
+const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 let joystickDx = 0, joystickDy = 0;
-let mobileAimActive = false;
-let mobileLastX = 0;
 
-const joystickZone = document.getElementById('joystick-zone');
-const joystickKnob = document.getElementById('joystick-knob');
+// Track touch IDs for multi-touch
+let moveTouchId = null;
+let aimTouchId = null;
+let mobileAiming = false;
+let aimAngle = 0;
 
-joystickZone.addEventListener('touchstart', e => {
-  e.preventDefault();
-  joystickActive = true;
-  handleJoystick(e.touches[0]);
-});
-joystickZone.addEventListener('touchmove', e => {
-  e.preventDefault();
-  if (joystickActive) handleJoystick(e.touches[0]);
-});
-joystickZone.addEventListener('touchend', e => {
-  e.preventDefault();
-  joystickActive = false;
-  joystickDx = 0; joystickDy = 0;
-  joystickKnob.style.transform = 'translate(-50%,-50%)';
-});
+const moveJoystick = document.getElementById('move-joystick');
+const moveThumb = document.getElementById('move-thumb');
+const aimJoystick = document.getElementById('aim-joystick');
+const aimThumb = document.getElementById('aim-thumb');
+const aimLineCanvas = document.getElementById('aim-line');
 
-function handleJoystick(touch) {
-  const rect = joystickZone.getBoundingClientRect();
-  const cx = rect.left + rect.width/2;
-  const cy = rect.top + rect.height/2;
-  let dx = touch.clientX - cx;
-  let dy = touch.clientY - cy;
-  const dist = Math.sqrt(dx*dx + dy*dy);
-  const maxR = rect.width / 2;
-  if (dist > maxR) { dx = dx/dist*maxR; dy = dy/dist*maxR; }
-  joystickKnob.style.transform = `translate(${dx - 25}px, ${dy - 25}px)`;
-  joystickDx = dx / maxR;
-  joystickDy = dy / maxR;
+function getJoystickCenter(el) {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, maxR: r.width / 2 };
 }
 
-// Mobile aim (touch on right side of screen)
-C.addEventListener('touchstart', e => {
-  for (const t of e.changedTouches) {
-    if (t.clientX > W * 0.4) {
-      mobileAimActive = true;
-      mobileLastX = t.clientX;
-    }
-  }
-});
-C.addEventListener('touchmove', e => {
-  for (const t of e.changedTouches) {
-    if (mobileAimActive && t.clientX > W * 0.3) {
-      mouseDx += (t.clientX - mobileLastX) * 2;
-      mobileLastX = t.clientX;
-    }
-  }
-});
-C.addEventListener('touchend', () => { mobileAimActive = false; });
+function clampJoystick(dx, dy, maxR) {
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d > maxR) { dx = dx / d * maxR; dy = dy / d * maxR; }
+  return { dx, dy, norm: Math.min(d / maxR, 1) };
+}
 
-document.getElementById('mobile-shoot').addEventListener('touchstart', e => { e.preventDefault(); mouseDown = true; });
-document.getElementById('mobile-shoot').addEventListener('touchend', e => { e.preventDefault(); mouseDown = false; });
-document.getElementById('mobile-skill').addEventListener('touchstart', e => { e.preventDefault(); useSkill(); });
-document.getElementById('mobile-ult').addEventListener('touchstart', e => { e.preventDefault(); useUltimate(); });
+// ── LEFT JOYSTICK (MOVEMENT) ──
+moveJoystick.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (moveTouchId !== null) return;
+  const t = e.changedTouches[0];
+  moveTouchId = t.identifier;
+  updateMoveJoystick(t);
+}, { passive: false });
+
+moveJoystick.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === moveTouchId) { updateMoveJoystick(t); break; }
+  }
+}, { passive: false });
+
+moveJoystick.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === moveTouchId) {
+      moveTouchId = null;
+      joystickDx = 0; joystickDy = 0;
+      moveThumb.style.transform = 'translate(-50%,-50%)';
+      break;
+    }
+  }
+});
+moveJoystick.addEventListener('touchcancel', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === moveTouchId) {
+      moveTouchId = null;
+      joystickDx = 0; joystickDy = 0;
+      moveThumb.style.transform = 'translate(-50%,-50%)';
+      break;
+    }
+  }
+});
+
+function updateMoveJoystick(touch) {
+  const c = getJoystickCenter(moveJoystick);
+  let dx = touch.clientX - c.x;
+  let dy = touch.clientY - c.y;
+  const clamped = clampJoystick(dx, dy, c.maxR);
+  moveThumb.style.transform = `translate(${clamped.dx - 22}px, ${clamped.dy - 22}px)`;
+  joystickDx = clamped.dx / c.maxR;
+  joystickDy = clamped.dy / c.maxR;
+}
+
+// ── RIGHT JOYSTICK (AIM + AUTO-FIRE) ──
+aimJoystick.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (aimTouchId !== null) return;
+  const t = e.changedTouches[0];
+  aimTouchId = t.identifier;
+  mobileAiming = true;
+  mouseDown = true; // auto-fire while aiming
+  updateAimJoystick(t);
+}, { passive: false });
+
+aimJoystick.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === aimTouchId) { updateAimJoystick(t); break; }
+  }
+}, { passive: false });
+
+aimJoystick.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === aimTouchId) {
+      aimTouchId = null;
+      mobileAiming = false;
+      mouseDown = false;
+      aimThumb.style.transform = 'translate(-50%,-50%)';
+      aimLineCanvas.style.display = 'none';
+      break;
+    }
+  }
+});
+aimJoystick.addEventListener('touchcancel', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === aimTouchId) {
+      aimTouchId = null;
+      mobileAiming = false;
+      mouseDown = false;
+      aimThumb.style.transform = 'translate(-50%,-50%)';
+      aimLineCanvas.style.display = 'none';
+      break;
+    }
+  }
+});
+
+function updateAimJoystick(touch) {
+  const c = getJoystickCenter(aimJoystick);
+  let dx = touch.clientX - c.x;
+  let dy = touch.clientY - c.y;
+  const clamped = clampJoystick(dx, dy, c.maxR);
+  aimThumb.style.transform = `translate(${clamped.dx - 22}px, ${clamped.dy - 22}px)`;
+  if (clamped.norm > 0.15) {
+    // Convert joystick direction to player angle
+    aimAngle = Math.atan2(clamped.dy, clamped.dx);
+    player.angle = aimAngle;
+    // Show aim direction line
+    drawAimLine(c.x, c.y, aimAngle);
+  }
+}
+
+function drawAimLine(cx, cy, angle) {
+  aimLineCanvas.width = W;
+  aimLineCanvas.height = H;
+  aimLineCanvas.style.display = 'block';
+  aimLineCanvas.style.position = 'fixed';
+  aimLineCanvas.style.top = '0';
+  aimLineCanvas.style.left = '0';
+  aimLineCanvas.style.width = '100%';
+  aimLineCanvas.style.height = '100%';
+  const alCtx = aimLineCanvas.getContext('2d');
+  alCtx.clearRect(0, 0, W, H);
+  alCtx.beginPath();
+  alCtx.moveTo(cx, cy);
+  const lineLen = 100;
+  alCtx.lineTo(cx + Math.cos(angle) * lineLen, cy + Math.sin(angle) * lineLen);
+  alCtx.strokeStyle = 'rgba(255,80,80,0.5)';
+  alCtx.lineWidth = 2;
+  alCtx.setLineDash([6, 4]);
+  alCtx.stroke();
+}
+
+// ── MOBILE BUTTONS ──
+document.getElementById('mobile-skill-btn').addEventListener('touchstart', e => { e.preventDefault(); useSkill(); }, { passive: false });
+document.getElementById('mobile-ult-btn').addEventListener('touchstart', e => { e.preventDefault(); useUltimate(); }, { passive: false });
+document.getElementById('mobile-inv-btn').addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (gameState === 'playing' || gameState === 'inventory') toggleInventory();
+}, { passive: false });
+
+// Update mobile button states each frame
+function updateMobileButtons() {
+  if (!isTouchDevice) return;
+  const skillBtn = document.getElementById('mobile-skill-btn');
+  const ultBtn = document.getElementById('mobile-ult-btn');
+  // Skill cooldown overlay
+  const cdOverlay = skillBtn.querySelector('.cd-overlay');
+  if (player.skillCooldown > 0) {
+    const pct = player.skillCooldown / player.skillMaxCooldown;
+    cdOverlay.style.display = 'block';
+    cdOverlay.style.clipPath = `inset(${(1 - pct) * 100}% 0 0 0)`;
+  } else {
+    cdOverlay.style.display = 'none';
+  }
+  // Skill icon based on character
+  const skNames = ['FAN', 'FIRE', 'DASH'];
+  skillBtn.querySelector('.sk-icon').textContent = skNames[player.character] || 'Q';
+  // Ult button state
+  if (player.ultKills >= player.ultNeeded) {
+    ultBtn.classList.add('charged');
+    ultBtn.classList.remove('grayed');
+  } else {
+    ultBtn.classList.remove('charged');
+    ultBtn.classList.add('grayed');
+  }
+}
+
+// Prevent pointer lock on touch devices
+if (isTouchDevice) {
+  C.addEventListener('touchstart', e => { e.preventDefault(); }, { passive: false });
+}
 
 // Skill/Ult keys
 document.addEventListener('keydown', e => {
@@ -553,7 +715,7 @@ function selectChar(idx) {
   player.weaponIndex = 0;
   document.getElementById('title-screen').style.display = 'none';
   gameState = 'playing';
-  C.requestPointerLock();
+  if (!isTouchDevice) C.requestPointerLock();
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
 }
@@ -759,9 +921,28 @@ function applyOnHitEffects(hitEnemy, w, dmg, isCrit) {
       hitEnemy.slowTimer = 2000;
     }
 
-    // Chain lightning
+    // Chain lightning (emblem)
     if (player.chainChance > 0 && Math.random() < player.chainChance && player.chainTargets > 0) {
       chainLightning(hitEnemy, dmg * 0.5, player.chainTargets);
+    }
+    // Storm Hammer: chain lightning on every hit
+    if (w.chainLightning) {
+      chainLightning(hitEnemy, dmg * 0.4, 3);
+    }
+    // Crystal Lance: freeze on hit
+    if (w.freeze) {
+      hitEnemy.frozen = true;
+      hitEnemy.freezeTimer = 1500;
+    }
+    // Fusion Core: alternate fire/ice
+    if (w.fusionAlternate) {
+      if (!w._fusionState) w._fusionState = 0;
+      if (w._fusionState % 2 === 0) {
+        hitEnemy.burning = true; hitEnemy.burnTimer = 3000; hitEnemy.burnDmg = Math.floor(dmg * 0.15);
+      } else {
+        hitEnemy.frozen = true; hitEnemy.freezeTimer = 1500;
+      }
+      w._fusionState++;
     }
 
     // Stun
@@ -1134,6 +1315,184 @@ function updateEnemy(e, dt) {
     }
   }
 
+  // Storm Titan: chain lightning + ground slam shockwave
+  if (e.isBoss && e.name === 'Storm Titan') {
+    if (!e.slamTimer) e.slamTimer = 5000;
+    e.slamTimer -= dt;
+    if (e.slamTimer <= 0 && d < 6) {
+      e.slamTimer = 6000 + Math.random() * 2000;
+      // Ground slam shockwave
+      if (d < 5) {
+        let sdmg = Math.floor(e.damage * 0.8 * difficultyMult);
+        sdmg = Math.max(1, sdmg - player.def * 0.3);
+        player.hp -= sdmg;
+        player.screenShake = 15;
+        player.damageVignette = 400;
+        spawnExplosion(e.x, e.y, '#4af');
+      }
+    }
+    if (!e.chainTimer) e.chainTimer = 3000;
+    e.chainTimer -= dt;
+    if (e.chainTimer <= 0 && d < e.range && canSee(e.x, e.y, player.x, player.y)) {
+      e.chainTimer = 4000 + Math.random() * 2000;
+      // Chain lightning hits player
+      let cldmg = Math.floor(e.damage * 0.6 * difficultyMult);
+      cldmg = Math.max(1, cldmg - player.def * 0.3);
+      player.hp -= cldmg;
+      player.damageVignette = 200;
+      // Electric zone particles
+      for (let i = 0; i < 8; i++) {
+        const a = Math.random() * Math.PI * 2;
+        particles.push({ x: player.x + Math.cos(a)*2, y: player.y + Math.sin(a)*2, dx: 0, dy: 0, life: 2000, color: '#4af', size: 3 });
+      }
+    }
+  }
+
+  // Bone Reaper: summons skeletons every 10s, death beam
+  if (e.isBoss && e.name === 'Bone Reaper') {
+    if (!e.summonTimer) e.summonTimer = 10000;
+    e.summonTimer -= dt;
+    if (e.summonTimer <= 0) {
+      e.summonTimer = 10000;
+      for (let i = 0; i < 3; i++) {
+        const sa = Math.random() * Math.PI * 2;
+        const sx = e.x + Math.cos(sa) * 2;
+        const sy = e.y + Math.sin(sa) * 2;
+        if (!isWall(sx, sy)) {
+          const skel = { x: sx, y: sy, hp: 40 * difficultyMult, maxHp: 40 * difficultyMult,
+            speed: 0.02, damage: 8, fireRate: 1200, range: 4, color: '#dda', size: 0.35,
+            name: 'Skeleton', hitFlash: 0, fireTimer: 1200, xp: 5 };
+          enemies.push(skel);
+        }
+      }
+    }
+    if (!e.beamTimer) e.beamTimer = 7000;
+    e.beamTimer -= dt;
+    if (e.beamTimer <= 0 && d < 12 && canSee(e.x, e.y, player.x, player.y)) {
+      e.beamTimer = 8000 + Math.random() * 3000;
+      let bdmg = Math.floor(e.damage * 1.5 * difficultyMult);
+      bdmg = Math.max(1, bdmg - player.def * 0.3);
+      player.hp -= bdmg;
+      player.screenShake = 8;
+      player.damageVignette = 300;
+      // Death beam visual
+      for (let i = 0; i < 6; i++) {
+        const t = i / 6;
+        particles.push({ x: lerp(e.x, player.x, t), y: lerp(e.y, player.y, t), dx: 0, dy: 0, life: 500, color: '#a4a', size: 4 });
+      }
+    }
+  }
+
+  // Crystal Golem: ice shard volley, freeze nova, crystal wall
+  if (e.isBoss && e.name === 'Crystal Golem') {
+    if (!e.volleyTimer) e.volleyTimer = 4000;
+    e.volleyTimer -= dt;
+    if (e.volleyTimer <= 0 && d < e.range && canSee(e.x, e.y, player.x, player.y)) {
+      e.volleyTimer = 5000 + Math.random() * 2000;
+      const baseAngle = Math.atan2(player.y - e.y, player.x - e.x);
+      for (let i = -2; i <= 2; i++) {
+        const a = baseAngle + i * 0.15;
+        projectiles.push({ x: e.x, y: e.y, dx: Math.cos(a)*0.06, dy: Math.sin(a)*0.06,
+          life: 3000, damage: Math.floor(e.damage * 0.5 * difficultyMult), friendly: false, color: '#8ef', size: 2, freezeOnHit: true });
+      }
+    }
+    if (!e.novaTimer) e.novaTimer = 8000;
+    e.novaTimer -= dt;
+    if (e.novaTimer <= 0 && d < 4) {
+      e.novaTimer = 10000;
+      // Freeze nova AoE
+      let ndmg = Math.floor(e.damage * 0.7 * difficultyMult);
+      ndmg = Math.max(1, ndmg - player.def * 0.3);
+      player.hp -= ndmg;
+      player.damageVignette = 300;
+      player.screenShake = 10;
+      // Slow player temporarily
+      player.speedBuff -= 0.3;
+      setTimeout(() => { player.speedBuff += 0.3; }, 3000);
+      spawnExplosion(e.x, e.y, '#8ef');
+    }
+  }
+
+  // Void Walker: teleports frequently, gravity pull, void portal, reality tear
+  if (e.isBoss && e.name === 'Void Walker') {
+    if (!e.teleportTimer) e.teleportTimer = 2000;
+    e.teleportTimer -= dt;
+    if (e.teleportTimer <= 0) {
+      e.teleportTimer = 2000 + Math.random() * 1500;
+      const angle = Math.random() * Math.PI * 2;
+      const nd = 3 + Math.random() * 4;
+      const nx = player.x + Math.cos(angle) * nd;
+      const ny = player.y + Math.sin(angle) * nd;
+      if (!isWall(nx, ny)) { e.x = nx; e.y = ny; }
+      // Spawn void particles at new position
+      for (let i = 0; i < 5; i++) {
+        particles.push({ x: e.x + (Math.random()-0.5)*1, y: e.y + (Math.random()-0.5)*1, dx: 0, dy: 0, life: 800, color: '#a0f', size: 3 });
+      }
+    }
+    // Gravity pull
+    if (!e.pullTimer) e.pullTimer = 6000;
+    e.pullTimer -= dt;
+    if (e.pullTimer <= 0 && d < 10 && d > 2) {
+      e.pullTimer = 8000 + Math.random() * 3000;
+      const pullDx = (e.x - player.x) / d * 0.5;
+      const pullDy = (e.y - player.y) / d * 0.5;
+      if (!isWall(player.x + pullDx * 5, player.y + pullDy * 5)) {
+        player.x += pullDx * 3;
+        player.y += pullDy * 3;
+      }
+      player.screenShake = 5;
+    }
+    // Reality tear (line damage)
+    if (!e.tearTimer) e.tearTimer = 5000;
+    e.tearTimer -= dt;
+    if (e.tearTimer <= 0 && d < 10 && canSee(e.x, e.y, player.x, player.y)) {
+      e.tearTimer = 6000 + Math.random() * 2000;
+      let tdmg = Math.floor(e.damage * 1.2 * difficultyMult);
+      tdmg = Math.max(1, tdmg - player.def * 0.3);
+      player.hp -= tdmg;
+      player.damageVignette = 300;
+      for (let i = 0; i < 8; i++) {
+        const t = i / 8;
+        particles.push({ x: lerp(e.x, player.x, t), y: lerp(e.y, player.y, t), dx: (Math.random()-0.5)*0.01, dy: (Math.random()-0.5)*0.01, life: 1000, color: '#a0f', size: 5 });
+      }
+    }
+  }
+
+  // Flame & Frost duo: buff each other when close
+  if (e.isBoss && e.isDuo && e.duoPartner && e.duoPartner.hp > 0) {
+    const partnerDist = dist(e, e.duoPartner);
+    if (partnerDist < 5) {
+      // Buff: increased damage and speed when near partner
+      e.duoBuff = true;
+    } else {
+      e.duoBuff = false;
+    }
+  }
+  if (e.isBoss && e.isDuo && e.bossType === 'flame') {
+    // Flame boss: fire projectiles
+    if (!e.fireBlastTimer) e.fireBlastTimer = 3000;
+    e.fireBlastTimer -= dt;
+    if (e.fireBlastTimer <= 0 && d < e.range && canSee(e.x, e.y, player.x, player.y)) {
+      e.fireBlastTimer = 2500 + Math.random() * 1500;
+      const a = Math.atan2(player.y - e.y, player.x - e.x);
+      for (let i = -1; i <= 1; i++) {
+        projectiles.push({ x: e.x, y: e.y, dx: Math.cos(a + i*0.2)*0.05, dy: Math.sin(a + i*0.2)*0.05,
+          life: 3000, damage: Math.floor((e.damage * (e.duoBuff ? 1.5 : 1)) * difficultyMult), friendly: false, color: '#f60', size: 2, burnOnHit: true });
+      }
+    }
+  }
+  if (e.isBoss && e.isDuo && e.bossType === 'frost') {
+    // Frost boss: ice attacks
+    if (!e.iceBlastTimer) e.iceBlastTimer = 4000;
+    e.iceBlastTimer -= dt;
+    if (e.iceBlastTimer <= 0 && d < e.range && canSee(e.x, e.y, player.x, player.y)) {
+      e.iceBlastTimer = 3500 + Math.random() * 2000;
+      const a = Math.atan2(player.y - e.y, player.x - e.x);
+      projectiles.push({ x: e.x, y: e.y, dx: Math.cos(a)*0.04, dy: Math.sin(a)*0.04,
+        life: 4000, damage: Math.floor((e.damage * 1.2 * (e.duoBuff ? 1.5 : 1)) * difficultyMult), friendly: false, color: '#4cf', size: 3, freezeOnHit: true });
+    }
+  }
+
   // Movement
   if (d > (e.range || 3) * 0.6 && speed > 0) {
     let mx = dx / d * speed;
@@ -1248,12 +1607,20 @@ function enemyShoot(e, d) {
     return;
   }
 
+  // Void Cloak: 10% chance to phase through damage
+  if (player.voidPhase > 0 && Math.random() < player.voidPhase) return;
+
   dmg = Math.floor(dmg * (1 - player.dmgReduction));
   dmg = Math.max(1, dmg - player.def * 0.3);
 
   player.hp -= dmg;
   player.damageVignette = 300;
   player.screenShake = 3;
+
+  // Bone Cage thorns: reflect damage back to attacker
+  if (player.thornsDmg) {
+    damageEnemy(e, Math.floor(dmg * 0.25), false);
+  }
 
   if (player.hp <= 0) {
     if (player.resurrection) {
@@ -1304,10 +1671,16 @@ function spawnEnemies(dt) {
     }
   }
 
-  // Boss spawning
-  if (nextBossIndex < BOSSES.length) {
-    const bossInfo = BOSSES[nextBossIndex];
-    if (gameTime / 1000 >= bossInfo.time && !activeBoss) {
+  // Boss spawning (cycles after all 10 with 2x stats)
+  if (!activeBoss) {
+    const bossCount = BOSSES.length;
+    const cycle = Math.floor(nextBossIndex / bossCount);
+    const localIdx = nextBossIndex % bossCount;
+    const bossInfo = BOSSES[localIdx];
+    // For cycle 0 use original times; for subsequent cycles add cycle * last boss time
+    const cycleTimeOffset = cycle * BOSSES[bossCount - 1].time;
+    const spawnTime = bossInfo.time + cycleTimeOffset;
+    if (gameTime / 1000 >= spawnTime) {
       spawnBoss(nextBossIndex);
       nextBossIndex++;
     }
@@ -1322,13 +1695,55 @@ function spawnEnemies(dt) {
 }
 
 function spawnBoss(idx) {
-  const b = BOSSES[idx];
+  const bossCount = BOSSES.length;
+  const cycle = Math.floor(idx / bossCount);
+  const localIdx = idx % bossCount;
+  const b = BOSSES[localIdx];
+  const cycleMult = Math.pow(2, cycle); // 2x stats per cycle
+
+  if (b.duo) {
+    // Duo boss: Flame & Frost - spawn two bosses
+    const pos1 = findSpawnPoint();
+    const pos2 = findSpawnPoint();
+    const flameBoss = {
+      x: pos1.x, y: pos1.y,
+      hp: Math.floor(b.hp * difficultyMult * cycleMult),
+      maxHp: Math.floor(b.hp * difficultyMult * cycleMult),
+      speed: b.speed * 1.2, damage: b.damage,
+      fireRate: b.fireRate, range: b.range,
+      color: '#f60', size: 0.7,
+      name: 'Flame', isBoss: true, isDuo: true, duoPartner: null,
+      weaponReward: b.weaponReward, armorReward: b.armorReward,
+      hitFlash: 0, fireTimer: b.fireRate,
+      xp: 50, bossType: 'flame',
+    };
+    const frostBoss = {
+      x: pos2.x, y: pos2.y,
+      hp: Math.floor(b.hp * 1.4 * difficultyMult * cycleMult),
+      maxHp: Math.floor(b.hp * 1.4 * difficultyMult * cycleMult),
+      speed: b.speed * 0.7, damage: b.damage * 1.1,
+      fireRate: b.fireRate * 1.3, range: b.range,
+      color: '#4cf', size: 0.85,
+      name: 'Frost', isBoss: true, isDuo: true, duoPartner: null,
+      weaponReward: b.weaponReward, armorReward: b.armorReward,
+      hitFlash: 0, fireTimer: b.fireRate,
+      xp: 50, bossType: 'frost',
+    };
+    flameBoss.duoPartner = frostBoss;
+    frostBoss.duoPartner = flameBoss;
+    enemies.push(flameBoss, frostBoss);
+    activeBoss = { isDuoBoss: true, flame: flameBoss, frost: frostBoss,
+      weaponReward: b.weaponReward, armorReward: b.armorReward, hp: 1 };
+    bossDespawnTimer = 150000;
+    return;
+  }
+
   const pos = findSpawnPoint();
   const boss = {
     x: pos.x, y: pos.y,
-    hp: Math.floor(b.hp * difficultyMult),
-    maxHp: Math.floor(b.hp * difficultyMult),
-    speed: b.speed, damage: b.damage,
+    hp: Math.floor(b.hp * difficultyMult * cycleMult),
+    maxHp: Math.floor(b.hp * difficultyMult * cycleMult),
+    speed: b.speed, damage: Math.floor(b.damage * cycleMult),
     fireRate: b.fireRate, range: b.range,
     color: b.color, size: b.size,
     name: b.name, isBoss: true,
@@ -1518,6 +1933,23 @@ function applyEmblemPerk(name, lv) {
 }
 
 // ── BOSS REWARDS ──
+function applyArmorReward(armorIdx) {
+  const armor = ARMORS[armorIdx];
+  if (!armor) return;
+  player.armor = armor;
+  player.def += armor.def;
+  // Apply armor specials
+  if (armor.name === 'Viper Scale') player.dodgeChance += 0.1;
+  if (armor.name === 'Iron Shell') { player.maxHp = Math.floor(player.maxHp * 1.25); player.hp += 50; }
+  if (armor.name === 'Shadow Cloak') player.crit += 20;
+  if (armor.name === 'Drake Scale') { player.fireAura = true; player.dmgReduction += 0.1; }
+  if (armor.name === "Titan's Mantle") { player.allStatsBuff += 0.15; }
+  if (armor.name === 'Bone Cage') { player.dmgReduction += 0.2; player.thornsDmg = true; }
+  if (armor.name === 'Crystal Shell') { player.def += 25 * 0.3; player.immuneToSlow = true; }
+  if (armor.name === 'Void Cloak') { player.voidPhase = 0.1; }
+  if (armor.name === 'Duality Plate') { player.allDmgMult *= 1.15; player.immuneToBurn = true; player.immuneToSlow = true; }
+}
+
 function showBossReward() {
   gameState = 'bossReward';
   paused = true;
@@ -2230,19 +2662,38 @@ function drawHUD() {
   ctx.fillText(`Difficulty: x${difficultyMult.toFixed(2)}`, W/2, 42);
 
   // Boss HP bar (top center)
-  if (activeBoss && activeBoss.hp > 0) {
+  if (activeBoss) {
     const bw = 400, bh = 16;
     const bx = W/2 - bw/2, by = 55;
-    ctx.fillStyle = '#300';
-    ctx.fillRect(bx, by, bw, bh);
-    ctx.fillStyle = '#f00';
-    ctx.fillRect(bx, by, bw * (activeBoss.hp / activeBoss.maxHp), bh);
-    ctx.strokeStyle = '#ffd700';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(bx, by, bw, bh);
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 12px monospace';
-    ctx.fillText(activeBoss.name, W/2, by + 13);
+    if (activeBoss.isDuoBoss) {
+      // Duo boss: show two health bars
+      const halfW = bw / 2 - 5;
+      // Flame bar
+      ctx.fillStyle = '#300'; ctx.fillRect(bx, by, halfW, bh);
+      if (activeBoss.flame.hp > 0) {
+        ctx.fillStyle = '#f60'; ctx.fillRect(bx, by, halfW * (activeBoss.flame.hp / activeBoss.flame.maxHp), bh);
+      }
+      ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 2; ctx.strokeRect(bx, by, halfW, bh);
+      // Frost bar
+      ctx.fillStyle = '#003'; ctx.fillRect(bx + halfW + 10, by, halfW, bh);
+      if (activeBoss.frost.hp > 0) {
+        ctx.fillStyle = '#4cf'; ctx.fillRect(bx + halfW + 10, by, halfW * (activeBoss.frost.hp / activeBoss.frost.maxHp), bh);
+      }
+      ctx.strokeStyle = '#ffd700'; ctx.strokeRect(bx + halfW + 10, by, halfW, bh);
+      ctx.fillStyle = '#ffd700'; ctx.font = 'bold 12px monospace';
+      ctx.fillText('FLAME & FROST', W/2, by + 13);
+    } else if (activeBoss.hp > 0) {
+      ctx.fillStyle = '#300';
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.fillStyle = '#f00';
+      ctx.fillRect(bx, by, bw * (activeBoss.hp / activeBoss.maxHp), bh);
+      ctx.strokeStyle = '#ffd700';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(bx, by, bw, bh);
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(activeBoss.name, W/2, by + 13);
+    }
     // Despawn timer
     const despawnSec = Math.ceil(bossDespawnTimer / 1000);
     ctx.font = '10px monospace';
@@ -2412,22 +2863,31 @@ function gameLoop(time) {
     moveY = player.dashDy;
     if (player.dashTimer <= 0) player.dashing = false;
   } else {
-    if (keys['w'] || joystickDy < -0.2) {
+    // Mobile joystick: absolute direction movement (Brawl Stars style)
+    const joyMag = Math.sqrt(joystickDx * joystickDx + joystickDy * joystickDy);
+    if (isTouchDevice && joyMag > 0.15) {
+      // Left joystick moves in absolute direction; distance = speed
+      moveX += joystickDx * effectiveSpeed * joyMag;
+      moveY += joystickDy * effectiveSpeed * joyMag;
+      player.moving = true;
+    }
+    // Keyboard WASD (desktop)
+    if (keys['w']) {
       moveX += Math.cos(player.angle) * effectiveSpeed;
       moveY += Math.sin(player.angle) * effectiveSpeed;
       player.moving = true;
     }
-    if (keys['s'] || joystickDy > 0.2) {
+    if (keys['s']) {
       moveX -= Math.cos(player.angle) * effectiveSpeed * 0.7;
       moveY -= Math.sin(player.angle) * effectiveSpeed * 0.7;
       player.moving = true;
     }
-    if (keys['a'] || joystickDx < -0.2) {
+    if (keys['a']) {
       moveX += Math.cos(player.angle - Math.PI/2) * effectiveSpeed * 0.8;
       moveY += Math.sin(player.angle - Math.PI/2) * effectiveSpeed * 0.8;
       player.moving = true;
     }
-    if (keys['d'] || joystickDx > 0.2) {
+    if (keys['d']) {
       moveX += Math.cos(player.angle + Math.PI/2) * effectiveSpeed * 0.8;
       moveY += Math.sin(player.angle + Math.PI/2) * effectiveSpeed * 0.8;
       player.moving = true;
@@ -2736,27 +3196,33 @@ function gameLoop(time) {
   enemies = enemies.filter(e => e.hp > 0 || e.hitFlash > 0);
 
   // Check if boss died
-  if (activeBoss && activeBoss.hp <= 0) {
+  if (activeBoss && activeBoss.isDuoBoss) {
+    // Duo boss: both must die
+    if (activeBoss.flame.hp <= 0 && activeBoss.frost.hp <= 0) {
+      if (activeBoss.weaponReward !== undefined) {
+        player.weapons.push({ ...BOSS_WEAPONS[activeBoss.weaponReward] });
+      }
+      if (activeBoss.armorReward !== undefined) {
+        applyArmorReward(activeBoss.armorReward);
+      }
+      activeBoss = null;
+      showBossReward();
+    }
+  } else if (activeBoss && activeBoss.hp <= 0) {
     // Give boss weapon and armor
     if (activeBoss.weaponReward !== undefined) {
       player.weapons.push({ ...BOSS_WEAPONS[activeBoss.weaponReward] });
     }
     if (activeBoss.armorReward !== undefined) {
-      const armor = ARMORS[activeBoss.armorReward];
-      player.armor = armor;
-      player.def += armor.def;
-      // Apply armor special
-      if (armor.name === 'Viper Scale') player.dodgeChance += 0.1;
-      if (armor.name === 'Iron Shell') { player.maxHp = Math.floor(player.maxHp * 1.25); player.hp += 50; }
-      if (armor.name === 'Shadow Cloak') player.crit += 20;
-      if (armor.name === 'Drake Scale') { player.fireAura = true; player.dmgReduction += 0.1; }
+      applyArmorReward(activeBoss.armorReward);
     }
     activeBoss = null;
     showBossReward();
   }
 
   // Boss despawn timer
-  if (activeBoss && activeBoss.hp > 0) {
+  const bossAlive = activeBoss && (activeBoss.isDuoBoss ? (activeBoss.flame.hp > 0 || activeBoss.frost.hp > 0) : activeBoss.hp > 0);
+  if (bossAlive) {
     bossDespawnTimer -= dt;
     if (bossDespawnTimer <= 0) {
       // Player takes 2% HP/sec
@@ -2790,6 +3256,43 @@ function gameLoop(time) {
           break;
         }
       }
+    } else {
+      // Enemy projectile hits player
+      if (dist(p, player) < 0.5) {
+        if (!player.dashing) {
+          // Void Cloak phase check
+          if (player.voidPhase && Math.random() < player.voidPhase) { p.life = 0; continue; }
+          let dmg = Math.floor(p.damage * (1 - player.dmgReduction));
+          dmg = Math.max(1, dmg - player.def * 0.3);
+          player.hp -= dmg;
+          player.damageVignette = 200;
+          player.screenShake = 3;
+          // Burn/freeze effects from projectiles
+          if (p.burnOnHit && !player.immuneToBurn) {
+            player.hp -= Math.floor(dmg * 0.3); // extra burn damage
+          }
+          if (p.freezeOnHit && !player.immuneToSlow) {
+            player.speedBuff -= 0.2;
+            setTimeout(() => { player.speedBuff += 0.2; }, 2000);
+          }
+          // Thorns damage from Bone Cage armor
+          if (player.thornsDmg) {
+            // Find nearest enemy and deal thorn damage
+            for (const e of enemies) {
+              if (e.hp > 0 && dist(e, player) < 5) {
+                damageEnemy(e, Math.floor(dmg * 0.3), false);
+                break;
+              }
+            }
+          }
+          if (player.hp <= 0) {
+            if (player.resurrection) { player.resurrection = false; player.hp = player.maxHp; }
+            else if (player.reviveAvailable) { player.reviveAvailable = false; player.hp = Math.floor(player.maxHp * 0.3); }
+            else { gameOver(); return; }
+          }
+        }
+        p.life = 0;
+      }
     }
   }
   projectiles = projectiles.filter(p => p.life > 0);
@@ -2819,6 +3322,7 @@ function gameLoop(time) {
   spawnEnemies(dt);
 
   // ── RENDER ──
+  updateMobileButtons();
   render();
 }
 
