@@ -1455,7 +1455,7 @@ const CHAR_MAP={};CHARS.forEach(c=>CHAR_MAP[c.name]=c);
 function genEnemyData(name,floor,biome){
   const type=pick(TYPES);const scale=1+floor*0.04;
   const baseHp=30+floor*2;const baseAtk=6+floor*0.8;
-  return{name,type,hp:Math.floor(baseHp*scale*(0.8+Math.random()*0.4)),maxHp:0,atk:Math.floor(baseAtk*scale*(0.8+Math.random()*0.4)),
+  return{name,type,hp:Math.floor(baseHp*scale*(0.8+Math.random()*0.4)*diffEnemyHpMult()),maxHp:0,atk:Math.floor(baseAtk*scale*(0.8+Math.random()*0.4)*diffEnemyAtkMult()),
     color:biome.style==='bright'?pick(['#32c832','#64b432','#c8c800','#32c8c8','#c89632']):biome.style==='dark'?pick(['#a03cc8','#6432a0','#c83232','#646496','#969696']):pick(['#00ff41','#00c832','#00a064','#32ff96','#64ffc8']),
     isBoss:false,phase:1,statuses:[],ability:null};
 }
@@ -1475,8 +1475,8 @@ function genBoss(floor){
     'I am the void made manifest!','A thousand cuts await you!','I have seen all possible futures... you lose.',
     'This is the final challenge. Are you ready?'];
   const idx=Math.min(bossNum-1,names.length-1);
-  const hp=Math.floor((150+bossNum*30)*scale);const isLast=floor===300;
-  return{name:names[idx]||`Boss Lv.${bossNum}`,type:pick(TYPES),hp,maxHp:hp,atk:Math.floor((18+bossNum*3)*scale),
+  const hp=Math.floor((150+bossNum*30)*scale*diffEnemyHpMult());const isLast=floor===300;
+  return{name:names[idx]||`Boss Lv.${bossNum}`,type:pick(TYPES),hp,maxHp:hp,atk:Math.floor((18+bossNum*3)*scale*diffEnemyAtkMult()),
     color:isLast?'#ffd700':'#ff6464',isBoss:true,quote:quotes[idx]||'Prepare yourself!',
     phase:1,phase2Hp:isLast?Math.floor(hp*0.6):floor%50===0?Math.floor(hp*0.5):0,
     phase2Atk:isLast?Math.floor((18+bossNum*3)*scale*1.5):Math.floor((18+bossNum*3)*scale*1.3),
@@ -1637,13 +1637,14 @@ let S={scene:'menu',soulCrystals:0,unlocked:['Stone','Blade','Scroll'],
   tempAtk:0,tempDef:0,tempSpd:0,
   gold:0,crit:5,dodge:0,evoStage:0,level:1,xp:0,xpNext:20,xpMult:1,
   moves:[],inventory:[],artifacts:[],statuses:[],
-  runActive:false,mode:'classic',
+  runActive:false,mode:'classic',difficulty:'hard',
   enemy:null,combatLog:[],combatState:'choose',
   encounter:null,showItems:false,showLog:false,showMiniShop:false,
   messages:[],tick:0,eventLog:[],critFlash:0,bossPreview:null,
   settings:{difficulty:1,speed:1,musicOn:false},scrollY:0,
   freeItemPicks:null,freeItemFloor:-1,
   reviveUsed:false,burnPassive:false,reflectPassive:false,doubleStrike:false,priorityPassive:false,ultimatePassive:false,
+  _pendingCharName:null,
 };
 
 // Backward-compatible save loading: accepts both rps4 (v4) and rps5 (v5) keys
@@ -1653,7 +1654,7 @@ function addMsg(t,d=180){S.messages.push({text:t,timer:d})}
 function addLog(t){S.eventLog.push({text:t,floor:S.floor});if(S.eventLog.length>50)S.eventLog.shift()}
 function addInv(name,effect){const f=S.inventory.find(x=>x.name===name);if(f)f.count++;else S.inventory.push({name,effect,count:1})}
 function addStatus(target,type){if(!target.statuses)target.statuses=[];const fx=STATUS_FX[type];if(!fx)return;if(target.statuses.find(s=>s.type===type))return;target.statuses.push({type,name:fx.name,dur:fx.dur,color:fx.color});SFX.statusApplied()}
-function pal(){const style=['menu','charSelect','eternalShop','howToPlay','settings','modeSelect','charShop'].includes(S.scene)?'menu':S.runActive?getStyle(S.floor):'menu';return STYLES[style]}
+function pal(){const style=['menu','charSelect','difficultySelect','eternalShop','howToPlay','settings','modeSelect','charShop'].includes(S.scene)?'menu':S.runActive?getStyle(S.floor):'menu';return STYLES[style]}
 function evoName(){if(!S.charData)return'';if(S.evoStage===0)return S.charName;if(S.evoStage===1)return S.charData.evo1;if(S.evoStage===2)return S.charData.evo2;if(S.evoStage===3)return (S.charData.evo2||S.charData.evo1)+' Prime';return (S.charData.evo2||S.charData.evo1)+' Absolute';}
 function checkUnlocks(){CHARS.forEach(c=>{if(!S.unlocked.includes(c.name)&&c.cost===0)S.unlocked.push(c.name)})}
 
@@ -1661,6 +1662,14 @@ function effAtk(){return Math.max(1,S.atk+S.tempAtk)}
 function effDef(){return Math.max(0,S.def+S.tempDef)}
 function effSpd(){return Math.max(0,S.spd+S.tempSpd)}
 function resetTempStats(){S.tempAtk=0;S.tempDef=0;S.tempSpd=0}
+
+// Difficulty multipliers — Hard is baseline (no change)
+function diffEnemyHpMult(){return S.difficulty==='easy'?0.7:S.difficulty==='normal'?0.85:1}
+function diffEnemyAtkMult(){return S.difficulty==='easy'?0.75:S.difficulty==='normal'?0.9:1}
+function diffXpMult(){return S.difficulty==='easy'?1.5:S.difficulty==='normal'?1.25:1}
+function diffPlayerHpBonus(){return S.difficulty==='easy'?1.2:S.difficulty==='normal'?1.1:1}
+function diffShopCostMult(){return S.difficulty==='easy'?0.8:1}
+function diffPpRestore(){return S.difficulty==='easy'?3:2}
 
 // ============================================================
 // ITEM EFFECT APPLICATION
@@ -1705,7 +1714,7 @@ function applyEffect(effect){return applyItemEffect(effect,true)}
 // ============================================================
 function initChar(name){
   const d=CHAR_MAP[name];S.charName=name;S.charData=d;
-  S.maxHp=d.hp+S.eternals.maxHp*10;S.hp=S.maxHp;
+  S.maxHp=Math.floor((d.hp+S.eternals.maxHp*10)*diffPlayerHpBonus());S.hp=S.maxHp;
   S.atk=d.atk+S.eternals.atk*2;S.def=d.def+S.eternals.def*2;S.spd=d.spd;
   S.permAtk=d.atk+S.eternals.atk*2;S.permDef=d.def+S.eternals.def*2;S.permSpd=d.spd;
   S.tempAtk=0;S.tempDef=0;S.tempSpd=0;
@@ -1724,7 +1733,7 @@ function initChar(name){
 }
 
 function gainXP(amount){
-  amount=Math.floor(amount*S.xpMult);S.xp+=amount;
+  amount=Math.floor(amount*S.xpMult*diffXpMult());S.xp+=amount;
   while(S.xp>=S.xpNext){S.xp-=S.xpNext;S.level++;S.xpNext=Math.floor(S.xpNext*1.1)+3;
     S.maxHp+=5;S.hp=Math.min(S.hp+5,S.maxHp);S.atk+=1;S.permAtk+=1;S.def+=1;S.permDef+=1;
     if(S.level%3===0){S.spd+=1;S.permSpd+=1}
@@ -1906,8 +1915,8 @@ function enemyTurn(){
 
 function advanceFloor(){
   S.floor++;S.showMiniShop=false;
-  // PP partial restore each floor (+2 per move)
-  S.moves.forEach(m=>{m.pp=Math.min(m.maxPp,m.pp+2)});
+  // PP partial restore each floor (difficulty-dependent)
+  S.moves.forEach(m=>{m.pp=Math.min(m.maxPp,m.pp+diffPpRestore())});
   if(S.floor>S.highestFloor){S.highestFloor=S.floor}
   if(S.floor===25&&S.evoStage===0){S.evoStage=1;S.maxHp+=30;S.hp=Math.min(S.hp+30,S.maxHp);S.atk+=5;S.permAtk+=5;S.def+=3;S.permDef+=3;addMsg(`EVOLVED into ${evoName()}!`);SFX.levelUp();addLog(`Evolved into ${evoName()}`)}
   else if(S.floor===50&&S.evoStage===1){S.evoStage=2;S.maxHp+=50;S.hp=Math.min(S.hp+50,S.maxHp);S.atk+=8;S.permAtk+=8;S.def+=5;S.permDef+=5;addMsg(`EVOLVED into ${evoName()}!`);SFX.levelUp();addLog(`Evolution stage 2: ${evoName()}`)}
@@ -2245,13 +2254,77 @@ function drawCharSelect(){
     dText(`D:${c.def} S:${c.spd}`,x+5,y+(isMobile?98:117),p.dim,9);
     dText(c.ability?c.ability.split(':')[0]:'',x+cw/2,y+(isMobile?112:132),p.accent,9,'center');
     if(!isMobile&&mIn(x,y,cw,ch)){dRect(10,H-65,W-20,55,p.panel,6);dText(c.backstory||'',20,H-60,p.text,11);dText(`Ability: ${c.ability||'None'}`,20,H-44,p.accent,11);dText(`Specialty: ${TYPE_SPEC[c.type].desc}`,20,H-28,p.dim,10)}
-    addBtn(x,y,cw,ch,()=>{SFX.click();initChar(c.name);startCombat(false)},'cs_'+c.name);
+    addBtn(x,y,cw,ch,()=>{SFX.click();S._pendingCharName=c.name;S.scene='difficultySelect'},'cs_'+c.name);
   });
   if(isMobile){
     dBtn(10,H-35,80,30,'Up',p,()=>{S._csScroll=(S._csScroll||0)+100},'cs_up');
     dBtn(100,H-35,80,30,'Down',p,()=>{S._csScroll=(S._csScroll||0)-100},'cs_dn');
   }
   dBtn(W-(isMobile?90:120),H-35,isMobile?80:100,28,'Back',p,()=>{S.scene='modeSelect';S._csScroll=0},'cs_bk');
+}
+
+// ============================================================
+// DIFFICULTY SELECT SCREEN
+// ============================================================
+function drawDifficultySelect(){
+  const p=STYLES.menu;dRect(0,0,W,H,p.bg);
+  const M=isMobile;
+  dText('Select Difficulty',W/2,M?18:28,p.title,M?20:28,'center',true);
+  dText('Choose your challenge before the run begins',W/2,M?44:64,p.dim,M?10:13,'center');
+
+  const difficulties=[
+    {id:'easy',label:'Easy',color:'#32c832',border:'#20a820',
+     tagline:'Relaxed adventure.',
+     desc:'Enemies are weaker, you gain more XP.',
+     bonuses:['-30% enemy HP','-25% enemy ATK','+50% XP gain','+20% max HP','-20% shop prices','+3 PP/floor']},
+    {id:'normal',label:'Normal',color:'#f0c828',border:'#c8a010',
+     tagline:'Balanced challenge.',
+     desc:'The intended experience.',
+     bonuses:['-15% enemy HP','-10% enemy ATK','+25% XP gain','+10% max HP','Normal prices','+2 PP/floor']},
+    {id:'hard',label:'Hard',color:'#c83232',border:'#a02020',
+     tagline:'The original difficulty.',
+     desc:'Enemies hit harder, less room for error.',
+     bonuses:['Full enemy HP','Full enemy ATK','Normal XP','Normal HP','Normal prices','+2 PP/floor']},
+  ];
+
+  const cardW=M?W-60:220,cardH=M?100:220;
+  const totalW=M?cardW:difficulties.length*(cardW+20)-20;
+  const startX=W/2-totalW/2;
+  const startY=M?72:100;
+
+  difficulties.forEach((d,i)=>{
+    const x=M?startX:startX+i*(cardW+20);
+    const y=M?startY+i*(cardH+12):startY;
+    const hv=mIn(x,y,cardW,cardH);
+    // Card background
+    X.fillStyle=hv?d.color+'22':d.color+'11';
+    X.beginPath();X.roundRect(x,y,cardW,cardH,10);X.fill();
+    // Border
+    X.strokeStyle=hv?d.color:d.border;X.lineWidth=hv?3:2;
+    X.beginPath();X.roundRect(x,y,cardW,cardH,10);X.stroke();
+    // Label
+    dText(d.label,x+cardW/2,y+(M?10:18),d.color,M?16:22,'center',true);
+    // Tagline
+    dText(d.tagline,x+cardW/2,y+(M?28:46),p.text,M?9:12,'center',true);
+    // Desc
+    dText(d.desc,x+cardW/2,y+(M?40:64),p.dim,M?8:10,'center');
+    if(!M){
+      // Bonus list
+      d.bonuses.forEach((b,bi)=>{
+        dText('• '+b,x+12,y+86+bi*22,bi===0?d.color:p.dim,9);
+      });
+    }
+    // Click to select
+    addBtn(x,y,cardW,cardH,()=>{
+      SFX.click();
+      S.difficulty=d.id;
+      initChar(S._pendingCharName);
+      startCombat(false);
+    },'ds_'+d.id);
+  });
+
+  // Back button
+  dBtn(W/2-60,H-38,120,30,'Back',p,()=>{S.scene='charSelect'},'ds_bk');
 }
 
 function drawCharShop(){
@@ -2282,6 +2355,8 @@ function drawCombat(){
   const M=isMobile;
   dText(e.isBoss?`*** BOSS — FLOOR ${S.floor} ***`:`Floor ${S.floor}`,W/2,5,p.title,M?14:18,'center',true);
   dText(biome.name,W-10,5,p.accent,M?9:12,'right');
+  const diffColor=S.difficulty==='easy'?'#32c832':S.difficulty==='normal'?'#f0c828':'#c83232';
+  dText(S.difficulty.charAt(0).toUpperCase()+S.difficulty.slice(1),10,5,diffColor,M?9:11);
   // Player panel
   const panW=M?Math.floor(W/2-15):270, panH=M?110:165;
   dPanel(10,M?22:28,panW,panH,p);
@@ -2421,12 +2496,13 @@ function drawMiniShop(){
   // -- BUYABLE SECTION --
   dText('-- Buy --',W/2,oy+32,p.accent,M?10:12,'center');
   MINI_SHOP_BUYABLE.forEach((it,i)=>{
-    const x=ox+15,y=oy+48+i*(M?34:38),w=ow-30,h=M?30:34;const ok=S.gold>=it.cost;
+    const x=ox+15,y=oy+48+i*(M?34:38),w=ow-30,h=M?30:34;
+    const finalCost=Math.floor(it.cost*diffShopCostMult());const ok=S.gold>=finalCost;
     dRect(x,y,w,h,ok?p.btnN:'#2a2a2a',6);dBorder(x,y,w,h,p.border,1,6);
     dText(`${it.name}  (${it.desc})`,x+8,y+4,ok?p.btnT:'#666',M?10:13,undefined,true);
-    dText(`${it.cost}g`,x+w-50,y+4,ok?p.gold:'#555',M?10:13);
+    dText(`${finalCost}g`,x+w-50,y+4,ok?p.gold:'#555',M?10:13);
     if(ok)addBtn(x,y,w,h,()=>{
-      SFX.coin();S.gold-=it.cost;applyItemEffect(it.effect,true);
+      SFX.coin();S.gold-=finalCost;applyItemEffect(it.effect,true);
       addMsg(`${it.name}!`);addLog(`Bought ${it.name}`);
     },'ms_'+i);
   });
@@ -2681,6 +2757,7 @@ function loop(){
   if(s==='menu')drawMenu();
   else if(s==='modeSelect')drawModeSelect();
   else if(s==='charSelect')drawCharSelect();
+  else if(s==='difficultySelect')drawDifficultySelect();
   else if(s==='charShop')drawCharShop();
   else if(s==='combat')drawCombat();
   else if(s==='bossPreview')drawBossPreview();
