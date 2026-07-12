@@ -491,25 +491,25 @@ function buildSimpleLevel(num) {
 // Level 2 - The Vanishing Path
 function buildLevel2() {
   const groundY = CANVAS_H - 40;
-  // 7 stepping stone platforms, all vanish on step
-  // Catch: platform 6 (second-to-last) vanishes AND takes platform 5 with it
-  // Secret: invisible platform near platform 3, drop to it → it rises → secret moving platform to end
-  const platY = groundY - 120;
+  // 7 stepping stone platforms, all vanish on step — slightly lower
+  // Catch: LAST platform (index 6) vanishes with second-to-last (index 5)
+  // Secret: invisible platform near platform 3, rises HIGH (trap), second invisible below it
+  const platY = groundY - 90;
   const spacing = 105;
   const startX = 60;
 
   const vanishPlats = [];
   for (let i = 0; i < 7; i++) {
     const vp = {
-      id: 10 + i, x: startX + spacing * i, y: platY - i * 15, w: 80, h: 16,
+      id: 10 + i, x: startX + spacing * i, y: platY - i * 10, w: 80, h: 16,
       type: 'vanish', vanishDelay: 600, reappearDelay: 3000,
       state: 'solid', timer: 0, visitCount: 0,
       color: '#886644', origColor: '#886644'
     };
-    // Platform 6 (index 5) is linked — vanishes when platform 5 (index 4) is stepped on
-    if (i === 5) {
+    // LAST platform (index 6) is linked — vanishes when second-to-last (index 5) is stepped on
+    if (i === 6) {
       vp.type = 'vanish_linked';
-      vp.linkedTo = 10 + 4; // linked to platform at index 4
+      vp.linkedTo = 10 + 5; // linked to platform at index 5
       delete vp.vanishDelay;
       delete vp.reappearDelay;
       delete vp.visitCount;
@@ -520,7 +520,7 @@ function buildLevel2() {
   return {
     bg: '#1a2e1e',
     spawnX: 40,
-    spawnY: groundY - 80,
+    spawnY: groundY - 60,
     endX: CANVAS_W - 70,
     endY: groundY - 200,
     spikes: makeSpikeRow(groundY, 0, CANVAS_W),
@@ -528,17 +528,20 @@ function buildLevel2() {
     deathCeiling: 0,
     platforms: [
       // Starting ledge
-      { id: 0, x: 10, y: groundY - 60, w: 100, h: 16, type: 'normal', color: '#557788' },
+      { id: 0, x: 10, y: groundY - 50, w: 100, h: 16, type: 'normal', color: '#557788' },
       // Vanishing stepping stones
       ...vanishPlats,
       // Secret invisible platform — slightly above spike level, near platform 3 area
       // Player must drop down from platform 3 to land on it
+      // Rises VERY HIGH — player is trapped up top with no way forward
       { id: 20, x: startX + spacing * 2 + 10, y: groundY - 50, w: 70, h: 16,
         type: 'secret_rise', state: 'hidden', timer: 0,
-        riseDelay: 800, riseTarget: groundY - 180, riseSpeed: 2,
+        riseDelay: 800, riseTarget: 60, riseSpeed: 2,
         color: '#335533', origColor: '#335533' },
-      // Secret moving platform — appears to the right of the rising one just before it reaches top
-      { id: 21, x: startX + spacing * 2 + 90, y: groundY - 170, w: 80, h: 16,
+      // Second invisible platform — BELOW the first one's final position
+      // Stays invisible until player steps on it, then gains color and moves right
+      // Player has to jump down from the high platform to discover this
+      { id: 21, x: startX + spacing * 2 + 30, y: groundY - 170, w: 80, h: 16,
         type: 'secret_move', state: 'hidden', timer: 0,
         moveTarget: CANVAS_W - 160, moveSpeed: 3,
         color: '#224488', origColor: '#224488' },
@@ -743,8 +746,8 @@ function handlePlatformLand(p) {
     p.timer = p.riseDelay;
   }
 
-  // Secret moving platform — player steps on it to activate
-  if (p.type === 'secret_move' && p.state === 'waiting') {
+  // Secret moving platform — player lands on it, it appears and starts moving
+  if (p.type === 'secret_move' && p.state === 'hidden') {
     p.state = 'moving_right';
   }
 }
@@ -885,27 +888,17 @@ function updatePlatforms(dt) {
             player.x + player.w > p.x && player.x < p.x + p.w) {
           player.y += dy;
         }
-        // When almost at target, trigger secret_move to appear
-        if (p.y <= p.riseTarget + 30) {
-          const sm = level.platforms.find(pp => pp.type === 'secret_move' && pp.state === 'hidden');
-          if (sm) {
-            sm.state = 'appearing';
-            sm.timer = 0;
-          }
-        }
         if (p.y <= p.riseTarget) {
           p.y = p.riseTarget;
           p.state = 'solid';
+          // Player is now trapped high up — no secret_move trigger here
+          // They must jump down and discover the second invisible platform on their own
         }
       }
     }
 
-    // Secret moving platform
+    // Secret moving platform — stays hidden until player lands on it
     if (p.type === 'secret_move') {
-      if (p.state === 'appearing') {
-        // Just appeared — wait for player to step on
-        p.state = 'waiting';
-      }
       if (p.state === 'moving_right') {
         const dx = p.moveSpeed;
         p.x += dx;
