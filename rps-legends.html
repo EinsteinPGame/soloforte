@@ -21,7 +21,7 @@ canvas{display:block}
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
 const TW=isMobile?600:900,TH=isMobile?500:700;let sc=1;
-function resize(){const w=innerWidth,h=innerHeight;sc=Math.min(w/TW,h/TH);if(isMobile)sc=Math.max(sc,Math.min(w/TW,h/TH)*1.05);C.width=TW*sc;C.height=TH*sc;C.style.position='absolute';C.style.left=(w-C.width)/2+'px';C.style.top=(h-C.height)/2+'px'}
+function resize(){const w=innerWidth,h=innerHeight;const dpr=window.devicePixelRatio||1;sc=Math.min(w/TW,h/TH);const cssW=TW*sc,cssH=TH*sc;C.width=TW*sc*dpr;C.height=TH*sc*dpr;C.style.width=cssW+'px';C.style.height=cssH+'px';C.style.position='absolute';C.style.left=(w-cssW)/2+'px';C.style.top=(h-cssH)/2+'px';X.setTransform(dpr,0,0,dpr,0,0)}
 addEventListener('resize',resize);resize();
 function gmp(e){const r=C.getBoundingClientRect(),cx=(e.clientX||(e.touches&&e.touches[0].clientX))-r.left,cy=(e.clientY||(e.touches&&e.touches[0].clientY))-r.top;return{x:cx/sc,y:cy/sc}}
 const W=TW,H=TH,rand=(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pick=a=>a[Math.floor(Math.random()*a.length)],clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -1165,6 +1165,8 @@ function afterCombatWin(){
     S.freeItemPicks=pickFreeItems(S.floor,4);
     S.freeItemFloor=S.floor;
   }
+  // Auto-show mini-shop after combat win
+  S.showMiniShop=true;
 }
 
 function handleDeath(){
@@ -1380,7 +1382,7 @@ function drawCharSelect(){
   const p=STYLES.menu;dRect(0,0,W,H,p.bg);
   dText('Choose Character',W/2,10,p.title,isMobile?18:24,'center',true);
   const perRow=isMobile?2:5;
-  const cw=isMobile?Math.floor((W-30)/2):140,ch=isMobile?100:180;
+  const cw=isMobile?Math.floor((W-30)/2):140,ch=isMobile?140:180;
   const avail=CHARS.filter(c=>S.unlocked.includes(c.name));
   const sx=isMobile?10:W/2-(Math.min(perRow,avail.length)*(cw+10))/2;
   avail.forEach((c,i)=>{
@@ -1388,12 +1390,12 @@ function drawCharSelect(){
     const x=sx+col*(cw+10),y=35+row*(ch+8)+(S._csScroll||0);
     if(y>H-40||y<30)return;
     dPanel(x,y,cw,ch,p);
-    if(!isMobile)dChar(x+cw/2,y+45,35,c.color,'bright',0);
-    dText(c.name,x+cw/2,y+(isMobile?8:75),c.color,isMobile?11:12,'center',true);
-    dText(c.type,x+cw/2,y+(isMobile?22:90),p.dim,isMobile?9:10,'center');
-    dText(`HP:${c.hp} A:${c.atk}`,x+5,y+(isMobile?36:105),p.dim,9);
-    dText(`D:${c.def} S:${c.spd}`,x+5,y+(isMobile?48:117),p.dim,9);
-    dText(c.ability?c.ability.split(':')[0]:'',x+cw/2,y+(isMobile?62:132),p.accent,9,'center');
+    dChar(x+cw/2,y+(isMobile?35:45),isMobile?25:35,c.color,'bright',0);
+    dText(c.name,x+cw/2,y+(isMobile?58:75),c.color,isMobile?11:12,'center',true);
+    dText(c.type,x+cw/2,y+(isMobile?72:90),p.dim,isMobile?9:10,'center');
+    dText(`HP:${c.hp} A:${c.atk}`,x+5,y+(isMobile?86:105),p.dim,9);
+    dText(`D:${c.def} S:${c.spd}`,x+5,y+(isMobile?98:117),p.dim,9);
+    dText(c.ability?c.ability.split(':')[0]:'',x+cw/2,y+(isMobile?112:132),p.accent,9,'center');
     if(!isMobile&&mIn(x,y,cw,ch)){dRect(10,H-65,W-20,55,p.panel,6);dText(c.backstory||'',20,H-60,p.text,11);dText(`Ability: ${c.ability||'None'}`,20,H-44,p.accent,11);dText(`Specialty: ${TYPE_SPEC[c.type].desc}`,20,H-28,p.dim,10)}
     addBtn(x,y,cw,ch,()=>{SFX.click();initChar(c.name);startCombat(false)},'cs_'+c.name);
   });
