@@ -73,6 +73,14 @@ canvas{display:block}
   <h2 style="color:#666">DOOM-Style FPS Roguelike</h2>
   <p>Survive endless waves. Collect emblems. Slay bosses.</p>
   <p style="margin-bottom:30px">WASD to move | Mouse to aim | Click to shoot</p>
+  <h2 style="color:#aaa;font-size:1.3rem;margin-bottom:8px">Difficulty</h2>
+  <div style="display:flex;gap:10px;justify-content:center;margin-bottom:20px;flex-wrap:wrap">
+    <button onclick="setDifficulty('easy')" id="diff-easy" style="padding:8px 16px;border:2px solid #3ddc84;background:#0e2a1a;color:#3ddc84;border-radius:6px;cursor:pointer;font-weight:bold;font-size:0.9rem">EASY</button>
+    <button onclick="setDifficulty('medium')" id="diff-medium" style="padding:8px 16px;border:2px solid #ffc85c;background:#2a2200;color:#ffc85c;border-radius:6px;cursor:pointer;font-weight:bold;font-size:0.9rem">MEDIUM</button>
+    <button onclick="setDifficulty('hard')" id="diff-hard" style="padding:8px 16px;border:2px solid #ff6b6b;background:#2a0e0e;color:#ff6b6b;border-radius:6px;cursor:pointer;font-weight:bold;font-size:0.9rem">HARD</button>
+    <button onclick="setDifficulty('nightmare')" id="diff-nightmare" style="padding:8px 16px;border:2px solid #cc44ff;background:#1a0028;color:#cc44ff;border-radius:6px;cursor:pointer;font-weight:bold;font-size:0.9rem">NIGHTMARE</button>
+  </div>
+  <p id="diff-desc" style="color:#888;font-size:0.85rem;margin-bottom:16px">Current: Medium — balanced experience</p>
   <h2 style="color:#aaa;font-size:1.3rem">Choose Your Hero</h2>
   <div class="char-select">
     <div class="char-card" onclick="selectChar(0)" style="border-color:#4488ff">
@@ -937,11 +945,36 @@ function findSpawnPoint() {
   return { x: 3, y: 3 };
 }
 
+// ── DIFFICULTY ──
+let selectedDifficulty = 'medium';
+const DIFF_SETTINGS = {
+  easy:      { enemyHpMult: 0.7, enemyDmgMult: 0.7, xpMult: 1.5, playerHpMult: 1.25, scalingRate: 0.05, scalingInterval: 35000, bossHpMult: 0.8,  noReviveBlock: false, label: 'Easy — enemies weaker, more XP, extra HP' },
+  medium:    { enemyHpMult: 1.0, enemyDmgMult: 1.0, xpMult: 1.0, playerHpMult: 1.0,  scalingRate: 0.08, scalingInterval: 25000, bossHpMult: 1.0,  noReviveBlock: false, label: 'Medium — balanced experience' },
+  hard:      { enemyHpMult: 1.3, enemyDmgMult: 1.3, xpMult: 0.8, playerHpMult: 1.0,  scalingRate: 0.10, scalingInterval: 22000, bossHpMult: 1.5,  noReviveBlock: false, label: 'Hard — enemies stronger, less XP, tougher bosses' },
+  nightmare: { enemyHpMult: 1.6, enemyDmgMult: 1.6, xpMult: 0.6, playerHpMult: 0.85, scalingRate: 0.12, scalingInterval: 18000, bossHpMult: 2.0,  noReviveBlock: true,  label: 'Nightmare — brutal. No revives. Good luck.' },
+};
+let diffSettings = DIFF_SETTINGS.medium;
+
+function setDifficulty(d) {
+  selectedDifficulty = d;
+  diffSettings = DIFF_SETTINGS[d];
+  document.getElementById('diff-desc').textContent = 'Current: ' + d.charAt(0).toUpperCase() + d.slice(1) + ' — ' + diffSettings.label.split(' — ')[1];
+  ['easy','medium','hard','nightmare'].forEach(k => {
+    const btn = document.getElementById('diff-' + k);
+    btn.style.opacity = k === d ? '1' : '0.4';
+    btn.style.transform = k === d ? 'scale(1.1)' : 'scale(1)';
+  });
+}
+setDifficulty('medium');
+
 // ── GAME START ──
 function selectChar(idx) {
   player.character = idx;
   player.weapons = [{ ...WEAPON_TYPES[0] }];
   player.weaponIndex = 0;
+  // Apply difficulty HP multiplier
+  player.maxHp = Math.floor(player.maxHp * diffSettings.playerHpMult);
+  player.hp = player.maxHp;
   document.getElementById('title-screen').style.display = 'none';
   gameState = 'playing';
   if (!isTouchDevice) C.requestPointerLock();
@@ -1293,6 +1326,7 @@ function onEnemyKill(e) {
 
   let xpGain = e.xp || 5;
   if (player.doubleXPTimer > 0) xpGain *= 2;
+  xpGain = Math.floor(xpGain * diffSettings.xpMult);
   player.xp += xpGain;
 
   // Kill stack buff
@@ -1936,9 +1970,9 @@ function spawnEnemies(dt) {
       const type = ENEMY_TYPES[typeIdx];
       enemies.push({
         x: pos.x, y: pos.y,
-        hp: Math.floor(type.hp * difficultyMult),
-        maxHp: Math.floor(type.hp * difficultyMult),
-        speed: type.speed, damage: type.damage,
+        hp: Math.floor(type.hp * difficultyMult * diffSettings.enemyHpMult),
+        maxHp: Math.floor(type.hp * difficultyMult * diffSettings.enemyHpMult),
+        speed: type.speed, damage: Math.floor(type.damage * diffSettings.enemyDmgMult),
         fireRate: type.fireRate, range: type.range,
         color: type.color, size: type.size,
         weaponDrop: type.weaponDrop, xp: type.xp,
@@ -1984,11 +2018,11 @@ function spawnEnemies(dt) {
     }
   }
 
-  // Difficulty increase (+8% every 25s)
+  // Difficulty increase (rate depends on selected difficulty)
   difficultyTimer -= dt;
   if (difficultyTimer <= 0) {
-    difficultyTimer = 25000;
-    difficultyMult += 0.08;
+    difficultyTimer = diffSettings.scalingInterval;
+    difficultyMult += diffSettings.scalingRate;
   }
 }
 
@@ -2005,7 +2039,7 @@ function spawnBoss(idx) {
     const pos2 = findSpawnPoint();
     const flameBoss = {
       x: pos1.x, y: pos1.y,
-      hp: Math.floor(b.hp * difficultyMult * cycleMult),
+      hp: Math.floor(b.hp * difficultyMult * cycleMult * diffSettings.bossHpMult),
       maxHp: Math.floor(b.hp * difficultyMult * cycleMult),
       speed: b.speed * 1.2, damage: b.damage,
       fireRate: b.fireRate, range: b.range,
@@ -2041,7 +2075,7 @@ function spawnBoss(idx) {
   const pos = findSpawnPoint();
   const boss = {
     x: pos.x, y: pos.y,
-    hp: Math.floor(b.hp * difficultyMult * cycleMult),
+    hp: Math.floor(b.hp * difficultyMult * cycleMult * diffSettings.bossHpMult),
     maxHp: Math.floor(b.hp * difficultyMult * cycleMult),
     speed: b.speed, damage: Math.floor(b.damage * cycleMult),
     fireRate: b.fireRate, range: b.range,
@@ -3258,7 +3292,8 @@ function drawHUD() {
   // Difficulty
   ctx.font = '11px monospace';
   ctx.fillStyle = '#ff8800';
-  ctx.fillText(`Difficulty: x${difficultyMult.toFixed(2)}`, W/2, 42);
+  const diffLabel = selectedDifficulty.charAt(0).toUpperCase() + selectedDifficulty.slice(1);
+  ctx.fillText(`${diffLabel} | Scale: x${difficultyMult.toFixed(2)}`, W/2, 42);
 
   // Boss HP bar (top center)
   if (activeBoss) {
