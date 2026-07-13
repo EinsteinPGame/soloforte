@@ -356,6 +356,16 @@ const LOOP_DEATH_MSGS = [
   "Have you tried... just going through the portal?",
 ];
 
+const FLIP_DEATH_MSGS = [
+  "Everything you knew was a lie.",
+  "The floor is now the ceiling. Wait, no. That's wrong too.",
+  "Flipped and confused. Just like you.",
+  "Remember when this was easy? Neither do I.",
+  "That trap wasn't there before... or was it?",
+  "Left is right, right is wrong, you are dead.",
+  "The level flipped. Your skills didn't.",
+];
+
 // =====================================================================
 // SAVE SYSTEM (per-player)
 // =====================================================================
@@ -401,6 +411,7 @@ const DEBUG_HINTS = {
   3: "Survive 30 seconds. Stay on the platforms.",
   4: "Find the real one \u2014 it respawns when killed.",
   5: "The portal isn't broken. Keep trying.",
+  6: "The level flips at 85%. Survive both halves.",
 };
 
 // =====================================================================
@@ -977,6 +988,62 @@ function buildLevel6() {
   };
 }
 
+function buildLevel7() {
+  const groundY = CANVAS_H - 40;
+  return {
+    bg: '#0a1a2e',
+    isFlip: true,
+    flipped: false,
+    flipAnimTimer: 0,
+    flipAnimDuration: 90, // ~1.5 seconds at 60fps
+    flipTriggerX: CANVAS_W * 0.85,
+    gateActive: false,
+    spawnX: 40,
+    spawnY: groundY - 40,
+    endX: CANVAS_W - 60,
+    endY: groundY - 180,
+    spikes: makeSpikeRow(groundY, 0, CANVAS_W),
+    ceilingSpikes: [],
+    deathCeiling: 0,
+    platforms: [
+      // Ground segments with small gaps
+      { id: 'g1', x: 0, y: groundY, w: 140, h: 40, type: 'normal', color: '#2a3a5a' },
+      { id: 'g2', x: 170, y: groundY, w: 160, h: 40, type: 'normal', color: '#2a3a5a' },
+      { id: 'g3', x: 360, y: groundY, w: 130, h: 40, type: 'normal', color: '#2a3a5a' },
+      { id: 'g4', x: 520, y: groundY, w: 150, h: 40, type: 'normal', color: '#2a3a5a' },
+      { id: 'g5', x: 700, y: groundY, w: 100, h: 40, type: 'normal', color: '#2a3a5a' },
+      { id: 'g6', x: 830, y: groundY, w: 70, h: 40, type: 'normal', color: '#2a3a5a' },
+      // Mid platforms - easy progression
+      { id: 'p1', x: 90, y: groundY - 70, w: 90, h: 16, type: 'normal', color: '#445566' },
+      { id: 'p2', x: 220, y: groundY - 100, w: 100, h: 16, type: 'normal', color: '#445566' },
+      { id: 'p3', x: 380, y: groundY - 80, w: 80, h: 16, type: 'normal', color: '#445566' },
+      { id: 'p4', x: 480, y: groundY - 130, w: 90, h: 16, type: 'normal', color: '#445566' },
+      // One vanishing platform (manageable trick)
+      { id: 'v1', x: 580, y: groundY - 100, w: 70, h: 16, type: 'vanish', color: '#665544',
+        vanishDelay: 1200, reappearDelay: 2000, state: 'solid', timer: 0, visitCount: 0 },
+      // Moving platform
+      { id: 'mp1', x: 660, y: groundY - 150, w: 80, h: 16, type: 'moving_h', color: '#5566aa',
+        origX: 660, moveTarget: 760, moveSpeed: 1.5, state: 'active' },
+      // Upper platforms near the end
+      { id: 'p5', x: 750, y: groundY - 180, w: 80, h: 16, type: 'normal', color: '#445566' },
+      // End platform (gate sits here)
+      { id: 'end', x: CANVAS_W - 110, y: groundY - 180, w: 110, h: 16, type: 'normal', color: '#335533' },
+    ],
+    movingSpikes: [],
+    levelSpikes: [],
+    // Post-flip data: extra spike positions that appear after flip
+    postFlipLevelSpikes: [
+      { x: 180, y: groundY - 16, w: 14, h: 14, active: true },
+      { x: 350, y: groundY - 16, w: 14, h: 14, active: true },
+      { x: 540, y: groundY - 16, w: 14, h: 14, active: true },
+      { x: 120, y: groundY - 86, w: 14, h: 14, active: true },
+      { x: 420, y: groundY - 96, w: 14, h: 14, active: true },
+      { x: 680, y: groundY - 16, w: 14, h: 14, active: true },
+      { x: 270, y: groundY - 116, w: 14, h: 14, active: true },
+    ],
+  };
+}
+
 function getLevel(n) {
   if (n === 0) return buildLevel1();
   if (n === 1) return buildLevel2();
@@ -984,6 +1051,7 @@ function getLevel(n) {
   if (n === 3) return buildLevel4();
   if (n === 4) return buildLevel5();
   if (n === 5) return buildLevel6();
+  if (n === 6) return buildLevel7();
   return buildSimpleLevel(n);
 }
 
@@ -1094,6 +1162,13 @@ function initLevel(n) {
   // Reset loop state for Level 6
   if (level.isLoop) {
     level.loopCount = 0;
+  }
+  // Reset flip state for Level 7
+  if (level.isFlip) {
+    level.flipped = false;
+    level.flipAnimTimer = 0;
+    level.gateActive = false;
+    level.levelSpikes = [];
   }
   resetPlayer(level.spawnX, level.spawnY - player.h);
   // Reset player2 for dual player levels
@@ -1223,6 +1298,12 @@ function checkPlayerDeath(p) {
     const sx = s.x + s.w * _ss * 0.5, sy = s.y + s.h * _ss * 0.5, sw = s.w * (1 - _ss), sh = s.h * (1 - _ss);
     if (s.active && rectOverlap(p.x + 2, p.y + 2, p.w - 4, p.h - 4, sx, sy, sw, sh)) return true;
   }
+  // Level spikes (post-flip traps etc)
+  for (const s of (level.levelSpikes || [])) {
+    if (!s.active) continue;
+    const sx = s.x + s.w * _ss * 0.5, sy = s.y + s.h * _ss * 0.5, sw = s.w * (1 - _ss), sh = s.h * (1 - _ss);
+    if (rectOverlap(p.x + 2, p.y + p.h - 8, p.w - 4, 10, sx, sy, sw, sh)) return true;
+  }
   return false;
 }
 
@@ -1281,9 +1362,51 @@ function updatePlayer(dt) {
       return;
     }
 
+    // Flip trigger for Level 7
+    if (level.isFlip && !level.flipped && !level.flipAnimTimer && player.x > level.flipTriggerX) {
+      level.flipAnimTimer = level.flipAnimDuration;
+      shakeTimer = 30;
+      shakeIntensity = 8;
+    }
+    // Process flip animation
+    if (level.isFlip && level.flipAnimTimer > 0) {
+      level.flipAnimTimer--;
+      if (level.flipAnimTimer === Math.floor(level.flipAnimDuration / 2)) {
+        // Midpoint of animation: do the actual flip
+        level.flipped = true;
+        level.gateActive = true;
+        level.flipAnnounceTimer = 120;
+        // Mirror player position
+        player.x = CANVAS_W - player.x - player.w;
+        player.vx = -player.vx;
+        // Mirror all platform x positions
+        for (const p of level.platforms) {
+          const newX = CANVAS_W - p.x - p.w;
+          p.x = newX;
+          if (p.origX !== undefined) p.origX = CANVAS_W - p.origX - p.w;
+          if (p.moveTarget !== undefined) p.moveTarget = CANVAS_W - p.moveTarget - p.w;
+        }
+        // Mirror gate positions
+        level.endX = CANVAS_W - level.endX - GATE_W;
+        level.spawnX = CANVAS_W - level.spawnX;
+        // Mirror flip trigger so it can't retrigger
+        level.flipTriggerX = -999;
+        // Add post-flip level spikes (new traps)
+        if (level.postFlipLevelSpikes) {
+          level.levelSpikes = level.postFlipLevelSpikes.map(s => ({...s}));
+        }
+      }
+      // During animation, freeze player
+      if (level.flipAnimTimer > 0) {
+        player.vx = 0;
+        player.vy = 0;
+        return;
+      }
+    }
+
     // Win check
     const ex = level.endX, ey = level.endY;
-    if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H)) {
+    if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H) && !(level.isFlip && !level.gateActive)) {
       if (level.isLoop && level.loopCount < level.loopTarget - 1) {
         level.loopCount++;
         player.x = level.spawnX;
@@ -2071,6 +2194,8 @@ function winMessage() {
     ["You found the real one. Eventually. After {d} deaths of guessing. Genius.","All 7 shards collected. The real you was hiding all along.","Process of elimination. Took {d} deaths but you got there.","The illusions couldn't fool you forever. Just for {d} deaths."],
     // Level 6
     ["You walked through the same portal 5 times. That's it. That's the whole level. {d} deaths for THAT.","The secret was... there was no secret. Just persistence. And {d} deaths.","No hidden exits. No secret paths. Just the portal. 5 times. You're welcome."],
+    // Level 7
+    ["The level flipped and so did your brain. {d} deaths to figure out a mirror.","You walked the same level twice. Forward and backward. Revolutionary.","Flipped, confused, died {d} times, but you made it. Barely."],
     ["Did you Google the solution?","Honestly surprised you made it."],
     ["OK that one was actually hard. You still took too long though."],
     ["Are you cheating? No? Then how are you this slow?"],
@@ -2359,6 +2484,23 @@ function drawHUD() {
     ctx.fillRect(115, CANVAS_H - 20, 95 * p2Progress, 6);
     ctx.fillStyle = '#4088e0';
     ctx.fillText('B', 117, CANVAS_H - 23);
+  } else if (level.isFlip) {
+    // Flip level progress bar
+    if (!level.flipped) {
+      // Progress indicator toward flip trigger
+      const flipProgress = Math.min(1, player.x / level.flipTriggerX);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(10, CANVAS_H - 14, 200, 6);
+      ctx.fillStyle = '#8888ff';
+      ctx.fillRect(10, CANVAS_H - 14, 200 * flipProgress, 6);
+    } else {
+      // Post-flip: show progress toward gate
+      const gateProgress = Math.min(1, Math.max(0, (CANVAS_W - player.x) / CANVAS_W));
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(10, CANVAS_H - 14, 200, 6);
+      ctx.fillStyle = '#88ff88';
+      ctx.fillRect(10, CANVAS_H - 14, 200 * gateProgress, 6);
+    }
   } else {
     // Single player progress bar
     const progress = player.alive ? (player.x / CANVAS_W) : 0;
@@ -2678,6 +2820,23 @@ function render() {
   ctx.save();
   ctx.translate(sx, sy);
 
+  // Flip level visual effect
+  if (level.isFlip && level.flipAnimTimer > 0) {
+    const halfDur = level.flipAnimDuration / 2;
+    const t = level.flipAnimTimer;
+    let scaleX;
+    if (t > halfDur) {
+      // First half: squish from 1 to 0
+      scaleX = (t - halfDur) / halfDur;
+    } else {
+      // Second half: expand from 0 to 1
+      scaleX = 1 - t / halfDur;
+    }
+    ctx.translate(CANVAS_W / 2, 0);
+    ctx.scale(scaleX || 0.01, 1);
+    ctx.translate(-CANVAS_W / 2, 0);
+  }
+
   // Background
   ctx.fillStyle = level.bg;
   ctx.fillRect(-sx, -sy, CANVAS_W + Math.abs(sx) * 2, CANVAS_H + Math.abs(sy) * 2);
@@ -2717,6 +2876,19 @@ function render() {
   // Moving spikes
   for (const s of level.movingSpikes) drawMovingSpike(s);
 
+  // Level spikes (post-flip traps etc)
+  for (const s of (level.levelSpikes || [])) {
+    if (s.active) {
+      ctx.fillStyle = '#ff4444';
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y + s.h);
+      ctx.lineTo(s.x + s.w / 2, s.y);
+      ctx.lineTo(s.x + s.w, s.y + s.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
   // Gates
   if (!level.isArena && !level.isIllusion) {
     drawGate(level.spawnX - GATE_W / 2, level.spawnY - GATE_H, false);
@@ -2727,6 +2899,11 @@ function render() {
   if (!level.isArena && !level.isIllusion) {
     if (level.isLoop && level.loopCount >= level.loopTarget - 1) {
       drawLoopGate(level.endX, level.endY);
+    } else if (level.isFlip && !level.gateActive) {
+      // Draw decorative (dimmed) gate before flip
+      ctx.globalAlpha = 0.3;
+      drawGate(level.endX, level.endY, true);
+      ctx.globalAlpha = 1;
     } else {
       drawGate(level.endX, level.endY, true);
     }
@@ -2771,6 +2948,23 @@ function render() {
     ctx.font = 'bold 14px Courier New';
     ctx.textAlign = 'center';
     ctx.fillText(level.hintText, CANVAS_W / 2, CANVAS_H / 2 - 2);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+
+  // Flip announcement text
+  if (level.isFlip && level.flipped && level.flipAnnounceTimer > 0) {
+    level.flipAnnounceTimer--;
+    const alpha = level.flipAnnounceTimer > 80 ? Math.min(1, (120 - level.flipAnnounceTimer) / 40) :
+                  level.flipAnnounceTimer < 30 ? level.flipAnnounceTimer / 30 : 1;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('FLIPPED!', CANVAS_W / 2, CANVAS_H / 2);
+    ctx.font = '16px Courier New';
+    ctx.fillStyle = '#ffaaaa';
+    ctx.fillText('Good luck finding your way back...', CANVAS_W / 2, CANVAS_H / 2 + 35);
     ctx.globalAlpha = 1;
     ctx.textAlign = 'left';
   }
@@ -2964,6 +3158,7 @@ function showDeath() {
   else if (currentLevel === 3) msgs = ARENA_DEATH_MSGS;
   else if (currentLevel === 4) msgs = ILLUSION_DEATH_MSGS;
   else if (currentLevel === 5) msgs = LOOP_DEATH_MSGS;
+  else if (currentLevel === 6) msgs = FLIP_DEATH_MSGS;
   let msg = msgs[Math.floor(Math.random() * msgs.length)];
   msg = msg.replace('{n}', saveData.totalDeaths);
   document.getElementById('deathMsg').textContent = msg;
