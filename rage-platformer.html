@@ -1084,23 +1084,22 @@ function buildLevel8() {
     altSpikes: [],
     // Alt room state
     inAltRoom: false,
-    altRoomBg: '#0a1a20',
     altRoomPlatforms: [
-      // Floor segments with gaps (looks navigable)
-      { x: 0, y: groundY, w: 120, h: 40, color: '#1a3040' },
-      { x: 160, y: groundY, w: 100, h: 40, color: '#1a3040' },
-      { x: 300, y: groundY, w: 130, h: 40, color: '#1a3040' },
-      { x: 470, y: groundY, w: 110, h: 40, color: '#1a3040' },
-      { x: 620, y: groundY, w: 100, h: 40, color: '#1a3040' },
-      { x: 760, y: groundY, w: 140, h: 40, color: '#1a3040' },
-      // Mid platforms (look like stepping stones)
-      { x: 80, y: groundY - 80, w: 70, h: 14, color: '#2a4050' },
-      { x: 220, y: groundY - 110, w: 65, h: 14, color: '#2a4050' },
-      { x: 370, y: groundY - 90, w: 75, h: 14, color: '#2a4050' },
-      { x: 510, y: groundY - 130, w: 70, h: 14, color: '#2a4050' },
-      { x: 650, y: groundY - 100, w: 60, h: 14, color: '#2a4050' },
-      // High platform near fake gate
-      { x: 780, y: groundY - 160, w: 100, h: 14, color: '#2a5040' },
+      // Ground segments with gaps — looks like Level 1/2 layout
+      { x: 0, y: groundY, w: 130, h: 40, color: '#333355' },
+      { x: 170, y: groundY, w: 110, h: 40, color: '#333355' },
+      { x: 320, y: groundY, w: 120, h: 40, color: '#333355' },
+      { x: 480, y: groundY, w: 100, h: 40, color: '#333355' },
+      { x: 620, y: groundY, w: 110, h: 40, color: '#333355' },
+      { x: 770, y: groundY, w: 130, h: 40, color: '#333355' },
+      // Mid platforms — familiar stepping stones like early levels
+      { x: 90, y: groundY - 75, w: 80, h: 16, color: '#445566' },
+      { x: 230, y: groundY - 100, w: 70, h: 16, color: '#445566' },
+      { x: 380, y: groundY - 85, w: 80, h: 16, color: '#445566' },
+      { x: 520, y: groundY - 120, w: 75, h: 16, color: '#445566' },
+      { x: 660, y: groundY - 95, w: 70, h: 16, color: '#445566' },
+      // End platform with gate — looks exactly like a real level end
+      { x: 790, y: groundY - 160, w: 110, h: 16, color: '#335533' },
     ],
     // Real spikes in alt room — cover EVERY gap and landing zone (impossible)
     altRoomSpikes: [
@@ -1307,6 +1306,7 @@ function initLevel(n) {
     level.boulderDustParticles = [];
     level.inAltRoom = false;
     level.altRoomTransitionTimer = 0;
+    level.altRoomTrollTimer = 0;
   }
   resetPlayer(level.spawnX, level.spawnY - player.h);
   // Reset player2 for dual player levels
@@ -1599,7 +1599,25 @@ function updatePlayer(dt) {
           killPlayer();
           return;
         }
-        // Fake gate — reaching it does nothing (just looks like a gate), so no win check needed
+        // Fake gate — sends player back to main level start with troll message
+        if (rectOverlap(player.x, player.y, player.w, player.h,
+            level.altRoomFakeGateX, level.altRoomFakeGateY, GATE_W, GATE_H)) {
+          // Reset to main level
+          level.inAltRoom = false;
+          level.altRoomTrollTimer = 120;
+          // Reset boulder to drop again
+          level.boulder = { x: 150, y: -80, radius: 40, dropped: false, rolling: false, vy: 0, rollSpeed: -0.8 };
+          level.boulderDropped = false;
+          level.boulderLanded = false;
+          level.boulderDustParticles = [];
+          // Teleport player back to start
+          player.x = level.spawnX;
+          player.y = level.spawnY - player.h;
+          player.vx = 0;
+          player.vy = 0;
+          shakeTimer = 20;
+          shakeIntensity = 10;
+        }
       }
       const b = level.boulder;
       // Skip boulder/main path logic if in alt room
@@ -3067,13 +3085,13 @@ function drawIllusionPath() {
   const b = level.boulder;
   const groundY = CANVAS_H - 40;
 
-  // ALT ROOM: completely different rendering
+  // ALT ROOM: looks like the first few levels (familiar) but impossible
   if (level.inAltRoom) {
-    // Override background
-    ctx.fillStyle = level.altRoomBg;
+    // Background like Level 1/2 (dark gray-blue, familiar)
+    ctx.fillStyle = '#0f0f1a';
     ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-    // Grid (different color from main level)
-    ctx.strokeStyle = 'rgba(100,200,255,0.04)';
+    // Same grid as normal levels
+    ctx.strokeStyle = 'rgba(255,255,255,0.03)';
     ctx.lineWidth = 1;
     for (let gx = 0; gx < CANVAS_W; gx += 40) {
       ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, CANVAS_H); ctx.stroke();
@@ -3081,33 +3099,36 @@ function drawIllusionPath() {
     for (let gy = 0; gy < CANVAS_H; gy += 40) {
       ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(CANVAS_W, gy); ctx.stroke();
     }
-    // Draw alt room platforms
-    for (const p of level.altRoomPlatforms) {
-      ctx.fillStyle = p.color;
-      ctx.fillRect(p.x, p.y, p.w, p.h);
-      // Platform edge highlight
-      ctx.fillStyle = 'rgba(255,255,255,0.08)';
-      ctx.fillRect(p.x, p.y, p.w, 2);
-    }
-    // Draw alt room spikes
-    ctx.fillStyle = '#cc2222';
-    for (const s of level.altRoomSpikes) {
-      const sw2 = s.w;
+    // Floor spikes across bottom (like Level 1)
+    ctx.fillStyle = '#cc3333';
+    for (let x = 0; x < CANVAS_W; x += 18) {
       ctx.beginPath();
-      ctx.moveTo(s.x, s.y + s.h);
-      ctx.lineTo(s.x + sw2 / 2, s.y);
-      ctx.lineTo(s.x + sw2, s.y + s.h);
+      ctx.moveTo(x, CANVAS_H);
+      ctx.lineTo(x + 9, CANVAS_H - 12);
+      ctx.lineTo(x + 18, CANVAS_H);
       ctx.closePath();
       ctx.fill();
     }
-    // Draw FAKE gate at the end (looks real but does nothing!)
+    // Draw alt room platforms (same colors as early levels)
+    for (const p of level.altRoomPlatforms) {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(p.x, p.y, p.w, 2);
+    }
+    // Draw alt room spikes (on platforms — hard to see)
+    ctx.fillStyle = '#cc2222';
+    for (const s of level.altRoomSpikes) {
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y + s.h);
+      ctx.lineTo(s.x + s.w / 2, s.y);
+      ctx.lineTo(s.x + s.w, s.y + s.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Draw gate at the end (looks completely real — no hints it's fake)
     drawGate(level.altRoomFakeGateX, level.altRoomFakeGateY, true);
-    // "EXIT" text above fake gate to make it look legit
-    ctx.fillStyle = '#44ff88';
-    ctx.font = 'bold 12px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('EXIT', level.altRoomFakeGateX + GATE_W / 2, level.altRoomFakeGateY - 8);
-    // Room title flash
+    // Transition flash
     if (level.altRoomTransitionTimer > 0) {
       const alpha = level.altRoomTransitionTimer / 40;
       ctx.globalAlpha = alpha;
@@ -3115,33 +3136,18 @@ function drawIllusionPath() {
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
       ctx.globalAlpha = 1;
     }
-    // HUD: "SECRET ROOM" label
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(CANVAS_W / 2 - 60, 4, 120, 20);
-    ctx.fillStyle = '#88ccff';
-    ctx.font = 'bold 11px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('SECRET ROOM', CANVAS_W / 2, 17);
     return; // don't draw main path stuff
   }
 
   // MAIN PATH: original illusion path rendering
-  // Draw portal glow on alt path portal platform
+  // Subtle glow on alt path portal platform (no text — let players discover it)
   const portalPlat = level.platforms.find(p => p.id === 'altPortal');
   if (portalPlat) {
-    const pulse = 0.4 + Math.sin(Date.now() / 300) * 0.3;
+    const pulse = 0.2 + Math.sin(Date.now() / 400) * 0.15;
     ctx.globalAlpha = pulse;
-    ctx.fillStyle = '#8866ff';
-    ctx.shadowColor = '#8866ff';
-    ctx.shadowBlur = 20;
-    ctx.fillRect(portalPlat.x - 4, portalPlat.y - 30, portalPlat.w + 8, 30);
-    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#6644aa';
+    ctx.fillRect(portalPlat.x - 2, portalPlat.y - 20, portalPlat.w + 4, 20);
     ctx.globalAlpha = 1;
-    // Portal text
-    ctx.fillStyle = '#ccaaff';
-    ctx.font = 'bold 10px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText('ENTER', portalPlat.x + portalPlat.w / 2, portalPlat.y - 8);
   }
 
   // Draw fake gaps (dark rectangles on top of ground, purely visual)
@@ -3232,6 +3238,20 @@ function drawIllusionPath() {
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
     ctx.lineWidth = 1;
+  }
+
+  // Troll message after fake gate reset (shows on main path)
+  if (level.altRoomTrollTimer > 0) {
+    level.altRoomTrollTimer--;
+    const alpha = level.altRoomTrollTimer > 80 ? Math.min(1, (120 - level.altRoomTrollTimer) / 40) :
+                  level.altRoomTrollTimer < 30 ? level.altRoomTrollTimer / 30 : 1;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ff4444';
+    ctx.font = 'bold 28px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('Secret entrance...', CANVAS_W / 2, CANVAS_H / 2 - 15);
+    ctx.fillText('and you still can\'t win', CANVAS_W / 2, CANVAS_H / 2 + 20);
+    ctx.globalAlpha = 1;
   }
 }
 
