@@ -95,6 +95,18 @@ canvas{display:block}
       <h3 style="color:#aa44ff">PHANTOM</h3>
       <p>Skill: Invincible dash<br>Ultimate: Invisibility + 3x damage<br>Skill: 8s CD | Ult: 30s CD</p>
     </div>
+    <div class="char-card" onclick="selectChar(3)" style="border-color:#ffcc00">
+      <h3 style="color:#ffcc00">TITAN</h3>
+      <p>Skill: Ground Pound (AoE stun)<br>Ultimate: Earthquake (massive AoE)<br>Skill: 8s CD | Ult: 30s CD</p>
+    </div>
+    <div class="char-card" onclick="selectChar(4)" style="border-color:#33dd66">
+      <h3 style="color:#33dd66">SAGE</h3>
+      <p>Skill: Heal Burst (+25% HP)<br>Ultimate: Time Warp (slow enemies)<br>Skill: 8s CD | Ult: 30s CD</p>
+    </div>
+    <div class="char-card" onclick="selectChar(5)" style="border-color:#cc2222">
+      <h3 style="color:#cc2222">REAPER</h3>
+      <p>Skill: Soul Rip (dash + drain)<br>Ultimate: Death Zone (AoE drain)<br>Skill: 8s CD | Ult: 30s CD</p>
+    </div>
   </div>
 </div>
 
@@ -445,7 +457,7 @@ let paused = false;
 // ── PLAYER ──
 const player = {
   x: 12.5, y: 12.5, angle: 0, z: 0, pitch: 0,
-  hp: 100, maxHp: 100,
+  hp: 120, maxHp: 120,
   atk: 10, def: 0, spd: 1, crit: 5,
   level: 1, xp: 0, xpNeeded: 15,
   kills: 0, ultKills: 0,
@@ -549,6 +561,32 @@ const player = {
   headshotFlash: 0,
   // Weapon bob
   weaponBobPhase: 0,
+  // Base passive regen (universal healing)
+  baseRegenRate: 0.005, baseRegenTimer: 0,
+  // Nature emblem
+  natureRegen: 0, natureThorns: false, natureEntangle: false, natureBloom: false,
+  natureHealAura: 0, natureSprout: false, natureOvergrowth: false, natureGaia: false,
+  // Blood emblem
+  bloodLifesteal: 0, bloodFrenzy: false, bloodFrenzyTimer: 0,
+  bloodRage: false, bloodSiphon: false, bloodPool: false,
+  bloodFeast: false, bloodMoon: false, bloodLord: false,
+  // Arcane emblem
+  arcanePower: 0, arcaneBarrier: false, arcaneBarrierHP: 0,
+  arcaneMissiles: false, arcaneMissileTimer: 0,
+  arcaneAmplify: false, arcaneNova: false, arcaneNovaTimer: 0,
+  arcaneTeleport: false, arcaneOverload: false,
+  // Time emblem
+  timeCDR: 0, timeHaste: false, timeRewind: false, timeRewindHP: 0,
+  timeSlow: false, timeSlowAura: false,
+  timeFreeze: false, timeLoop: false, timeStop: false,
+  // Chaos emblem
+  chaosChance: 0, chaosExplosion: false, chaosRandom: false,
+  chaosWarp: false, chaosMutate: false,
+  chaosMadness: false, chaosRift: false, chaosApocalypse: false,
+  // Health orb tracking
+  healthOrbTimer: 0,
+  // Ability power (Sage/Arcane scaling)
+  abilityPower: 0,
 };
 
 // ── CHARACTERS ──
@@ -556,6 +594,9 @@ const CHARACTERS = [
   { name: 'Hawk', color: '#4488ff', skillName: 'Feather Spread', ultName: 'Dive Bomb' },
   { name: 'Blaze', color: '#ff6622', skillName: 'Fire Burst', ultName: 'Flame Tornado' },
   { name: 'Phantom', color: '#aa44ff', skillName: 'Shadow Dash', ultName: 'Vanish' },
+  { name: 'Titan', color: '#ffcc00', skillName: 'Ground Pound', ultName: 'Earthquake' },
+  { name: 'Sage', color: '#33dd66', skillName: 'Heal Burst', ultName: 'Time Warp' },
+  { name: 'Reaper', color: '#cc2222', skillName: 'Soul Rip', ultName: 'Death Zone' },
 ];
 
 // ── WEAPONS ──
@@ -606,20 +647,20 @@ const ARMORS = [
 
 // ── ENEMIES ──
 const ENEMY_TYPES = [
-  { name: 'Grunt', hp: 30, speed: 0.015, damage: 5, fireRate: 1500, range: 8, color: '#0a0', weaponDrop: 0, xp: 5, size: 0.4 },
-  { name: 'Shotgunner', hp: 50, speed: 0.012, damage: 15, fireRate: 2000, range: 4, color: '#a86', weaponDrop: 1, xp: 8, size: 0.45 },
-  { name: 'Rifleman', hp: 45, speed: 0.013, damage: 10, fireRate: 1000, range: 12, color: '#888', weaponDrop: 2, xp: 8, size: 0.4 },
-  { name: 'Sniper', hp: 30, speed: 0.005, damage: 25, fireRate: 3000, range: 18, color: '#336', weaponDrop: 3, xp: 10, size: 0.4 },
-  { name: 'Heavy', hp: 100, speed: 0.008, damage: 6, fireRate: 200, range: 10, color: '#800', weaponDrop: 4, xp: 12, size: 0.55 },
-  { name: 'Bomber', hp: 50, speed: 0.012, damage: 20, fireRate: 2500, range: 8, color: '#f80', weaponDrop: 5, xp: 10, size: 0.45 },
-  { name: 'Assassin', hp: 25, speed: 0.025, damage: 12, fireRate: 600, range: 6, color: '#404', weaponDrop: 6, xp: 10, size: 0.35 },
-  { name: 'Ronin', hp: 60, speed: 0.022, damage: 18, fireRate: 400, range: 4, color: '#8af', weaponDrop: 7, xp: 12, size: 0.42 },
-  { name: 'Demolitionist', hp: 70, speed: 0.01, damage: 22, fireRate: 2000, range: 10, color: '#6a4', weaponDrop: 8, xp: 14, size: 0.5 },
-  { name: 'Pyro', hp: 55, speed: 0.014, damage: 8, fireRate: 100, range: 5, color: '#f80', weaponDrop: 9, xp: 12, size: 0.45 },
-  { name: 'Ranger', hp: 40, speed: 0.01, damage: 20, fireRate: 1200, range: 16, color: '#964', weaponDrop: 10, xp: 12, size: 0.4 },
-  { name: 'Sentinel', hp: 80, speed: 0.02, damage: 16, fireRate: 200, range: 3, color: '#4ff', weaponDrop: 11, xp: 14, size: 0.5 },
-  { name: 'Rogue', hp: 20, speed: 0.03, damage: 8, fireRate: 120, range: 3, color: '#aaf', weaponDrop: 12, xp: 10, size: 0.3 },
-  { name: 'Berserker', hp: 120, speed: 0.012, damage: 30, fireRate: 2000, range: 3, color: '#a66', weaponDrop: 13, xp: 15, size: 0.6 },
+  { name: 'Goblin', hp: 30, speed: 0.015, damage: 5, fireRate: 1500, range: 8, color: '#3a3', weaponDrop: 0, xp: 5, size: 0.4 },
+  { name: 'Orc Warrior', hp: 50, speed: 0.012, damage: 15, fireRate: 2000, range: 4, color: '#6a4', weaponDrop: 1, xp: 8, size: 0.5 },
+  { name: 'Dark Elf', hp: 45, speed: 0.013, damage: 10, fireRate: 1000, range: 12, color: '#648', weaponDrop: 2, xp: 8, size: 0.4 },
+  { name: 'Shadow Ranger', hp: 30, speed: 0.005, damage: 25, fireRate: 3000, range: 18, color: '#446', weaponDrop: 3, xp: 10, size: 0.4 },
+  { name: 'Ogre', hp: 100, speed: 0.008, damage: 6, fireRate: 200, range: 10, color: '#864', weaponDrop: 4, xp: 12, size: 0.6 },
+  { name: 'Goblin Sapper', hp: 50, speed: 0.012, damage: 20, fireRate: 2500, range: 8, color: '#8a4', weaponDrop: 5, xp: 10, size: 0.4 },
+  { name: 'Imp', hp: 25, speed: 0.025, damage: 12, fireRate: 600, range: 6, color: '#a24', weaponDrop: 6, xp: 10, size: 0.35 },
+  { name: 'Skeleton Knight', hp: 60, speed: 0.022, damage: 18, fireRate: 400, range: 4, color: '#ccb', weaponDrop: 7, xp: 12, size: 0.45 },
+  { name: 'Troll', hp: 70, speed: 0.01, damage: 22, fireRate: 2000, range: 10, color: '#486', weaponDrop: 8, xp: 14, size: 0.55 },
+  { name: 'Fire Elemental', hp: 55, speed: 0.014, damage: 8, fireRate: 100, range: 5, color: '#f60', weaponDrop: 9, xp: 12, size: 0.45 },
+  { name: 'Centaur', hp: 40, speed: 0.01, damage: 20, fireRate: 1200, range: 16, color: '#a86', weaponDrop: 10, xp: 12, size: 0.5 },
+  { name: 'Golem', hp: 80, speed: 0.02, damage: 16, fireRate: 200, range: 3, color: '#8aa', weaponDrop: 11, xp: 14, size: 0.55 },
+  { name: 'Harpy', hp: 20, speed: 0.03, damage: 8, fireRate: 120, range: 3, color: '#a8f', weaponDrop: 12, xp: 10, size: 0.35 },
+  { name: 'Minotaur', hp: 120, speed: 0.012, damage: 30, fireRate: 2000, range: 3, color: '#844', weaponDrop: 13, xp: 15, size: 0.6 },
   { name: 'Wraith', hp: 35, speed: 0.018, damage: 14, fireRate: 700, range: 5, color: '#a4a', weaponDrop: 14, xp: 12, size: 0.4 },
 ];
 
@@ -649,6 +690,11 @@ const EMBLEM_TYPES = [
   { name: 'Death', icon: '\u{2620}', color: '#8a2', stat: 'dot', perLevel: 3, desc: '+DOT' },
   { name: 'Holy', icon: '\u{1F31F}', color: '#ffe', stat: 'healing', perLevel: 1, desc: '+HEAL' },
   { name: 'Dragon', icon: '\u{1F409}', color: '#f84', stat: 'allDmg', perLevel: 0.03, desc: '+ALL DMG' },
+  { name: 'Nature', icon: '\u{1F33F}', color: '#4d8', stat: 'regen', perLevel: 0.003, desc: '+REGEN' },
+  { name: 'Blood', icon: '\u{1FA78}', color: '#c22', stat: 'lifesteal', perLevel: 0.02, desc: '+STEAL' },
+  { name: 'Arcane', icon: '\u{1F52E}', color: '#c4f', stat: 'abilityPwr', perLevel: 5, desc: '+ABILITY' },
+  { name: 'Time', icon: '\u{231B}', color: '#8cf', stat: 'cooldown', perLevel: 0.03, desc: '-COOLDOWN' },
+  { name: 'Chaos', icon: '\u{1F4A5}', color: '#f44', stat: 'chaos', perLevel: 0.02, desc: '+CHAOS' },
 ];
 
 // ── BUFF POOL ──
@@ -887,7 +933,7 @@ function updateMobileButtons() {
     cdOverlay.style.display = 'none';
   }
   // Skill icon based on character
-  const skNames = ['FAN', 'FIRE', 'DASH'];
+  const skNames = ['FAN', 'FIRE', 'DASH', 'SLAM', 'HEAL', 'RIP'];
   skillBtn.querySelector('.sk-icon').textContent = skNames[player.character] || 'Q';
   // Ult button state (cooldown-based)
   if (player.ultCooldown <= 0) {
@@ -948,8 +994,8 @@ function findSpawnPoint() {
 // ── DIFFICULTY ──
 let selectedDifficulty = 'medium';
 const DIFF_SETTINGS = {
-  easy:      { enemyHpMult: 0.7, enemyDmgMult: 0.7, xpMult: 1.5, playerHpMult: 1.25, scalingRate: 0.05, scalingInterval: 35000, bossHpMult: 0.8,  noReviveBlock: false, label: 'Easy — enemies weaker, more XP, extra HP' },
-  medium:    { enemyHpMult: 1.0, enemyDmgMult: 1.0, xpMult: 1.0, playerHpMult: 1.0,  scalingRate: 0.08, scalingInterval: 25000, bossHpMult: 1.0,  noReviveBlock: false, label: 'Medium — balanced experience' },
+  easy:      { enemyHpMult: 0.6, enemyDmgMult: 0.6, xpMult: 1.75, playerHpMult: 1.4, scalingRate: 0.04, scalingInterval: 40000, bossHpMult: 0.7,  noReviveBlock: false, label: 'Easy — enemies weaker, more XP, extra HP' },
+  medium:    { enemyHpMult: 0.9, enemyDmgMult: 0.85, xpMult: 1.2, playerHpMult: 1.1,  scalingRate: 0.06, scalingInterval: 28000, bossHpMult: 0.9,  noReviveBlock: false, label: 'Medium — balanced experience' },
   hard:      { enemyHpMult: 1.3, enemyDmgMult: 1.3, xpMult: 0.8, playerHpMult: 1.0,  scalingRate: 0.10, scalingInterval: 22000, bossHpMult: 1.5,  noReviveBlock: false, label: 'Hard — enemies stronger, less XP, tougher bosses' },
   nightmare: { enemyHpMult: 1.6, enemyDmgMult: 1.6, xpMult: 0.6, playerHpMult: 0.85, scalingRate: 0.12, scalingInterval: 18000, bossHpMult: 2.0,  noReviveBlock: true,  label: 'Nightmare — brutal. No revives. Good luck.' },
 };
@@ -994,6 +1040,10 @@ function calcDamage(baseDmg, isCrit) {
   dmg *= player.allDmgMult;
   // Dragon Rage: below 30% HP = +50% damage
   if (player.dragonRage && player.hp < player.maxHp * 0.3) dmg *= 1.5;
+  // Blood Rage: below 50% HP = +30% damage
+  if (player.bloodRage && player.hp < player.maxHp * 0.5) dmg *= 1.3;
+  // Blood Frenzy speed (handled in movement, but boost attack speed too)
+  if (player.bloodFrenzyTimer > 0) dmg *= 1.1;
   // Dragon Form: 2x damage
   if (player.dragonFormTimer > 0) dmg *= 2;
   // Soul Harvest stacks (multiplicative)
@@ -1248,13 +1298,41 @@ function applyOnHitEffects(hitEnemy, w, dmg, isCrit) {
       hitEnemy.markTimer = 5000;
     }
 
+    // Chaos random bonus damage
+    if (player.chaosChance > 0 && Math.random() < player.chaosChance) {
+      const chaosDmg = Math.floor(dmg * (0.5 + Math.random() * 1.5));
+      damageEnemy(hitEnemy, chaosDmg, false);
+      addDamageNumber(hitEnemy.x, hitEnemy.y - 0.2, chaosDmg, false, 'CHAOS!');
+      player.screenShake = 4;
+    }
+
+    // Chaos Warp: teleport attacker away
+    if (player.chaosWarp && Math.random() < 0.08) {
+      const wa = Math.random() * Math.PI * 2;
+      const wd = 5 + Math.random() * 5;
+      const nx = player.x + Math.cos(wa) * wd;
+      const ny = player.y + Math.sin(wa) * wd;
+      if (!isWall(nx, ny)) { hitEnemy.x = nx; hitEnemy.y = ny; }
+    }
+
+    // Arcane Overload: crits trigger arcane burst
+    if (player.arcaneOverload && isCrit) {
+      for (const e2 of enemies) {
+        if (e2 !== hitEnemy && e2.hp > 0 && dist(e2, hitEnemy) < 3) {
+          const aoDmg = Math.floor((20 + player.abilityPower * 0.5) * player.allDmgMult);
+          damageEnemy(e2, aoDmg, false);
+        }
+      }
+      spawnExplosion(hitEnemy.x, hitEnemy.y, '#c4f');
+    }
+
     // Crit reset skill
     if (player.critResetSkill && isCrit) {
       player.skillCooldown = 0;
     }
 
     // Lifesteal
-    const totalLifesteal = player.lifesteal + player.globalLifesteal + (isCrit ? player.shadowLifesteal : 0);
+    const totalLifesteal = player.lifesteal + player.globalLifesteal + player.bloodLifesteal + (isCrit ? player.shadowLifesteal : 0);
     if (totalLifesteal > 0) {
       player.hp = Math.min(player.maxHp, player.hp + Math.floor(dmg * totalLifesteal));
     }
@@ -1394,9 +1472,60 @@ function onEnemyKill(e) {
     spawnExplosion(e.x, e.y, '#44ccff');
   }
 
-  // Weapon drop (15% chance)
+  // Auto-pickup weapon (15% chance - goes straight to inventory)
   if (Math.random() < 0.15 && e.weaponDrop !== undefined) {
-    pickups.push({ x: e.x, y: e.y, type: 'weapon', weaponType: e.weaponDrop, timer: 30000 });
+    const wt = { ...WEAPON_TYPES[e.weaponDrop] };
+    player.weapons.push(wt);
+    playSound('pickupWeapon');
+    addDamageNumber(e.x, e.y, 0, false, 'NEW: ' + wt.name);
+  }
+
+  // Health orb drop (20% chance - heals 10% HP)
+  if (Math.random() < 0.20) {
+    pickups.push({ x: e.x, y: e.y, type: 'health', timer: 15000 });
+  }
+
+  // Nature bloom: kill = heal 3% HP
+  if (player.natureBloom) {
+    player.hp = Math.min(player.maxHp, player.hp + Math.floor(player.maxHp * 0.03));
+  }
+
+  // Blood Frenzy: kill = +20% speed for 5s
+  if (player.bloodFrenzy) {
+    player.bloodFrenzyTimer = 5000;
+  }
+
+  // Blood Pool: kill heals nearby (conceptual: self heal)
+  if (player.bloodPool) {
+    player.hp = Math.min(player.maxHp, player.hp + Math.floor(player.maxHp * 0.02));
+  }
+
+  // Blood Feast: overkill = heal
+  if (player.bloodFeast && e.hp < -10) {
+    player.hp = Math.min(player.maxHp, player.hp + Math.abs(e.hp));
+  }
+
+  // Chaos on kill: random explosion
+  if (player.chaosExplosion && Math.random() < 0.3) {
+    for (const e2 of enemies) {
+      if (e2 !== e && e2.hp > 0 && dist(e2, e) < 4) {
+        const cDmg = Math.floor((30 + player.atk) * player.allDmgMult);
+        damageEnemy(e2, cDmg, false);
+        addDamageNumber(e2.x, e2.y, cDmg, false);
+      }
+    }
+    spawnExplosion(e.x, e.y, '#f44');
+    player.screenShake = 8;
+  }
+
+  // Chaos Mutate: random stat on kill
+  if (player.chaosMutate) {
+    const stats = ['atk','def','crit','maxHp'];
+    const s = stats[Math.floor(Math.random() * stats.length)];
+    if (s === 'atk') player.atk += 1;
+    else if (s === 'def') player.def += 0.5;
+    else if (s === 'crit') player.crit += 0.3;
+    else if (s === 'maxHp') { player.maxHp += 3; player.hp += 3; }
   }
 
   // Death particles
@@ -1412,6 +1541,19 @@ function onEnemyKill(e) {
     player.xp -= player.xpNeeded;
     player.level++;
     player.xpNeeded = 10 + player.level * 5;
+    // Level-up stat boosts!
+    player.atk += 2;
+    player.def += 1;
+    player.maxHp += 5;
+    player.hp = player.maxHp; // Full heal on level up!
+    player.screenShake = 6;
+    // Flashy level-up particles
+    for (let i = 0; i < 16; i++) {
+      const a = (Math.PI * 2 / 16) * i;
+      particles.push({ x: player.x + Math.cos(a)*0.5, y: player.y + Math.sin(a)*0.5,
+        dx: Math.cos(a)*0.03, dy: Math.sin(a)*0.03, life: 800,
+        color: ['#ffd700','#ff44ff','#44ffff','#ff4444'][i%4], size: rand(3,7) });
+    }
     playSound('levelUp');
     showEmblemSelect();
   }
@@ -1522,33 +1664,87 @@ function useSkill() {
   player.skillCooldown = cd;
   playSound('skillUse');
 
+  const abilityScale = 1 + player.abilityPower * 0.01;
   switch (player.character) {
-    case 0: // Hawk - feather spread
-      for (let i = -1; i <= 1; i++) {
-        const angle = player.angle + i * 0.2;
+    case 0: // Hawk - feather spread (flashier: 5 projectiles in fan)
+      for (let i = -2; i <= 2; i++) {
+        const angle = player.angle + i * 0.15;
         projectiles.push({
           x: player.x, y: player.y, dx: Math.cos(angle) * 0.15, dy: Math.sin(angle) * 0.15,
-          damage: 30 + player.atk, life: 1500, color: '#4488ff', size: 3, friendly: true
+          damage: Math.floor((30 + player.atk) * abilityScale), life: 1500, color: '#4488ff', size: 3, friendly: true
         });
       }
+      player.screenShake = 5;
+      for (let i = 0; i < 10; i++) particles.push({ x: player.x, y: player.y, dx: rand(-0.03,0.03), dy: rand(-0.03,0.03), life: 400, color: '#4488ff', size: rand(2,5) });
       break;
-    case 1: // Blaze - fire burst
+    case 1: // Blaze - fire burst (bigger AoE, more particles)
       for (const e of enemies) {
-        if (e.hp > 0 && dist(e, player) < 4) {
-          const dmg = 40 + player.atk * 2;
+        if (e.hp > 0 && dist(e, player) < 5) {
+          const dmg = Math.floor((50 + player.atk * 2) * abilityScale);
           damageEnemy(e, dmg, false);
-          e.burning = true; e.burnTimer = 3000; e.burnDmg = 5;
+          e.burning = true; e.burnTimer = 3000; e.burnDmg = 8;
           addDamageNumber(e.x, e.y, dmg, false);
         }
       }
-      spawnExplosion(player.x, player.y, '#ff6622');
-      player.screenShake = 10;
+      for (let i = 0; i < 20; i++) particles.push({ x: player.x + rand(-1,1), y: player.y + rand(-1,1), dx: rand(-0.04,0.04), dy: rand(-0.04,0.04), life: 600, color: ['#ff6622','#ff4400','#ffaa00'][i%3], size: rand(3,8) });
+      player.screenShake = 12;
       break;
-    case 2: // Phantom - dash
+    case 2: // Phantom - dash (leaves shadow trail)
       player.dashing = true;
       player.dashTimer = 300;
-      player.dashDx = Math.cos(player.angle) * 0.12;
-      player.dashDy = Math.sin(player.angle) * 0.12;
+      player.dashDx = Math.cos(player.angle) * 0.14;
+      player.dashDy = Math.sin(player.angle) * 0.14;
+      for (let i = 0; i < 8; i++) particles.push({ x: player.x, y: player.y, dx: rand(-0.02,0.02), dy: rand(-0.02,0.02), life: 500, color: '#aa44ff', size: rand(3,6) });
+      // Damage enemies in dash path
+      for (const e of enemies) {
+        if (e.hp > 0 && dist(e, player) < 2) {
+          const dmg = Math.floor((20 + player.atk) * abilityScale);
+          damageEnemy(e, dmg, false);
+        }
+      }
+      break;
+    case 3: // Titan - ground pound (AoE stun + damage)
+      for (const e of enemies) {
+        if (e.hp > 0 && dist(e, player) < 5) {
+          const dmg = Math.floor((60 + player.atk * 2) * abilityScale);
+          damageEnemy(e, dmg, false);
+          e.stunned = true; e.stunTimer = 2000;
+          addDamageNumber(e.x, e.y, dmg, false);
+        }
+      }
+      for (let i = 0; i < 24; i++) {
+        const a = (Math.PI * 2 / 24) * i;
+        particles.push({ x: player.x + Math.cos(a)*2, y: player.y + Math.sin(a)*2, dx: Math.cos(a)*0.02, dy: Math.sin(a)*0.02, life: 600, color: '#ffcc00', size: rand(3,7) });
+      }
+      player.screenShake = 15;
+      break;
+    case 4: // Sage - heal burst (heal self + damage nearby)
+      player.hp = Math.min(player.maxHp, player.hp + Math.floor(player.maxHp * 0.25));
+      for (const e of enemies) {
+        if (e.hp > 0 && dist(e, player) < 4) {
+          const dmg = Math.floor((25 + player.atk) * abilityScale);
+          damageEnemy(e, dmg, false);
+        }
+      }
+      addDamageNumber(player.x, player.y, Math.floor(player.maxHp * 0.25), false, '+HEAL');
+      for (let i = 0; i < 16; i++) particles.push({ x: player.x + rand(-1,1), y: player.y + rand(-1,1), dx: rand(-0.02,0.02), dy: rand(-0.02,0.02), life: 600, color: '#33dd66', size: rand(3,6) });
+      player.screenShake = 5;
+      break;
+    case 5: // Reaper - soul rip (dash forward + drain HP)
+      player.dashing = true;
+      player.dashTimer = 250;
+      player.dashDx = Math.cos(player.angle) * 0.15;
+      player.dashDy = Math.sin(player.angle) * 0.15;
+      for (const e of enemies) {
+        if (e.hp > 0 && dist(e, player) < 3) {
+          const dmg = Math.floor((45 + player.atk * 1.5) * abilityScale);
+          damageEnemy(e, dmg, false);
+          player.hp = Math.min(player.maxHp, player.hp + Math.floor(dmg * 0.3));
+          addDamageNumber(e.x, e.y, dmg, false);
+        }
+      }
+      for (let i = 0; i < 12; i++) particles.push({ x: player.x, y: player.y, dx: rand(-0.03,0.03), dy: rand(-0.03,0.03), life: 500, color: '#cc2222', size: rand(3,6) });
+      player.screenShake = 8;
       break;
   }
 }
@@ -1559,19 +1755,20 @@ function useUltimate() {
   player.ultActive = true;
   playSound('ultimate');
 
+  const uAbilityScale = 1 + player.abilityPower * 0.01;
   switch (player.character) {
-    case 0: // Hawk - dive bomb
+    case 0: // Hawk - dive bomb (flashier: ring of projectiles after)
       player.ultTimer = 500;
       setTimeout(() => {
         for (const e of enemies) {
           if (e.hp > 0 && dist(e, player) < 8) {
-            const dmg = 100 + player.atk * 3;
+            const dmg = Math.floor((120 + player.atk * 3) * uAbilityScale);
             damageEnemy(e, dmg, false);
             addDamageNumber(e.x, e.y, dmg, false);
           }
         }
-        spawnExplosion(player.x, player.y, '#4488ff');
-        player.screenShake = 15;
+        for (let i = 0; i < 30; i++) { const a = (Math.PI*2/30)*i; particles.push({ x: player.x+Math.cos(a)*3, y: player.y+Math.sin(a)*3, dx: Math.cos(a)*0.03, dy: Math.sin(a)*0.03, life: 800, color: '#4488ff', size: rand(4,8) }); }
+        player.screenShake = 18;
         player.ultActive = false;
       }, 500);
       break;
@@ -1583,6 +1780,50 @@ function useUltimate() {
       player.invisTimer = 8000;
       player.nextDmgMult = 3;
       player.ultTimer = 8000;
+      break;
+    case 3: // Titan - earthquake (huge AoE + slow all)
+      player.ultTimer = 1000;
+      player.screenShake = 20;
+      for (let wave = 0; wave < 3; wave++) {
+        setTimeout(() => {
+          for (const e of enemies) {
+            if (e.hp > 0 && dist(e, player) < 12) {
+              const dmg = Math.floor((80 + player.atk * 2) * uAbilityScale);
+              damageEnemy(e, dmg, false);
+              e.slowed = true; e.slowTimer = 3000;
+              addDamageNumber(e.x, e.y, dmg, false);
+            }
+          }
+          for (let i = 0; i < 20; i++) { const a = rand(0,Math.PI*2); const r = rand(1,6); particles.push({ x: player.x+Math.cos(a)*r, y: player.y+Math.sin(a)*r, dx: 0, dy: 0, life: 600, color: '#ffcc00', size: rand(4,9) }); }
+          player.screenShake = 15;
+        }, wave * 300);
+      }
+      setTimeout(() => { player.ultActive = false; }, 1000);
+      break;
+    case 4: // Sage - time warp (slow all enemies + speed up player)
+      player.ultTimer = 8000;
+      for (const e of enemies) {
+        if (e.hp > 0) { e.slowed = true; e.slowTimer = 8000; }
+      }
+      player.speedBuff += 0.4;
+      player.hp = Math.min(player.maxHp, player.hp + Math.floor(player.maxHp * 0.15));
+      setTimeout(() => { player.speedBuff -= 0.4; player.ultActive = false; }, 8000);
+      for (let i = 0; i < 16; i++) particles.push({ x: player.x + rand(-2,2), y: player.y + rand(-2,2), dx: 0, dy: 0, life: 1000, color: '#33dd66', size: rand(3,7) });
+      break;
+    case 5: // Reaper - death zone (AoE drain field)
+      player.ultTimer = 6000;
+      const deathZoneInterval = setInterval(() => {
+        if (!player.ultActive || gameState !== 'playing') { clearInterval(deathZoneInterval); return; }
+        for (const e of enemies) {
+          if (e.hp > 0 && dist(e, player) < 7) {
+            const dmg = Math.floor((15 + player.atk * 0.5) * uAbilityScale);
+            damageEnemy(e, dmg, false);
+            player.hp = Math.min(player.maxHp, player.hp + Math.floor(dmg * 0.5));
+          }
+        }
+        for (let i = 0; i < 6; i++) { const a = rand(0,Math.PI*2); particles.push({ x: player.x+Math.cos(a)*3, y: player.y+Math.sin(a)*3, dx: -Math.cos(a)*0.02, dy: -Math.sin(a)*0.02, life: 400, color: '#cc2222', size: rand(2,5) }); }
+      }, 200);
+      setTimeout(() => { player.ultActive = false; clearInterval(deathZoneInterval); }, 6000);
       break;
   }
 
@@ -1932,6 +2173,10 @@ function enemyShoot(e, d) {
   if (player.thornsDmg) {
     damageEnemy(e, Math.floor(dmg * 0.25), false);
   }
+  // Nature Thorns: attackers take damage
+  if (player.natureThorns) {
+    damageEnemy(e, Math.floor(dmg * 0.15), false);
+  }
 
   if (player.hp <= 0) {
     if (player.resurrection) {
@@ -1945,6 +2190,12 @@ function enemyShoot(e, d) {
       }
       spawnExplosion(player.x, player.y, '#ffe');
       player.screenShake = 15;
+    } else if (player.timeLoop) {
+      player.timeLoop = false;
+      player.hp = player.timeRewindHP > 0 ? player.timeRewindHP : Math.floor(player.maxHp * 0.5);
+      spawnExplosion(player.x, player.y, '#8cf');
+      player.screenShake = 10;
+      addDamageNumber(player.x, player.y, 0, false, 'TIME LOOP!');
     } else if (player.reviveAvailable) {
       player.reviveAvailable = false;
       player.hp = Math.floor(player.maxHp * 0.3);
@@ -2163,6 +2414,11 @@ function getEmblemPerk(name, level) {
     'Death': {3:'15% Wither DoT',5:'Wither stacks x3',8:'Execute <20% HP',10:'Soul Harvest on kill',13:'Wither stacks x5',15:"Reaper's Scythe AoE",18:'Death Mark +30% dmg',20:'Soul Reaper heal'},
     'Holy': {3:'Heal 2% HP on kill',5:'Purify debuffs',8:'10% Blind enemies',10:'Divine Shield',13:'Heal 5% HP on kill',15:'Judgment beam',18:'Aura of healing',20:'Resurrection'},
     'Dragon': {3:'Breath attack cone',5:'+10% dmg reduction',8:'Breath applies burn',10:'Dragon Rage <30%',13:'+20% dmg reduction',15:'Wing Buffet knockback',18:'Dragon Form ult',20:'Ancient Dragon +30%'},
+    'Nature': {3:'Regen +1%/3s',5:'Thorns: attackers take dmg',8:'Entangle: slow nearby',10:'Healing bloom on kill',13:'Heal aura for self',15:'Sprout: roots stun',18:'Overgrowth: +50% regen',20:'Gaia: full heal 60s'},
+    'Blood': {3:'Attacks steal 3% HP',5:'Frenzy: kill = +20% spd 5s',8:'Blood Rage: <50% = +30% dmg',10:'Siphon: drain nearby',13:'Blood Pool: kill heals AoE',15:'Feast: overkill = heal',18:'Blood Moon: 2x lifesteal 10s',20:'Blood Lord: drain aura'},
+    'Arcane': {3:'Arcane Barrier (50 HP shield)',5:'Auto arcane missiles',8:'Ability dmg +25%',10:'Arcane Nova every 8s',13:'Barrier regens faster',15:'Teleport on skill use',18:'Overload: crits = arcane burst',20:'Arcane Supremacy +50% all'},
+    'Time': {3:'-15% cooldowns',5:'Haste: +10% everything',8:'Rewind: save HP, restore later',10:'Slow aura nearby enemies',13:'-30% cooldowns',15:'Time Freeze: stun all 2s/20s',18:'Time Loop: revive once',20:'Time Stop: freeze 5s/30s'},
+    'Chaos': {3:'10% random bonus dmg',5:'Kill = random explosion',8:'Random buff every 15s',10:'Chaos Warp: teleport attacker',13:'Mutate: random stat boost/kill',15:'Chaos Madness: enemies infight',18:'Rift: random AoE portal',20:'Apocalypse: nuke every 45s'},
   };
   return perks[name]?.[level] || (level > 20 ? `+${EMBLEM_TYPES.find(e=>e.name===name).desc}` : '');
 }
@@ -2179,6 +2435,11 @@ function getEmblemPerkMilestones(name) {
     'Death': {3:'15% Wither DoT',5:'Wither stacks x3',8:'Execute <20% HP',10:'Soul Harvest on kill',13:'Wither stacks x5',15:"Reaper's Scythe AoE",18:'Death Mark +30% dmg',20:'Soul Reaper heal'},
     'Holy': {3:'Heal 2% HP on kill',5:'Purify debuffs',8:'10% Blind enemies',10:'Divine Shield',13:'Heal 5% HP on kill',15:'Judgment beam',18:'Aura of healing',20:'Resurrection'},
     'Dragon': {3:'Breath attack cone',5:'+10% dmg reduction',8:'Breath applies burn',10:'Dragon Rage <30%',13:'+20% dmg reduction',15:'Wing Buffet knockback',18:'Dragon Form ult',20:'Ancient Dragon +30%'},
+    'Nature': {3:'Regen +1%/3s',5:'Thorns: attackers take dmg',8:'Entangle: slow nearby',10:'Healing bloom on kill',13:'Heal aura for self',15:'Sprout: roots stun',18:'Overgrowth: +50% regen',20:'Gaia: full heal 60s'},
+    'Blood': {3:'Attacks steal 3% HP',5:'Frenzy: kill = +20% spd 5s',8:'Blood Rage: <50% = +30% dmg',10:'Siphon: drain nearby',13:'Blood Pool: kill heals AoE',15:'Feast: overkill = heal',18:'Blood Moon: 2x lifesteal 10s',20:'Blood Lord: drain aura'},
+    'Arcane': {3:'Arcane Barrier (50 HP shield)',5:'Auto arcane missiles',8:'Ability dmg +25%',10:'Arcane Nova every 8s',13:'Barrier regens faster',15:'Teleport on skill use',18:'Overload: crits = arcane burst',20:'Arcane Supremacy +50% all'},
+    'Time': {3:'-15% cooldowns',5:'Haste: +10% everything',8:'Rewind: save HP, restore later',10:'Slow aura nearby enemies',13:'-30% cooldowns',15:'Time Freeze: stun all 2s/20s',18:'Time Loop: revive once',20:'Time Stop: freeze 5s/30s'},
+    'Chaos': {3:'10% random bonus dmg',5:'Kill = random explosion',8:'Random buff every 15s',10:'Chaos Warp: teleport attacker',13:'Mutate: random stat boost/kill',15:'Chaos Madness: enemies infight',18:'Rift: random AoE portal',20:'Apocalypse: nuke every 45s'},
   };
   const perks = allPerks[name] || {};
   return Object.entries(perks).map(([lv, desc]) => ({ level: parseInt(lv), desc })).sort((a, b) => a.level - b.level);
@@ -2203,6 +2464,11 @@ function pickEmblem(typeIdx) {
     case 'dot': player.dotDamage += em.perLevel; break;
     case 'healing': player.healOnKill += em.perLevel * 0.002; break;
     case 'allDmg': player.allDmgMult *= (1 + em.perLevel); break;
+    case 'regen': player.natureRegen += em.perLevel; break;
+    case 'lifesteal': player.bloodLifesteal += em.perLevel; break;
+    case 'abilityPwr': player.abilityPower += em.perLevel; break;
+    case 'cooldown': player.timeCDR += em.perLevel; break;
+    case 'chaos': player.chaosChance += em.perLevel; break;
   }
 
   // Apply perks
@@ -2306,6 +2572,56 @@ function applyEmblemPerk(name, lv) {
       if (lv===15) player.dragonWingBuffet = true;
       if (lv===18) player.dragonForm = true;
       if (lv===20) { player.ancientDragon = true; player.allDmgMult *= 1.3; player.spd *= 1.3; player.atk = Math.floor(player.atk * 1.3); }
+      break;
+    case 'Nature':
+      if (lv===3) player.baseRegenRate = 0.01;
+      if (lv===5) player.natureThorns = true;
+      if (lv===8) player.natureEntangle = true;
+      if (lv===10) player.natureBloom = true;
+      if (lv===13) player.natureHealAura = 0.005;
+      if (lv===15) player.natureSprout = true;
+      if (lv===18) { player.natureOvergrowth = true; player.baseRegenRate *= 1.5; player.natureRegen *= 1.5; }
+      if (lv===20) player.natureGaia = true;
+      break;
+    case 'Blood':
+      if (lv===3) player.bloodLifesteal = Math.max(player.bloodLifesteal, 0.03);
+      if (lv===5) player.bloodFrenzy = true;
+      if (lv===8) player.bloodRage = true;
+      if (lv===10) player.bloodSiphon = true;
+      if (lv===13) player.bloodPool = true;
+      if (lv===15) player.bloodFeast = true;
+      if (lv===18) player.bloodMoon = true;
+      if (lv===20) player.bloodLord = true;
+      break;
+    case 'Arcane':
+      if (lv===3) { player.arcaneBarrier = true; player.arcaneBarrierHP = 50; }
+      if (lv===5) player.arcaneMissiles = true;
+      if (lv===8) player.arcaneAmplify = true;
+      if (lv===10) player.arcaneNova = true;
+      if (lv===13) player.arcaneBarrierHP = 100;
+      if (lv===15) player.arcaneTeleport = true;
+      if (lv===18) player.arcaneOverload = true;
+      if (lv===20) { player.allDmgMult *= 1.5; player.abilityPower = Math.floor(player.abilityPower * 1.5); }
+      break;
+    case 'Time':
+      if (lv===3) player.timeCDR = Math.max(player.timeCDR, 0.15);
+      if (lv===5) { player.timeHaste = true; player.spd *= 1.1; player.atkSpdMult *= 1.1; }
+      if (lv===8) { player.timeRewind = true; player.timeRewindHP = player.hp; }
+      if (lv===10) player.timeSlowAura = true;
+      if (lv===13) player.timeCDR = Math.max(player.timeCDR, 0.30);
+      if (lv===15) player.timeFreeze = true;
+      if (lv===18) player.timeLoop = true;
+      if (lv===20) player.timeStop = true;
+      break;
+    case 'Chaos':
+      if (lv===3) player.chaosChance = Math.max(player.chaosChance, 0.1);
+      if (lv===5) player.chaosExplosion = true;
+      if (lv===8) player.chaosRandom = true;
+      if (lv===10) player.chaosWarp = true;
+      if (lv===13) player.chaosMutate = true;
+      if (lv===15) player.chaosMadness = true;
+      if (lv===18) player.chaosRift = true;
+      if (lv===20) player.chaosApocalypse = true;
       break;
   }
 }
@@ -2454,10 +2770,15 @@ function fuseWeapons(name) {
 function checkPickups() {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const p = pickups[i];
-    if (dist(p, player) < 1) {
+    if (dist(p, player) < 1.5) {
       if (p.type === 'weapon') {
         const wt = { ...WEAPON_TYPES[p.weaponType] };
         player.weapons.push(wt);
+        playSound('pickupWeapon');
+      } else if (p.type === 'health') {
+        const healAmt = Math.floor(player.maxHp * 0.10);
+        player.hp = Math.min(player.maxHp, player.hp + healAmt);
+        addDamageNumber(player.x, player.y, healAmt, false, '+HEAL');
         playSound('pickupWeapon');
       }
       pickups.splice(i, 1);
@@ -2649,7 +2970,7 @@ function render() {
       const headR = spriteW * 0.35;
       const eName = (e.name || '').replace(/\+/g, '');
 
-      if (eName === 'Grunt') {
+      if (eName === 'Goblin') {
         // Humanoid with helmet, holding pistol
         ctx.fillStyle = dark;
         ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.2, spriteW*0.7, spriteH*0.55);
@@ -2672,7 +2993,7 @@ function render() {
         ctx.fillStyle = dark;
         ctx.fillRect(screenX - spriteW*0.25, spriteTop + spriteH*0.78, spriteW*0.18, spriteH*0.22);
         ctx.fillRect(screenX + spriteW*0.07, spriteTop + spriteH*0.78, spriteW*0.18, spriteH*0.22);
-      } else if (eName === 'Shotgunner') {
+      } else if (eName === 'Orc Warrior') {
         // Stockier, wider shoulders, shotgun
         ctx.fillStyle = dark;
         ctx.fillRect(screenX - spriteW*0.45, spriteTop + spriteH*0.18, spriteW*0.9, spriteH*0.58);
@@ -2697,7 +3018,7 @@ function render() {
         ctx.fillStyle = dark;
         ctx.fillRect(screenX - spriteW*0.3, spriteTop + spriteH*0.78, spriteW*0.24, spriteH*0.22);
         ctx.fillRect(screenX + spriteW*0.06, spriteTop + spriteH*0.78, spriteW*0.24, spriteH*0.22);
-      } else if (eName === 'Rifleman') {
+      } else if (eName === 'Dark Elf') {
         // Tall, slim, long rifle
         ctx.fillStyle = mid;
         ctx.fillRect(screenX - spriteW*0.25, spriteTop + spriteH*0.2, spriteW*0.5, spriteH*0.55);
@@ -2718,7 +3039,7 @@ function render() {
         ctx.fillStyle = dark;
         ctx.fillRect(screenX - spriteW*0.18, spriteTop + spriteH*0.78, spriteW*0.14, spriteH*0.22);
         ctx.fillRect(screenX + spriteW*0.04, spriteTop + spriteH*0.78, spriteW*0.14, spriteH*0.22);
-      } else if (eName === 'Sniper') {
+      } else if (eName === 'Shadow Ranger') {
         // Crouched pose, scope visible
         ctx.fillStyle = mid;
         ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.35, spriteW*0.7, spriteH*0.35);
@@ -2742,7 +3063,7 @@ function render() {
         ctx.fillRect(screenX + spriteW*0.05, spriteTop + spriteH*0.72, spriteW*0.25, spriteH*0.12);
         ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.82, spriteW*0.15, spriteH*0.18);
         ctx.fillRect(screenX + spriteW*0.2, spriteTop + spriteH*0.82, spriteW*0.15, spriteH*0.18);
-      } else if (eName === 'Heavy') {
+      } else if (eName === 'Ogre') {
         // Very wide and big, gun with barrel
         ctx.fillStyle = dark;
         ctx.fillRect(screenX - spriteW*0.5, spriteTop + spriteH*0.15, spriteW, spriteH*0.65);
@@ -2765,7 +3086,7 @@ function render() {
         ctx.fillStyle = dark;
         ctx.fillRect(screenX - spriteW*0.35, spriteTop + spriteH*0.8, spriteW*0.28, spriteH*0.2);
         ctx.fillRect(screenX + spriteW*0.07, spriteTop + spriteH*0.8, spriteW*0.28, spriteH*0.2);
-      } else if (eName === 'Bomber') {
+      } else if (eName === 'Goblin Sapper') {
         // Medium with visible bomb in hand
         ctx.fillStyle = mid;
         ctx.fillRect(screenX - spriteW*0.3, spriteTop + spriteH*0.2, spriteW*0.6, spriteH*0.55);
@@ -2788,7 +3109,7 @@ function render() {
         ctx.fillStyle = dark;
         ctx.fillRect(screenX - spriteW*0.25, spriteTop + spriteH*0.78, spriteW*0.18, spriteH*0.22);
         ctx.fillRect(screenX + spriteW*0.07, spriteTop + spriteH*0.78, spriteW*0.18, spriteH*0.22);
-      } else if (eName === 'Assassin') {
+      } else if (eName === 'Imp') {
         // Thin, hunched, dual daggers
         ctx.fillStyle = mid;
         ctx.fillRect(screenX - spriteW*0.2, spriteTop + spriteH*0.25, spriteW*0.4, spriteH*0.45);
@@ -2885,14 +3206,23 @@ function render() {
 
       ctx.save();
       ctx.globalAlpha = 0.8 + Math.sin(gameTime / 200) * 0.2;
-      ctx.fillStyle = '#0f0';
-      ctx.strokeStyle = '#0f0';
-      ctx.lineWidth = 2;
       const pickupY = H/2 + player.pitch * H;
-      ctx.strokeRect(screenX - size/2, pickupY - size/2, size, size);
-      ctx.font = `${size * 0.6}px monospace`;
-      ctx.textAlign = 'center';
-      ctx.fillText('W', screenX, pickupY + size * 0.2);
+      if (s.entity.type === 'health') {
+        // Health orb: pulsing green/red cross
+        ctx.fillStyle = '#0f0';
+        ctx.shadowColor = '#0f0';
+        ctx.shadowBlur = 8;
+        ctx.fillRect(screenX - size*0.1, pickupY - size*0.4, size*0.2, size*0.8);
+        ctx.fillRect(screenX - size*0.4, pickupY - size*0.1, size*0.8, size*0.2);
+      } else {
+        ctx.fillStyle = '#0f0';
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(screenX - size/2, pickupY - size/2, size, size);
+        ctx.font = `${size * 0.6}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText('W', screenX, pickupY + size * 0.2);
+      }
       ctx.restore();
     }
   }
@@ -3523,7 +3853,7 @@ function gameLoop(time) {
   let moveX = 0, moveY = 0;
   player.moving = false;
 
-  const effectiveSpeed = MOVE_SPEED * player.spd * (1 + player.speedBuff + player.allStatsBuff);
+  const effectiveSpeed = MOVE_SPEED * player.spd * (1 + player.speedBuff + player.allStatsBuff + (player.bloodFrenzyTimer > 0 ? 0.2 : 0));
 
   if (player.dashing) {
     player.dashTimer -= dt;
@@ -3581,8 +3911,9 @@ function gameLoop(time) {
   player.fireTimer = Math.max(0, player.fireTimer - dt);
 
   // ── COOLDOWNS & TIMERS ──
-  player.skillCooldown = Math.max(0, player.skillCooldown - dt);
-  player.ultCooldown = Math.max(0, player.ultCooldown - dt);
+  const cdMultiplier = 1 + player.timeCDR;
+  player.skillCooldown = Math.max(0, player.skillCooldown - dt * cdMultiplier);
+  player.ultCooldown = Math.max(0, player.ultCooldown - dt * cdMultiplier);
   player.muzzleFlash = Math.max(0, player.muzzleFlash - dt * 3);
   player.screenShake = Math.max(0, player.screenShake - dt * 0.02);
   player.damageVignette = Math.max(0, player.damageVignette - dt);
@@ -3618,12 +3949,201 @@ function gameLoop(time) {
     if (player.invisTimer <= 0) player.invisible = false;
   }
 
-  // Regen
+  // Universal passive regen (all builds get base healing)
+  player.baseRegenTimer -= dt;
+  if (player.baseRegenTimer <= 0) {
+    player.baseRegenTimer = 3000;
+    const totalRegen = player.baseRegenRate + player.natureRegen + player.natureHealAura;
+    player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.floor(player.maxHp * totalRegen)));
+  }
+  // Shield emblem regen (stacks with base regen)
   if (player.regenRate > 0) {
     player.regenTimer -= dt;
     if (player.regenTimer <= 0) {
       player.regenTimer = 5000;
       player.hp = Math.min(player.maxHp, player.hp + Math.floor(player.maxHp * player.regenRate));
+    }
+  }
+
+  // Blood Frenzy speed boost
+  if (player.bloodFrenzyTimer > 0) {
+    player.bloodFrenzyTimer -= dt;
+  }
+
+  // Blood Rage: below 50% HP = +30% damage
+  // (applied in calcDamage check below)
+
+  // Blood Siphon: drain nearby enemies passively
+  if (player.bloodSiphon) {
+    if (!player._bloodSiphonTick) player._bloodSiphonTick = 0;
+    player._bloodSiphonTick -= dt;
+    if (player._bloodSiphonTick <= 0) {
+      player._bloodSiphonTick = 1000;
+      for (const e of enemies) {
+        if (e.hp > 0 && dist(e, player) < 4) {
+          const sdmg = Math.floor(5 + player.atk * 0.2);
+          e.hp -= sdmg;
+          player.hp = Math.min(player.maxHp, player.hp + sdmg);
+          if (e.hp <= 0) onEnemyKill(e);
+        }
+      }
+    }
+  }
+
+  // Blood Lord: constant drain aura
+  if (player.bloodLord) {
+    if (!player._bloodLordTick) player._bloodLordTick = 0;
+    player._bloodLordTick -= dt;
+    if (player._bloodLordTick <= 0) {
+      player._bloodLordTick = 500;
+      for (const e of enemies) {
+        if (e.hp > 0 && dist(e, player) < 6) {
+          const ldmg = Math.floor(10 + player.atk * 0.3);
+          e.hp -= ldmg;
+          player.hp = Math.min(player.maxHp, player.hp + Math.floor(ldmg * 0.5));
+          if (e.hp <= 0) onEnemyKill(e);
+        }
+      }
+    }
+  }
+
+  // Nature Entangle: slow nearby enemies
+  if (player.natureEntangle) {
+    for (const e of enemies) {
+      if (e.hp > 0 && dist(e, player) < 4) {
+        e.slowed = true; e.slowTimer = 1000;
+      }
+    }
+  }
+
+  // Nature Sprout: root random enemy every 10s
+  if (player.natureSprout) {
+    if (!player._sproutTimer) player._sproutTimer = 10000;
+    player._sproutTimer -= dt;
+    if (player._sproutTimer <= 0) {
+      player._sproutTimer = 10000;
+      const targets = enemies.filter(e => e.hp > 0 && dist(e, player) < 10);
+      if (targets.length > 0) {
+        const t = targets[randInt(0, targets.length - 1)];
+        t.stunned = true; t.stunTimer = 2000;
+        spawnExplosion(t.x, t.y, '#4d8');
+      }
+    }
+  }
+
+  // Nature Gaia: full heal every 60s
+  if (player.natureGaia) {
+    if (!player._gaiaTimer) player._gaiaTimer = 60000;
+    player._gaiaTimer -= dt;
+    if (player._gaiaTimer <= 0) {
+      player._gaiaTimer = 60000;
+      player.hp = player.maxHp;
+      for (let i = 0; i < 20; i++) particles.push({ x: player.x+rand(-2,2), y: player.y+rand(-2,2), dx: 0, dy: -0.01, life: 800, color: '#4d8', size: rand(3,7) });
+      player.screenShake = 5;
+    }
+  }
+
+  // Arcane Missiles: auto-fire homing missiles
+  if (player.arcaneMissiles) {
+    player.arcaneMissileTimer -= dt;
+    if (player.arcaneMissileTimer <= 0) {
+      player.arcaneMissileTimer = 2000;
+      const targets = enemies.filter(e => e.hp > 0 && dist(e, player) < 12);
+      if (targets.length > 0) {
+        const t = targets[randInt(0, targets.length - 1)];
+        const mDmg = Math.floor((15 + player.abilityPower * 0.5) * player.allDmgMult);
+        damageEnemy(t, mDmg, false);
+        addDamageNumber(t.x, t.y, mDmg, false);
+        // Missile trail particles
+        for (let i = 0; i < 4; i++) { const tt = i/4; particles.push({ x: lerp(player.x,t.x,tt), y: lerp(player.y,t.y,tt), dx: 0, dy: 0, life: 300, color: '#c4f', size: 3 }); }
+      }
+    }
+  }
+
+  // Arcane Nova: AoE burst every 8s
+  if (player.arcaneNova) {
+    player.arcaneNovaTimer -= dt;
+    if (player.arcaneNovaTimer <= 0) {
+      player.arcaneNovaTimer = 8000;
+      for (const e of enemies) {
+        if (e.hp > 0 && dist(e, player) < 5) {
+          const nDmg = Math.floor((40 + player.abilityPower) * player.allDmgMult);
+          damageEnemy(e, nDmg, false);
+          addDamageNumber(e.x, e.y, nDmg, false);
+        }
+      }
+      spawnExplosion(player.x, player.y, '#c4f');
+      player.screenShake = 6;
+    }
+  }
+
+  // Time Slow Aura: slow nearby
+  if (player.timeSlowAura) {
+    for (const e of enemies) {
+      if (e.hp > 0 && dist(e, player) < 5) {
+        e.slowed = true; e.slowTimer = 500;
+      }
+    }
+  }
+
+  // Time Freeze: stun all every 20s for 2s
+  if (player.timeFreeze) {
+    if (!player._timeFreezeTimer) player._timeFreezeTimer = 20000;
+    player._timeFreezeTimer -= dt;
+    if (player._timeFreezeTimer <= 0) {
+      player._timeFreezeTimer = 20000;
+      for (const e of enemies) {
+        if (e.hp > 0) { e.stunned = true; e.stunTimer = 2000; }
+      }
+    }
+  }
+
+  // Time Stop: freeze all 5s every 30s
+  if (player.timeStop) {
+    if (!player._timeStopTimer) player._timeStopTimer = 30000;
+    player._timeStopTimer -= dt;
+    if (player._timeStopTimer <= 0) {
+      player._timeStopTimer = 30000;
+      for (const e of enemies) {
+        if (e.hp > 0) { e.frozen = true; e.freezeTimer = 5000; }
+      }
+      player.screenShake = 10;
+    }
+  }
+
+  // Chaos Random Buff: every 15s
+  if (player.chaosRandom) {
+    if (!player._chaosBuffTimer) player._chaosBuffTimer = 15000;
+    player._chaosBuffTimer -= dt;
+    if (player._chaosBuffTimer <= 0) {
+      player._chaosBuffTimer = 15000;
+      const buffs = [
+        () => { player.atk += 5; addDamageNumber(player.x, player.y, 0, false, '+5 ATK'); },
+        () => { player.crit += 5; addDamageNumber(player.x, player.y, 0, false, '+5 CRIT'); },
+        () => { player.maxHp += 20; player.hp += 20; addDamageNumber(player.x, player.y, 0, false, '+20 HP'); },
+        () => { player.def += 3; addDamageNumber(player.x, player.y, 0, false, '+3 DEF'); },
+        () => { player.hp = player.maxHp; addDamageNumber(player.x, player.y, 0, false, 'FULL HEAL'); },
+      ];
+      buffs[Math.floor(Math.random() * buffs.length)]();
+    }
+  }
+
+  // Chaos Apocalypse: nuke every 45s
+  if (player.chaosApocalypse) {
+    if (!player._apocalypseTimer) player._apocalypseTimer = 45000;
+    player._apocalypseTimer -= dt;
+    if (player._apocalypseTimer <= 0) {
+      player._apocalypseTimer = 45000;
+      for (const e of enemies) {
+        if (e.hp > 0) {
+          const aDmg = Math.floor((200 + player.atk * 5) * player.allDmgMult);
+          damageEnemy(e, aDmg, false);
+          addDamageNumber(e.x, e.y, aDmg, true);
+        }
+      }
+      for (let i = 0; i < 30; i++) particles.push({ x: player.x+rand(-5,5), y: player.y+rand(-5,5), dx: rand(-0.03,0.03), dy: rand(-0.03,0.03), life: 1000, color: '#f44', size: rand(5,10) });
+      player.screenShake = 20;
+      addDamageNumber(player.x, player.y, 0, false, 'APOCALYPSE!');
     }
   }
 
@@ -3969,6 +4489,7 @@ function gameLoop(time) {
           }
           if (player.hp <= 0) {
             if (player.resurrection) { player.resurrection = false; player.hp = player.maxHp; }
+            else if (player.timeLoop) { player.timeLoop = false; player.hp = player.timeRewindHP > 0 ? player.timeRewindHP : Math.floor(player.maxHp * 0.5); }
             else if (player.reviveAvailable) { player.reviveAvailable = false; player.hp = Math.floor(player.maxHp * 0.3); }
             else { gameOver(); return; }
           }
