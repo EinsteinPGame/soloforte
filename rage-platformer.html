@@ -1071,38 +1071,63 @@ function buildLevel8() {
     platforms: [
       // The ONE continuous ground platform — the whole secret
       { id: 'ground', x: 0, y: groundY, w: CANVAS_W, h: 40, type: 'normal', color: '#2a1f0e' },
-      // Alternate path platforms — real, genuinely deadly
-      { id: 'alt1', x: 200, y: groundY - 70, w: 80, h: 14, type: 'normal', color: '#3a2a0e' },
-      { id: 'alt2', x: 310, y: groundY - 130, w: 80, h: 14, type: 'normal', color: '#3a2a0e' },
-      { id: 'alt3', x: 420, y: groundY - 180, w: 70, h: 14, type: 'normal', color: '#3a2a0e' },
-      { id: 'alt4', x: 510, y: groundY - 220, w: 80, h: 14, type: 'normal', color: '#3a2a0e' },
-      { id: 'alt5', x: 610, y: groundY - 200, w: 70, h: 14, type: 'normal', color: '#3a2a0e' },
-      { id: 'alt6', x: 700, y: groundY - 230, w: 60, h: 14, type: 'normal', color: '#3a2a0e' },
+      // Alternate path — leads to portal into fake room
+      { id: 'alt1', x: 200, y: groundY - 70, w: 90, h: 14, type: 'normal', color: '#3a2a0e' },
+      { id: 'alt2', x: 310, y: groundY - 130, w: 85, h: 14, type: 'normal', color: '#3a2a0e' },
+      { id: 'alt3', x: 180, y: groundY - 190, w: 80, h: 14, type: 'normal', color: '#3a2a0e' },
+      // Portal platform — stepping on this teleports to alt room
+      { id: 'altPortal', x: 280, y: groundY - 240, w: 70, h: 14, type: 'normal', color: '#6644aa' },
     ],
     movingSpikes: [],
     levelSpikes: [],
-    // Real spikes on the alternate path (placed on or above alt platforms)
-    altSpikes: [
-      { x: 200, y: groundY - 84, w: 14, h: 14 },
-      { x: 218, y: groundY - 84, w: 14, h: 14 },
-      { x: 236, y: groundY - 84, w: 14, h: 14 },
-      { x: 310, y: groundY - 144, w: 14, h: 14 },
-      { x: 328, y: groundY - 144, w: 14, h: 14 },
-      { x: 346, y: groundY - 144, w: 14, h: 14 },
-      { x: 364, y: groundY - 144, w: 14, h: 14 },
-      { x: 420, y: groundY - 194, w: 14, h: 14 },
-      { x: 438, y: groundY - 194, w: 14, h: 14 },
-      { x: 456, y: groundY - 194, w: 14, h: 14 },
-      { x: 474, y: groundY - 194, w: 14, h: 14 },
-      { x: 510, y: groundY - 234, w: 14, h: 14 },
-      { x: 528, y: groundY - 234, w: 14, h: 14 },
-      { x: 546, y: groundY - 234, w: 14, h: 14 },
-      { x: 610, y: groundY - 214, w: 14, h: 14 },
-      { x: 628, y: groundY - 214, w: 14, h: 14 },
-      { x: 700, y: groundY - 244, w: 14, h: 14 },
-      { x: 718, y: groundY - 244, w: 14, h: 14 },
-      { x: 736, y: groundY - 244, w: 14, h: 14 },
+    // No real spikes on the alt path to portal — it's reachable (the trap is the room itself)
+    altSpikes: [],
+    // Alt room state
+    inAltRoom: false,
+    altRoomBg: '#0a1a20',
+    altRoomPlatforms: [
+      // Floor segments with gaps (looks navigable)
+      { x: 0, y: groundY, w: 120, h: 40, color: '#1a3040' },
+      { x: 160, y: groundY, w: 100, h: 40, color: '#1a3040' },
+      { x: 300, y: groundY, w: 130, h: 40, color: '#1a3040' },
+      { x: 470, y: groundY, w: 110, h: 40, color: '#1a3040' },
+      { x: 620, y: groundY, w: 100, h: 40, color: '#1a3040' },
+      { x: 760, y: groundY, w: 140, h: 40, color: '#1a3040' },
+      // Mid platforms (look like stepping stones)
+      { x: 80, y: groundY - 80, w: 70, h: 14, color: '#2a4050' },
+      { x: 220, y: groundY - 110, w: 65, h: 14, color: '#2a4050' },
+      { x: 370, y: groundY - 90, w: 75, h: 14, color: '#2a4050' },
+      { x: 510, y: groundY - 130, w: 70, h: 14, color: '#2a4050' },
+      { x: 650, y: groundY - 100, w: 60, h: 14, color: '#2a4050' },
+      // High platform near fake gate
+      { x: 780, y: groundY - 160, w: 100, h: 14, color: '#2a5040' },
     ],
+    // Real spikes in alt room — cover EVERY gap and landing zone (impossible)
+    altRoomSpikes: [
+      // Spikes in every gap
+      { x: 122, y: groundY - 14, w: 36, h: 14 },
+      { x: 262, y: groundY - 14, w: 36, h: 14 },
+      { x: 432, y: groundY - 14, w: 36, h: 14 },
+      { x: 582, y: groundY - 14, w: 36, h: 14 },
+      { x: 722, y: groundY - 14, w: 36, h: 14 },
+      // Spikes ON platforms (hidden under visual trickery, or on landing edges)
+      { x: 82, y: groundY - 94, w: 14, h: 14 },
+      { x: 130, y: groundY - 94, w: 14, h: 14 },
+      { x: 222, y: groundY - 124, w: 14, h: 14 },
+      { x: 265, y: groundY - 124, w: 14, h: 14 },
+      { x: 372, y: groundY - 104, w: 14, h: 14 },
+      { x: 425, y: groundY - 104, w: 14, h: 14 },
+      { x: 512, y: groundY - 144, w: 14, h: 14 },
+      { x: 560, y: groundY - 144, w: 14, h: 14 },
+      { x: 652, y: groundY - 114, w: 14, h: 14 },
+      { x: 695, y: groundY - 114, w: 14, h: 14 },
+      // Spikes near fake gate platform
+      { x: 782, y: groundY - 174, w: 14, h: 14 },
+      { x: 850, y: groundY - 174, w: 14, h: 14 },
+      { x: 810, y: groundY - 174, w: 14, h: 14 },
+    ],
+    altRoomFakeGateX: 820,
+    altRoomFakeGateY: groundY - 200,
     // Fake visuals only — no collision
     fakeSpikes: [
       // Scattered across the ground level to look scary
@@ -1280,6 +1305,8 @@ function initLevel(n) {
     level.boulderDropped = false;
     level.boulderLanded = false;
     level.boulderDustParticles = [];
+    level.inAltRoom = false;
+    level.altRoomTransitionTimer = 0;
   }
   resetPlayer(level.spawnX, level.spawnY - player.h);
   // Reset player2 for dual player levels
@@ -1337,8 +1364,9 @@ function updateSinglePlayer(p, moveLeft, moveRight, doJump, dt) {
   // Y movement
   p.y += p.vy;
 
-  // Platform collisions
-  for (const plat of level.platforms) {
+  // Platform collisions (skip when in alt room — alt room handles its own)
+  const _platList = (level.isIllusionPath && level.inAltRoom) ? [] : level.platforms;
+  for (const plat of _platList) {
     if (plat.state === 'gone') continue;
     if (plat.type === 'barrier' && plat.state !== 'active') continue;
     // Barriers act as solid walls
@@ -1522,7 +1550,60 @@ function updatePlayer(dt) {
 
     // Illusion Path logic (Level 8)
     if (level.isIllusionPath) {
+      // Alt room transition: check if player is on the portal platform
+      if (!level.inAltRoom) {
+        const portalPlat = level.platforms.find(p => p.id === 'altPortal');
+        if (portalPlat && player.onGround && player.y + player.h <= portalPlat.y + 4 &&
+            player.x > portalPlat.x && player.x + player.w < portalPlat.x + portalPlat.w + 10 &&
+            Math.abs(player.y + player.h - portalPlat.y) < 6) {
+          // Teleport to alt room
+          level.inAltRoom = true;
+          level.altRoomTransitionTimer = 40; // flash effect
+          player.x = 30;
+          player.y = CANVAS_H - 40 - 40 - player.h;
+          player.vx = 0;
+          player.vy = 0;
+          shakeTimer = 15;
+          shakeIntensity = 6;
+        }
+      }
+      // Alt room: handle platform collision and spike collision
+      if (level.inAltRoom) {
+        if (level.altRoomTransitionTimer > 0) {
+          level.altRoomTransitionTimer--;
+          if (level.altRoomTransitionTimer > 20) { player.vx = 0; player.vy = 0; return; }
+        }
+        // Check alt room platform collision
+        const arp = level.altRoomPlatforms;
+        let onPlatform = false;
+        for (const p of arp) {
+          if (player.x + player.w > p.x && player.x < p.x + p.w) {
+            // Land on top
+            if (player.vy >= 0 && player.y + player.h >= p.y && player.y + player.h <= p.y + p.h + 6) {
+              player.y = p.y - player.h;
+              player.vy = 0;
+              player.onGround = true;
+              onPlatform = true;
+            }
+          }
+        }
+        // Check alt room spike collision
+        for (const s of level.altRoomSpikes) {
+          if (rectOverlap(player.x + 2, player.y + 2, player.w - 4, player.h - 4, s.x, s.y, s.w, s.h)) {
+            killPlayer();
+            return;
+          }
+        }
+        // Check if player fell off
+        if (player.y > CANVAS_H + 50) {
+          killPlayer();
+          return;
+        }
+        // Fake gate — reaching it does nothing (just looks like a gate), so no win check needed
+      }
       const b = level.boulder;
+      // Skip boulder/main path logic if in alt room
+      if (!level.inAltRoom) {
       // Trigger boulder drop once player moves past x=120
       if (!b.dropped && player.x > 120) {
         b.dropped = true;
@@ -1573,11 +1654,12 @@ function updatePlayer(dt) {
         killPlayer();
         return;
       }
+      } // end !inAltRoom block
     }
 
     // Win check
     const ex = level.endX, ey = level.endY;
-    if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H) && !(level.isFlip && !level.gateActive)) {
+    if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H) && !(level.isFlip && !level.gateActive) && !(level.isIllusionPath && level.inAltRoom)) {
       if (level.isLoop && level.loopCount < level.loopTarget - 1) {
         level.loopCount++;
         player.x = level.spawnX;
@@ -2985,11 +3067,87 @@ function drawIllusionPath() {
   const b = level.boulder;
   const groundY = CANVAS_H - 40;
 
+  // ALT ROOM: completely different rendering
+  if (level.inAltRoom) {
+    // Override background
+    ctx.fillStyle = level.altRoomBg;
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    // Grid (different color from main level)
+    ctx.strokeStyle = 'rgba(100,200,255,0.04)';
+    ctx.lineWidth = 1;
+    for (let gx = 0; gx < CANVAS_W; gx += 40) {
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, CANVAS_H); ctx.stroke();
+    }
+    for (let gy = 0; gy < CANVAS_H; gy += 40) {
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(CANVAS_W, gy); ctx.stroke();
+    }
+    // Draw alt room platforms
+    for (const p of level.altRoomPlatforms) {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      // Platform edge highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(p.x, p.y, p.w, 2);
+    }
+    // Draw alt room spikes
+    ctx.fillStyle = '#cc2222';
+    for (const s of level.altRoomSpikes) {
+      const sw2 = s.w;
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y + s.h);
+      ctx.lineTo(s.x + sw2 / 2, s.y);
+      ctx.lineTo(s.x + sw2, s.y + s.h);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Draw FAKE gate at the end (looks real but does nothing!)
+    drawGate(level.altRoomFakeGateX, level.altRoomFakeGateY, true);
+    // "EXIT" text above fake gate to make it look legit
+    ctx.fillStyle = '#44ff88';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('EXIT', level.altRoomFakeGateX + GATE_W / 2, level.altRoomFakeGateY - 8);
+    // Room title flash
+    if (level.altRoomTransitionTimer > 0) {
+      const alpha = level.altRoomTransitionTimer / 40;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      ctx.globalAlpha = 1;
+    }
+    // HUD: "SECRET ROOM" label
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(CANVAS_W / 2 - 60, 4, 120, 20);
+    ctx.fillStyle = '#88ccff';
+    ctx.font = 'bold 11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('SECRET ROOM', CANVAS_W / 2, 17);
+    return; // don't draw main path stuff
+  }
+
+  // MAIN PATH: original illusion path rendering
+  // Draw portal glow on alt path portal platform
+  const portalPlat = level.platforms.find(p => p.id === 'altPortal');
+  if (portalPlat) {
+    const pulse = 0.4 + Math.sin(Date.now() / 300) * 0.3;
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#8866ff';
+    ctx.shadowColor = '#8866ff';
+    ctx.shadowBlur = 20;
+    ctx.fillRect(portalPlat.x - 4, portalPlat.y - 30, portalPlat.w + 8, 30);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+    // Portal text
+    ctx.fillStyle = '#ccaaff';
+    ctx.font = 'bold 10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('ENTER', portalPlat.x + portalPlat.w / 2, portalPlat.y - 8);
+  }
+
   // Draw fake gaps (dark rectangles on top of ground, purely visual)
   ctx.fillStyle = '#0a0804';
   for (const g of (level.fakeGaps || [])) {
     ctx.fillRect(g.x, g.y, g.w, g.h);
-    // Make the edges look crumbled
     ctx.fillStyle = '#1a1008';
     ctx.fillRect(g.x, g.y, 4, g.h);
     ctx.fillRect(g.x + g.w - 4, g.y, 4, g.h);
@@ -3012,42 +3170,6 @@ function drawIllusionPath() {
     }
   }
 
-  // Draw real alt path spikes (same color — player can't tell the difference, that's the point)
-  ctx.fillStyle = '#cc2222';
-  for (const s of (level.altSpikes || [])) {
-    const count = Math.max(1, Math.floor(s.w / 14));
-    const sw2 = s.w / count;
-    for (let i = 0; i < count; i++) {
-      const ix = s.x + i * sw2;
-      ctx.beginPath();
-      ctx.moveTo(ix, s.y + s.h);
-      ctx.lineTo(ix + sw2 / 2, s.y);
-      ctx.lineTo(ix + sw2, s.y + s.h);
-      ctx.closePath();
-      ctx.fill();
-    }
-  }
-
-  // Draw fake gate at end of alt path (dimmed, decorative)
-  if (level.platforms) {
-    const lastAlt = level.platforms.find(p => p.id === 'alt6');
-    if (lastAlt) {
-      ctx.globalAlpha = 0.35;
-      drawGate(lastAlt.x + 4, lastAlt.y - 40, true);
-      ctx.globalAlpha = 1;
-      // Draw X over it
-      ctx.strokeStyle = '#ff3333';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(lastAlt.x + 4, lastAlt.y - 40);
-      ctx.lineTo(lastAlt.x + 4 + GATE_W, lastAlt.y - 40 + GATE_H);
-      ctx.moveTo(lastAlt.x + 4 + GATE_W, lastAlt.y - 40);
-      ctx.lineTo(lastAlt.x + 4, lastAlt.y - 40 + GATE_H);
-      ctx.stroke();
-      ctx.lineWidth = 1;
-    }
-  }
-
   // Draw boulder dust particles
   for (const dp of (level.boulderDustParticles || [])) {
     const alpha = dp.life / dp.maxLife;
@@ -3062,7 +3184,6 @@ function drawIllusionPath() {
   // Draw boulder
   if (b.dropped || b.y > -80) {
     ctx.save();
-    // Shadow under boulder
     if (b.rolling || b.y > 0) {
       const shadowAlpha = Math.max(0, 0.5 - Math.abs(b.y - (groundY - b.radius)) / 200);
       ctx.globalAlpha = shadowAlpha;
@@ -3072,21 +3193,18 @@ function drawIllusionPath() {
       ctx.fill();
       ctx.globalAlpha = 1;
     }
-    // Main circle
     ctx.fillStyle = '#5a3a1a';
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
     ctx.fill();
-    // Texture — lighter ring
     ctx.strokeStyle = '#7a5a2a';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.radius * 0.75, 0, Math.PI * 2);
     ctx.stroke();
-    // Cross-hatch lines
     ctx.strokeStyle = '#3a2010';
     ctx.lineWidth = 2;
-    const angle = (b.x * 0.04); // rotate with rolling position
+    const angle = (b.x * 0.04);
     for (let li = 0; li < 4; li++) {
       const a = angle + (li * Math.PI / 4);
       ctx.beginPath();
@@ -3094,7 +3212,6 @@ function drawIllusionPath() {
       ctx.lineTo(b.x + Math.cos(a + Math.PI) * b.radius * 0.9, b.y + Math.sin(a + Math.PI) * b.radius * 0.9);
       ctx.stroke();
     }
-    // Highlight
     ctx.fillStyle = 'rgba(255,220,160,0.18)';
     ctx.beginPath();
     ctx.arc(b.x - b.radius * 0.3, b.y - b.radius * 0.3, b.radius * 0.35, 0, Math.PI * 2);
@@ -3102,7 +3219,7 @@ function drawIllusionPath() {
     ctx.restore();
   }
 
-  // Death ceiling warning line (subtle, visible when boulder has landed)
+  // Death ceiling warning line
   if (level.boulderLanded) {
     ctx.globalAlpha = 0.18;
     ctx.strokeStyle = '#ff2200';
@@ -3161,8 +3278,11 @@ function render() {
     ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(CANVAS_W, gy); ctx.stroke();
   }
 
+  // Skip main level rendering when in alt room (alt room draws its own)
+  const _skipMainDraw = level.isIllusionPath && level.inAltRoom;
+
   // Floor spikes
-  for (const s of level.spikes) drawSpike(s.x, s.y, s.w, s.h);
+  if (!_skipMainDraw) for (const s of level.spikes) drawSpike(s.x, s.y, s.w, s.h);
   // Ceiling spikes
   for (const s of (level.ceilingSpikes || [])) {
     // Ceiling spikes point down
@@ -3181,7 +3301,7 @@ function render() {
   }
 
   // Platforms
-  for (const p of level.platforms) drawPlatform(p);
+  if (!_skipMainDraw) for (const p of level.platforms) drawPlatform(p);
 
   // Moving spikes
   for (const s of level.movingSpikes) drawMovingSpike(s);
@@ -3200,13 +3320,13 @@ function render() {
   }
 
   // Gates
-  if (!level.isArena && !level.isIllusion) {
+  if (!level.isArena && !level.isIllusion && !_skipMainDraw) {
     drawGate(level.spawnX - GATE_W / 2, level.spawnY - GATE_H, false);
     if (level.isDualPlayer) {
       drawGate(level.spawn2X - GATE_W / 2, level.spawn2Y - GATE_H, false);
     }
   }
-  if (!level.isArena && !level.isIllusion) {
+  if (!level.isArena && !level.isIllusion && !_skipMainDraw) {
     if (level.isLoop && level.loopCount >= level.loopTarget - 1) {
       drawLoopGate(level.endX, level.endY);
     } else if (level.isFlip && !level.gateActive) {
