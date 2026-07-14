@@ -1996,7 +1996,7 @@ function drawMinimap(ctx2,W,H){
 function updateProjectiles(dt){
   const toRemove=[];
   projectiles.forEach((pr,pi)=>{
-    pr.x+=pr.vx*(dt/16);pr.y+=pr.vy*(dt/16);
+    pr.x+=(pr.vx||pr.dx||0)*(dt/16);pr.y+=(pr.vy||pr.dy||0)*(dt/16);
     pr.life-=dt;
     if(pr.life<=0){toRemove.push(pi);return;}
     // Wall collision
@@ -2004,16 +2004,17 @@ function updateProjectiles(dt){
     if(mx<0||mx>=MAP_W||my<0||my>=MAP_H||WORLD_MAP[my][mx]){
       if((pr.bouncesLeft||0)>0){
         // Determine bounce axis
-        const mxTest=Math.floor(pr.x+pr.vx*0.05);
-        const myTest=Math.floor(pr.y+pr.vy*0.05);
-        if(mxTest<0||mxTest>=MAP_W||WORLD_MAP[myTest]?.[mxTest])pr.vx*=-1;
-        else pr.vy*=-1;
+        const pvx=pr.vx||pr.dx||0,pvy=pr.vy||pr.dy||0;
+        const mxTest=Math.floor(pr.x+pvx*0.05);
+        const myTest=Math.floor(pr.y+pvy*0.05);
+        if(mxTest<0||mxTest>=MAP_W||WORLD_MAP[myTest]?.[mxTest]){if(pr.vx!==undefined)pr.vx*=-1;else pr.dx*=-1;}
+        else{if(pr.vy!==undefined)pr.vy*=-1;else pr.dy*=-1;}
         pr.bouncesLeft--;
       } else {toRemove.push(pi);}
       return;
     }
     // Enemy hit
-    if(pr.fromPlayer){
+    if(pr.fromPlayer||pr.friendly){
       enemies.forEach(e=>{
         const dx=pr.x-e.x,dy=pr.y-e.y;
         if(dx*dx+dy*dy<(e.radius||0.35)*(e.radius||0.35)){
@@ -2035,7 +2036,7 @@ function updateProjectiles(dt){
     } else {
       // Enemy projectile hits player
       const dx=pr.x-player.x,dy=pr.y-player.y;
-      if(dx*dx+dy*dy<300){
+      if(dx*dx+dy*dy<0.36){
         let dmg=pr.damage*(1-getArmorDef()*0.01);
         if(getEmblemLevel('Holy')>=10)dmg*=0.85;
         player.hp-=dmg;player.hitFlash=200;
@@ -2053,8 +2054,8 @@ function updateProjectiles(dt){
     projectiles.forEach(pr=>{
       if(!pr.fromPlayer){
         const dx=pr.x-player.x,dy=pr.y-player.y;
-        if(dx*dx+dy*dy<2500){
-          pr.fromPlayer=true;pr.vx*=-1.5;pr.vy*=-1.5;pr.damage*=2;
+        if(dx*dx+dy*dy<9){
+          pr.fromPlayer=true;pr.friendly=true;if(pr.vx!==undefined){pr.vx*=-1.5;pr.vy*=-1.5;}else{pr.dx*=-1.5;pr.dy*=-1.5;}pr.damage*=2;
           spawnParticles(player.x,player.y,8,'#0ff');
         }
       }
@@ -2068,7 +2069,7 @@ function chainLightningHit(origin,dmg,count){
   enemies.forEach(e=>{
     if(e===origin||hits>=count)return;
     const dx=e.x-origin.x,dy=e.y-origin.y;
-    if(dx*dx+dy*dy<90000){applyEnemyDamage(e,dmg);spawnParticles(e.x,e.y,5,'#ff0');hits++;}
+    if(dx*dx+dy*dy<25){applyEnemyDamage(e,dmg);spawnParticles(e.x,e.y,5,'#ff0');hits++;}
   });
 }
 
@@ -2081,7 +2082,7 @@ function getArmorDef(){
 function updateParticles(dt){
   for(let i=particles.length-1;i>=0;i--){
     const p=particles[i];
-    p.x+=p.vx*(dt/16);p.y+=p.vy*(dt/16);
+    p.x+=(p.vx||p.dx||0)*(dt/16);p.y+=(p.vy||p.dy||0)*(dt/16);
     p.life-=dt;p.alpha=p.life/p.maxLife;
     if(p.life<=0)particles.splice(i,1);
   }
@@ -2150,7 +2151,7 @@ function killEnemy(e){
   // Drop loot
   if(e.isBoss){
     // Boss drops weapon + health orb
-    pickups.push({x:e.x+rand(-20,20),y:e.y+rand(-20,20),type:'weapon',tier:'2+',life:20000});
+    pickups.push({x:e.x+rand(-1,1),y:e.y+rand(-1,1),type:'weapon',tier:'2+',life:20000});
     pickups.push({x:e.x,y:e.y,type:'healthOrb',healAmt:50,life:15000});
     showBossReward();
   } else {
@@ -2194,12 +2195,12 @@ function updateEnemies(dt){
     if(e.isBoss&&e.bossAbils){e.bossAbils.forEach(ab=>runBossAbility(e,ab,dt,dist));}
 
     // Move toward player
-    if(dist>30){
+    if(dist>1.5){
       e.x+=dx/dist*speed*(dt/16);e.y+=dy/dist*speed*(dt/16);
     }
 
     // Melee attack
-    if(dist<35){
+    if(dist<1.2){
       e.attackTimer=(e.attackTimer||0)+dt;
       if(e.attackTimer>e.attackCd){
         e.attackTimer=0;
@@ -2209,7 +2210,7 @@ function updateEnemies(dt){
       }
     }
     // Ranged attack
-    if(e.ranged&&dist<400&&dist>60){
+    if(e.ranged&&dist<15&&dist>2){
       e.rangedTimer=(e.rangedTimer||0)+dt;
       if(e.rangedTimer>(e.rangedCd||2000)){
         e.rangedTimer=0;
@@ -2221,7 +2222,7 @@ function updateEnemies(dt){
           const a=angle+(Math.random()-0.5)*spread;
           projectiles.push({
             x:e.x,y:e.y,
-            vx:Math.cos(a)*4,vy:Math.sin(a)*4,
+            vx:Math.cos(a)*0.08,vy:Math.sin(a)*0.08,
             damage:e.damage*0.7,fromPlayer:false,
             color:ET.color,life:3000,
             freeze:ET.freezeOnHit,burn:ET.burns,poison:ET.poisonOnHit,
@@ -2231,7 +2232,7 @@ function updateEnemies(dt){
     }
     // Lifesteal aura (some bosses)
     if(e.isBoss&&e.lifestealAura){
-      if(dist<100){e.hp=Math.min(e.maxHp,e.hp+e.maxHp*0.0005*dt);}
+      if(dist<8){e.hp=Math.min(e.maxHp,e.hp+e.maxHp*0.0005*dt);}
     }
   });
   for(let i=toRemove.length-1;i>=0;i--)enemies.splice(toRemove[i],1);
@@ -2246,7 +2247,7 @@ function updatePickups(dt){
     const dx=player.x-p.x,dy=player.y-p.y;
     const dist=Math.sqrt(dx*dx+dy*dy);
     // Auto-pickup within range (weapons auto if slot available)
-    const pickupRange=p.type==='healthOrb'?60:40;
+    const pickupRange=p.type==='healthOrb'?1.5:1.0;
     if(dist<pickupRange){
       if(p.type==='healthOrb'){player.hp=Math.min(player.maxHp,player.hp+(p.healAmt||15));playSound('heal');pickups.splice(i,1);}
       else if(p.type==='weapon'){
@@ -2297,7 +2298,7 @@ function applyEmblemPassives(dt){
       if(enemies.length>0){
         const t=enemies[Math.floor(Math.random()*enemies.length)];
         const angle=Math.atan2(t.y-player.y,t.x-player.x);
-        projectiles.push({x:player.x,y:player.y,vx:Math.cos(angle)*6,vy:Math.sin(angle)*6,damage:20+getEmblemLevel('Arcane'),fromPlayer:true,color:'#a0f',life:2000,pierce:false});
+        projectiles.push({x:player.x,y:player.y,vx:Math.cos(angle)*0.1,vy:Math.sin(angle)*0.1,damage:20+getEmblemLevel('Arcane'),fromPlayer:true,color:'#a0f',life:2000,pierce:false});
       }
     }
   }
@@ -2305,12 +2306,12 @@ function applyEmblemPassives(dt){
   if(getEmblemLevel('Chaos')>=10){
     if(Math.random()<0.001*dt){
       const angle=Math.random()*Math.PI*2;
-      projectiles.push({x:player.x,y:player.y,vx:Math.cos(angle)*8,vy:Math.sin(angle)*8,damage:35,fromPlayer:true,color:'#f0f',life:1500,pierce:true});
+      projectiles.push({x:player.x,y:player.y,vx:Math.cos(angle)*0.12,vy:Math.sin(angle)*0.12,damage:35,fromPlayer:true,color:'#f0f',life:1500,pierce:true});
     }
   }
   // Time: slow nearby enemies aura
   if(getEmblemLevel('Time')>=10){
-    enemies.forEach(e=>{if(Math.sqrt((e.x-player.x)**2+(e.y-player.y)**2)<150){e.frozen=true;e.freezeTimer=Math.max(e.freezeTimer||0,200);}});
+    enemies.forEach(e=>{if(Math.sqrt((e.x-player.x)**2+(e.y-player.y)**2)<6){e.frozen=true;e.freezeTimer=Math.max(e.freezeTimer||0,200);}});
   }
 }
 
@@ -2344,6 +2345,7 @@ function updatePlayer(dt){
   currentFOV+=(targetFOV-currentFOV)*0.15;
 
   // Cooldowns
+  if(player.fireTimer>0)player.fireTimer-=dt;
   if(player.skillCooldown>0)player.skillCooldown-=dt;
   if(player.ultCooldown>0)player.ultCooldown-=dt;
   if(armorAbilityCooldown>0)armorAbilityCooldown-=dt;
@@ -2572,6 +2574,7 @@ function triggerDeath(){
   document.exitPointerLock&&document.exitPointerLock();
   stopBGM();playSound('death');
 }
+function gameOver(){triggerDeath();}
 
 canvas.addEventListener('click',()=>{
   if(gameState==='gameOver'){initGame();startGame();}
@@ -2644,6 +2647,20 @@ function initGame(){
   unpausing=false;paused=false;
   player.x=MAP_W/2;player.y=MAP_H/2;
   player.angle=0;player.maxHp=player.maxHp||120;player.hp=player.maxHp;player.kills=0;
+  player.atk=10;player.def=0;player.level=1;player.xp=0;player.xpNeeded=15;
+  player.crit=5;player.critMult=1.5;player.lifesteal=0;player.dmgReduction=0;
+  player.burnChance=0;player.slowChance=0;player.chainChance=0;
+  player.dodgeChance=0;player.executeThreshold=0;player.cleaveDmg=false;
+  player.allDmgMult=1;player.allStatsBuff=0;player.weaponDmgBuff=0;
+  player.atkSpdMult=1;player.abilityPower=0;player.nextDmgMult=1;
+  player.voidPhase=0;player.parryChance=0;player.parryReflect=false;
+  player.reviveAvailable=false;player.resurrection=false;player.timeLoop=false;
+  player.globalLifesteal=0;player.bloodLifesteal=0;player.shadowLifesteal=0;
+  player.timeCDR=0;player.healOnKill=0;player.dotDamage=0;
+  player.burnDmgMult=1;player.burnSpread=false;player.burnInfiniteStack=false;
+  player.frozenBonusDmg=0;player.shatterExplosion=false;
+  player.windShockwave=false;player.windCrescentEcho=false;
+  player.fireTimer=0;player.muzzleFlash=0;player.screenShake=0;player.damageVignette=0;
   player.weapons=[{...WEAPON_TYPES[0],kills:0,ammo:Infinity}];
   player.weaponIndex=0;player.armors=[];
   Object.keys(player.emblems).forEach(k=>player.emblems[k]=0);
