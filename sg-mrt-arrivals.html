@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SG MRT Arrivals - SoloForte AI</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #0f0f1a;
+      --surface: #1a1a2e;
+      --surface2: #22223a;
+      --border: #2a2a4a;
+      --text: #e0e0ee;
+      --text-dim: #8888aa;
+      --text-muted: #555577;
+      --accent: #00d4ff;
+      --nsl: #d42e12;
+      --ewl: #009645;
+      --ccl: #fa9e0d;
+      --dtl: #005ec4;
+      --nel: #9b0fac;
+      --tel: #9d5b25;
+    }
+    body {
+      font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── Header ── */
+    .header {
+      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a3e 50%, #0f0f1a 100%);
+      padding: 28px 20px 20px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #7b68ee, #00d4ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 4px;
+    }
+    .header .subtitle {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 12px;
+    }
+    .header-meta {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+    }
+    .header-meta .clock {
+      color: var(--accent);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .peak-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .peak-badge.peak { background: rgba(212,46,18,0.2); color: #ff6b5a; }
+    .peak-badge.offpeak { background: rgba(0,150,69,0.2); color: #4adb7a; }
+    .peak-badge.latenight { background: rgba(155,15,172,0.15); color: #c97adb; }
+    .peak-badge.closed { background: rgba(85,85,119,0.2); color: #8888aa; }
+
+    /* ── Search ── */
+    .search-container {
+      max-width: 600px;
+      margin: 0 auto 10px;
+    }
+    .search-input {
+      width: 100%;
+      padding: 10px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input::placeholder { color: var(--text-muted); }
+    .search-input:focus { border-color: var(--accent); }
+
+    /* ── Line filters ── */
+    .line-filters {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 0 10px;
+    }
+    .line-btn {
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+      color: #fff;
+      opacity: 0.5;
+      user-select: none;
+    }
+    .line-btn.active { opacity: 1; transform: scale(1.05); }
+    .line-btn[data-line="NSL"] { background: var(--nsl); }
+    .line-btn[data-line="EWL"] { background: var(--ewl); }
+    .line-btn[data-line="CCL"] { background: var(--ccl); }
+    .line-btn[data-line="DTL"] { background: var(--dtl); }
+    .line-btn[data-line="NEL"] { background: var(--nel); }
+    .line-btn[data-line="TEL"] { background: var(--tel); }
+
+    /* ── Station list ── */
+    .station-list {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 14px 12px 80px;
+    }
+    .station-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .station-card.expanded { border-color: var(--accent); }
+    .station-header {
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      user-select: none;
+    }
+    .station-header:hover { background: var(--surface2); }
+    .station-codes {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .station-code {
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #fff;
+      white-space: nowrap;
+      line-height: 1.3;
+    }
+    .station-code.NSL { background: var(--nsl); }
+    .station-code.EWL { background: var(--ewl); }
+    .station-code.CCL { background: var(--ccl); }
+    .station-code.DTL { background: var(--dtl); }
+    .station-code.NEL { background: var(--nel); }
+    .station-code.TEL { background: var(--tel); }
+    .station-code.CG { background: var(--ewl); }
+    .station-code.CE { background: var(--ccl); }
+    .station-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      flex: 1;
+      min-width: 0;
+    }
+    .station-expand-icon {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      transition: transform 0.3s;
+      flex-shrink: 0;
+    }
+    .station-card.expanded .station-expand-icon { transform: rotate(180deg); }
+
+    /* ── Arrivals ── */
+    .station-arrivals {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease;
+    }
+    .station-card.expanded .station-arrivals {
+      max-height: 1000px;
+    }
+    .arrivals-inner {
+      padding: 0 16px 14px;
+    }
+    .arrivals-divider {
+      height: 1px;
+      background: var(--border);
+      margin-bottom: 12px;
+    }
+    .direction-block {
+      margin-bottom: 12px;
+    }
+    .direction-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+    .direction-arrow {
+      font-size: 0.75rem;
+      color: var(--accent);
+    }
+    .direction-dest {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .direction-line-tag {
+      font-size: 0.6rem;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: #fff;
+      opacity: 0.8;
+    }
+    .arrival-times {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .arrival-chip {
+      padding: 4px 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+      transition: all 0.2s;
+    }
+    .arrival-chip.arriving {
+      background: rgba(0,212,255,0.12);
+      border-color: rgba(0,212,255,0.3);
+      color: var(--accent);
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    .arrival-chip.next {
+      background: rgba(123,104,238,0.12);
+      border-color: rgba(123,104,238,0.3);
+      color: #a094f0;
+    }
+
+    /* ── Disclaimer ── */
+    .disclaimer {
+      text-align: center;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* ── No results ── */
+    .no-results {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* ── Back link ── */
+    .back-link {
+      position: absolute;
+      top: 28px;
+      left: 16px;
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.85rem;
+      z-index: 101;
+    }
+    .back-link:hover { color: var(--accent); }
+
+    .station-count {
+      text-align: center;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      padding: 8px 0 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="index.html" class="back-link">&#8592; Home</a>
+    <h1>SG MRT Arrivals</h1>
+    <p class="subtitle">Real-time schedule-based train arrivals</p>
+    <div class="header-meta">
+      <span class="clock" id="clock">--:--:--</span>
+      <span class="peak-badge" id="peakBadge">--</span>
+    </div>
+    <div class="search-container">
+      <input type="text" class="search-input" id="searchInput" placeholder="Search station name or code..." autocomplete="off">
+    </div>
+    <div class="line-filters" id="lineFilters">
+      <div class="line-btn active" data-line="NSL">NSL</div>
+      <div class="line-btn active" data-line="EWL">EWL</div>
+      <div class="line-btn active" data-line="NEL">NEL</div>
+      <div class="line-btn active" data-line="CCL">CCL</div>
+      <div class="line-btn active" data-line="DTL">DTL</div>
+      <div class="line-btn active" data-line="TEL">TEL</div>
+    </div>
+  </div>
+
+  <div class="station-count" id="stationCount"></div>
+  <div class="station-list" id="stationList"></div>
+  <div class="disclaimer">Times are schedule-based estimates. Actual arrivals may vary.</div>
+
+<script>
+// ═══════════════════════════════════════
+// Station Data
+// ═══════════════════════════════════════
+
+const LINES = {
+  NSL: { color: '#d42e12', name: 'North-South Line', terminusA: 'Jurong East', terminusB: 'Marina South Pier' },
+  EWL: { color: '#009645', name: 'East-West Line', terminusA: 'Tuas Link', terminusB: 'Pasir Ris', branch: 'Changi Airport' },
+  NEL: { color: '#9b0fac', name: 'North-East Line', terminusA: 'HarbourFront', terminusB: 'Punggol' },
+  CCL: { color: '#fa9e0d', name: 'Circle Line', terminusA: 'via Dhoby Ghaut', terminusB: 'via HarbourFront' },
+  DTL: { color: '#005ec4', name: 'Downtown Line', terminusA: 'Bukit Panjang', terminusB: 'Sungei Bedok' },
+  TEL: { color: '#9d5b25', name: 'Thomson-East Coast Line', terminusA: 'Woodlands North', terminusB: 'Sungei Bedok' },
+};
+
+// Raw station definitions: [code, name, line]
+const RAW_STATIONS = [
+  // NSL
+  ['NS1','Jurong East','NSL'],['NS2','Bukit Batok','NSL'],['NS3','Bukit Gombak','NSL'],
+  ['NS4','Choa Chu Kang','NSL'],['NS5','Yew Tee','NSL'],['NS7','Kranji','NSL'],
+  ['NS8','Marsiling','NSL'],['NS9','Woodlands','NSL'],['NS10','Admiralty','NSL'],
+  ['NS11','Sembawang','NSL'],['NS12','Canberra','NSL'],['NS13','Yishun','NSL'],
+  ['NS14','Khatib','NSL'],['NS15','Yio Chu Kang','NSL'],['NS16','Ang Mo Kio','NSL'],
+  ['NS17','Bishan','NSL'],['NS18','Braddell','NSL'],['NS19','Toa Payoh','NSL'],
+  ['NS20','Novena','NSL'],['NS21','Newton','NSL'],['NS22','Orchard','NSL'],
+  ['NS23','Somerset','NSL'],['NS24','Dhoby Ghaut','NSL'],['NS25','City Hall','NSL'],
+  ['NS26','Raffles Place','NSL'],['NS27','Marina Bay','NSL'],['NS28','Marina South Pier','NSL'],
+
+  // EWL
+  ['EW1','Pasir Ris','EWL'],['EW2','Tampines','EWL'],['EW3','Simei','EWL'],
+  ['EW4','Tanah Merah','EWL'],['EW5','Bedok','EWL'],['EW6','Kembangan','EWL'],
+  ['EW7','Eunos','EWL'],['EW8','Paya Lebar','EWL'],['EW9','Aljunied','EWL'],
+  ['EW10','Kallang','EWL'],['EW11','Lavender','EWL'],['EW12','Bugis','EWL'],
+  ['EW13','City Hall','EWL'],['EW14','Raffles Place','EWL'],['EW15','Tanjong Pagar','EWL'],
+  ['EW16','Outram Park','EWL'],['EW17','Tiong Bahru','EWL'],['EW18','Redhill','EWL'],
+  ['EW19','Queenstown','EWL'],['EW20','Commonwealth','EWL'],['EW21','Buona Vista','EWL'],
+  ['EW22','Dover','EWL'],['EW23','Clementi','EWL'],['EW24','Jurong East','EWL'],
+  ['EW25','Chinese Garden','EWL'],['EW26','Lakeside','EWL'],['EW27','Boon Lay','EWL'],
+  ['EW28','Pioneer','EWL'],['EW29','Joo Koon','EWL'],['EW30','Gul Circle','EWL'],
+  ['EW31','Tuas Crescent','EWL'],['EW32','Tuas West Road','EWL'],['EW33','Tuas Link','EWL'],
+  ['CG1','Expo','EWL'],['CG2','Changi Airport','EWL'],
+
+  // NEL
+  ['NE1','HarbourFront','NEL'],['NE3','Outram Park','NEL'],['NE4','Chinatown','NEL'],
+  ['NE5','Clarke Quay','NEL'],['NE6','Dhoby Ghaut','NEL'],['NE7','Little India','NEL'],
+  ['NE8','Farrer Park','NEL'],['NE9','Boon Keng','NEL'],['NE10','Potong Pasir','NEL'],
+  ['NE11','Woodleigh','NEL'],['NE12','Serangoon','NEL'],['NE13','Kovan','NEL'],
+  ['NE14','Hougang','NEL'],['NE15','Buangkok','NEL'],['NE16','Sengkang','NEL'],
+  ['NE17','Punggol','NEL'],
+
+  // CCL
+  ['CC1','Dhoby Ghaut','CCL'],['CC2','Bras Basah','CCL'],['CC3','Esplanade','CCL'],
+  ['CC4','Promenade','CCL'],['CC5','Nicoll Highway','CCL'],['CC6','Stadium','CCL'],
+  ['CC7','Mountbatten','CCL'],['CC8','Dakota','CCL'],['CC9','Paya Lebar','CCL'],
+  ['CC10','MacPherson','CCL'],['CC11','Tai Seng','CCL'],['CC12','Bartley','CCL'],
+  ['CC13','Serangoon','CCL'],['CC14','Lorong Chuan','CCL'],['CC15','Bishan','CCL'],
+  ['CC16','Marymount','CCL'],['CC17','Caldecott','CCL'],['CC19','Botanic Gardens','CCL'],
+  ['CC20','Farrer Road','CCL'],['CC21','Holland Village','CCL'],['CC22','Buona Vista','CCL'],
+  ['CC23','one-north','CCL'],['CC24','Kent Ridge','CCL'],['CC25','Haw Par Villa','CCL'],
+  ['CC26','Pasir Panjang','CCL'],['CC27','Labrador Park','CCL'],['CC28','Telok Blangah','CCL'],
+  ['CC29','HarbourFront','CCL'],['CC30','Keppel','CCL'],['CC31','Cantonment','CCL'],
+  ['CC32','Prince Edward Road','CCL'],['CC33','Marina Bay','CCL'],['CC34','Bayfront','CCL'],
+  ['CE1','Bayfront','CCL'],['CE2','Marina Bay','CCL'],
+
+  // DTL
+  ['DT1','Bukit Panjang','DTL'],['DT2','Cashew','DTL'],['DT3','Hillview','DTL'],
+  ['DT5','Beauty World','DTL'],['DT6','King Albert Park','DTL'],['DT7','Sixth Avenue','DTL'],
+  ['DT8','Tan Kah Kee','DTL'],['DT9','Botanic Gardens','DTL'],['DT10','Stevens','DTL'],
+  ['DT11','Newton','DTL'],['DT12','Little India','DTL'],['DT13','Rochor','DTL'],
+  ['DT14','Bugis','DTL'],['DT15','Promenade','DTL'],['DT16','Bayfront','DTL'],
+  ['DT17','Downtown','DTL'],['DT18','Telok Ayer','DTL'],['DT19','Chinatown','DTL'],
+  ['DT20','Fort Canning','DTL'],['DT21','Bencoolen','DTL'],['DT22','Jalan Besar','DTL'],
+  ['DT23','Bendemeer','DTL'],['DT24','Geylang Bahru','DTL'],['DT25','Mattar','DTL'],
+  ['DT26','MacPherson','DTL'],['DT27','Ubi','DTL'],['DT28','Kaki Bukit','DTL'],
+  ['DT29','Bedok North','DTL'],['DT30','Bedok Reservoir','DTL'],['DT31','Tampines West','DTL'],
+  ['DT32','Tampines','DTL'],['DT33','Tampines East','DTL'],['DT34','Upper Changi','DTL'],
+  ['DT35','Expo','DTL'],['DT36','Xilin','DTL'],['DT37','Sungei Bedok','DTL'],
+
+  // TEL
+  ['TE1','Woodlands North','TEL'],['TE2','Woodlands','TEL'],['TE3','Woodlands South','TEL'],
+  ['TE4','Springleaf','TEL'],['TE5','Lentor','TEL'],['TE6','Mayflower','TEL'],
+  ['TE7','Bright Hill','TEL'],['TE8','Upper Thomson','TEL'],['TE9','Caldecott','TEL'],
+  ['TE11','Stevens','TEL'],['TE12','Napier','TEL'],['TE13','Orchard Boulevard','TEL'],
+  ['TE14','Orchard','TEL'],['TE15','Great World','TEL'],['TE16','Havelock','TEL'],
+  ['TE17','Outram Park','TEL'],['TE18','Maxwell','TEL'],['TE19','Shenton Way','TEL'],
+  ['TE20','Marina Bay','TEL'],['TE22','Gardens by the Bay','TEL'],
+  ["TE22A","Founders' Memorial",'TEL'],['TE23','Tanjong Rhu','TEL'],
+  ['TE24','Katong Park','TEL'],['TE25','Tanjong Katong','TEL'],['TE26','Marine Parade','TEL'],
+  ['TE27','Marine Terrace','TEL'],['TE28','Siglap','TEL'],['TE29','Bayshore','TEL'],
+  ['TE30','Bedok South','TEL'],['TE31','Sungei Bedok','TEL'],
+];
+
+// Build station map: name -> { name, codes: [{code, line}], lines: Set }
+const stationMap = new Map();
+for (const [code, name, line] of RAW_STATIONS) {
+  const key = name.toLowerCase();
+  if (!stationMap.has(key)) {
+    stationMap.set(key, { name, codes: [], lines: new Set() });
+  }
+  const s = stationMap.get(key);
+  s.codes.push({ code, line });
+  s.lines.add(line);
+}
+
+// Convert to sorted array
+const stations = Array.from(stationMap.values());
+
+// Get line prefix from code (e.g. "NS1" -> "NSL", "CG1" -> "EWL", "CE1" -> "CCL")
+function getLineFromCode(code) {
+  const prefix = code.replace(/[0-9A-Z]*$/, '').replace(/\d+.*/, '');
+  // Extract just letters
+  const letters = code.match(/^[A-Z]+/)[0];
+  if (letters === 'CG') return 'EWL';
+  if (letters === 'CE') return 'CCL';
+  if (letters === 'NS') return 'NSL';
+  if (letters === 'EW') return 'EWL';
+  if (letters === 'NE') return 'NEL';
+  if (letters === 'CC') return 'CCL';
+  if (letters === 'DT') return 'DTL';
+  if (letters === 'TE') return 'TEL';
+  return 'NSL';
+}
+
+// Get station index on its line (for offset calculation)
+function getStationIndex(code, line) {
+  const lineStations = RAW_STATIONS.filter(s => s[2] === line);
+  return lineStations.findIndex(s => s[0] === code);
+}
+
+function getLineStationCount(line) {
+  return RAW_STATIONS.filter(s => s[2] === line).length;
+}
+
+// ═══════════════════════════════════════
+// Schedule Logic
+// ═══════════════════════════════════════
+
+function isWeekday(date) {
+  const d = date.getDay();
+  return d >= 1 && d <= 5;
+}
+
+function getTimeCategory(date) {
+  const h = date.getHours();
+  const m = date.getMinutes();
+  const t = h * 60 + m; // minutes since midnight
+
+  // Operating hours: 5:30 AM - 11:45 PM
+  if (t < 330 || t > 705) return 'closed'; // before 5:30 or after 11:45
+
+  if (isWeekday(date)) {
+    // Peak: 6:30-8:30, 17:30-19:30
+    if ((t >= 390 && t <= 510) || (t >= 1050 && t <= 1170)) return 'peak';
+    if (t >= 1320) return 'latenight'; // after 10 PM
+    return 'offpeak';
+  } else {
+    if (t >= 1320) return 'latenight';
+    return 'offpeak';
+  }
+}
+
+function getFrequencyRange(category, isWeekdayNow) {
+  if (category === 'closed') return null;
+  if (isWeekdayNow) {
+    if (category === 'peak') return [2, 3];
+    if (category === 'offpeak') return [5, 7];
+    return [7, 10]; // latenight
+  } else {
+    if (category === 'latenight') return [8, 12];
+    return [5, 8]; // offpeak (all day weekend)
+  }
+}
+
+// Seeded pseudo-random for consistent per-station offsets
+function seededRandom(seed) {
+  let x = Math.sin(seed * 9301 + 49297) * 49979;
+  return x - Math.floor(x);
+}
+
+function hashCode(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+// Calculate arrivals for a specific code/direction
+function calculateArrivals(code, line, directionIndex, now) {
+  const category = getTimeCategory(now);
+  if (category === 'closed') return [];
+
+  const weekday = isWeekday(now);
+  const freqRange = getFrequencyRange(category, weekday);
+  if (!freqRange) return [];
+
+  const [minFreq, maxFreq] = freqRange;
+  const stationIdx = getStationIndex(code, line);
+  const totalStations = getLineStationCount(line);
+
+  // Seed based on code + direction for consistency
+  const seed = hashCode(code + directionIndex);
+
+  // Station position offset: further from terminus = later first arrival
+  // Use position ratio along the line
+  const posRatio = totalStations > 1 ? stationIdx / (totalStations - 1) : 0;
+  const baseOffset = directionIndex === 0
+    ? posRatio * maxFreq   // direction A: later arrivals further from A terminus
+    : (1 - posRatio) * maxFreq; // direction B: opposite
+
+  // Generate a pseudo-random initial offset
+  const randomOffset = seededRandom(seed) * (maxFreq - minFreq);
+  const firstArrival = (baseOffset + randomOffset) % maxFreq;
+
+  const arrivals = [];
+  const windowMinutes = 25;
+  let t = firstArrival;
+
+  // Current seconds into the minute for sub-minute precision
+  const nowSeconds = now.getSeconds();
+  const currentMinFrac = now.getMinutes() + nowSeconds / 60;
+
+  // Use fractional minute within the current period for countdown
+  // We generate times relative to "now"
+  while (t <= windowMinutes + maxFreq) {
+    if (t >= 0) {
+      arrivals.push(Math.round(t * 60)); // convert to seconds
+    }
+    // Vary frequency slightly per interval
+    const intervalSeed = seed + arrivals.length;
+    const freq = minFreq + seededRandom(intervalSeed) * (maxFreq - minFreq);
+    t += freq;
+  }
+
+  return arrivals; // seconds from now
+}
+
+// Get direction info for a station code on a line
+function getDirections(code, line) {
+  const lineInfo = LINES[line];
+  if (!lineInfo) return [];
+
+  const letters = code.match(/^[A-Z]+/)[0];
+
+  // Branch handling for EWL (CG stations)
+  if (letters === 'CG') {
+    return [
+      { dest: 'Tanah Merah', lineTag: 'EWL' },
+      { dest: 'Changi Airport', lineTag: 'EWL' },
+    ];
+  }
+
+  // Branch handling for CCL (CE stations)
+  if (letters === 'CE') {
+    return [
+      { dest: lineInfo.terminusA, lineTag: 'CCL' },
+      { dest: lineInfo.terminusB, lineTag: 'CCL' },
+    ];
+  }
+
+  return [
+    { dest: lineInfo.terminusA, lineTag: line },
+    { dest: lineInfo.terminusB, lineTag: line },
+  ];
+}
+
+// ═══════════════════════════════════════
+// UI
+// ═══════════════════════════════════════
+
+let activeLines = new Set(['NSL', 'EWL', 'NEL', 'CCL', 'DTL', 'TEL']);
+let searchQuery = '';
+let expandedStation = null;
+
+const clockEl = document.getElementById('clock');
+const peakBadgeEl = document.getElementById('peakBadge');
+const searchInputEl = document.getElementById('searchInput');
+const stationListEl = document.getElementById('stationList');
+const stationCountEl = document.getElementById('stationCount');
+const lineFiltersEl = document.getElementById('lineFilters');
+
+// Line filter buttons
+lineFiltersEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.line-btn');
+  if (!btn) return;
+  const line = btn.dataset.line;
+  if (activeLines.has(line)) {
+    // Don't allow deselecting all
+    if (activeLines.size === 1) return;
+    activeLines.delete(line);
+    btn.classList.remove('active');
+  } else {
+    activeLines.add(line);
+    btn.classList.add('active');
+  }
+  renderStations();
+});
+
+// Search
+searchInputEl.addEventListener('input', (e) => {
+  searchQuery = e.target.value.trim().toLowerCase();
+  renderStations();
+});
+
+function getFilteredStations() {
+  return stations.filter(s => {
+    // Line filter
+    const hasActiveLine = [...s.lines].some(l => activeLines.has(l));
+    if (!hasActiveLine) return false;
+
+    // Search filter
+    if (searchQuery) {
+      const nameMatch = s.name.toLowerCase().includes(searchQuery);
+      const codeMatch = s.codes.some(c => c.code.toLowerCase().includes(searchQuery));
+      if (!nameMatch && !codeMatch) return false;
+    }
+
+    return true;
+  });
+}
+
+function formatCountdown(seconds) {
+  if (seconds <= 30) return 'Arr';
+  const mins = Math.ceil(seconds / 60);
+  return mins + ' min';
+}
+
+function renderStations() {
+  const filtered = getFilteredStations();
+  stationCountEl.textContent = filtered.length + ' station' + (filtered.length !== 1 ? 's' : '');
+
+  if (filtered.length === 0) {
+    stationListEl.innerHTML = '<div class="no-results">No stations found</div>';
+    return;
+  }
+
+  const now = new Date();
+  let html = '';
+
+  for (const station of filtered) {
+    const isExpanded = expandedStation === station.name;
+    const codes = station.codes
+      .filter(c => activeLines.has(c.line))
+      .sort((a, b) => a.code.localeCompare(b.code));
+
+    html += `<div class="station-card${isExpanded ? ' expanded' : ''}" data-station="${station.name}">`;
+    html += `<div class="station-header" onclick="toggleStation('${station.name.replace(/'/g, "\\'")}')">`;
+    html += `<div class="station-codes">`;
+    for (const c of codes) {
+      const lineClass = c.line;
+      html += `<span class="station-code ${lineClass}">${c.code}</span>`;
+    }
+    // Also show codes for non-active lines (dimmed) for interchange awareness
+    const inactiveCodes = station.codes.filter(c => !activeLines.has(c.line));
+    for (const c of inactiveCodes) {
+      html += `<span class="station-code ${c.line}" style="opacity:0.35">${c.code}</span>`;
+    }
+    html += `</div>`;
+    html += `<span class="station-name">${station.name}</span>`;
+    html += `<span class="station-expand-icon">&#9660;</span>`;
+    html += `</div>`;
+
+    if (isExpanded) {
+      html += `<div class="station-arrivals"><div class="arrivals-inner"><div class="arrivals-divider"></div>`;
+      const category = getTimeCategory(now);
+
+      if (category === 'closed') {
+        html += `<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">Service has ended. First train starts at ~5:30 AM.</div>`;
+      } else {
+        // Show arrivals for ALL lines this station is on (not just filtered)
+        for (const { code, line } of station.codes) {
+          const directions = getDirections(code, line);
+          for (let di = 0; di < directions.length; di++) {
+            const dir = directions[di];
+            const arrivals = calculateArrivals(code, line, di, now);
+
+            html += `<div class="direction-block">`;
+            html += `<div class="direction-label">`;
+            html += `<span class="direction-arrow">&rarr;</span>`;
+            html += `<span class="direction-dest">${dir.dest}</span>`;
+            const lineColor = LINES[line] ? LINES[line].color : '#666';
+            html += `<span class="direction-line-tag" style="background:${lineColor}">${dir.lineTag}</span>`;
+            html += `</div>`;
+            html += `<div class="arrival-times">`;
+
+            for (let i = 0; i < Math.min(arrivals.length, 7); i++) {
+              const sec = arrivals[i];
+              const label = formatCountdown(sec);
+              let cls = 'arrival-chip';
+              if (label === 'Arr') cls += ' arriving';
+              else if (i === 0) cls += ' next';
+              html += `<span class="${cls}" data-seconds="${sec}">${label}</span>`;
+            }
+
+            html += `</div></div>`;
+          }
+        }
+      }
+      html += `</div></div>`;
+    }
+
+    html += `</div>`;
+  }
+
+  stationListEl.innerHTML = html;
+}
+
+function toggleStation(name) {
+  expandedStation = expandedStation === name ? null : name;
+  renderStations();
+}
+
+// ═══════════════════════════════════════
+// Clock & Updates
+// ═══════════════════════════════════════
+
+function updateClock() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  clockEl.textContent = h + ':' + m + ':' + s;
+
+  const category = getTimeCategory(now);
+  const labels = { peak: 'Peak', offpeak: 'Off-Peak', latenight: 'Late Night', closed: 'Closed' };
+  peakBadgeEl.textContent = labels[category] || '--';
+  peakBadgeEl.className = 'peak-badge ' + category;
+}
+
+function updateCountdowns() {
+  // Update just the countdown chips without full re-render
+  const chips = document.querySelectorAll('.arrival-chip[data-seconds]');
+  if (chips.length === 0) return;
+
+  let needsRerender = false;
+  chips.forEach(chip => {
+    let sec = parseInt(chip.dataset.seconds, 10) - 1;
+    if (sec < -5) {
+      needsRerender = true;
+      return;
+    }
+    chip.dataset.seconds = sec;
+    const label = formatCountdown(sec);
+    chip.textContent = label;
+    if (label === 'Arr' && !chip.classList.contains('arriving')) {
+      chip.classList.add('arriving');
+      chip.classList.remove('next');
+    }
+  });
+
+  if (needsRerender && expandedStation) {
+    renderStations();
+  }
+}
+
+// Initial render
+updateClock();
+renderStations();
+
+// Tick every second
+setInterval(() => {
+  updateClock();
+  updateCountdowns();
+}, 1000);
+
+// Full re-render every 30 seconds to refresh arrival calculations
+setInterval(() => {
+  if (expandedStation) renderStations();
+}, 30000);
+</script>
+</body>
+</html>
