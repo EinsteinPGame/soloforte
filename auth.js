@@ -71,8 +71,6 @@
   }
 
   // ─── Auth Check ───
-  // If on admin.html, skip the gate (admin panel has its own auth)
-  if (location.pathname.endsWith('/admin.html')) return;
 
   if (isLoggedIn()) {
     // User is authenticated — track page visit and let through

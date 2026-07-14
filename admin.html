@@ -8,21 +8,10 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a1a; color: #e0e0e0; min-height: 100vh; }
 
-    /* Fake 404 shown before auth */
-    #fake-404 { display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
-    #fake-404 h1 { font-size: 4rem; color: #333; }
-    #fake-404 p { color: #555; font-size: 1.1rem; margin-top: 8px; }
-    /* Triple-click the 404 text to reveal auth */
-    #fake-404 h1 { cursor: default; user-select: none; }
-
-    /* Auth gate */
-    #admin-auth { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a1a; z-index: 999; align-items: center; justify-content: center; }
-    #admin-auth-box { background: #12122a; border: 1px solid #2a2a4a; border-radius: 12px; padding: 32px; max-width: 340px; width: 90%; text-align: center; }
-    #admin-auth-box h3 { color: #ff4757; margin-bottom: 16px; }
-    #admin-auth-box input { display: block; width: 100%; padding: 10px 14px; margin-bottom: 10px; background: #1a1a3e; border: 1px solid #2a2a4a; border-radius: 6px; color: #e0e0e0; font-size: 0.95rem; outline: none; }
-    #admin-auth-box input:focus { border-color: #ff4757; }
-    #admin-auth-box button { width: 100%; padding: 10px; background: #ff4757; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
-    #admin-auth-box .err { color: #ff4757; font-size: 0.8rem; margin-top: 8px; min-height: 18px; }
+    /* Real 404 for non-admins */
+    #page-404 { display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+    #page-404 h1 { font-size: 4rem; color: #333; }
+    #page-404 p { color: #555; font-size: 1.1rem; margin-top: 8px; }
 
     /* Admin panel */
     #admin-panel { display: none; padding: 20px; max-width: 1000px; margin: 0 auto; }
@@ -56,25 +45,17 @@
   </style>
 </head>
 <body>
-  <!-- Fake 404 page -->
-  <div id="fake-404">
+  <script src="auth.js"></script>
+
+  <!-- 404 shown to non-admins (or not logged in — auth.js handles that) -->
+  <div id="page-404">
     <div>
-      <h1 id="trigger-404">404</h1>
+      <h1>404</h1>
       <p>Page not found</p>
     </div>
   </div>
 
-  <!-- Admin auth -->
-  <div id="admin-auth">
-    <div id="admin-auth-box">
-      <h3>Restricted Access</h3>
-      <input type="password" id="admin-pass" placeholder="Access code" autocomplete="off" />
-      <button id="admin-login-btn">Enter</button>
-      <div class="err" id="admin-err"></div>
-    </div>
-  </div>
-
-  <!-- Admin panel -->
+  <!-- Admin panel — only revealed for admin role -->
   <div id="admin-panel">
     <h2>Surveillance Dashboard</h2>
 
@@ -125,37 +106,15 @@
   (function() {
     'use strict';
 
-    var ADMIN_CODE = 'JK2E3';
-    var clickCount = 0;
-    var clickTimer = null;
+    // Check if user is admin via auth.js
+    if (!window.sfAuth || !window.sfAuth.isAdmin()) {
+      // Not admin — show 404, hide panel. Done.
+      return;
+    }
 
-    // Triple-click the 404 to reveal auth
-    document.getElementById('trigger-404').addEventListener('click', function() {
-      clickCount++;
-      clearTimeout(clickTimer);
-      clickTimer = setTimeout(function() { clickCount = 0; }, 600);
-      if (clickCount >= 3) {
-        clickCount = 0;
-        document.getElementById('fake-404').style.display = 'none';
-        document.getElementById('admin-auth').style.display = 'flex';
-        document.getElementById('admin-pass').focus();
-      }
-    });
-
-    // Admin login
-    document.getElementById('admin-login-btn').onclick = function() {
-      var pass = document.getElementById('admin-pass').value.trim();
-      if (pass === ADMIN_CODE) {
-        document.getElementById('admin-auth').style.display = 'none';
-        document.getElementById('admin-panel').style.display = 'block';
-        loadDashboard();
-      } else {
-        document.getElementById('admin-err').textContent = 'Invalid access code';
-      }
-    };
-    document.getElementById('admin-pass').addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') document.getElementById('admin-login-btn').click();
-    });
+    // Admin — hide 404, show panel
+    document.getElementById('page-404').style.display = 'none';
+    document.getElementById('admin-panel').style.display = 'block';
 
     function fmtTime(iso) {
       if (!iso) return '-';
@@ -167,7 +126,6 @@
       // Registered Users
       var usersBody = document.getElementById('users-table');
       usersBody.innerHTML = '';
-      // Scan localStorage for registration keys
       var users = [];
       for (var i = 0; i < localStorage.length; i++) {
         var key = localStorage.key(i);
@@ -280,6 +238,8 @@
         'Code: <strong>' + code + '</strong> | Username: <strong>' + username + '</strong><br>' +
         '<span style="color:#888">Add to auth.js: { code: \'' + code + '\', username: \'' + username + '\', role: \'user\' }</span>';
     };
+
+    loadDashboard();
   })();
   </script>
 </body>
