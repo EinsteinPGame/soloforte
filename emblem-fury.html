@@ -7,7 +7,7 @@
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
-canvas{display:block}
+canvas{display:block;position:relative;z-index:1}
 #ui-layer{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
 #ui-layer *{pointer-events:auto}
 .screen-overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:100;background:rgba(0,0,0,0.95);overflow-y:auto;padding:20px}
@@ -260,12 +260,12 @@ const CHARACTERS=[
 
 // ── WEAPON TYPES (25 total) ──
 const WEAPON_TYPES=[
-  {name:'Pistol',damage:16,fireRate:380,range:16,spread:0,aoe:0,color:'#aaa',ammo:Infinity,projCount:1,tier:1,desc:'Balanced, fast reload, reliable'},
-  {name:'Shotgun',damage:45,fireRate:820,range:6,spread:0.15,aoe:0,color:'#a86',ammo:28,projCount:5,tier:1,desc:'Close range burst, knockback',knockback:2},
-  {name:'Assault Rifle',damage:13,fireRate:115,range:16,spread:0.03,aoe:0,color:'#888',ammo:120,projCount:1,tier:1,desc:'Sustained fire, ADS zoom'},
-  {name:'Sniper',damage:90,fireRate:1600,range:22,spread:0,aoe:0,color:'#448',ammo:15,projCount:1,tier:2,desc:'Scope zoom, massive damage, pierce',pierce:true,sniperScope:true},
-  {name:'Machine Gun',damage:9,fireRate:65,range:13,spread:0.06,aoe:0,color:'#844',ammo:200,projCount:1,tier:1,desc:'Fastest fire rate, spray pattern'},
-  {name:'Rocket Launcher',damage:70,fireRate:1300,range:16,spread:0,aoe:3.2,color:'#c60',ammo:10,projCount:1,tier:2,desc:'AoE explosion on hit',pierceWall:false},
+  {name:'Pistol',damage:16,fireRate:250,range:16,spread:0,aoe:0,color:'#aaa',ammo:Infinity,projCount:1,tier:1,desc:'Balanced, fast reload, reliable'},
+  {name:'Shotgun',damage:45,fireRate:600,range:6,spread:0.15,aoe:0,color:'#a86',ammo:28,projCount:5,tier:1,desc:'Close range burst, knockback',knockback:2},
+  {name:'Assault Rifle',damage:13,fireRate:90,range:16,spread:0.03,aoe:0,color:'#888',ammo:120,projCount:1,tier:1,desc:'Sustained fire, ADS zoom'},
+  {name:'Sniper',damage:90,fireRate:1200,range:22,spread:0,aoe:0,color:'#448',ammo:15,projCount:1,tier:2,desc:'Scope zoom, massive damage, pierce',pierce:true,sniperScope:true},
+  {name:'Machine Gun',damage:9,fireRate:50,range:13,spread:0.06,aoe:0,color:'#844',ammo:200,projCount:1,tier:1,desc:'Fastest fire rate, spray pattern'},
+  {name:'Rocket Launcher',damage:70,fireRate:1000,range:16,spread:0,aoe:3.2,color:'#c60',ammo:10,projCount:1,tier:2,desc:'AoE explosion on hit',pierceWall:false},
   {name:'Throwing Knife',damage:28,fireRate:280,range:13,spread:0,aoe:0,color:'#777',ammo:Infinity,projCount:1,tier:1,desc:'Bounces off walls',bounces:3},
   {name:'Katana',damage:38,fireRate:185,range:4,spread:0,aoe:0,color:'#cdf',ammo:Infinity,projCount:1,tier:2,desc:'Right-click deflect stance',katana:true,deflectStance:true},
   {name:'Grenade Launcher',damage:55,fireRate:1050,range:13,spread:0.02,aoe:3.8,color:'#6a4',ammo:18,projCount:1,tier:2,desc:'Arc trajectory, wide AoE'},
@@ -561,7 +561,7 @@ document.addEventListener('mousemove',e=>{
   if(pointerLocked&&gameState==='playing'){mouseDx+=e.movementX;mouseDy+=e.movementY;}
 });
 document.addEventListener('mousedown',e=>{
-  if(e.button===0&&gameState==='playing'){mouseDown=true;if(!pointerLocked&&!isTouchDevice)C.requestPointerLock();}
+  if(e.button===0&&gameState==='playing'){mouseDown=true;player.shootTimer=9999;if(!pointerLocked&&!isTouchDevice)C.requestPointerLock();}
   if(e.button===2&&gameState==='playing'){mouseRight=true;handleRightClick(true);}
 });
 document.addEventListener('mouseup',e=>{
@@ -1810,7 +1810,7 @@ function drawWeaponView(){
   const w=getWeapon();
   if(!w)return;
   const bob=Math.sin(Date.now()/200)*4;
-  const baseX=W*0.65,baseY=H*0.72+bob;
+  const baseX=W*0.5,baseY=H*0.75+bob;
   ctx2.save();
   // Weapon color by tier
   const tierColors={'1':'#aaa','1+':'#4f4','2':'#48f','2+':'#a4f','3':'#fd0','UNIQUE':'#f44','BOSS':'#f44'};
@@ -2367,11 +2367,13 @@ function updatePlayer(dt){
   // Kill streak auto-fire (some ults)
   if(player.killStreakActive){player.killStreakTimer-=dt;if(player.killStreakTimer<=0)player.killStreakActive=false;}
 
+  // Auto-reload when ammo empty
+  const cw=getWeapon();
+  if(cw&&!player.reloading&&cw.ammo!==Infinity&&cw.ammo<=0)startReload();
   // Auto-shoot if holding left click
   if(mouseDown){
     player.shootTimer=(player.shootTimer||0)+dt;
-    const w=getWeapon();
-    if(w&&player.shootTimer>=(w.fireRate||200)){player.shootTimer=0;playerShoot();}
+    if(cw&&player.shootTimer>=(cw.fireRate||200)){player.shootTimer=0;playerShoot();}
   }
 }
 
