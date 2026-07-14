@@ -377,6 +377,18 @@ const ILLPATH_DEATH_MSGS = [
   "Indiana Jones would've just walked forward.",
 ];
 
+const SWITCHEROO_DEATH_MSGS = [
+  "Left was right. Or was right left?",
+  "Your brain says left. Your hands say WRONG.",
+  "The controls flipped. You didn't adapt.",
+  "5 seconds is a long time... or is it short? You'll never know.",
+  "Controls fixed! Just kidding. You're dead.",
+  "Maybe try counting to 5. Or not. Doesn't matter.",
+  "Was that left or right? Even you don't know anymore.",
+  "The controls changed. Your skill didn't.",
+  "Plot twist: the controls were the enemy all along.",
+];
+
 // =====================================================================
 // SAVE SYSTEM (per-player)
 // =====================================================================
@@ -424,6 +436,7 @@ const DEBUG_HINTS = {
   5: "The portal isn't broken. Keep trying.",
   6: "The level flips at 85%. Survive both halves.",
   7: "Everything is fake. Just walk. Don't jump.",
+  8: "Your controls flip every 5 seconds. Count carefully.",
 };
 
 // =====================================================================
@@ -1142,6 +1155,70 @@ function buildLevel8() {
   };
 }
 
+// Level 9 - The Switcheroo: controls flip every 5 seconds with no warning
+function buildLevel9() {
+  const groundY = CANVAS_H - 40;
+  return {
+    bg: '#0d1a0d',
+    isSwitcheroo: true,
+    switchInterval: 300, // 5 seconds at 60fps
+    switchTimer: 0,
+    controlsFlipped: false,
+    switchCount: 0,
+    fakeFixMsg: null, // troll message timer
+    spawnX: 30,
+    spawnY: groundY,
+    endX: CANVAS_W - 60,
+    endY: groundY - 260,
+    spikes: [],
+    ceilingSpikes: [],
+    platforms: [
+      // Starting ground
+      { x: 0, y: groundY, w: 140, h: 40, type: 'normal', color: '#1a331a' },
+      // Gap with spikes below
+      // Platform 1 — short hop
+      { x: 180, y: groundY - 30, w: 70, h: 14, type: 'normal', color: '#2a4a2a' },
+      // Platform 2 — slightly higher
+      { x: 290, y: groundY - 70, w: 65, h: 14, type: 'normal', color: '#2a4a2a' },
+      // Moving platform across a big gap
+      { x: 380, y: groundY - 50, w: 80, h: 14, type: 'moving_h', color: '#335533',
+        state: 'active', moveSpeed: 0.8, moveDir: 1, moveMin: 380, moveMax: 500 },
+      // Landing zone
+      { x: 520, y: groundY - 20, w: 90, h: 14, type: 'normal', color: '#2a4a2a' },
+      // Vertical climb section
+      { x: 620, y: groundY - 70, w: 60, h: 14, type: 'normal', color: '#2a4a2a' },
+      { x: 540, y: groundY - 120, w: 60, h: 14, type: 'normal', color: '#2a4a2a' },
+      { x: 640, y: groundY - 170, w: 60, h: 14, type: 'normal', color: '#2a4a2a' },
+      // Tricky section — narrow platforms with spikes
+      { x: 720, y: groundY - 130, w: 45, h: 14, type: 'normal', color: '#335533' },
+      { x: 780, y: groundY - 180, w: 45, h: 14, type: 'normal', color: '#335533' },
+      // Final approach — moving platform
+      { x: 700, y: groundY - 230, w: 70, h: 14, type: 'moving_h', color: '#3a5a3a',
+        state: 'active', moveSpeed: 1.0, moveDir: -1, moveMin: 650, moveMax: 780 },
+      // Gate platform
+      { x: CANVAS_W - 120, y: groundY - 260, w: 100, h: 14, type: 'normal', color: '#4a6a4a' },
+    ],
+    movingSpikes: [],
+    levelSpikes: [
+      // Spikes in the first gap
+      { x: 140, y: groundY - 14, w: 40, h: 14 },
+      // Spikes between platform 1 and 2
+      { x: 250, y: groundY - 14, w: 40, h: 14 },
+      // Spikes below moving platform zone
+      { x: 360, y: groundY - 14, w: 160, h: 14 },
+      // Spikes at landing zone edges
+      { x: 610, y: groundY - 14, w: 10, h: 14 },
+      // Wall spikes in climb section — punish wrong direction
+      { x: 520, y: groundY - 90, w: 14, h: 14 },
+      { x: 610, y: groundY - 140, w: 14, h: 14 },
+      { x: 710, y: groundY - 100, w: 14, h: 14 },
+      // Spikes near final platforms
+      { x: 760, y: groundY - 150, w: 14, h: 14 },
+      { x: 830, y: groundY - 200, w: 14, h: 14 },
+    ],
+  };
+}
+
 function getLevel(n) {
   if (n === 0) return buildLevel1();
   if (n === 1) return buildLevel2();
@@ -1151,6 +1228,7 @@ function getLevel(n) {
   if (n === 5) return buildLevel6();
   if (n === 6) return buildLevel7();
   if (n === 7) return buildLevel8();
+  if (n === 8) return buildLevel9();
   return buildSimpleLevel(n);
 }
 
@@ -1268,6 +1346,13 @@ function initLevel(n) {
     level.flipAnimTimer = 0;
     level.gateActive = false;
     level.levelSpikes = [];
+  }
+  // Reset switcheroo state for Level 9
+  if (level.isSwitcheroo) {
+    level.switchTimer = 0;
+    level.controlsFlipped = false;
+    level.switchCount = 0;
+    level.fakeFixMsg = null;
   }
   // Reset illusion path state for Level 8
   if (level.isIllusionPath) {
@@ -1471,7 +1556,30 @@ function updatePlayer(dt) {
     }
   } else {
     // Single player mode (Levels 1, 2, etc.)
-    updateSinglePlayer(player, keys.left, keys.right, keys.jump, dt);
+    // Switcheroo: flip controls every 5 seconds (Level 9)
+    let mLeft = keys.left, mRight = keys.right;
+    if (level.isSwitcheroo) {
+      level.switchTimer++;
+      if (level.switchTimer >= level.switchInterval) {
+        level.switchTimer = 0;
+        level.controlsFlipped = !level.controlsFlipped;
+        level.switchCount++;
+        // Troll: show "Controls fixed!" on 4th switch (does nothing)
+        if (level.switchCount === 4) {
+          level.fakeFixMsg = 180; // 3 seconds
+        }
+      }
+      if (level.controlsFlipped) {
+        mLeft = keys.right;
+        mRight = keys.left;
+      }
+      // Tick fake message timer
+      if (level.fakeFixMsg !== null) {
+        level.fakeFixMsg--;
+        if (level.fakeFixMsg <= 0) level.fakeFixMsg = null;
+      }
+    }
+    updateSinglePlayer(player, mLeft, mRight, keys.jump, dt);
 
     if (checkPlayerDeath(player)) {
       killPlayer();
@@ -3396,6 +3504,22 @@ function render() {
     ctx.textAlign = 'left';
   }
 
+  // Switcheroo: fake "Controls fixed!" troll message (Level 9)
+  if (level.isSwitcheroo && level.fakeFixMsg !== null && level.fakeFixMsg > 0) {
+    const alpha = level.fakeFixMsg > 140 ? Math.min(1, (180 - level.fakeFixMsg) / 40) :
+                  level.fakeFixMsg < 30 ? level.fakeFixMsg / 30 : 1;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#00ff88';
+    ctx.font = 'bold 36px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('Controls Fixed!', CANVAS_W / 2, CANVAS_H / 2);
+    ctx.font = '14px Courier New';
+    ctx.fillStyle = '#88ffaa';
+    ctx.fillText('Everything should work normally now.', CANVAS_W / 2, CANVAS_H / 2 + 30);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+
   // Debug mode: overlay
   if (debugMode) {
     const dbgLines = [];
@@ -3579,6 +3703,7 @@ function showDeath() {
   else if (currentLevel === 5) msgs = LOOP_DEATH_MSGS;
   else if (currentLevel === 6) msgs = FLIP_DEATH_MSGS;
   else if (currentLevel === 7) msgs = ILLPATH_DEATH_MSGS;
+  else if (currentLevel === 8) msgs = SWITCHEROO_DEATH_MSGS;
   let msg = msgs[Math.floor(Math.random() * msgs.length)];
   msg = msg.replace('{n}', saveData.totalDeaths);
   document.getElementById('deathMsg').textContent = msg;
