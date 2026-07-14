@@ -2324,10 +2324,14 @@ function getBaseSpeed(){
 }
 
 function updatePlayer(dt){
-  if(keys['w']||keys['arrowup']){player.x+=Math.cos(player.angle)*player.speed*(dt/16);player.y+=Math.sin(player.angle)*player.speed*(dt/16);}
-  if(keys['s']||keys['arrowdown']){player.x-=Math.cos(player.angle)*player.speed*(dt/16);player.y-=Math.sin(player.angle)*player.speed*(dt/16);}
-  if(keys['a']||keys['arrowleft']){player.x+=Math.cos(player.angle-Math.PI/2)*player.speed*(dt/16);player.y+=Math.sin(player.angle-Math.PI/2)*player.speed*(dt/16);}
-  if(keys['d']||keys['arrowright']){player.x+=Math.cos(player.angle+Math.PI/2)*player.speed*(dt/16);player.y+=Math.sin(player.angle+Math.PI/2)*player.speed*(dt/16);}
+  const spd=(player.speed+player.speedBuff)*0.008*(dt/16);
+  if(keys['w']||keys['arrowup']){player.x+=Math.cos(player.angle)*spd;player.y+=Math.sin(player.angle)*spd;}
+  if(keys['s']||keys['arrowdown']){player.x-=Math.cos(player.angle)*spd;player.y-=Math.sin(player.angle)*spd;}
+  if(keys['a']||keys['arrowleft']){player.x+=Math.cos(player.angle-Math.PI/2)*spd;player.y+=Math.sin(player.angle-Math.PI/2)*spd;}
+  if(keys['d']||keys['arrowright']){player.x+=Math.cos(player.angle+Math.PI/2)*spd;player.y+=Math.sin(player.angle+Math.PI/2)*spd;}
+
+  // Dash movement
+  if(player.dashing){player.dashTimer-=dt;player.x+=player.dashDx*(dt/16);player.y+=player.dashDy*(dt/16);if(player.dashTimer<=0){player.dashing=false;player.dashDx=0;player.dashDy=0;}}
 
   // Wall collision (cell units)
   const margin=0.2;
@@ -2339,6 +2343,8 @@ function updatePlayer(dt){
   if(inBounds(mxR,my)&&WORLD_MAP[my][mxR])player.x=(mx+1)-margin;
   if(inBounds(mx,myU)&&WORLD_MAP[myU][mx])player.y=my+margin;
   if(inBounds(mx,myD)&&WORLD_MAP[myD][mx])player.y=(my+1)-margin;
+  // Safety: if somehow inside a wall, push to center of map
+  if(WORLD_MAP[Math.floor(player.y)]&&WORLD_MAP[Math.floor(player.y)][Math.floor(player.x)]){player.x=MAP_W/2;player.y=MAP_H/2;}
 
   // FOV interpolation (scope)
   const targetFOV=player.currentFOV||FOV;
