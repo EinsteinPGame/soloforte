@@ -253,14 +253,24 @@
       transition: all 0.2s;
     }
     .arrival-chip.arriving {
-      background: rgba(0,212,255,0.12);
-      border-color: rgba(0,212,255,0.3);
-      color: var(--accent);
-      animation: pulse 1s infinite;
+      background: rgba(0,200,80,0.15);
+      border-color: rgba(0,200,80,0.4);
+      color: #4adb7a;
+      animation: pulse-green 0.8s infinite;
     }
-    @keyframes pulse {
+    .arrival-chip.arrived {
+      background: rgba(0,200,80,0.2);
+      border-color: rgba(0,200,80,0.5);
+      color: #4adb7a;
+    }
+    .arrival-chip.leaving {
+      background: rgba(250,158,13,0.15);
+      border-color: rgba(250,158,13,0.4);
+      color: #fa9e0d;
+    }
+    @keyframes pulse-green {
       0%, 100% { opacity: 1; }
-      50% { opacity: 0.6; }
+      50% { opacity: 0.45; }
     }
     .arrival-chip.next {
       background: rgba(123,104,238,0.12);
@@ -654,8 +664,19 @@ function getFilteredStations() {
   });
 }
 
+function getArrivalState(seconds) {
+  if (seconds < -5) return 'gone';
+  if (seconds < 0) return 'leaving';
+  if (seconds === 0) return 'arrived';
+  if (seconds <= 10) return 'arriving';
+  return 'countdown';
+}
+
 function formatCountdown(seconds) {
-  if (seconds <= 30) return 'Arr';
+  const state = getArrivalState(seconds);
+  if (state === 'leaving') return 'Leaving';
+  if (state === 'arrived') return 'Arrived';
+  if (state === 'arriving') return 'Arriving';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return m + ':' + String(s).padStart(2, '0');
@@ -722,9 +743,13 @@ function renderStations() {
 
             for (let i = 0; i < Math.min(arrivals.length, 7); i++) {
               const sec = arrivals[i];
+              if (sec < -5) continue;
               const label = formatCountdown(sec);
+              const state = getArrivalState(sec);
               let cls = 'arrival-chip';
-              if (label === 'Arr') cls += ' arriving';
+              if (state === 'arriving') cls += ' arriving';
+              else if (state === 'arrived') cls += ' arrived';
+              else if (state === 'leaving') cls += ' leaving';
               else if (i === 0) cls += ' next';
               html += `<span class="${cls}" data-seconds="${sec}">${label}</span>`;
             }
@@ -778,11 +803,14 @@ function updateCountdowns() {
     }
     chip.dataset.seconds = sec;
     const label = formatCountdown(sec);
+    const state = getArrivalState(sec);
     chip.textContent = label;
-    if (label === 'Arr' && !chip.classList.contains('arriving')) {
-      chip.classList.add('arriving');
-      chip.classList.remove('next');
-    }
+
+    // Update state classes
+    chip.classList.remove('arriving', 'arrived', 'leaving', 'next');
+    if (state === 'arriving') chip.classList.add('arriving');
+    else if (state === 'arrived') chip.classList.add('arrived');
+    else if (state === 'leaving') chip.classList.add('leaving');
   });
 
   if (needsRerender && expandedStation) {
