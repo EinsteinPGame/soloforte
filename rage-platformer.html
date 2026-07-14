@@ -389,6 +389,19 @@ const SWITCHEROO_DEATH_MSGS = [
   "Plot twist: the controls were the enemy all along.",
 ];
 
+const PARADOX_DEATH_MSGS = [
+  "The gate killed you. Shocking.",
+  "It looked like an exit. It wasn't.",
+  "Have you tried... not touching the gate?",
+  "The spikes are your friends. The gate is not.",
+  "Something feels different. Or does it?",
+  "That's {n} deaths total. How many of those were useful?",
+  "Maybe dying is the point. Maybe.",
+  "The simplest level. The most deaths. Classic.",
+  "That gate isn't going anywhere. Neither are you.",
+  "You keep walking to the end. The end keeps killing you.",
+];
+
 // =====================================================================
 // SAVE SYSTEM (per-player)
 // =====================================================================
@@ -437,6 +450,7 @@ const DEBUG_HINTS = {
   6: "The level flips at 85%. Survive both halves.",
   7: "Everything is fake. Just walk. Don't jump.",
   8: "Your controls flip every 5 seconds. Count carefully.",
+  9: "The gate isn't the exit. Die exactly 5 times on spikes, then walk past it.",
 };
 
 // =====================================================================
@@ -447,6 +461,7 @@ const ctx = canvas.getContext('2d');
 
 let currentLevel = 0;
 let levelDeaths = 0;
+let paradoxSpikeDeaths = 0; // persists across retries for Level 10
 let gameRunning = false;
 let currentScreen = 'title'; // title | levelSelect | game | death | win
 
@@ -1219,6 +1234,54 @@ function buildLevel9() {
   };
 }
 
+// Level 10 - The Paradox: simple-looking level, fake gate kills, need exactly 5 spike deaths
+function buildLevel10() {
+  const groundY = CANVAS_H - 40;
+  return {
+    bg: '#1a1a1e',
+    isParadox: true,
+    spikeDeathCount: 0,
+    paradoxSolved: false,       // true when exactly 5 spike deaths achieved
+    fakeGateX: 680,             // fake gate position (bounces after first death)
+    fakeGateY: groundY - 100,
+    fakeGateBouncing: false,
+    fakeGateVx: 2.5,
+    fakeGateMinX: 120,
+    fakeGateMaxX: 720,
+    realGateRevealed: false,    // wall removed, real gate visible
+    wallX: 770,                 // invisible wall blocking right side
+    paradoxMsg: null,           // troll message timer
+    paradoxMsgText: '',
+    spawnX: 30,
+    spawnY: groundY - 60,
+    endX: 830,                  // real gate position (hidden behind wall)
+    endY: groundY - 60,
+    spikes: makeSpikeRow(groundY, 0, CANVAS_W),
+    ceilingSpikes: [],
+    deathCeiling: 0,
+    platforms: [
+      // Starting ground — wide and safe-looking
+      { x: 0, y: groundY - 40, w: 160, h: 40, type: 'normal', color: '#445566' },
+      // Simple stepping stones — intentionally easy
+      { x: 200, y: groundY - 55, w: 100, h: 16, type: 'normal', color: '#445566' },
+      { x: 340, y: groundY - 70, w: 100, h: 16, type: 'normal', color: '#445566' },
+      { x: 480, y: groundY - 80, w: 100, h: 16, type: 'normal', color: '#445566' },
+      // Fake gate platform — looks like the end
+      { x: 620, y: groundY - 100, w: 120, h: 16, type: 'normal', color: '#335533' },
+      // Hidden section (behind wall) — ground continues
+      { x: 760, y: groundY - 60, w: 140, h: 16, type: 'normal', color: '#445566' },
+    ],
+    movingSpikes: [],
+    levelSpikes: [
+      // A few floor-level spikes on the platforms to tempt death
+      { x: 150, y: groundY - 54, w: 14, h: 14 },
+      { x: 290, y: groundY - 69, w: 14, h: 14 },
+      { x: 430, y: groundY - 84, w: 14, h: 14 },
+      { x: 570, y: groundY - 94, w: 14, h: 14 },
+    ],
+  };
+}
+
 function getLevel(n) {
   if (n === 0) return buildLevel1();
   if (n === 1) return buildLevel2();
@@ -1229,6 +1292,7 @@ function getLevel(n) {
   if (n === 6) return buildLevel7();
   if (n === 7) return buildLevel8();
   if (n === 8) return buildLevel9();
+  if (n === 9) return buildLevel10();
   return buildSimpleLevel(n);
 }
 
@@ -1581,7 +1645,58 @@ function updatePlayer(dt) {
     }
     updateSinglePlayer(player, mLeft, mRight, keys.jump, dt);
 
+    // Paradox level: fake gate kills, track spike deaths separately
+    if (level.isParadox) {
+      // Bounce the fake gate
+      if (level.fakeGateBouncing) {
+        level.fakeGateX += level.fakeGateVx;
+        if (level.fakeGateX >= level.fakeGateMaxX || level.fakeGateX <= level.fakeGateMinX) {
+          level.fakeGateVx *= -1;
+        }
+      }
+      // Tick paradox message timer
+      if (level.paradoxMsg !== null) {
+        level.paradoxMsg--;
+        if (level.paradoxMsg <= 0) level.paradoxMsg = null;
+      }
+      // Invisible wall: block player from going right past wallX unless solved
+      if (!level.realGateRevealed && player.x + player.w > level.wallX) {
+        player.x = level.wallX - player.w;
+        player.vx = 0;
+      }
+      // Check fake gate collision BEFORE spike death check
+      if (rectOverlap(player.x, player.y, player.w, player.h, level.fakeGateX, level.fakeGateY, GATE_W, GATE_H)) {
+        // Gate death — does NOT count toward spike deaths
+        level.fakeGateBouncing = true; // start bouncing after first touch
+        level.paradoxMsg = 180;
+        level.paradoxMsgText = ['The gate refuses you.','Nice try.','Not like that.','The gate laughs at your attempt.','Wrong.','Still wrong.','Are you sure that\'s the exit?'][Math.floor(Math.random()*7)];
+        killPlayer();
+        return;
+      }
+      // Check real gate — only if solved (exactly 5 spike deaths)
+      if (level.realGateRevealed && rectOverlap(player.x, player.y, player.w, player.h, level.endX, level.endY, GATE_W, GATE_H)) {
+        winLevel();
+        return;
+      }
+    }
+
     if (checkPlayerDeath(player)) {
+      // Paradox level: track spike deaths
+      if (level.isParadox) {
+        paradoxSpikeDeaths++;
+        level.spikeDeathCount = paradoxSpikeDeaths;
+        if (paradoxSpikeDeaths === 5) {
+          // Exactly 5 — reveal the real gate (will be visible on respawn)
+          level.paradoxSolved = true;
+          level.realGateRevealed = true;
+        } else if (paradoxSpikeDeaths > 5) {
+          // Over 5 — reset! Need 5 MORE
+          paradoxSpikeDeaths = 0;
+          level.spikeDeathCount = 0;
+          level.paradoxSolved = false;
+          level.realGateRevealed = false;
+        }
+      }
       killPlayer();
       return;
     }
@@ -1755,9 +1870,9 @@ function updatePlayer(dt) {
       } // end !inAltRoom block
     }
 
-    // Win check
-    const ex = level.endX, ey = level.endY;
-    if (rectOverlap(player.x, player.y, player.w, player.h, ex, ey, GATE_W, GATE_H) && !(level.isFlip && !level.gateActive) && !(level.isIllusionPath && level.inAltRoom)) {
+    // Win check (skip for paradox — handled above)
+    if (level.isParadox) { /* paradox win check handled above */ }
+    else if (rectOverlap(player.x, player.y, player.w, player.h, level.endX, level.endY, GATE_W, GATE_H) && !(level.isFlip && !level.gateActive) && !(level.isIllusionPath && level.inAltRoom)) {
       if (level.isLoop && level.loopCount < level.loopTarget - 1) {
         level.loopCount++;
         player.x = level.spawnX;
@@ -2549,12 +2664,10 @@ function winMessage() {
     ["The level flipped and so did your brain. {d} deaths to figure out a mirror.","You walked the same level twice. Forward and backward. Revolutionary.","Flipped, confused, died {d} times, but you made it. Barely."],
     // Level 8
     ["You literally just walked forward. {d} deaths to figure that out.","The spikes were fake. The gaps were fake. The boulder was fake. Your deaths were real though.","Indiana Jones would be disappointed. {d} deaths for a straight line."],
-    ["Did you Google the solution?","Honestly surprised you made it."],
-    ["OK that one was actually hard. You still took too long though."],
-    ["Are you cheating? No? Then how are you this slow?"],
-    ["6 down, 4 to go. You're not gonna make it."],
-    ["Lucky. Pure luck."],
-    ["Almost there. Almost."],
+    // Level 9
+    ["Your controls flipped {d} times and so did your sanity.","Left is right. Right is left. {d} deaths later you figured it out.","The Switcheroo claims another victim. {d} deaths of pure confusion."],
+    // Level 10
+    ["Die 5 times to win. That's it. {d} deaths total because you couldn't count to 5.","The Paradox broke your brain. {d} deaths and most of them were unnecessary.","You figured out the secret: dying is the answer. Only took {d} deaths to learn that.","The gate was never the exit. It took you {d} deaths to realize that."],
     ["Wait... you actually beat the whole game? ...Respect. Just kidding, took you {d} deaths."]
   ];
   const pool = lvlMsgs[Math.min(currentLevel, lvlMsgs.length - 1)];
@@ -3427,7 +3540,29 @@ function render() {
     }
   }
   if (!level.isArena && !level.isIllusion && !_skipMainDraw) {
-    if (level.isLoop && level.loopCount >= level.loopTarget - 1) {
+    if (level.isParadox) {
+      // Draw fake gate (bouncing, red, looks like a real end gate)
+      drawGate(level.fakeGateX, level.fakeGateY, true);
+      // Draw invisible wall as dark rectangle (blends with bg)
+      if (!level.realGateRevealed) {
+        ctx.fillStyle = level.bg || '#1a1a1e';
+        ctx.fillRect(level.wallX, 0, CANVAS_W - level.wallX, CANVAS_H);
+        // Subtle wall edge
+        ctx.fillStyle = 'rgba(40,40,50,0.8)';
+        ctx.fillRect(level.wallX, 0, 3, CANVAS_H);
+      }
+      // Draw real gate only if revealed
+      if (level.realGateRevealed) {
+        drawLoopGate(level.endX, level.endY); // gold pulsing gate
+      }
+      // Draw paradox troll message
+      if (level.paradoxMsg !== null) {
+        ctx.fillStyle = '#ff4444';
+        ctx.font = 'bold 16px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText(level.paradoxMsgText, CANVAS_W / 2, 60);
+      }
+    } else if (level.isLoop && level.loopCount >= level.loopTarget - 1) {
       drawLoopGate(level.endX, level.endY);
     } else if (level.isFlip && !level.gateActive) {
       // Draw decorative (dimmed) gate before flip
@@ -3666,6 +3801,7 @@ function buildLevelGrid() {
 function startLevel(n) {
   currentLevel = n;
   levelDeaths = 0;
+  paradoxSpikeDeaths = 0;
   diffShownThisAttempt = false;
   initLevel(n);
   updateLevelUI();
@@ -3676,14 +3812,24 @@ function startLevel(n) {
 
 function retryLevel() {
   levelDeaths = 0;
+  const savedSpikeDeaths = paradoxSpikeDeaths;
   initLevel(currentLevel);
+  // Restore paradox spike deaths across retries
+  if (level.isParadox) {
+    level.spikeDeathCount = savedSpikeDeaths;
+    paradoxSpikeDeaths = savedSpikeDeaths;
+    if (savedSpikeDeaths === 5) {
+      level.paradoxSolved = true;
+      level.realGateRevealed = true;
+    }
+  }
   updateDeathUI();
   showScreen(null);
   startGameLoop();
 }
 
 function nextLevel() {
-  if (currentLevel < 9) {
+  if (currentLevel < 10) {
     startLevel(currentLevel + 1);
   } else {
     showLevelSelect();
@@ -3704,6 +3850,7 @@ function showDeath() {
   else if (currentLevel === 6) msgs = FLIP_DEATH_MSGS;
   else if (currentLevel === 7) msgs = ILLPATH_DEATH_MSGS;
   else if (currentLevel === 8) msgs = SWITCHEROO_DEATH_MSGS;
+  else if (currentLevel === 9) msgs = PARADOX_DEATH_MSGS;
   let msg = msgs[Math.floor(Math.random() * msgs.length)];
   msg = msg.replace('{n}', saveData.totalDeaths);
   document.getElementById('deathMsg').textContent = msg;
