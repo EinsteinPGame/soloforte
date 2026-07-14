@@ -494,7 +494,7 @@ function getTimeCategory(date) {
 }
 
 function getFrequencyRange(category, isWeekdayNow) {
-  if (category === 'closed') return null;
+  if (category === 'closed') return [5, 7]; // show off-peak schedule for browsing
   if (isWeekdayNow) {
     if (category === 'peak') return [2, 3];
     if (category === 'offpeak') return [5, 7];
@@ -523,7 +523,7 @@ function hashCode(str) {
 // Calculate arrivals for a specific code/direction
 function calculateArrivals(code, line, directionIndex, now) {
   const category = getTimeCategory(now);
-  if (category === 'closed') return [];
+  // When closed, simulate with off-peak frequency so users can still browse
 
   const weekday = isWeekday(now);
   const freqRange = getFrequencyRange(category, weekday);
@@ -700,8 +700,9 @@ function renderStations() {
       const category = getTimeCategory(now);
 
       if (category === 'closed') {
-        html += `<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">Service has ended. First train starts at ~5:30 AM.</div>`;
-      } else {
+        html += `<div style="color:#fa9e0d;font-size:0.78rem;padding:6px 10px;background:rgba(250,158,13,0.1);border-radius:6px;margin-bottom:8px;">Service ended — showing next-day schedule preview</div>`;
+      }
+      {
         // Show arrivals for ALL lines this station is on (not just filtered)
         for (const { code, line } of station.codes) {
           const directions = getDirections(code, line);
