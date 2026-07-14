@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Emblem Fury V6.1</title>
+<title>Emblem Fury V6.6</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
@@ -562,7 +562,7 @@ document.addEventListener('mousemove',e=>{
   if(pointerLocked&&gameState==='playing'){mouseDx+=e.movementX;mouseDy+=e.movementY;}
 });
 document.addEventListener('mousedown',e=>{
-  if(e.button===0&&gameState==='playing'){mouseDown=true;player.shootTimer=9999;if(!pointerLocked&&!isTouchDevice)C.requestPointerLock();}
+  if(e.button===0&&gameState==='playing'){mouseDown=true;if(!pointerLocked&&!isTouchDevice)C.requestPointerLock();}
   if(e.button===2&&gameState==='playing'){mouseRight=true;handleRightClick(true);}
 });
 document.addEventListener('mouseup',e=>{
@@ -1810,8 +1810,8 @@ function drawWeaponView(){
   const W=canvas.width,H=canvas.height;
   const w=getWeapon();
   if(!w)return;
-  const bob=Math.sin(Date.now()/200)*4;
-  const baseX=W*0.5,baseY=H*0.75+bob;
+  const bob=Math.sin(Date.now()/200)*3;
+  const baseX=W*0.5-40,baseY=H*0.72+bob;
   ctx2.save();
   // Weapon color by tier
   const tierColors={'1':'#aaa','1+':'#4f4','2':'#48f','2+':'#a4f','3':'#fd0','UNIQUE':'#f44','BOSS':'#f44'};
@@ -2371,10 +2371,9 @@ function updatePlayer(dt){
   // Auto-reload when ammo empty
   const cw=getWeapon();
   if(cw&&!player.reloading&&cw.ammo!==Infinity&&cw.ammo<=0)startReload();
-  // Auto-shoot if holding left click
+  // Auto-shoot if holding left click — fireTimer in playerShoot() handles rate limiting
   if(mouseDown){
-    player.shootTimer=(player.shootTimer||0)+dt;
-    if(cw&&player.shootTimer>=(cw.fireRate||200)){player.shootTimer=0;playerShoot();}
+    playerShoot();
   }
 }
 
