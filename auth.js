@@ -57,10 +57,24 @@
 
   function logActivity(action, detail) {
     try {
+      var user = getUser() || 'anonymous';
+      // Per-account activity log
+      var userLogKey = SK_LOG + '_' + user.toLowerCase();
+      var userLogs = JSON.parse(localStorage.getItem(userLogKey) || '[]');
+      userLogs.push({
+        ts: now(),
+        user: user,
+        page: location.pathname,
+        action: action,
+        detail: detail || ''
+      });
+      if (userLogs.length > 2000) userLogs = userLogs.slice(-2000);
+      localStorage.setItem(userLogKey, JSON.stringify(userLogs));
+      // Also write to master log for admin dashboard
       var logs = JSON.parse(localStorage.getItem(SK_LOG) || '[]');
       logs.push({
         ts: now(),
-        user: getUser() || 'anonymous',
+        user: user,
         page: location.pathname,
         action: action,
         detail: detail || ''
