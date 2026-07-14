@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unit Converter - SoloForte AI</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a1a;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      text-align: center;
+      padding: 30px 20px 20px;
+      background: linear-gradient(180deg, #12122a 0%, #0a0a1a 100%);
+    }
+    .header h1 { font-size: 2rem; color: #7b68ee; margin-bottom: 6px; }
+    .header p { color: #888; font-size: 0.9rem; }
+    .categories {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      padding: 16px 20px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .cat-btn {
+      padding: 8px 16px;
+      border: 1px solid #333;
+      border-radius: 20px;
+      background: #151528;
+      color: #aaa;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+    }
+    .cat-btn:hover { border-color: #7b68ee; color: #fff; }
+    .cat-btn.active { background: #7b68ee; color: #fff; border-color: #7b68ee; }
+    .converter {
+      max-width: 500px;
+      margin: 20px auto;
+      padding: 24px;
+      background: #12122a;
+      border-radius: 12px;
+      border: 1px solid #222;
+    }
+    .converter h2 { color: #7b68ee; font-size: 1.2rem; margin-bottom: 16px; text-align: center; }
+    .input-group {
+      margin-bottom: 16px;
+    }
+    .input-group label {
+      display: block;
+      color: #888;
+      font-size: 0.8rem;
+      margin-bottom: 4px;
+    }
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+    .input-row input {
+      flex: 1;
+      padding: 12px;
+      background: #0a0a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 1.1rem;
+      outline: none;
+    }
+    .input-row input:focus { border-color: #7b68ee; }
+    .input-row select {
+      width: 120px;
+      padding: 10px;
+      background: #1a1a3a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 0.85rem;
+      outline: none;
+      cursor: pointer;
+    }
+    .swap-btn {
+      display: block;
+      margin: 12px auto;
+      padding: 8px 20px;
+      background: transparent;
+      border: 1px solid #444;
+      border-radius: 8px;
+      color: #7b68ee;
+      cursor: pointer;
+      font-size: 1.2rem;
+      transition: all 0.2s;
+    }
+    .swap-btn:hover { background: #1a1a3a; }
+    .result-box {
+      text-align: center;
+      padding: 16px;
+      background: #0a0a1a;
+      border-radius: 8px;
+      border: 1px solid #222;
+      margin-top: 16px;
+    }
+    .result-box .value {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #7b68ee;
+    }
+    .result-box .formula {
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 6px;
+    }
+    footer {
+      margin-top: auto;
+      text-align: center;
+      padding: 20px;
+      color: #555;
+      font-size: 0.8rem;
+    }
+    footer a { color: #7b68ee; text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Unit Converter</h1>
+  <p>Length, Weight, Temperature, Speed, Volume, Data, Time</p>
+</div>
+
+<div class="categories" id="categories"></div>
+
+<div class="converter">
+  <h2 id="converterTitle">Length</h2>
+  <div class="input-group">
+    <label>From</label>
+    <div class="input-row">
+      <input type="number" id="inputVal" value="1" oninput="convert()">
+      <select id="fromUnit" onchange="convert()"></select>
+    </div>
+  </div>
+  <button class="swap-btn" onclick="swapUnits()">&#8645; Swap</button>
+  <div class="input-group">
+    <label>To</label>
+    <div class="input-row">
+      <input type="number" id="outputVal" readonly>
+      <select id="toUnit" onchange="convert()"></select>
+    </div>
+  </div>
+  <div class="result-box">
+    <div class="value" id="resultText">—</div>
+    <div class="formula" id="formulaText"></div>
+  </div>
+</div>
+
+<footer>
+  <p>&copy; 2026 SoloForte AI &mdash; <a href="index.html">Back to Home</a></p>
+</footer>
+
+<script>
+const categories = {
+  Length: {
+    units: ['mm','cm','m','km','in','ft','yd','mi'],
+    labels: {mm:'Millimeter',cm:'Centimeter',m:'Meter',km:'Kilometer',in:'Inch',ft:'Foot',yd:'Yard',mi:'Mile'},
+    toBase: {mm:0.001,cm:0.01,m:1,km:1000,in:0.0254,ft:0.3048,yd:0.9144,mi:1609.344},
+    base: 'm'
+  },
+  Weight: {
+    units: ['mg','g','kg','oz','lb','st','ton'],
+    labels: {mg:'Milligram',g:'Gram',kg:'Kilogram',oz:'Ounce',lb:'Pound',st:'Stone',ton:'Metric Ton'},
+    toBase: {mg:0.000001,g:0.001,kg:1,oz:0.0283495,lb:0.453592,st:6.35029,ton:1000},
+    base: 'kg'
+  },
+  Temperature: {
+    units: ['C','F','K'],
+    labels: {C:'Celsius',F:'Fahrenheit',K:'Kelvin'},
+    special: true
+  },
+  Speed: {
+    units: ['m/s','km/h','mph','knot','ft/s'],
+    labels: {'m/s':'m/s','km/h':'km/h',mph:'mph',knot:'Knot','ft/s':'ft/s'},
+    toBase: {'m/s':1,'km/h':0.277778,mph:0.44704,knot:0.514444,'ft/s':0.3048},
+    base: 'm/s'
+  },
+  Volume: {
+    units: ['mL','L','gal','qt','pt','cup','fl oz','tbsp','tsp'],
+    labels: {mL:'Milliliter',L:'Liter',gal:'US Gallon',qt:'US Quart',pt:'US Pint',cup:'US Cup','fl oz':'US Fl Oz',tbsp:'Tablespoon',tsp:'Teaspoon'},
+    toBase: {mL:0.001,L:1,gal:3.78541,qt:0.946353,pt:0.473176,cup:0.236588,'fl oz':0.0295735,tbsp:0.0147868,tsp:0.00492892},
+    base: 'L'
+  },
+  Data: {
+    units: ['B','KB','MB','GB','TB','PB'],
+    labels: {B:'Byte',KB:'Kilobyte',MB:'Megabyte',GB:'Gigabyte',TB:'Terabyte',PB:'Petabyte'},
+    toBase: {B:1,KB:1024,MB:1048576,GB:1073741824,TB:1099511627776,PB:1125899906842624},
+    base: 'B'
+  },
+  Time: {
+    units: ['ms','s','min','hr','day','wk','mo','yr'],
+    labels: {ms:'Millisecond',s:'Second',min:'Minute',hr:'Hour',day:'Day',wk:'Week',mo:'Month (30d)',yr:'Year (365d)'},
+    toBase: {ms:0.001,s:1,min:60,hr:3600,day:86400,wk:604800,mo:2592000,yr:31536000},
+    base: 's'
+  }
+};
+
+let currentCat = 'Length';
+
+function init() {
+  const container = document.getElementById('categories');
+  Object.keys(categories).forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className = 'cat-btn' + (cat === currentCat ? ' active' : '');
+    btn.textContent = cat;
+    btn.onclick = () => selectCategory(cat);
+    container.appendChild(btn);
+  });
+  populateUnits();
+  convert();
+}
+
+function selectCategory(cat) {
+  currentCat = cat;
+  document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.cat-btn').forEach(b => { if (b.textContent === cat) b.classList.add('active'); });
+  document.getElementById('converterTitle').textContent = cat;
+  document.getElementById('inputVal').value = cat === 'Temperature' ? 100 : 1;
+  populateUnits();
+  convert();
+}
+
+function populateUnits() {
+  const cat = categories[currentCat];
+  const from = document.getElementById('fromUnit');
+  const to = document.getElementById('toUnit');
+  from.innerHTML = '';
+  to.innerHTML = '';
+  cat.units.forEach((u, i) => {
+    const label = cat.labels[u] + ' (' + u + ')';
+    from.innerHTML += `<option value="${u}">${label}</option>`;
+    to.innerHTML += `<option value="${u}"${i === 1 ? ' selected' : ''}>${label}</option>`;
+  });
+}
+
+function convertTemp(val, from, to) {
+  // Convert to Celsius first
+  let c;
+  if (from === 'C') c = val;
+  else if (from === 'F') c = (val - 32) * 5 / 9;
+  else c = val - 273.15;
+  // Convert from Celsius to target
+  if (to === 'C') return c;
+  if (to === 'F') return c * 9 / 5 + 32;
+  return c + 273.15;
+}
+
+function convert() {
+  const val = parseFloat(document.getElementById('inputVal').value);
+  if (isNaN(val)) {
+    document.getElementById('outputVal').value = '';
+    document.getElementById('resultText').textContent = '—';
+    document.getElementById('formulaText').textContent = '';
+    return;
+  }
+  const from = document.getElementById('fromUnit').value;
+  const to = document.getElementById('toUnit').value;
+  const cat = categories[currentCat];
+  let result;
+  if (cat.special) {
+    result = convertTemp(val, from, to);
+  } else {
+    result = val * cat.toBase[from] / cat.toBase[to];
+  }
+  // Format output
+  let display;
+  if (Math.abs(result) >= 1e9 || (Math.abs(result) < 0.0001 && result !== 0)) {
+    display = result.toExponential(6);
+  } else {
+    display = parseFloat(result.toPrecision(10)).toString();
+  }
+  document.getElementById('outputVal').value = display;
+  document.getElementById('resultText').textContent = `${val} ${from} = ${display} ${to}`;
+  document.getElementById('formulaText').textContent = `1 ${from} = ${parseFloat((cat.special ? convertTemp(1, from, to) : cat.toBase[from] / cat.toBase[to]).toPrecision(8))} ${to}`;
+}
+
+function swapUnits() {
+  const from = document.getElementById('fromUnit');
+  const to = document.getElementById('toUnit');
+  const tmp = from.value;
+  from.value = to.value;
+  to.value = tmp;
+  convert();
+}
+
+init();
+</script>
+<script src="auth.js"></script>
+</body>
+</html>
