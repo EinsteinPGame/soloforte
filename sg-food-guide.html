@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>SG Food Guide - Restaurants Near MRT Stations</title>
+  <title>SG Food Guide - Restaurants Near Every MRT Station</title>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -44,9 +44,7 @@
       position: sticky;
       top: 0;
       z-index: 100;
-      gap: 12px;
     }
-    .header-left { display: flex; flex-direction: column; }
     .header-title {
       font-size: 1.3rem;
       font-weight: 700;
@@ -57,264 +55,175 @@
       color: var(--text-muted);
       margin-top: 2px;
     }
-    .header-back {
+    .legend-toggle {
       background: var(--surface2);
       border: 1px solid var(--border);
       color: var(--text-muted);
-      font-size: 0.78rem;
+      font-size: 0.75rem;
       padding: 6px 12px;
-      border-radius: 8px;
+      border-radius: 6px;
       cursor: pointer;
-      text-decoration: none;
-      white-space: nowrap;
       transition: all 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      flex-shrink: 0;
     }
-    .header-back:hover { border-color: var(--accent); color: var(--accent); }
+    .legend-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
-    /* ===== FILTERS ===== */
-    #filters-bar {
-      background: var(--surface);
+    /* ===== LEGEND ===== */
+    #legend {
+      background: var(--surface2);
       border-bottom: 1px solid var(--border);
-      padding: 12px 16px;
-      display: flex;
-      flex-direction: column;
+      padding: 12px 20px;
+      display: none;
+      flex-wrap: wrap;
       gap: 10px;
-      position: sticky;
-      top: 57px;
-      z-index: 90;
     }
-    .search-row {
-      display: flex;
-      gap: 8px;
-    }
-    #search-input {
-      flex: 1;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-size: 0.9rem;
-      padding: 9px 14px;
-      border-radius: 10px;
-      outline: none;
-      transition: border-color 0.2s;
-    }
-    #search-input::placeholder { color: var(--text-muted); }
-    #search-input:focus { border-color: var(--accent); }
-    .count-badge {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      font-size: 0.78rem;
-      padding: 9px 12px;
-      border-radius: 10px;
-      white-space: nowrap;
+    #legend.open { display: flex; }
+    .legend-item {
       display: flex;
       align-items: center;
-    }
-    .filter-row {
-      display: flex;
       gap: 6px;
-      overflow-x: auto;
-      padding-bottom: 2px;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-    .filter-row::-webkit-scrollbar { display: none; }
-    .filter-chip {
-      background: var(--surface2);
-      border: 1px solid var(--border);
+      font-size: 0.8rem;
       color: var(--text-muted);
-      font-size: 0.78rem;
-      font-weight: 600;
-      padding: 6px 12px;
-      border-radius: 20px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.2s;
-      flex-shrink: 0;
-      user-select: none;
     }
-    .filter-chip:hover { border-color: var(--accent); color: var(--text); }
-    .filter-chip.active {
-      border-color: var(--accent);
-      color: var(--bg);
-      background: var(--accent);
-    }
-    .filter-chip.line-nsl.active  { background: var(--nsl); border-color: var(--nsl); }
-    .filter-chip.line-ewl.active  { background: var(--ewl); border-color: var(--ewl); }
-    .filter-chip.line-ccl.active  { background: var(--ccl); border-color: var(--ccl); color: #000; }
-    .filter-chip.line-dtl.active  { background: var(--dtl); border-color: var(--dtl); }
-    .filter-chip.line-nel.active  { background: var(--nel); border-color: var(--nel); }
-    .filter-chip.line-tel.active  { background: var(--tel); border-color: var(--tel); }
-
-    /* ===== MAIN CONTENT ===== */
-    #main-content {
-      padding: 16px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    /* ===== STATION SECTION ===== */
-    .station-section {
-      margin-bottom: 28px;
-      animation: fadeIn 0.3s ease;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    .station-header {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 12px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid var(--border);
-    }
-    .station-dot {
-      width: 14px;
-      height: 14px;
+    .legend-dot {
+      width: 12px; height: 12px;
       border-radius: 50%;
       flex-shrink: 0;
-      border: 2px solid rgba(255,255,255,0.3);
     }
-    .station-name-block { flex: 1; }
-    .station-name-text {
-      font-size: 1.05rem;
+
+    /* ===== MAP CONTAINER ===== */
+    #map-wrapper {
+      width: 100%;
+      overflow: hidden;
+      position: relative;
+      background: var(--bg);
+      touch-action: none;
+    }
+    #map-svg-container {
+      width: 100%;
+      transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform-origin: 0 0;
+    }
+    #map-svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    /* ===== STATION PANEL ===== */
+    #station-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--surface);
+      border-top: 2px solid var(--accent);
+      border-radius: 20px 20px 0 0;
+      padding: 0;
+      max-height: 75vh;
+      overflow-y: auto;
+      transform: translateY(100%);
+      transition: transform 0.4s cubic-bezier(0.34, 1.2, 0.64, 1);
+      z-index: 200;
+    }
+    #station-panel.open {
+      transform: translateY(0);
+    }
+    .panel-handle {
+      width: 40px;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 12px auto 0;
+    }
+    .panel-header {
+      padding: 16px 20px 12px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      background: var(--surface);
+      z-index: 1;
+    }
+    .panel-station-name {
+      font-size: 1.3rem;
       font-weight: 700;
       color: var(--text);
     }
-    .station-meta {
-      font-size: 0.75rem;
+    .panel-station-code {
+      font-size: 0.85rem;
       color: var(--text-muted);
-      margin-top: 2px;
+      margin-top: 3px;
     }
-    .station-count {
-      font-size: 0.75rem;
-      color: var(--text-muted);
+    .panel-close {
       background: var(--surface2);
       border: 1px solid var(--border);
-      padding: 3px 9px;
-      border-radius: 12px;
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .panel-close:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    .shops-container {
+      padding: 16px 20px 24px;
+    }
+    .shops-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
     }
 
-    /* ===== RESTAURANT CARDS GRID ===== */
-    .restaurant-grid {
+    /* ===== SHOP CARDS ===== */
+    .shop-cards {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
     }
-    @media (min-width: 500px) {
-      .restaurant-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    @media (min-width: 900px) {
-      .restaurant-grid { grid-template-columns: repeat(3, 1fr); }
-    }
-    @media (min-width: 1200px) {
-      .restaurant-grid { grid-template-columns: repeat(4, 1fr); }
-    }
-
-    .restaurant-card {
-      background: var(--surface);
+    .shop-card {
+      background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 12px;
       padding: 14px;
       cursor: pointer;
-      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      position: relative;
-      overflow: hidden;
+      transition: all 0.2s;
     }
-    .restaurant-card::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(240,165,0,0.04), transparent);
-      opacity: 0;
-      transition: opacity 0.2s;
-    }
-    .restaurant-card:hover {
+    .shop-card:hover, .shop-card:active {
       border-color: var(--accent);
-      transform: translateY(-3px);
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      transform: translateY(-2px);
     }
-    .restaurant-card:hover::before { opacity: 1; }
-    .card-top {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .cuisine-badge {
+    .shop-badge {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 9px;
+      gap: 5px;
+      padding: 4px 10px;
       border-radius: 20px;
-      font-size: 0.7rem;
+      font-size: 0.72rem;
       font-weight: 700;
-      flex-shrink: 0;
+      margin-bottom: 8px;
     }
-    .budget-badge {
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: var(--accent);
-      letter-spacing: 0.03em;
-      flex-shrink: 0;
-    }
-    .restaurant-name {
+    .shop-name {
       font-size: 0.95rem;
-      font-weight: 700;
+      font-weight: 600;
       color: var(--text);
-      line-height: 1.3;
+      margin-bottom: 4px;
     }
-    .restaurant-mall {
+    .shop-location {
       font-size: 0.78rem;
       color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .restaurant-desc {
-      font-size: 0.78rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .card-bottom {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-top: auto;
-    }
-    .rating-stars {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-    }
-    .star {
-      font-size: 0.8rem;
-      color: var(--border);
-      transition: color 0.1s;
-    }
-    .star.filled { color: var(--accent); }
-    .star.half { color: var(--accent); opacity: 0.6; }
-    .rating-num {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-left: 4px;
     }
 
-    /* ===== DETAIL DRAWER ===== */
+    /* ===== DETAIL PANEL ===== */
     #detail-panel {
       position: fixed;
       inset: 0;
@@ -324,7 +233,9 @@
       transform: translateX(100%);
       transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    #detail-panel.open { transform: translateX(0); }
+    #detail-panel.open {
+      transform: translateX(0);
+    }
     .detail-header {
       padding: 16px 20px;
       display: flex;
@@ -353,95 +264,119 @@
     }
     .detail-back:hover { border-color: var(--accent); }
     .detail-title-block { flex: 1; }
-    .detail-restaurant-name { font-size: 1.2rem; font-weight: 700; }
-    .detail-restaurant-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
-    .detail-body { padding: 20px; }
-
-    .detail-section-title {
-      font-size: 0.78rem;
+    .detail-shop-name {
+      font-size: 1.2rem;
+      font-weight: 700;
+    }
+    .detail-shop-sub {
+      font-size: 0.8rem;
       color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      margin-bottom: 10px;
-      margin-top: 20px;
+      margin-top: 2px;
     }
-    .detail-section-title:first-child { margin-top: 0; }
+    .detail-body {
+      padding: 20px;
+    }
 
-    .detail-info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 4px;
-    }
-    .info-block {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 12px 14px;
-    }
-    .info-block-label {
-      font-size: 0.7rem;
+    .section-title {
+      font-size: 0.8rem;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      margin-bottom: 5px;
+      margin-bottom: 12px;
+      margin-top: 22px;
     }
-    .info-block-value {
-      font-size: 0.95rem;
-      font-weight: 600;
-      color: var(--text);
-    }
-    .info-block-value.accent { color: var(--accent); }
+    .section-title:first-child { margin-top: 0; }
 
-    .detail-desc-block {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 14px;
-      font-size: 0.88rem;
-      color: var(--text);
-      line-height: 1.6;
+    /* Menu items */
+    .menu-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
-
-    .detail-location-block {
+    .menu-item {
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 10px;
       padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .menu-item-name {
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .menu-item-price {
+      font-size: 0.85rem;
+      color: var(--accent);
+      font-weight: 600;
+      white-space: nowrap;
+      margin-left: 10px;
+    }
+
+    /* Options chips */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Location block */
+    .location-block {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
     }
     .location-row {
       display: flex;
       align-items: flex-start;
       gap: 10px;
     }
-    .location-pin { font-size: 1.1rem; line-height: 1.4; flex-shrink: 0; }
-    .location-text { display: flex; flex-direction: column; gap: 3px; }
-    .location-name { font-size: 0.95rem; font-weight: 600; color: var(--text); }
-    .location-station { font-size: 0.82rem; color: var(--text-muted); }
-
-    .must-try-list {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .must-try-item {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 11px 14px;
-      font-size: 0.88rem;
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .must-try-dot {
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--accent);
+    .location-pin {
+      font-size: 1.1rem;
+      line-height: 1.4;
       flex-shrink: 0;
     }
+    .location-text {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .location-floor {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .location-directions {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state p { color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; }
+
+    /* ===== SVG STATION STYLES (applied via JS) ===== */
+    .station-dot {
+      cursor: pointer;
+      transition: r 0.15s;
+    }
+    .station-dot:hover { opacity: 0.85; }
 
     /* ===== BACKDROP ===== */
     #backdrop {
@@ -453,42 +388,94 @@
     }
     #backdrop.visible { display: block; }
 
-    /* ===== EMPTY STATE ===== */
-    #empty-state {
-      display: none;
-      text-align: center;
-      padding: 60px 20px;
-    }
-    #empty-state.visible { display: block; }
-    .empty-icon { font-size: 3rem; margin-bottom: 14px; }
-    .empty-text { color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; }
-
-    /* ===== CUISINE COLOR MAP ===== */
-    .cuisine-chinese    { background: rgba(212,46,18,0.2);  color: #ff7a6b; }
-    .cuisine-malay      { background: rgba(0,150,69,0.2);   color: #4ecc88; }
-    .cuisine-indian     { background: rgba(250,158,13,0.2); color: #ffc04a; }
-    .cuisine-japanese   { background: rgba(232,99,140,0.2); color: #f08cba; }
-    .cuisine-korean     { background: rgba(155,15,172,0.2); color: #cc6fdf; }
-    .cuisine-western    { background: rgba(0,94,196,0.2);   color: #6ab4ff; }
-    .cuisine-thai       { background: rgba(157,91,37,0.2);  color: #d4935a; }
-    .cuisine-cafe       { background: rgba(240,165,0,0.2);  color: #f0c040; }
-    .cuisine-fastfood   { background: rgba(232,99,140,0.15);color: #e88c50; }
-    .cuisine-seafood    { background: rgba(0,180,200,0.2);  color: #40c4d4; }
-    .cuisine-hawker     { background: rgba(120,120,50,0.3); color: #c8c060; }
-    .cuisine-italian    { background: rgba(0,100,180,0.2);  color: #60a8e0; }
-
     /* ===== SCROLLBAR ===== */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+    /* ===== FILTER BAR ===== */
+    #filter-bar {
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .filter-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .filter-row::-webkit-scrollbar { display: none; }
+    .filter-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      flex-shrink: 0;
+      width: 52px;
+    }
+    .filter-chip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #000;
+      font-weight: 600;
+    }
+    .search-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    #search-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #search-input::placeholder { color: var(--text-muted); }
+    #search-input:focus { border-color: var(--accent); }
+
     @media (min-width: 600px) {
+      #station-panel {
+        max-width: 500px;
+        left: auto;
+        right: 20px;
+        bottom: 20px;
+        border-radius: 16px;
+        border: 1px solid var(--accent);
+        max-height: 80vh;
+      }
       #detail-panel {
-        max-width: 520px;
+        max-width: 500px;
         left: auto;
         right: 0;
         border-left: 1px solid var(--border);
       }
+      .shop-cards { grid-template-columns: repeat(2, 1fr); }
     }
   </style>
 </head>
@@ -496,1133 +483,983 @@
   <script src="auth.js"></script>
 
 <header>
-  <div class="header-left">
+  <div>
     <div class="header-title">SG Food Guide</div>
-    <div class="header-sub">Restaurants near MRT stations</div>
+    <div class="header-sub">Restaurants near every MRT station</div>
   </div>
-  <a href="index.html" class="header-back">&#8592; Home</a>
+  <button class="legend-toggle" onclick="toggleLegend()">Lines</button>
 </header>
 
-<div id="filters-bar">
-  <!-- Search -->
+<div id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--nsl)"></div>North-South</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--ewl)"></div>East-West</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--ccl)"></div>Circle</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--dtl)"></div>Downtown</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--nel)"></div>North East</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--tel)"></div>Thomson-East Coast</div>
+</div>
+
+<div id="filter-bar">
   <div class="search-row">
-    <input id="search-input" type="text" placeholder="Search restaurant or station..." oninput="applyFilters()">
-    <div class="count-badge" id="result-count">-- places</div>
+    <input id="search-input" type="text" placeholder="Search restaurants or stations..." oninput="applyFilters()">
   </div>
-
-  <!-- MRT Line filter -->
-  <div class="filter-row" id="line-filters">
-    <span class="filter-chip active" data-line="all" onclick="toggleLine(this)">All Lines</span>
-    <span class="filter-chip line-nsl" data-line="nsl" onclick="toggleLine(this)">NSL</span>
-    <span class="filter-chip line-ewl" data-line="ewl" onclick="toggleLine(this)">EWL</span>
-    <span class="filter-chip line-ccl" data-line="ccl" onclick="toggleLine(this)">CCL</span>
-    <span class="filter-chip line-dtl" data-line="dtl" onclick="toggleLine(this)">DTL</span>
-    <span class="filter-chip line-nel" data-line="nel" onclick="toggleLine(this)">NEL</span>
-    <span class="filter-chip line-tel" data-line="tel" onclick="toggleLine(this)">TEL</span>
+  <div class="filter-row">
+    <span class="filter-label">Line</span>
+    <span class="filter-chip active" data-filter="line" data-value="all" onclick="toggleFilter(this)">All</span>
+    <span class="filter-chip" data-filter="line" data-value="nsl" onclick="toggleFilter(this)" style="border-color:#d42e1240">NSL</span>
+    <span class="filter-chip" data-filter="line" data-value="ewl" onclick="toggleFilter(this)" style="border-color:#00964540">EWL</span>
+    <span class="filter-chip" data-filter="line" data-value="ccl" onclick="toggleFilter(this)" style="border-color:#fa9e0d40">CCL</span>
+    <span class="filter-chip" data-filter="line" data-value="dtl" onclick="toggleFilter(this)" style="border-color:#005ec440">DTL</span>
+    <span class="filter-chip" data-filter="line" data-value="nel" onclick="toggleFilter(this)" style="border-color:#9b0fac40">NEL</span>
+    <span class="filter-chip" data-filter="line" data-value="tel" onclick="toggleFilter(this)" style="border-color:#9d5b2540">TEL</span>
   </div>
-
-  <!-- Cuisine filter -->
-  <div class="filter-row" id="cuisine-filters">
-    <span class="filter-chip active" data-cuisine="all" onclick="toggleCuisine(this)">All Cuisines</span>
-    <span class="filter-chip" data-cuisine="Chinese" onclick="toggleCuisine(this)">Chinese</span>
-    <span class="filter-chip" data-cuisine="Malay" onclick="toggleCuisine(this)">Malay</span>
-    <span class="filter-chip" data-cuisine="Indian" onclick="toggleCuisine(this)">Indian</span>
-    <span class="filter-chip" data-cuisine="Japanese" onclick="toggleCuisine(this)">Japanese</span>
-    <span class="filter-chip" data-cuisine="Korean" onclick="toggleCuisine(this)">Korean</span>
-    <span class="filter-chip" data-cuisine="Western" onclick="toggleCuisine(this)">Western</span>
-    <span class="filter-chip" data-cuisine="Thai" onclick="toggleCuisine(this)">Thai</span>
-    <span class="filter-chip" data-cuisine="Italian" onclick="toggleCuisine(this)">Italian</span>
-    <span class="filter-chip" data-cuisine="Cafe" onclick="toggleCuisine(this)">Cafe</span>
-    <span class="filter-chip" data-cuisine="Fast Food" onclick="toggleCuisine(this)">Fast Food</span>
-    <span class="filter-chip" data-cuisine="Seafood" onclick="toggleCuisine(this)">Seafood</span>
-    <span class="filter-chip" data-cuisine="Hawker" onclick="toggleCuisine(this)">Hawker</span>
+  <div class="filter-row">
+    <span class="filter-label">Cuisine</span>
+    <span class="filter-chip active" data-filter="cuisine" data-value="all" onclick="toggleFilter(this)">All</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Chinese" onclick="toggleFilter(this)">Chinese</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Malay" onclick="toggleFilter(this)">Malay</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Indian" onclick="toggleFilter(this)">Indian</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Japanese" onclick="toggleFilter(this)">Japanese</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Korean" onclick="toggleFilter(this)">Korean</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Western" onclick="toggleFilter(this)">Western</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Thai" onclick="toggleFilter(this)">Thai</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Cafe" onclick="toggleFilter(this)">Cafe</span>
+    <span class="filter-chip" data-filter="cuisine" data-value="Fast Food" onclick="toggleFilter(this)">Fast Food</span>
   </div>
-
-  <!-- Budget filter -->
-  <div class="filter-row" id="budget-filters">
-    <span class="filter-chip active" data-budget="all" onclick="toggleBudget(this)">Any Budget</span>
-    <span class="filter-chip" data-budget="$" onclick="toggleBudget(this)">$ Under $10</span>
-    <span class="filter-chip" data-budget="$$" onclick="toggleBudget(this)">$$ $10-20</span>
-    <span class="filter-chip" data-budget="$$$" onclick="toggleBudget(this)">$$$ $20-40</span>
-    <span class="filter-chip" data-budget="$$$$" onclick="toggleBudget(this)">$$$$ $40+</span>
-  </div>
-
-  <!-- Rating filter -->
-  <div class="filter-row" id="rating-filters">
-    <span class="filter-chip active" data-rating="all" onclick="toggleRating(this)">Any Rating</span>
-    <span class="filter-chip" data-rating="5" onclick="toggleRating(this)">&#9733; 5.0</span>
-    <span class="filter-chip" data-rating="4" onclick="toggleRating(this)">&#9733; 4.0+</span>
-    <span class="filter-chip" data-rating="3" onclick="toggleRating(this)">&#9733; 3.0+</span>
+  <div class="filter-row">
+    <span class="filter-label">Budget</span>
+    <span class="filter-chip active" data-filter="budget" data-value="all" onclick="toggleFilter(this)">All</span>
+    <span class="filter-chip" data-filter="budget" data-value="1" onclick="toggleFilter(this)">$</span>
+    <span class="filter-chip" data-filter="budget" data-value="2" onclick="toggleFilter(this)">$$</span>
+    <span class="filter-chip" data-filter="budget" data-value="3" onclick="toggleFilter(this)">$$$</span>
+    <span class="filter-chip" data-filter="budget" data-value="4" onclick="toggleFilter(this)">$$$$</span>
   </div>
 </div>
 
-<div id="main-content">
-  <div id="stations-list"></div>
-  <div id="empty-state">
-    <div class="empty-icon">&#x1F374;</div>
-    <div class="empty-text">No restaurants found.<br>Try adjusting your filters.</div>
+<div id="map-wrapper">
+  <div id="map-svg-container">
+    <svg id="map-svg" viewBox="0 0 1000 800" xmlns="http://www.w3.org/2000/svg">
+      <!-- Background -->
+      <rect width="1000" height="800" fill="#0f0f1a"/>
+
+      <!-- ===== TRACK LINES ===== -->
+      <g id="lines" stroke-linecap="round" stroke-linejoin="round" fill="none">
+
+        <!-- North-South Line (NSL) Red: Jurong East -> Woodlands -> Marina South Pier -->
+        <polyline stroke="#d42e12" stroke-width="6"
+          points="130,600 130,540 130,480 130,420 130,360 190,310 250,270 310,240 370,210 420,180 460,155 500,140 540,140 570,140 600,160 620,200 620,250 620,300 620,350 620,400 620,440 640,470 650,510 650,560 650,610 650,660"/>
+
+        <!-- East-West Line (EWL) Green: Tuas -> Tampines -> Expo -->
+        <polyline stroke="#009645" stroke-width="6"
+          points="60,620 130,600 200,590 270,575 340,560 400,545 460,530 520,520 580,510 620,510 650,510 700,500 760,490 810,480 860,470 900,460 940,450"/>
+
+        <!-- Circle Line (CCL) Orange: Dhoby Ghaut -> HarbourFront -->
+        <polyline stroke="#fa9e0d" stroke-width="5"
+          points="620,300 660,280 700,270 740,275 770,290 790,320 800,360 795,400 780,430 760,455 730,470 700,480 670,490 650,510"/>
+        <!-- Upper arc of circle line -->
+        <polyline stroke="#fa9e0d" stroke-width="5"
+          points="620,300 600,280 575,265 545,258 520,260 495,268 472,282 455,300 445,325 440,355 445,385 455,410 470,430 490,448 515,460 540,468 565,472 590,472 620,470 650,460 680,455 700,480"/>
+
+        <!-- Downtown Line (DTL) Blue: Bukit Panjang -> Expo -->
+        <polyline stroke="#005ec4" stroke-width="5"
+          points="160,310 220,330 280,345 330,355 380,365 420,380 460,395 490,410 510,430 520,448 530,465 540,468"/>
+        <polyline stroke="#005ec4" stroke-width="5"
+          points="540,468 580,460 620,445 660,430 700,420 740,415 780,415 820,420 860,428 900,435 940,445"/>
+
+        <!-- North East Line (NEL) Purple: HarbourFront -> Punggol -->
+        <polyline stroke="#9b0fac" stroke-width="5"
+          points="650,610 640,565 630,520 620,480 610,450 600,420 590,395 580,370 580,340 590,315 610,295 630,280 650,270 670,265 700,265 730,270 760,280"/>
+
+        <!-- Thomson-East Coast Line (TEL) Brown: Woodlands -> Gardens by the Bay -->
+        <polyline stroke="#9d5b25" stroke-width="5"
+          points="310,180 310,210 310,240 320,275 340,305 360,330 390,355 420,380 450,405 475,430 500,455 520,470 560,460 620,440 600,490 620,510 640,530 660,555 670,575 670,600 660,640 650,680"/>
+      </g>
+
+      <!-- ===== STATIONS ===== (rendered by JS) -->
+      <g id="stations-layer"></g>
+      <g id="labels-layer"></g>
+    </svg>
   </div>
 </div>
 
-<div id="backdrop" onclick="closeDetail()"></div>
+<div id="backdrop" onclick="closePanel()"></div>
 
-<!-- Detail panel -->
+<!-- Station Panel -->
+<div id="station-panel">
+  <div class="panel-handle"></div>
+  <div class="panel-header">
+    <div>
+      <div class="panel-station-name" id="panel-station-name">Station Name</div>
+      <div class="panel-station-code" id="panel-station-code">Code</div>
+    </div>
+    <button class="panel-close" onclick="closePanel()">&#x2715;</button>
+  </div>
+  <div class="shops-container" id="shops-container"></div>
+</div>
+
+<!-- Detail Panel (shop menu) -->
 <div id="detail-panel">
   <div class="detail-header">
-    <button class="detail-back" onclick="closeDetail()">&#8592;</button>
+    <button class="detail-back" onclick="closeDetail()">&#x2190;</button>
     <div class="detail-title-block">
-      <div class="detail-restaurant-name" id="detail-name"></div>
-      <div class="detail-restaurant-sub" id="detail-sub"></div>
+      <div class="detail-shop-name" id="detail-shop-name"></div>
+      <div class="detail-shop-sub" id="detail-shop-sub"></div>
     </div>
   </div>
   <div class="detail-body" id="detail-body"></div>
 </div>
 
 <script>
-// ===== DATA =====
+// ============================================================
+// DATA
+// ============================================================
+
+// Station data: id, name, code, lines[], x, y, shops[]
+// shops: { name, cuisine, budget(1-4), rating(1-5), mall, description, mustTry[] }
 const STATIONS = [
-  {
-    id: 'orchard',
-    name: 'Orchard',
-    code: 'NS22 / TE14',
-    lines: ['nsl','tel'],
-    malls: 'ION Orchard, Wisma Atria, Paragon, Ngee Ann City',
-    restaurants: [
-      {
-        name: 'Din Tai Fung',
-        cuisine: 'Chinese',
-        budget: '$$$',
-        rating: 4.6,
-        mall: 'Paragon',
-        desc: 'World-famous Taiwan-origin dim sum chain. Legendary xiao long bao soup dumplings, drunken chicken, and truffle fried rice. Always expect a queue.',
-        mustTry: ['Xiao Long Bao (Pork Soup Dumplings)','Truffle Fried Rice','Steamed Pork Chop with Rice','Taro Xiao Long Bao']
-      },
-      {
-        name: 'Kith Cafe',
-        cuisine: 'Cafe',
-        budget: '$$',
-        rating: 4.3,
-        mall: 'Ngee Ann City',
-        desc: 'Bright all-day cafe known for fluffy pancakes, hearty brunch plates, and specialty coffee. Popular Orchard brunch spot with cozy atmosphere.',
-        mustTry: ['Lemon Ricotta Pancakes','Smashed Avocado Toast','Flat White','Eggs Benedict']
-      },
-      {
-        name: 'Ichiban Boshi',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 4.1,
-        mall: 'Wisma Atria',
-        desc: 'Casual Japanese chain serving sushi, teriyaki, udon, and bento sets. Reliable quality at mid-range prices, great for families.',
-        mustTry: ['Salmon Teriyaki Bento','Bara Chirashi','Unagi Don','Ebi Tempura Udon']
-      },
-      {
-        name: 'Marché Mövenpick',
-        cuisine: 'Western',
-        budget: '$$',
-        rating: 4.0,
-        mall: 'Paragon',
-        desc: 'Swiss-themed food hall with live cooking stations. Pick your pasta, steak, pizza, or fondue in a market-style setting. Great for groups.',
-        mustTry: ['Rösti with Smoked Salmon','Swiss Cheese Fondue','Freshly Made Pasta','Apple Strudel']
-      },
-      {
-        name: 'Crystal Jade La Mian Xiao Long Bao',
-        cuisine: 'Chinese',
-        budget: '$$',
-        rating: 4.2,
-        mall: 'ION Orchard',
-        desc: 'Popular Crystal Jade brand focusing on handmade la mian noodles and xiao long bao. Consistent quality, large portions.',
-        mustTry: ['La Mian in Superior Broth','Xiao Long Bao','Braised Pork Belly with Rice','Crispy Roasted Duck']
-      }
-    ]
-  },
-  {
-    id: 'somerset',
-    name: 'Somerset',
-    code: 'NS23',
-    lines: ['nsl'],
-    malls: '313@Somerset, Orchard Central',
-    restaurants: [
-      {
-        name: 'Soup Restaurant',
-        cuisine: 'Chinese',
-        budget: '$$',
-        rating: 4.1,
-        mall: '313@Somerset',
-        desc: 'Cantonese-style restaurant specialising in old-recipe slow-cooked soups and Samsui Ginger Chicken. Warm, wholesome meals.',
-        mustTry: ['Samsui Ginger Chicken','Double-boiled Herbal Soup','Claypot Rice','Steamed Fish']
-      },
-      {
-        name: 'Saizeriya',
-        cuisine: 'Italian',
-        budget: '$',
-        rating: 4.0,
-        mall: 'Orchard Central',
-        desc: 'Budget-friendly Italian chain from Japan. Affordable pasta, pizza, and risotto make this a student favourite. Great value, no frills.',
-        mustTry: ['Carbonara Spaghetti','Margherita Pizza','Escargot','Tiramisu']
-      },
-      {
-        name: 'PastaMania',
-        cuisine: 'Italian',
-        budget: '$',
-        rating: 3.9,
-        mall: '313@Somerset',
-        desc: 'Casual pasta chain offering quick and affordable Italian-style meals in a food-court setting. Great weekday lunch option.',
-        mustTry: ['Aglio Olio','Bolognese Spaghetti','Baked Chicken Lasagna','Garlic Bread']
-      },
-      {
-        name: 'Café Brera',
-        cuisine: 'Cafe',
-        budget: '$$',
-        rating: 4.2,
-        mall: 'Orchard Central',
-        desc: 'Cosy Italian-inspired café with single-origin coffee, pastries, and light bites. One of the more peaceful spots in the Orchard area.',
-        mustTry: ['Flat White','Cannoli','Croque Monsieur','Affogato']
-      }
-    ]
-  },
-  {
-    id: 'dhoby-ghaut',
-    name: 'Dhoby Ghaut',
-    code: 'NS24 / NE6 / CC1',
-    lines: ['nsl','nel','ccl'],
-    malls: 'Plaza Singapura',
-    restaurants: [
-      {
-        name: 'Tim Ho Wan',
-        cuisine: 'Chinese',
-        budget: '$$',
-        rating: 4.4,
-        mall: 'Plaza Singapura',
-        desc: 'Michelin-starred dim sum chain. One of the world\'s most affordable Michelin restaurants. Famous for its baked BBQ pork buns.',
-        mustTry: ['Baked BBQ Pork Buns','Har Gow Shrimp Dumplings','Cheung Fun Rice Rolls','Pan-fried Turnip Cake']
-      },
-      {
-        name: 'Sushi Tei',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 4.0,
-        mall: 'Plaza Singapura',
-        desc: 'Mid-range Japanese restaurant with an extensive menu covering sushi, sashimi, ramen, and teppanyaki. Reliable everyday Japanese dining.',
-        mustTry: ['Salmon Sashimi','Mentaiko Udon','Chicken Teriyaki Don','Salmon Avocado Roll']
-      },
-      {
-        name: 'Swensen\'s',
-        cuisine: 'Western',
-        budget: '$$',
-        rating: 3.8,
-        mall: 'Plaza Singapura',
-        desc: 'Classic Singaporean ice cream and American diner chain. Great for families with kids. Known for Earthquake sundaes and hearty mains.',
-        mustTry: ['Earthquake Sundae','Sticky Chewy Chocolate Ice Cream','Fish & Chips','BBQ Chicken Platter']
-      },
-      {
-        name: 'Pepper Lunch',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 4.1,
-        mall: 'Plaza Singapura',
-        desc: 'Japanese DIY hot-plate dining concept. Your meal arrives on a sizzling plate — stir, sear, and season it yourself. Interactive and fun.',
-        mustTry: ['Beef Pepper Rice','Salmon Steak on Rice','Corn Butter Chicken','Teriyaki Chicken']
-      }
-    ]
-  },
-  {
-    id: 'city-hall',
-    name: 'City Hall',
-    code: 'NS25 / EW13',
-    lines: ['nsl','ewl'],
-    malls: 'Raffles City, Funan',
-    restaurants: [
-      {
-        name: 'Burger & Lobster',
-        cuisine: 'Western',
-        budget: '$$$',
-        rating: 4.3,
-        mall: 'Raffles City',
-        desc: 'UK-origin restaurant with a hyper-focused menu — just burgers and lobster. Premium ingredients, generous portions, and a lively atmosphere.',
-        mustTry: ['Original Lobster Roll','Wagyu Beef Burger','Lobster & Chips','Smash Burger']
-      },
-      {
-        name: 'Paradise Dynasty',
-        cuisine: 'Chinese',
-        budget: '$$$',
-        rating: 4.3,
-        mall: 'Raffles City',
-        desc: 'Upscale Chinese restaurant from the Paradise Group. Known for colourful eight-flavour xiao long bao and refined Shanghai cuisine.',
-        mustTry: ['8-Flavour Xiao Long Bao','La Zi Ji Spicy Chicken','Braised E-Fu Noodles','Truffle Xiao Long Bao']
-      },
-      {
-        name: 'PS.Cafe',
-        cuisine: 'Cafe',
-        budget: '$$$',
-        rating: 4.4,
-        mall: 'Funan',
-        desc: 'Iconic Singapore café chain known for truffle fries, elegant brunch plates, and decadent desserts. Stylish and perfect for catching up.',
-        mustTry: ['Truffle Shoestring Fries','Warm Chocolate Cake','Eggs Benedict','Sea Salt Latte']
-      },
-      {
-        name: 'Tsuta Japanese Soba Noodles',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 4.4,
-        mall: 'Raffles City',
-        desc: 'World\'s first Michelin-starred ramen restaurant. Premium ramen using artisanal soba noodles with shoyu or shio broth. Exceptional quality.',
-        mustTry: ['Shoyu Soba','Shio Soba','Truffle Soba','Ajitsuke Tamago Egg']
-      },
-      {
-        name: 'Koufu Hawker',
-        cuisine: 'Hawker',
-        budget: '$',
-        rating: 4.0,
-        mall: 'Funan',
-        desc: 'Multi-stall hawker centre inside Funan mall. Wide variety of local dishes from chicken rice to laksa. Fast, affordable, authentic.',
-        mustTry: ['Hainanese Chicken Rice','Char Kway Teow','Nasi Lemak','Teh Tarik']
-      }
-    ]
-  },
-  {
-    id: 'bugis',
-    name: 'Bugis',
-    code: 'EW12 / DT14',
-    lines: ['ewl','dtl'],
-    malls: 'Bugis Junction, Bugis+',
-    restaurants: [
-      {
-        name: 'Jollibee',
-        cuisine: 'Fast Food',
-        budget: '$',
-        rating: 4.0,
-        mall: 'Bugis Junction',
-        desc: 'Philippine fast food chain with a cult following. Famous for Chickenjoy fried chicken, Yumburgers, and spaghetti. Comfort food at its best.',
-        mustTry: ['Chickenjoy with Rice','Yumburger','Filipino Spaghetti','Peach Mango Pie']
-      },
-      {
-        name: 'Nakhon Kitchen',
-        cuisine: 'Thai',
-        budget: '$$',
-        rating: 4.4,
-        mall: 'Bugis+',
-        desc: 'Authentic Thai food with bold flavours. Known for excellent tom yum, green curry, and the famous volcano fried rice. Always busy — arrive early.',
-        mustTry: ['Volcano Fried Rice','Tom Yum Seafood Soup','Pad Thai','Green Curry with Chicken']
-      },
-      {
-        name: 'Gyukaku Japanese BBQ',
-        cuisine: 'Japanese',
-        budget: '$$$',
-        rating: 4.2,
-        mall: 'Bugis+',
-        desc: 'Japanese yakiniku (BBQ) restaurant chain. Grill marinated beef, pork, and seafood at your table over charcoal-style flame. Great for groups.',
-        mustTry: ['Kalbi Short Rib','Harami Skirt Steak','Tontoro Pork Jowl','Garlic Fried Rice']
-      },
-      {
-        name: 'Maki-San',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 3.9,
-        mall: 'Bugis Junction',
-        desc: 'Build-your-own sushi roll concept. Customise your maki with fresh ingredients at a quick-service counter. Fast, fresh, and fun.',
-        mustTry: ['Volcano Roll','Soft Shell Crab Roll','Salmon Mentaiko Roll','Teriyaki Chicken Roll']
-      }
-    ]
-  },
-  {
-    id: 'jurong-east',
-    name: 'Jurong East',
-    code: 'NS1 / EW24',
-    lines: ['nsl','ewl'],
-    malls: 'JEM, Westgate, IMM',
-    restaurants: [
-      {
-        name: 'Hai Di Lao Hot Pot',
-        cuisine: 'Chinese',
-        budget: '$$$',
-        rating: 4.5,
-        mall: 'Westgate',
-        desc: 'China\'s most famous hot pot chain known for exceptional service — free manicures, noodle-pulling shows while you wait. Rich broths, premium meats.',
-        mustTry: ['Tomato Broth','Spicy Mala Broth','Wagyu Beef Slices','Hand-pulled Noodles','Sesame Sauce Dip']
-      },
-      {
-        name: 'A-One Claypot House',
-        cuisine: 'Chinese',
-        budget: '$$',
-        rating: 4.2,
-        mall: 'JEM',
-        desc: 'Claypot rice specialists in a cosy restaurant setting. Fragrant claypot rice cooked to order, with crispy bottom layer. Hearty home-style cooking.',
-        mustTry: ['Claypot Chicken Rice','Claypot La La Clam Rice','Braised Pork Trotters','Tofu with Minced Meat']
-      },
-      {
-        name: 'Sakae Sushi',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 3.8,
-        mall: 'IMM',
-        desc: 'Singapore-based conveyor belt sushi chain. Affordable rotating sushi with promotional items. Good value for families and quick lunches.',
-        mustTry: ['Salmon Aburi Sushi','Unagi Maki','Chawanmushi','Miso Soup Set']
-      },
-      {
-        name: 'Gongcha',
-        cuisine: 'Cafe',
-        budget: '$',
-        rating: 4.1,
-        mall: 'JEM',
-        desc: 'Popular Taiwanese bubble tea chain. Customise sugar level, ice level, and toppings. Milk teas and fruit teas made to order.',
-        mustTry: ['Roasted Milk Tea with Pearls','Yakult Aloe Vera','Taro Milk Tea','Brown Sugar Latte']
-      },
-      {
-        name: 'Canton-i',
-        cuisine: 'Chinese',
-        budget: '$$',
-        rating: 4.1,
-        mall: 'Westgate',
-        desc: 'Cantonese restaurant with dim sum lunch and dinner sets. Clean, modern space serving traditional Cantonese recipes with quality ingredients.',
-        mustTry: ['Har Gow','Siu Mai','Char Siu Cheung Fun','Egg Tarts']
-      }
-    ]
-  },
-  {
-    id: 'tampines',
-    name: 'Tampines',
-    code: 'EW2 / DT32',
-    lines: ['ewl','dtl'],
-    malls: 'Tampines Mall, Tampines 1, Century Square',
-    restaurants: [
-      {
-        name: 'Seoul Garden',
-        cuisine: 'Korean',
-        budget: '$$',
-        rating: 3.9,
-        mall: 'Tampines 1',
-        desc: 'Korean BBQ buffet chain with tabletop grills. All-you-can-eat Korean BBQ with marinated meats, banchan sides, and soup. Bustling and fun.',
-        mustTry: ['Bulgogi Beef','Dak Galbi Chicken','Kimchi Jjigae','Japchae Noodles']
-      },
-      {
-        name: 'Xin Wang Hong Kong Cafe',
-        cuisine: 'Chinese',
-        budget: '$$',
-        rating: 4.0,
-        mall: 'Tampines Mall',
-        desc: 'HK-style cha chaan teng (tea restaurant) with a full menu of HK classics. Open late, great for supper. Laid-back nostalgic vibes.',
-        mustTry: ['Pineapple Bun with Butter','Milk Tea (Cold)','Baked Pork Chop Rice','Wonton Noodle Soup']
-      },
-      {
-        name: 'Ichiran Ramen',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 4.5,
-        mall: 'Century Square',
-        desc: 'Solo-dining ramen chain from Fukuoka. Customise your tonkotsu ramen from broth richness to noodle firmness. Private booth dining concept.',
-        mustTry: ['Original Tonkotsu Ramen','Extra Rich Broth','Soft Boiled Egg Add-on','Half-and-Half Noodle Set']
-      },
-      {
-        name: 'Pastamania',
-        cuisine: 'Italian',
-        budget: '$',
-        rating: 3.7,
-        mall: 'Tampines Mall',
-        desc: 'Popular casual pasta chain in Singapore. Budget-friendly Italian-style pasta and pizza in a relaxed environment. Family-friendly.',
-        mustTry: ['Baked Chicken Arrabiata','Carbonara Spaghetti','Garlic Bread','Chocolate Lava Cake']
-      },
-      {
-        name: 'Subway',
-        cuisine: 'Fast Food',
-        budget: '$',
-        rating: 3.6,
-        mall: 'Century Square',
-        desc: 'Build-your-own sandwich chain. Customise your sub with fresh vegetables, proteins, and sauces. Healthier fast-food option.',
-        mustTry: ['Italian BMT','Chicken Teriyaki','Tuna Sub','Veggie Delite']
-      }
-    ]
-  },
-  {
-    id: 'bishan',
-    name: 'Bishan',
-    code: 'NS17 / CC15',
-    lines: ['nsl','ccl'],
-    malls: 'Junction 8',
-    restaurants: [
-      {
-        name: 'Crystal Jade Pavilion',
-        cuisine: 'Chinese',
-        budget: '$$$',
-        rating: 4.3,
-        mall: 'Junction 8',
-        desc: 'Premium Crystal Jade brand offering refined Cantonese cuisine and dim sum in an elegant setting. Popular for family gatherings.',
-        mustTry: ['Peking Duck','Steamed Scallop with Vermicelli','BBQ Pork Char Siu','Egg White Fried Rice']
-      },
-      {
-        name: 'PUTIEN',
-        cuisine: 'Chinese',
-        budget: '$$$',
-        rating: 4.5,
-        mall: 'Junction 8',
-        desc: 'Michelin-starred Fujian cuisine restaurant. Famous for its unique and authentic Putian recipes rarely found elsewhere in Singapore.',
-        mustTry: ['Stir-fried Heng Hwa Beehoon','Braised Pork Trotter','100-Second Clam','Peanut Soup']
-      },
-      {
-        name: 'Nando\'s',
-        cuisine: 'Western',
-        budget: '$$',
-        rating: 4.1,
-        mall: 'Junction 8',
-        desc: 'South African-Portuguese peri-peri chicken chain. Choose your heat level from Lemon & Herb to Extra Hot. Famous flame-grilled chicken.',
-        mustTry: ['1/4 Chicken with Spicy Peri-Peri','Peri-Peri Chips','Chicken Burger','Creamy Mashed Potato']
-      },
-      {
-        name: 'Thai Express',
-        cuisine: 'Thai',
-        budget: '$$',
-        rating: 3.9,
-        mall: 'Junction 8',
-        desc: 'Fast-casual Thai restaurant chain. Consistent Thai flavours at affordable prices. Great for quick weekday lunches.',
-        mustTry: ['Pad Thai','Green Curry','Tom Yum Soup','Mango Sticky Rice']
-      }
-    ]
-  },
-  {
-    id: 'ang-mo-kio',
-    name: 'Ang Mo Kio',
-    code: 'NS16',
-    lines: ['nsl'],
-    malls: 'AMK Hub',
-    restaurants: [
-      {
-        name: 'Yishun 925 Milkfish Paya Lebar',
-        cuisine: 'Hawker',
-        budget: '$',
-        rating: 4.3,
-        mall: 'AMK Hub',
-        desc: 'Local hawker stall famous for fishball noodles and milkfish (bangus). Very popular among locals for authentic old-school flavours.',
-        mustTry: ['Fishball Noodles (Dry)','Milkfish Soup','Fish Cake Noodles','Curry Fishball']
-      },
-      {
-        name: 'BreadTalk',
-        cuisine: 'Cafe',
-        budget: '$',
-        rating: 3.8,
-        mall: 'AMK Hub',
-        desc: 'Singapore\'s homegrown bakery chain. Open-concept bread-making with creative flavours. Popular for floss buns and seasonal pastries.',
-        mustTry: ['Flosss Bun','Raisin Loaf','Crème Brûlée Tart','Hokkaido Milk Bread']
-      },
-      {
-        name: 'Haidilao',
-        cuisine: 'Chinese',
-        budget: '$$$',
-        rating: 4.4,
-        mall: 'AMK Hub',
-        desc: 'World-famous hot pot chain with over-the-top service. Bottomless snacks while waiting, free shoe shines, DIY sauce bar.',
-        mustTry: ['Tomato Base Broth','Wagyu Beef','Frozen Tofu','Hand-made Fish Balls']
-      },
-      {
-        name: 'McDonald\'s',
-        cuisine: 'Fast Food',
-        budget: '$',
-        rating: 3.7,
-        mall: 'AMK Hub',
-        desc: 'The world\'s most recognised fast food chain. Singapore\'s location carries local specials like Nasi Lemak burger and McSpicy. 24-hour.',
-        mustTry: ['McSpicy Burger','Nasi Lemak Burger (seasonal)','McFlurry Oreo','Double McChicken']
-      }
-    ]
-  },
-  {
-    id: 'woodlands',
-    name: 'Woodlands',
-    code: 'NS9 / TE2',
-    lines: ['nsl','tel'],
-    malls: 'Causeway Point',
-    restaurants: [
-      {
-        name: 'Pepper Lunch',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 4.0,
-        mall: 'Causeway Point',
-        desc: 'Japanese sizzling hot-plate restaurant. Cook your meal on a scorching iron plate — steak, chicken, or salmon with butter corn rice.',
-        mustTry: ['Beef Pepper Rice','Curry Salmon Steak','Corn Butter Beef','Brown Sauce Demi-Glace']
-      },
-      {
-        name: 'Astons Specialities',
-        cuisine: 'Western',
-        budget: '$$',
-        rating: 4.1,
-        mall: 'Causeway Point',
-        desc: 'Popular Singaporean western food chain. Generous portions of grilled chicken, steaks, and ribs at very affordable prices. Local favourite.',
-        mustTry: ['Grilled Chicken Chop','Black Pepper Steak','Grilled Salmon','Mushroom Sauce Pork Ribs']
-      },
-      {
-        name: 'Old Chang Kee',
-        cuisine: 'Hawker',
-        budget: '$',
-        rating: 4.2,
-        mall: 'Causeway Point',
-        desc: 'Singapore\'s iconic curry puff chain. Golden pastry filled with curried potatoes, eggs, and chicken. A true local snack institution since 1956.',
-        mustTry: ['Original Curry Puff','Sardine Puff','Chicken Wing','Ramly Burger-style Hotdog']
-      },
-      {
-        name: 'Sakura International Buffet',
-        cuisine: 'Japanese',
-        budget: '$$$',
-        rating: 3.9,
-        mall: 'Causeway Point',
-        desc: 'Japanese buffet restaurant with over 200 dishes. Sushi, sashimi, Japanese and international hot food, live stations, and desserts.',
-        mustTry: ['Live Sashimi Station','Salmon Sushi','Tempura Prawns','Teppanyaki Beef','Matcha Ice Cream']
-      }
-    ]
-  },
-  {
-    id: 'harbourfront',
-    name: 'HarbourFront',
-    code: 'NE1 / CC29',
-    lines: ['nel','ccl'],
-    malls: 'VivoCity',
-    restaurants: [
-      {
-        name: 'Tony Roma\'s',
-        cuisine: 'Western',
-        budget: '$$$',
-        rating: 4.1,
-        mall: 'VivoCity',
-        desc: 'American BBQ rib restaurant. Famous for their signature fall-off-the-bone baby back ribs with smoky BBQ sauce. Classic American comfort food.',
-        mustTry: ['Original Baby Back Ribs','Full Rack Ribs','Onion Ring Tower','Key Lime Pie']
-      },
-      {
-        name: 'Red House Seafood',
-        cuisine: 'Seafood',
-        budget: '$$$',
-        rating: 4.3,
-        mall: 'VivoCity',
-        desc: 'Established Singapore seafood restaurant known for chilli crab, black pepper crab, and other local-style seafood classics. Great for celebrations.',
-        mustTry: ['Chilli Crab with Mantou','Black Pepper Crab','Cereal Butter Prawns','Steamed Grouper with Soy']
-      },
-      {
-        name: 'Marugame Udon',
-        cuisine: 'Japanese',
-        budget: '$',
-        rating: 4.3,
-        mall: 'VivoCity',
-        desc: 'Japanese udon chain serving freshly made thick wheat noodles. Pick your broth and add tempura or other toppings. Outstanding value.',
-        mustTry: ['Beef Udon','Curry Udon','Mushroom Tempura','Karaage Chicken']
-      },
-      {
-        name: 'Jipangu',
-        cuisine: 'Japanese',
-        budget: '$$$',
-        rating: 4.2,
-        mall: 'VivoCity',
-        desc: 'Japanese restaurant with a refined teppanyaki and kaiseki menu. Good quality ingredients, professional service in a quiet setting.',
-        mustTry: ['Wagyu Beef Teppanyaki','Unagi Don','Sashimi Platter','Tempura Set']
-      },
-      {
-        name: 'Food Republic',
-        cuisine: 'Hawker',
-        budget: '$',
-        rating: 4.0,
-        mall: 'VivoCity',
-        desc: 'Themed hawker concept food court with an extensive range of local dishes, Asian cuisines, and drinks stalls in one air-conditioned space.',
-        mustTry: ['Bak Kut Teh','Hainanese Chicken Rice','Cha Kway Teow','Wonton Mee']
-      }
-    ]
-  },
-  {
-    id: 'marina-bay',
-    name: 'Marina Bay Sands',
-    code: 'CE2 / DT16',
-    lines: ['ccl','dtl'],
-    malls: 'The Shoppes at Marina Bay Sands',
-    restaurants: [
-      {
-        name: 'CUT by Wolfgang Puck',
-        cuisine: 'Western',
-        budget: '$$$$',
-        rating: 4.5,
-        mall: 'Marina Bay Sands',
-        desc: 'Celebrity chef Wolfgang Puck\'s premium steakhouse. US prime and Japanese wagyu steaks, exceptional sides, and an impressive wine list.',
-        mustTry: ['USDA Prime Bone-in Ribeye','Japanese Wagyu Strip','Lobster Bisque','Warm Chocolate Soufflé']
-      },
-      {
-        name: 'Waku Ghin',
-        cuisine: 'Japanese',
-        budget: '$$$$',
-        rating: 4.7,
-        mall: 'Marina Bay Sands',
-        desc: 'Two Michelin-starred restaurant by Tetsuya Wakuda. Counter-style omakase blending Japanese and European techniques. One of Singapore\'s finest.',
-        mustTry: ['10-course Omakase','Botan Ebi with Sea Urchin','Wagyu with Seasonal Vegetables','Mignardises']
-      },
-      {
-        name: 'Adrift by David Myers',
-        cuisine: 'Western',
-        budget: '$$$',
-        rating: 4.3,
-        mall: 'Marina Bay Sands',
-        desc: 'California-Asian fusion bistro by award-winning LA chef David Myers. Coastal-inspired menu with vibrant flavours and great cocktails.',
-        mustTry: ['Yellowfin Tuna Tataki','California Fried Chicken','Japanese Wagyu Striploin','Yuzu Cheesecake']
-      },
-      {
-        name: 'Black Tap Craft Burgers',
-        cuisine: 'Western',
-        budget: '$$$',
-        rating: 4.4,
-        mall: 'Marina Bay Sands',
-        desc: 'New York-origin burger joint famous for its CrazyShake milkshakes piled high with toppings. Creative gourmet burgers with Instagram-worthy shakes.',
-        mustTry: ['The Greg Burger','Birthday Cake CrazyShake','Chicken Tender Basket','Cotton Candy Shake']
-      }
-    ]
-  },
-  {
-    id: 'toa-payoh',
-    name: 'Toa Payoh',
-    code: 'NS19',
-    lines: ['nsl'],
-    malls: 'HDB Hub, Toa Payoh Mall',
-    restaurants: [
-      {
-        name: 'Lenas Restaurant',
-        cuisine: 'Western',
-        budget: '$$',
-        rating: 4.0,
-        mall: 'Toa Payoh Mall',
-        desc: 'Local Western food restaurant serving hearty Singapore-style western cuisine. Generous portions and affordable prices make it a neighbourhood staple.',
-        mustTry: ['Sirloin Steak with Mushroom Sauce','Grilled Pork Chop','Baked Rice with Chicken','Mashed Potato Sides']
-      },
-      {
-        name: 'Toa Payoh Lorong 8 Hawker Centre',
-        cuisine: 'Hawker',
-        budget: '$',
-        rating: 4.3,
-        mall: 'HDB Hub (nearby)',
-        desc: 'Beloved old-school hawker centre with legendary stalls. Try the award-winning beef kway teow and local roast meats that have been here for decades.',
-        mustTry: ['Braised Duck Rice','Char Kway Teow','Hokkien Prawn Mee','Satay with Peanut Sauce']
-      },
-      {
-        name: 'Mala Hot Pot Village',
-        cuisine: 'Chinese',
-        budget: '$$',
-        rating: 4.1,
-        mall: 'Toa Payoh Mall',
-        desc: 'Sichuan-style mala hot pot restaurant with a pay-by-weight ingredients counter. Customise your spice level and pick your own ingredients.',
-        mustTry: ['Mala Xiang Guo','Beef Slices','Lotus Root','Duck Blood Tofu','Enoki Mushrooms']
-      }
-    ]
-  },
-  {
-    id: 'clementi',
-    name: 'Clementi',
-    code: 'EW23',
-    lines: ['ewl'],
-    malls: 'Clementi Mall',
-    restaurants: [
-      {
-        name: 'Ichiban Boshi',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 4.0,
-        mall: 'Clementi Mall',
-        desc: 'Japanese casual dining chain with an extensive menu. Popular for set lunches, sushi platters, and weekday specials. Convenient and reliable.',
-        mustTry: ['Bara Chirashi Don','Salmon Teriyaki Bento','Tempura Udon','Unagi Don']
-      },
-      {
-        name: 'Seoul Yummy',
-        cuisine: 'Korean',
-        budget: '$$',
-        rating: 4.2,
-        mall: 'Clementi Mall',
-        desc: 'Korean restaurant serving Korean fried chicken, bibimbap, japchae, and Korean-style ramyun. Popular with families and students.',
-        mustTry: ['Korean Fried Chicken','Bibimbap','Tteokbokki','Japchae Glass Noodles']
-      },
-      {
-        name: 'Bengawan Solo',
-        cuisine: 'Malay',
-        budget: '$',
-        rating: 4.3,
-        mall: 'Clementi Mall',
-        desc: 'Singapore\'s most iconic Peranakan and Malay kueh and cake bakery. Must-try traditional sweets and cakes made with authentic recipes.',
-        mustTry: ['Pandan Layer Cake','Ondeh Ondeh','Kueh Lapis','Bolu Pandan']
-      },
-      {
-        name: 'KFC',
-        cuisine: 'Fast Food',
-        budget: '$',
-        rating: 3.7,
-        mall: 'Clementi Mall',
-        desc: 'The Colonel\'s fried chicken chain. Singapore KFC has local items like Nasi Lemak chicken and classic Original Recipe. 24/7 available.',
-        mustTry: ['Original Recipe Chicken','Zinger Burger','Snack Plate','Coleslaw Side']
-      }
-    ]
-  },
-  {
-    id: 'paya-lebar',
-    name: 'Paya Lebar',
-    code: 'EW8 / CC9',
-    lines: ['ewl','ccl'],
-    malls: 'PLQ Mall, SingPost Centre, Paya Lebar Square',
-    restaurants: [
-      {
-        name: 'Birds of Paradise Gelato',
-        cuisine: 'Cafe',
-        budget: '$$',
-        rating: 4.6,
-        mall: 'PLQ Mall',
-        desc: 'Singapore\'s beloved botanical gelato boutique. Unique floral and herbal flavours like Lychee Raspberry, Chrysanthemum, and Earl Grey Lavender.',
-        mustTry: ['Lychee Raspberry Gelato','Earl Grey Lavender','Coconut Pandan','Strawberry Basil']
-      },
-      {
-        name: 'Violet Oon Singapore',
-        cuisine: 'Malay',
-        budget: '$$$',
-        rating: 4.4,
-        mall: 'PLQ Mall',
-        desc: 'Peranakan cuisine by culinary icon Violet Oon. Refined Nonya dishes using heritage recipes — a must for visitors and a treat for locals.',
-        mustTry: ['Buah Keluak Pork Ribs','Dry Laksa','Ayam Buah Keluak','Kueh Pie Tee']
-      },
-      {
-        name: 'Sushiro',
-        cuisine: 'Japanese',
-        budget: '$$',
-        rating: 4.4,
-        mall: 'PLQ Mall',
-        desc: 'Japan\'s most popular kaiten (conveyor belt) sushi chain. Fresh sushi at every price point on colour-coded plates. Very high quality for the price.',
-        mustTry: ['Salmon Aburi Sushi','Scallop Sushi','Sea Urchin Nigiri','Matcha Cheesecake']
-      },
-      {
-        name: 'Nam Kee Pau',
-        cuisine: 'Chinese',
-        budget: '$',
-        rating: 4.2,
-        mall: 'Paya Lebar Square',
-        desc: 'Traditional bao and dim sum shop with steamed buns made fresh daily. Classic flavours like BBQ pork and lotus paste. Great takeaway snack.',
-        mustTry: ['Char Siu Bao (BBQ Pork Bun)','Lotus Paste Bao','Century Egg and Pork Congee','Cheung Fun']
-      },
-      {
-        name: 'Indian Heritage Kitchen',
-        cuisine: 'Indian',
-        budget: '$$',
-        rating: 4.1,
-        mall: 'SingPost Centre',
-        desc: 'North and South Indian restaurant offering a broad menu of curries, tandoor dishes, and vegetarian options. Aromatic and authentic.',
-        mustTry: ['Butter Chicken','Garlic Naan','Biryani Rice','Masala Dosa','Mango Lassi']
-      }
-    ]
-  },
-  {
-    id: 'little-india',
-    name: 'Little India',
-    code: 'NE7 / DT12',
-    lines: ['nel','dtl'],
-    malls: 'Mustafa Centre, City Square Mall',
-    restaurants: [
-      {
-        name: 'Komala Vilas',
-        cuisine: 'Indian',
-        budget: '$',
-        rating: 4.3,
-        mall: 'Little India (Serangoon Rd)',
-        desc: 'A Little India institution since 1947. Pure vegetarian South Indian restaurant. Authentic South Indian thali sets and banana leaf meals.',
-        mustTry: ['Banana Leaf Thali Set','Masala Dosa','Idli Sambar','Filter Coffee','Pongal']
-      },
-      {
-        name: 'Muthu\'s Curry',
-        cuisine: 'Indian',
-        budget: '$$',
-        rating: 4.4,
-        mall: 'Race Course Rd',
-        desc: 'Famous fish head curry restaurant since 1969. The fish head curry here is legendary and drew even celebrity visitors. Rich, spicy, bold.',
-        mustTry: ['Fish Head Curry','Butter Naan','Tandoori Chicken','Briyani Rice','Palak Paneer']
-      },
-      {
-        name: 'Ananda Bhavan',
-        cuisine: 'Indian',
-        budget: '$',
-        rating: 4.1,
-        mall: 'City Square Mall',
-        desc: 'South Indian vegetarian restaurant and sweet shop. Serves traditional tiffin items, thali sets, and a wide range of Indian sweets.',
-        mustTry: ['Rava Dosa','Chana Bhatura','Mixed Vegetable Curry','Mysore Pak (sweet)','Halwa']
-      }
-    ]
-  },
-  {
-    id: 'chinatown',
-    name: 'Chinatown',
-    code: 'NE4 / DT19',
-    lines: ['nel','dtl'],
-    malls: 'Chinatown Point, People\'s Park Complex',
-    restaurants: [
-      {
-        name: 'Tong Heng Confectionery',
-        cuisine: 'Chinese',
-        budget: '$',
-        rating: 4.4,
-        mall: 'South Bridge Rd',
-        desc: 'Chinatown bakery established in 1939. Famous for diamond-shaped egg tarts and pastries made with traditional Cantonese recipes. An icon.',
-        mustTry: ['Diamond Egg Tarts','Wife Cake (Sweetheart Cake)','Pineapple Pastry','Sesame Biscuits']
-      },
-      {
-        name: 'Chinatown Complex Food Centre',
-        cuisine: 'Hawker',
-        budget: '$',
-        rating: 4.5,
-        mall: 'Chinatown Complex',
-        desc: 'Singapore\'s largest hawker centre with over 260 stalls including two Michelin star holders. The ultimate destination for hawker food.',
-        mustTry: ['Liao Fan Soya Sauce Chicken (Michelin)','Outram Park Yong Tau Foo','Hainanese Chicken Rice','Char Kway Teow']
-      },
-      {
-        name: 'Da Paolo Bistrot',
-        cuisine: 'Italian',
-        budget: '$$$',
-        rating: 4.2,
-        mall: 'Chinatown Point',
-        desc: 'Italian bistro from the Da Paolo restaurant group. Hearty Italian classics, fresh pasta, wood-fired pizza, and a good wine selection.',
-        mustTry: ['Burrata Salad','Black Truffle Tagliatelle','Margherita Pizza','Tiramisu']
-      }
-    ]
-  },
-  {
-    id: 'kallang',
-    name: 'Stadium / Kallang',
-    code: 'CC6',
-    lines: ['ccl'],
-    malls: 'Kallang Wave Mall, Singapore Sports Hub',
-    restaurants: [
-      {
-        name: 'Poulet',
-        cuisine: 'Western',
-        budget: '$$',
-        rating: 4.2,
-        mall: 'Kallang Wave Mall',
-        desc: 'French-style rotisserie chicken restaurant. Slow-roasted rotisserie chicken with herb butter, served with sides and sauces. Very popular.',
-        mustTry: ['Rotisserie Chicken with Creamy Mushroom','Poulet Burger','Baked Mac & Cheese','Tarte Tatin']
-      },
-      {
-        name: 'Shin Minori Japanese Restaurant',
-        cuisine: 'Japanese',
-        budget: '$$$',
-        rating: 4.3,
-        mall: 'Kallang Wave Mall',
-        desc: 'Japanese restaurant offering premium buffet dining with sashimi, sushi, cooked dishes, and a teppanyaki live station. Great variety.',
-        mustTry: ['Sashimi Platter','Aburi Salmon Nigiri','Teppanyaki Wagyu','Tempura Buffet']
-      },
-      {
-        name: 'Wrap & Roll',
-        cuisine: 'Vietnamese',
-        budget: '$$',
-        rating: 4.0,
-        mall: 'Kallang Wave Mall',
-        desc: 'Vietnamese restaurant known for fresh spring rolls, pho noodle soup, and grilled meats. Light, fresh, healthy Vietnamese flavours.',
-        mustTry: ['Fresh Spring Rolls','Pho Bo Beef Noodle Soup','Grilled Lemongrass Chicken','Vietnamese Iced Coffee']
-      }
-    ]
-  }
+  // === North-South Line ===
+  { id: "jurong-east", name: "Jurong East", code: "NS1/EW24", lines: ["nsl","ewl"], x: 130, y: 600, shops: [
+    { name: "Din Tai Fung", cuisine: "Chinese", budget: 3, rating: 5, mall: "JEM", description: "World-famous Taiwanese chain known for handcrafted xiao long bao and refined dumplings.", mustTry: ["Xiao Long Bao", "Steamed Shrimp & Pork Dumplings", "Braised Pork Chop Fried Rice"] },
+    { name: "Nando's", cuisine: "Western", budget: 2, rating: 4, mall: "JEM", description: "Portuguese-style flame-grilled peri-peri chicken with a range of spice levels.", mustTry: ["Full Chicken (Extra Hot)", "Garlic Bread", "Peri-Peri Fries"] },
+    { name: "Ichiban Boshi", cuisine: "Japanese", budget: 2, rating: 4, mall: "Westgate", description: "Popular Japanese casual dining serving sushi, donburi and teishoku sets.", mustTry: ["Salmon Mentaiyaki Don", "Ebi Katsu Curry", "Aburi Salmon Sushi"] },
+    { name: "Thai Express", cuisine: "Thai", budget: 2, rating: 3, mall: "JEM", description: "Fast-casual Thai chain with bold flavours — great for a quick pad thai fix.", mustTry: ["Pad Thai", "Green Curry", "Tom Yum Soup"] },
+    { name: "Song Fa Bak Kut Teh", cuisine: "Chinese", budget: 1, rating: 5, mall: "JEM", description: "Singapore institution for peppery pork rib soup, open since 1969.", mustTry: ["Pork Ribs Bak Kut Teh", "You Tiao", "Braised Pig Trotters"] }
+  ]},
+  { id: "bukit-batok", name: "Bukit Batok", code: "NS2", lines: ["nsl"], x: 130, y: 540, shops: [
+    { name: "Koufu Food Court", cuisine: "Chinese", budget: 1, rating: 3, mall: "West Mall", description: "Affordable hawker-style food court with a wide range of local dishes.", mustTry: ["Chicken Rice", "Wonton Noodles", "Tze Char"] },
+    { name: "Subway", cuisine: "Western", budget: 1, rating: 3, mall: "West Mall", description: "Build-your-own sandwich chain, great for a light and customisable meal.", mustTry: ["Roast Chicken Sub", "Meatball Marinara", "BLT"] }
+  ]},
+  { id: "bukit-gombak", name: "Bukit Gombak", code: "NS3", lines: ["nsl"], x: 130, y: 480 },
+  { id: "choa-chu-kang", name: "Choa Chu Kang", code: "NS4/LRT", lines: ["nsl"], x: 130, y: 420, shops: [
+    { name: "Peach Garden", cuisine: "Chinese", budget: 3, rating: 4, mall: "Lot One", description: "Refined Cantonese restaurant known for quality dim sum and seafood.", mustTry: ["Steamed Har Gow", "Crispy Roast Duck", "Braised Ee-Fu Noodles"] },
+    { name: "Jollibee", cuisine: "Fast Food", budget: 1, rating: 4, mall: "Lot One", description: "Filipino fast-food favourite famous for fried chicken and spaghetti.", mustTry: ["Chickenjoy", "Jolly Spaghetti", "Burger Steak"] },
+    { name: "Watami", cuisine: "Japanese", budget: 2, rating: 3, mall: "Lot One", description: "Casual Japanese izakaya with a large menu of yakitori, donburi and salads.", mustTry: ["Chicken Karaage", "Mentaiko Pasta", "Salmon Teriyaki"] }
+  ]},
+  { id: "yew-tee", name: "Yew Tee", code: "NS5", lines: ["nsl"], x: 130, y: 360, shops: [
+    { name: "McDonald's", cuisine: "Fast Food", budget: 1, rating: 3, mall: "Yew Tee Point", description: "Classic fast food staples — burgers, fries and Mc Spicy.", mustTry: ["McSpicy", "Filet-O-Fish", "McFlurry Oreo"] },
+    { name: "Old Chang Kee", cuisine: "Fast Food", budget: 1, rating: 4, mall: "Yew Tee Point", description: "Singaporean snack brand with iconic curry puffs and fried items.", mustTry: ["Curry O' Puff", "Chicken Wing", "Sotong Ball"] }
+  ]},
+  { id: "kranji", name: "Kranji", code: "NS7", lines: ["nsl"], x: 190, y: 310 },
+  { id: "marsiling", name: "Marsiling", code: "NS8", lines: ["nsl"], x: 250, y: 270 },
+  { id: "woodlands", name: "Woodlands", code: "NS9/TE2", lines: ["nsl","tel"], x: 310, y: 240, shops: [
+    { name: "Sakae Sushi", cuisine: "Japanese", budget: 2, rating: 3, mall: "Causeway Point", description: "Conveyor belt sushi chain with a broad menu of rolls, sashimi and hot dishes.", mustTry: ["Salmon Aburi Sushi", "Gyoza", "Unagi Don"] },
+    { name: "Hans", cuisine: "Western", budget: 2, rating: 3, mall: "Causeway Point", description: "Casual Western bakery-cafe serving sandwiches, pastas and baked goods.", mustTry: ["Grilled Chicken Sandwich", "Laksa Pasta", "Walnut Brownie"] },
+    { name: "Swensen's", cuisine: "Western", budget: 2, rating: 4, mall: "Causeway Point", description: "Beloved Singapore ice cream chain also serving mains and signature fondue desserts.", mustTry: ["Earthquake Sundae", "Fish & Chips", "Sticky Chewy Chocolate"] },
+    { name: "Bak Kut Teh stall (Woodlands Market)", cuisine: "Chinese", budget: 1, rating: 4, mall: "Woodlands Market", description: "No-frills local stall serving hearty herbal and peppery pork ribs soup.", mustTry: ["Herbal Bak Kut Teh", "Braised Pork Belly", "Rice"] }
+  ]},
+  { id: "admiralty", name: "Admiralty", code: "NS10", lines: ["nsl"], x: 370, y: 210, shops: [
+    { name: "Kopitiam Food Court", cuisine: "Chinese", budget: 1, rating: 3, mall: "Admiralty MRT", description: "Convenient hawker-style dining hub directly at the station.", mustTry: ["Laksa", "Char Kway Teow", "Roast Duck Rice"] }
+  ]},
+  { id: "sembawang", name: "Sembawang", code: "NS11", lines: ["nsl"], x: 420, y: 180, shops: [
+    { name: "Sun Plaza Food Court", cuisine: "Chinese", budget: 1, rating: 3, mall: "Sun Plaza", description: "Local food court with hawker classics in an air-conditioned setting.", mustTry: ["Chicken Rice", "Prawn Noodles", "Nasi Lemak"] },
+    { name: "KFC", cuisine: "Fast Food", budget: 1, rating: 3, mall: "Sun Plaza", description: "Classic fried chicken chain with Singaporean favourites like Zinger Burger.", mustTry: ["Original Recipe Chicken", "Zinger Burger", "Whipped Potato"] }
+  ]},
+  { id: "canberra", name: "Canberra", code: "NS12", lines: ["nsl"], x: 460, y: 155, shops: [
+    { name: "Canberra Plaza Food Court", cuisine: "Malay", budget: 1, rating: 3, mall: "Canberra Plaza", description: "Mix of Malay and Chinese hawker stalls in a community mall setting.", mustTry: ["Nasi Padang", "Mee Goreng", "Roti Prata"] }
+  ]},
+  { id: "yishun", name: "Yishun", code: "NS13", lines: ["nsl"], x: 500, y: 140, shops: [
+    { name: "Genki Sushi", cuisine: "Japanese", budget: 2, rating: 4, mall: "Northpoint City", description: "Conveyor belt sushi chain with express bullet train delivery system.", mustTry: ["Salmon Sashimi", "Ebi Mayo", "Chawanmushi"] },
+    { name: "Tim Ho Wan", cuisine: "Chinese", budget: 2, rating: 5, mall: "Northpoint City", description: "Michelin-starred dim sum restaurant famous for its baked BBQ pork buns.", mustTry: ["Baked BBQ Pork Buns", "Har Gow", "Cheung Fun with Char Siu"] },
+    { name: "Malay Heritage Cuisine", cuisine: "Malay", budget: 1, rating: 4, mall: "Northpoint City", description: "Authentic Malay stall with nasi lemak, rendang and fresh roti.", mustTry: ["Nasi Lemak Ayam Goreng", "Beef Rendang", "Mee Rebus"] }
+  ]},
+  { id: "khatib", name: "Khatib", code: "NS14", lines: ["nsl"], x: 540, y: 140 },
+  { id: "yio-chu-kang", name: "Yio Chu Kang", code: "NS15", lines: ["nsl"], x: 570, y: 140 },
+  { id: "ang-mo-kio", name: "Ang Mo Kio", code: "NS16", lines: ["nsl"], x: 600, y: 160, shops: [
+    { name: "Bengawan Solo", cuisine: "Malay", budget: 1, rating: 4, mall: "AMK Hub", description: "Iconic Singaporean Peranakan bakery famous for traditional kueh and layer cakes.", mustTry: ["Pandan Layer Cake", "Kueh Lapis", "Ondeh Ondeh"] },
+    { name: "Thai Village", cuisine: "Thai", budget: 3, rating: 4, mall: "AMK Hub", description: "Long-standing Thai seafood restaurant popular for zi char-style Thai dishes.", mustTry: ["Steamed Fish with Lime", "Mango Salad", "Basil Minced Pork"] },
+    { name: "Sushi Tei", cuisine: "Japanese", budget: 2, rating: 4, mall: "AMK Hub", description: "Mid-range Japanese restaurant with extensive menu covering sushi, ramen and sets.", mustTry: ["Salmon Avocado Roll", "Tonkotsu Ramen", "Aburi Salmon Donburi"] },
+    { name: "Macdonald's", cuisine: "Fast Food", budget: 1, rating: 3, mall: "AMK Hub", description: "Local MRT-connected branch of the fast food favourite, open late.", mustTry: ["McSpicy", "Chicken McNuggets", "Caramel Sundae"] }
+  ]},
+  { id: "bishan", name: "Bishan", code: "NS17/CC15", lines: ["nsl","ccl"], x: 620, y: 200, shops: [
+    { name: "Poulet", cuisine: "Western", budget: 2, rating: 4, mall: "Junction 8", description: "French-inspired casual restaurant specialising in roasted chicken with classic sides.", mustTry: ["Roasted Poulet with Mushroom Sauce", "Poulet Pomme Frites", "Crème Brûlée"] },
+    { name: "Paradise Dynasty", cuisine: "Chinese", budget: 3, rating: 4, mall: "Junction 8", description: "Upscale xiao long bao specialist with the famous rainbow-coloured dumplings.", mustTry: ["8 Flavours Xiao Long Bao", "La Mian", "Braised Pork Belly"] },
+    { name: "Spize", cuisine: "Malay", budget: 1, rating: 4, mall: "Junction 8", description: "Popular local chain for affordable and satisfying Malay and Indian-Muslim food.", mustTry: ["Nasi Lemak", "Murtabak", "Teh Tarik"] }
+  ]},
+  { id: "braddell", name: "Braddell", code: "NS18", lines: ["nsl"], x: 620, y: 250 },
+  { id: "toa-payoh", name: "Toa Payoh", code: "NS19", lines: ["nsl"], x: 620, y: 300, shops: [
+    { name: "Toa Payoh Lor 7 Beef Kway Teow", cuisine: "Chinese", budget: 1, rating: 5, mall: "Toa Payoh Hawker Centre", description: "Legendary hawker stall with decades of history, famous for its braised beef kway teow.", mustTry: ["Beef Kway Teow", "Beef Tendon Soup", "Braised Beef Brisket"] },
+    { name: "Hainanese Boneless Chicken Rice", cuisine: "Chinese", budget: 1, rating: 4, mall: "Toa Payoh Hawker Centre", description: "Classic Singaporean chicken rice stall with perfectly poached chicken and fragrant rice.", mustTry: ["Steamed Chicken Rice", "Roast Chicken", "Ginger Sauce"] },
+    { name: "Ah Balling Tang Yuan", cuisine: "Chinese", budget: 1, rating: 4, mall: "Toa Payoh Hawker Centre", description: "Traditional glutinous rice balls in sweet ginger or peanut soup.", mustTry: ["Peanut Tang Yuan", "Sesame Tang Yuan", "Ginger Soup"] }
+  ]},
+  { id: "novena", name: "Novena", code: "NS20", lines: ["nsl"], x: 620, y: 350, shops: [
+    { name: "Crystal Jade Golden Palace", cuisine: "Chinese", budget: 3, rating: 5, mall: "Square 2", description: "Fine dining Cantonese restaurant with acclaimed dim sum and Peking duck.", mustTry: ["Crispy Roast Suckling Pig", "Steamed Scallop Dumplings", "Fried Carrot Cake"] },
+    { name: "Pho Street", cuisine: "Vietnamese", budget: 1, rating: 3, mall: "Square 2", description: "Quick Vietnamese noodle shop with big bowls of aromatic beef pho.", mustTry: ["Beef Pho", "Spring Rolls", "Vietnamese Iced Coffee"] },
+    { name: "Bread Society", cuisine: "Cafe", budget: 2, rating: 4, mall: "Square 2", description: "European-style artisan bakery with sourdough, pastries and brunch sets.", mustTry: ["Sourdough Loaf", "Croissant", "Eggs Benedict"] }
+  ]},
+  { id: "newton", name: "Newton", code: "NS21/DT11", lines: ["nsl","dtl"], x: 620, y: 400, shops: [
+    { name: "Newton Food Centre", cuisine: "Chinese", budget: 1, rating: 4, mall: "Newton Food Centre", description: "Famous open-air hawker centre featured in Crazy Rich Asians, buzzing every evening.", mustTry: ["Char Kway Teow", "Satay", "BBQ Sambal Stingray"] },
+    { name: "Newton Food Centre (Seafood Stalls)", cuisine: "Chinese", budget: 2, rating: 4, mall: "Newton Food Centre", description: "Lively seafood stalls offering chilli crab, black pepper crab and prawns.", mustTry: ["Chilli Crab", "Black Pepper Crab", "Butter Prawns"] }
+  ]},
+  { id: "orchard", name: "Orchard", code: "NS22/TE14", lines: ["nsl","tel"], x: 620, y: 440, shops: [
+    { name: "Lawry's The Prime Rib", cuisine: "Western", budget: 4, rating: 5, mall: "Mandarin Gallery", description: "Iconic American steakhouse renowned for table-side carved prime rib since 1938.", mustTry: ["Standing Rib Roast", "Spinning Bowl Salad", "Lawry's Creamed Corn"] },
+    { name: "Crystal Jade Kitchen", cuisine: "Chinese", budget: 2, rating: 4, mall: "ION Orchard", description: "Popular mid-range Cantonese restaurant serving roast meats, dim sum and wok dishes.", mustTry: ["Char Siu", "Steamed Chicken", "Fried Carrot Cake"] },
+    { name: "Burger & Lobster", cuisine: "Western", budget: 3, rating: 4, mall: "Mandarin Gallery", description: "London-born restaurant serving whole lobsters, lobster rolls and brioche burgers.", mustTry: ["Lobster Roll", "Original Burger", "Soft Shell Crab Burger"] },
+    { name: "Waku Ghin", cuisine: "Japanese", budget: 4, rating: 5, mall: "ION Orchard", description: "Tetsuya Wakuda's acclaimed Japanese-European restaurant — one of Singapore's finest.", mustTry: ["Marinated Botan Ebi", "Wagyu Beef", "Seasonal Tasting Menu"] },
+    { name: "Long Chim", cuisine: "Thai", budget: 3, rating: 4, mall: "Pan Pacific Orchard", description: "David Thompson's celebrated Thai restaurant bringing Bangkok street food to fine dining.", mustTry: ["Massaman Curry", "Green Papaya Salad", "Pad See Ew"] }
+  ]},
+  { id: "somerset", name: "Somerset", code: "NS23", lines: ["nsl"], x: 640, y: 470, shops: [
+    { name: "P.S. Cafe", cuisine: "Cafe", budget: 3, rating: 4, mall: "Palais Renaissance", description: "Chic Singapore-born cafe known for comfort food, truffle fries and indulgent desserts.", mustTry: ["Truffle Shoestring Fries", "PS Burger", "Dark Chocolate Tart"] },
+    { name: "Takashimaya Food Hall", cuisine: "Japanese", budget: 2, rating: 4, mall: "Ngee Ann City", description: "Basement Japanese deli and food hall with high-quality bento, sashimi and wagashi.", mustTry: ["Salmon Bento", "Wagyu Gyudon", "Japanese Cheesecake"] },
+    { name: "Hai Di Lao", cuisine: "Chinese", budget: 2, rating: 5, mall: "Forum The Shopping Mall", description: "China's most famous hot pot chain with over-the-top hospitality and fresh ingredients.", mustTry: ["Tomato Soup Base", "Sliced Wagyu Beef", "Hand-Made Noodles"] },
+    { name: "The Marmalade Pantry", cuisine: "Western", budget: 3, rating: 4, mall: "ION Orchard", description: "Stylish all-day dining spot for brunch, afternoon tea and modern European fare.", mustTry: ["Eggs Benedict", "Pan-Seared Salmon", "Sticky Toffee Pudding"] }
+  ]},
+  { id: "dhoby-ghaut", name: "Dhoby Ghaut", code: "NS24/NE6/CC1", lines: ["nsl","nel","ccl"], x: 650, y: 510, shops: [
+    { name: "Burger King", cuisine: "Fast Food", budget: 1, rating: 3, mall: "Plaza Singapura", description: "Classic flame-grilled burgers with the famous Whopper.", mustTry: ["Whopper", "Angry Croissan'wich", "Onion Rings"] },
+    { name: "Thai Express", cuisine: "Thai", budget: 2, rating: 3, mall: "Plaza Singapura", description: "Casual Thai chain serving affordable pad thai and curries.", mustTry: ["Pad Thai", "Red Curry", "Mango Sticky Rice"] },
+    { name: "Saizeriya", cuisine: "Western", budget: 1, rating: 4, mall: "Plaza Singapura", description: "Japanese-Italian family restaurant known for incredibly affordable pasta and pizza.", mustTry: ["Pepperoni Pizza", "Carbonara", "Escargot"] },
+    { name: "BreadTalk", cuisine: "Cafe", budget: 1, rating: 3, mall: "Plaza Singapura", description: "Popular Singapore artisan bakery chain with creative bread flavours.", mustTry: ["Flosss Bread", "Chicken Floss Bun", "Cranberry Loaf"] }
+  ]},
+  { id: "city-hall", name: "City Hall", code: "NS25/EW13", lines: ["nsl","ewl"], x: 650, y: 560, shops: [
+    { name: "Lei Garden", cuisine: "Chinese", budget: 3, rating: 5, mall: "CHIJMES", description: "Award-winning Cantonese restaurant in the historic CHIJMES setting.", mustTry: ["Roasted Peking Duck", "Steamed Soon Hock Fish", "Chilled Mango Sago"] },
+    { name: "Odette", cuisine: "Western", budget: 4, rating: 5, mall: "National Gallery Singapore", description: "Three-Michelin-starred French restaurant by Chef Julien Royer, consistently ranked among Asia's best.", mustTry: ["8-Course Tasting Menu", "Hokkaido Uni", "Valrhona Chocolate Tart"] },
+    { name: "Ippudo", cuisine: "Japanese", budget: 2, rating: 4, mall: "Raffles City", description: "World-famous Hakata-style ramen from Fukuoka, known for silky tonkotsu broth.", mustTry: ["Shiromaru Motoaji", "Akamaru Shinaji", "Kakuni Pork"] },
+    { name: "Gluttons Bay", cuisine: "Malay", budget: 1, rating: 4, mall: "Esplanade Waterfront", description: "Curated selection of Singapore's best hawker stalls by the bay — an iconic al fresco experience.", mustTry: ["BBQ Stingray", "Satay", "Carrot Cake"] }
+  ]},
+  { id: "raffles-place", name: "Raffles Place", code: "NS26/EW14", lines: ["nsl","ewl"], x: 650, y: 610, shops: [
+    { name: "Lau Pa Sat", cuisine: "Malay", budget: 1, rating: 4, mall: "Lau Pa Sat", description: "Victorian cast-iron hawker centre, a national monument. Famous for evening satay street.", mustTry: ["Satay", "Oyster Omelette", "Chilli Crab"] },
+    { name: "The Clifford Pier", cuisine: "Western", budget: 4, rating: 4, mall: "The Fullerton Bay Hotel", description: "Elegant heritage dining at the Fullerton Bay Hotel serving a refined local and international menu.", mustTry: ["Pan-Seared Barramundi", "Singapore Sling", "Chili Crab Pasta"] },
+    { name: "Tong Ah Eating House", cuisine: "Chinese", budget: 1, rating: 4, mall: "Keong Saik Road", description: "Old-school kopitiam serving thick kaya toast and old-fashioned soft-boiled eggs since 1939.", mustTry: ["Kaya Butter Toast", "Soft Boiled Eggs", "Kopi C"] }
+  ]},
+  { id: "marina-bay", name: "Marina Bay", code: "NS27/CE2/TE20", lines: ["nsl","tel"], x: 650, y: 660, shops: [
+    { name: "CUT by Wolfgang Puck", cuisine: "Western", budget: 4, rating: 5, mall: "Marina Bay Sands", description: "Celebrity chef steakhouse inside MBS known for top-tier aged beef and glamorous setting.", mustTry: ["28-Day Dry Aged Bone-In Ribeye", "Bone Marrow Flan", "Yuzu Cheesecake"] },
+    { name: "Spago", cuisine: "Western", budget: 4, rating: 4, mall: "Marina Bay Sands", description: "Wolfgang Puck's rooftop dining at Sands SkyPark — stunning views and Californian cuisine.", mustTry: ["Smoked Salmon Pizza", "Wagyu Beef Tenderloin", "Tuna Tataki"] },
+    { name: "Yardbird Southern Table & Bar", cuisine: "Western", budget: 3, rating: 4, mall: "Marina Bay Sands", description: "Nashville-inspired fried chicken and whiskey bar — casual and fun.", mustTry: ["Fried Chicken & Waffles", "Jalapeno Cornbread", "Arnold Palmer"] }
+  ]},
+
+  // === East-West Line ===
+  { id: "pioneer", name: "Pioneer", code: "EW28", lines: ["ewl"], x: 60, y: 620 },
+  { id: "boon-lay", name: "Boon Lay", code: "EW27", lines: ["ewl"], x: 130, y: 600, shops: [
+    { name: "Boon Lay Power Nasi Lemak", cuisine: "Malay", budget: 1, rating: 5, mall: "Boon Lay Food Village", description: "Legendary hawker nasi lemak stall, famously queued for. Open since the 1970s.", mustTry: ["Nasi Lemak with Fried Chicken Wing", "Otah", "Ikan Bilis & Peanuts"] },
+    { name: "KFC", cuisine: "Fast Food", budget: 1, rating: 3, mall: "Jurong Point", description: "Multi-level KFC in the huge Jurong Point mall.", mustTry: ["Original Recipe Chicken", "Zinger Burger", "Coleslaw"] },
+    { name: "Sakae Sushi", cuisine: "Japanese", budget: 2, rating: 3, mall: "Jurong Point", description: "Conveyor belt Japanese dining with a full menu of sushi, ramen and fried items.", mustTry: ["Salmon Sashimi", "Aburi Mentaiko Salmon", "Ebi Tempura Udon"] }
+  ]},
+  { id: "lakeside", name: "Lakeside", code: "EW26", lines: ["ewl"], x: 200, y: 590 },
+  { id: "chinese-garden", name: "Chinese Garden", code: "EW25", lines: ["ewl"], x: 270, y: 575 },
+  { id: "clementi", name: "Clementi", code: "EW23", lines: ["ewl"], x: 340, y: 560, shops: [
+    { name: "Sun & Moon Korean Restaurant", cuisine: "Korean", budget: 2, rating: 4, mall: "Clementi Mall", description: "Casual Korean restaurant with KBBQ, bibimbap and stews.", mustTry: ["Samgyeopsal KBBQ", "Bibimbap", "Sundubu Jjigae"] },
+    { name: "Curry Times", cuisine: "Indian", budget: 1, rating: 3, mall: "Clementi Mall", description: "Singaporean Indian restaurant chain serving fish head curry and banana leaf meals.", mustTry: ["Fish Head Curry", "Murtabak", "Masala Tea"] },
+    { name: "Wingstop", cuisine: "Western", budget: 2, rating: 4, mall: "Clementi Mall", description: "American chicken wings chain with bold sauces and loaded sides.", mustTry: ["Lemon Pepper Wings", "Classic Buffalo Wings", "Loaded Fries"] }
+  ]},
+  { id: "dover", name: "Dover", code: "EW22", lines: ["ewl"], x: 400, y: 545 },
+  { id: "buona-vista", name: "Buona Vista", code: "EW21/CC22", lines: ["ewl","ccl"], x: 460, y: 530, shops: [
+    { name: "Timbre+", cuisine: "Western", budget: 2, rating: 4, mall: "Timbre+ (one-north)", description: "Hip industrial food park with live music, craft beer and a variety of local and Western stalls.", mustTry: ["Truffle Fries", "Craft Beer Selection", "BBQ Ribs"] },
+    { name: "Standing Sushi Bar", cuisine: "Japanese", budget: 2, rating: 4, mall: "Rochester Park", description: "Standing omakase bar with fresh sashimi and creative maki in a casual setting.", mustTry: ["Salmon Sashimi", "Spider Roll", "Wagyu Tataki"] }
+  ]},
+  { id: "commonwealth", name: "Commonwealth", code: "EW20", lines: ["ewl"], x: 520, y: 520 },
+  { id: "queenstown", name: "Queenstown", code: "EW19", lines: ["ewl"], x: 580, y: 510, shops: [
+    { name: "Margaret Drive Hawker Centre", cuisine: "Chinese", budget: 1, rating: 4, mall: "Margaret Drive HC", description: "Classic neighbourhood hawker centre loved by locals for affordable and tasty eats.", mustTry: ["Wonton Mee", "Carrot Cake", "Ice Kachang"] },
+    { name: "IKEA Restaurant", cuisine: "Western", budget: 1, rating: 4, mall: "IKEA Alexandra", description: "The beloved IKEA canteen — cheap Swedish meatballs and a great dessert selection.", mustTry: ["Swedish Meatballs", "Gravlax", "Soft Serve Cone"] }
+  ]},
+  { id: "redhill", name: "Redhill", code: "EW18", lines: ["ewl"], x: 620, y: 510 },
+  { id: "tiong-bahru", name: "Tiong Bahru", code: "EW17", lines: ["ewl"], x: 650, y: 510, shops: [
+    { name: "Tiong Bahru Bakery", cuisine: "Cafe", budget: 2, rating: 5, mall: "Tiong Bahru Plaza", description: "Artisan French-inspired bakery with the best croissants in Singapore.", mustTry: ["Kouign-Amann", "Almond Croissant", "Ham & Cheese Croissant"] },
+    { name: "Tiong Bahru Hawker Centre", cuisine: "Chinese", budget: 1, rating: 5, mall: "Tiong Bahru HC", description: "Iconic heritage hawker centre with legendary stalls serving old-school Singapore dishes.", mustTry: ["Chwee Kueh", "Bak Chor Mee", "Chai Tow Kway"] },
+    { name: "Merci Marcel", cuisine: "Western", budget: 3, rating: 4, mall: "Yong Siak Street", description: "Charming Parisian bistro in the Tiong Bahru enclave — all-day brunch and great wine.", mustTry: ["Eggs Benedict", "Duck Confit", "Croque Monsieur"] }
+  ]},
+  { id: "outram-park", name: "Outram Park", code: "EW16/NE3/TE17", lines: ["ewl","nel","tel"], x: 700, y: 500, shops: [
+    { name: "Tong Fong Fatt Hainanese Boneless Chicken Rice", cuisine: "Chinese", budget: 1, rating: 5, mall: "Outram Park Market", description: "Award-winning chicken rice stall at the wet market, perennial Michelin Bib Gourmand holder.", mustTry: ["Steamed Chicken Rice", "Roast Chicken", "Minced Chicken Ball"] },
+    { name: "Burnt Ends", cuisine: "Western", budget: 4, rating: 5, mall: "Teck Lim Road", description: "Dave Pynt's acclaimed wood-fire grill restaurant, consistently Asia's 50 Best rated.", mustTry: ["Burnt Ends Sanger", "Wagyu Beef Cut", "Onion & Bone Marrow"] }
+  ]},
+  { id: "tanjong-pagar", name: "Tanjong Pagar", code: "EW15", lines: ["ewl"], x: 760, y: 490, shops: [
+    { name: "Potato Head Singapore", cuisine: "Western", budget: 3, rating: 4, mall: "Keong Saik Road", description: "Hip Bali-born lifestyle restaurant serving burgers, cocktails and organic produce.", mustTry: ["Three Bun Burger", "Truffle Fries", "Pink Gin Sour"] },
+    { name: "Tanjong Pagar Plaza Market & Food Centre", cuisine: "Chinese", budget: 1, rating: 4, mall: "Tanjong Pagar Plaza", description: "Popular CBD hawker centre packed with lunchtime office workers seeking great deals.", mustTry: ["Nasi Lemak", "Rojak", "Laksa"] },
+    { name: "Shinji by Kanesaka", cuisine: "Japanese", budget: 4, rating: 5, mall: "Carlton Hotel", description: "Celebrated sushi-omakase restaurant by Tokyo's Kanesaka, serving some of the finest Edomae sushi in Singapore.", mustTry: ["Seasonal Omakase", "Toro Nigiri", "Sea Urchin"] }
+  ]},
+  { id: "bugis", name: "Bugis", code: "EW12/DT14", lines: ["ewl","dtl"], x: 810, y: 480, shops: [
+    { name: "Hajjah Maimunah", cuisine: "Malay", budget: 2, rating: 5, mall: "Jalan Pisang", description: "Legendary Malay restaurant with the best nasi padang in Singapore — always a queue.", mustTry: ["Nasi Padang", "Ayam Masak Merah", "Beef Rendang"] },
+    { name: "Kampong Glam Cafe", cuisine: "Malay", budget: 1, rating: 4, mall: "Arab Street", description: "Heritage Muslim-owned kopitiam serving nostalgic kaya toast and local bites.", mustTry: ["Kaya Toast", "Milo Dinosaur", "Curry Puff"] },
+    { name: "Blu Jaz Cafe", cuisine: "Western", budget: 2, rating: 3, mall: "Bali Lane", description: "Bohemian cafe and bar in the Kampong Glam neighbourhood with live jazz and eclectic food.", mustTry: ["Aglio Olio", "Chicken Wings", "Mojito"] },
+    { name: "Zam Zam Restaurant", cuisine: "Indian", budget: 1, rating: 5, mall: "North Bridge Road", description: "Singapore institution serving murtabak since 1908 — one of the best in the world.", mustTry: ["Mutton Murtabak", "Chicken Briyani", "Teh Tarik"] }
+  ]},
+  { id: "lavender", name: "Lavender", code: "EW11", lines: ["ewl"], x: 860, y: 470, shops: [
+    { name: "Spize Restaurant", cuisine: "Malay", budget: 1, rating: 4, mall: "North Bridge Road", description: "24-hour Malay restaurant popular for late-night supper seekers.", mustTry: ["Nasi Goreng Kampung", "Mee Soto", "Teh Halia"] }
+  ]},
+  { id: "kallang", name: "Kallang", code: "EW10", lines: ["ewl"], x: 900, y: 460, shops: [
+    { name: "511 Kallang Bahru", cuisine: "Chinese", budget: 1, rating: 4, mall: "Kallang Bahru HC", description: "Neighbourhood hawker centre with reliable local eats at affordable prices.", mustTry: ["Nasi Lemak", "Char Kway Teow", "Satay"] }
+  ]},
+  { id: "aljunied", name: "Aljunied", code: "EW9", lines: ["ewl"], x: 940, y: 450, shops: [
+    { name: "Geylang Serai Malay Village", cuisine: "Malay", budget: 1, rating: 4, mall: "Geylang Serai", description: "Malay cultural precinct with hawker stalls serving authentic Malay cuisine.", mustTry: ["Nasi Ambeng", "Kueh Pie Tee", "Durian Puffs"] }
+  ]},
+  { id: "paya-lebar", name: "Paya Lebar", code: "EW8/CC9", lines: ["ewl","ccl"], x: 940, y: 445, shops: [
+    { name: "Atlas Restaurant", cuisine: "Western", budget: 3, rating: 4, mall: "Paya Lebar Quarter", description: "Modern European brasserie in the newly developed PLQ mall, popular for weekend brunch.", mustTry: ["Eggs Benedict Royale", "Truffle Pasta", "Wagyu Burger"] },
+    { name: "Gong Cha", cuisine: "Cafe", budget: 1, rating: 3, mall: "PLQ Mall", description: "Taiwanese bubble tea and cafe with matcha-infused soft serve and set meals.", mustTry: ["Milk Tea with Pearl", "Matcha Soft Serve", "Cheese Taro"] }
+  ]},
+  { id: "eunos", name: "Eunos", code: "EW7", lines: ["ewl"], x: 940, y: 445 },
+  { id: "kembangan", name: "Kembangan", code: "EW6", lines: ["ewl"], x: 940, y: 445 },
+  { id: "bedok", name: "Bedok", code: "EW5", lines: ["ewl"], x: 940, y: 445, shops: [
+    { name: "Bedok Interchange Hawker Centre", cuisine: "Chinese", budget: 1, rating: 5, mall: "Bedok Interchange", description: "Massive hawker centre connected to the MRT — one of Singapore's most beloved food hubs.", mustTry: ["Bedok Chwee Kueh", "Satay", "Laksa"] },
+    { name: "Old Amoy Chendol", cuisine: "Chinese", budget: 1, rating: 5, mall: "Bedok Interchange HC", description: "Famous chendol stall with rich coconut milk and gula melaka — a dessert legend.", mustTry: ["Original Chendol", "Red Bean Chendol", "Durian Chendol"] }
+  ]},
+  { id: "tanah-merah", name: "Tanah Merah", code: "EW4/CG0", lines: ["ewl"], x: 940, y: 445 },
+  { id: "tampines", name: "Tampines", code: "EW2/DT32", lines: ["ewl","dtl"], x: 900, y: 435, shops: [
+    { name: "Food Republic", cuisine: "Chinese", budget: 1, rating: 3, mall: "Tampines Mall", description: "Air-conditioned food court with wide hawker selections under one roof.", mustTry: ["Hainanese Chicken Rice", "Laksa", "Ipoh Hor Fun"] },
+    { name: "Ichiban Sushi", cuisine: "Japanese", budget: 2, rating: 3, mall: "Century Square", description: "Conveyor belt Japanese restaurant with fresh rolls and sashimi.", mustTry: ["Salmon Avocado Roll", "Unagi Don", "Miso Soup"] },
+    { name: "Din Tai Fung", cuisine: "Chinese", budget: 3, rating: 5, mall: "Tampines Mall", description: "Singapore's most popular Taiwanese restaurant, famed for consistent xiao long bao.", mustTry: ["Xiao Long Bao", "Pork Chop Fried Rice", "Taro Pumpkin Dumpling"] },
+    { name: "Stuff'd", cuisine: "Western", budget: 1, rating: 3, mall: "Tampines 1", description: "Mexican-style wraps and burritos for a fast, filling and affordable meal.", mustTry: ["Chicken Burrito", "Beef Wrap", "Nachos"] }
+  ]},
+
+  // === Downtown Line ===
+  { id: "bukit-panjang", name: "Bukit Panjang", code: "DT1", lines: ["dtl"], x: 160, y: 310, shops: [
+    { name: "Hillion Mall Food Court", cuisine: "Chinese", budget: 1, rating: 3, mall: "Hillion Mall", description: "Air-conditioned food court with local favourites just a few steps from the LRT/DTL interchange.", mustTry: ["Roast Duck Rice", "Hokkien Mee", "Nasi Lemak"] }
+  ]},
+  { id: "cashew", name: "Cashew", code: "DT2", lines: ["dtl"], x: 220, y: 330 },
+  { id: "hillview", name: "Hillview", code: "DT3", lines: ["dtl"], x: 280, y: 345, shops: [
+    { name: "Rail Mall", cuisine: "Western", budget: 2, rating: 4, mall: "The Rail Mall", description: "Charming strip mall with multiple cafes and restaurants in a lush greenery setting.", mustTry: ["Weekend Brunch", "BBQ Ribs", "Craft Coffee"] }
+  ]},
+  { id: "beauty-world", name: "Beauty World", code: "DT5", lines: ["dtl"], x: 330, y: 355, shops: [
+    { name: "Bukit Timah Market & Food Centre", cuisine: "Chinese", budget: 1, rating: 5, mall: "Bukit Timah Market", description: "Beloved neighbourhood food centre with legendary stalls including famous fried kway teow.", mustTry: ["Sin Huat Eating House Char Kway Teow", "Durian Purees", "Chicken Rice"] }
+  ]},
+  { id: "king-albert-park", name: "King Albert Park", code: "DT6", lines: ["dtl"], x: 380, y: 365 },
+  { id: "sixth-avenue", name: "Sixth Avenue", code: "DT7", lines: ["dtl"], x: 420, y: 380 },
+  { id: "tan-kah-kee", name: "Tan Kah Kee", code: "DT8", lines: ["dtl"], x: 460, y: 395 },
+  { id: "botanic-gardens", name: "Botanic Gardens", code: "DT9/CC19", lines: ["dtl","ccl"], x: 490, y: 410, shops: [
+    { name: "The Garage at Botanic Gardens", cuisine: "Cafe", budget: 2, rating: 4, mall: "Botanic Gardens (Nassim Gate)", description: "Casual cafe within the Botanic Gardens precinct, popular for picnic-friendly food and specialty coffee.", mustTry: ["Avocado Toast", "Flat White", "Banana Pancakes"] }
+  ]},
+  { id: "stevens", name: "Stevens", code: "DT10/TE11", lines: ["dtl","tel"], x: 510, y: 430, shops: [
+    { name: "Steven's Corner", cuisine: "Indian", budget: 1, rating: 5, mall: "Jalan Kayu area / Stevens Road", description: "24-hour mamak-style Indian Muslim eatery, a supper institution serving roti prata since the 1980s.", mustTry: ["Plain Prata", "Egg Prata", "Mutton Curry"] },
+    { name: "Thattu Indian Cafe", cuisine: "Indian", budget: 1, rating: 4, mall: "Stevens Road", description: "Authentic South Indian tiffin cafe with dosa, idli and freshly ground chutneys.", mustTry: ["Masala Dosa", "Idli Sambar", "Filter Coffee"] },
+    { name: "Saveur", cuisine: "Western", budget: 2, rating: 4, mall: "Stevens Road", description: "French-inspired casual bistro known for value-priced foie gras and duck confit.", mustTry: ["Duck Confit", "Foie Gras Brioche", "Creme Brulee"] }
+  ]},
+  { id: "little-india", name: "Little India", code: "DT12/NE7", lines: ["dtl","nel"], x: 530, y: 465, shops: [
+    { name: "Komala Vilas", cuisine: "Indian", budget: 1, rating: 5, mall: "Serangoon Road", description: "Vegetarian South Indian institution serving thali and dosas since 1947.", mustTry: ["Full Thali", "Masala Dosa", "Rasam"] },
+    { name: "Ananda Bhavan", cuisine: "Indian", budget: 1, rating: 4, mall: "Serangoon Road", description: "Beloved vegetarian Indian eatery serving affordable and authentic South Indian food.", mustTry: ["Puri Kurma", "Idli Sambar", "Payasam"] },
+    { name: "Tekka Market", cuisine: "Indian", budget: 1, rating: 4, mall: "Tekka Centre", description: "Vibrant wet market and hawker centre at the heart of Little India with diverse Indian, Malay and Chinese stalls.", mustTry: ["Mutton Briyani", "Roti Prata", "Teh Tarik"] }
+  ]},
+  { id: "rochor", name: "Rochor", code: "DT13", lines: ["dtl"], x: 540, y: 468 },
+  { id: "promenade", name: "Promenade", code: "DT15/CC4", lines: ["dtl","ccl"], x: 700, y: 420, shops: [
+    { name: "Clifford Square at Marina One", cuisine: "Western", budget: 3, rating: 3, mall: "Marina One Residences", description: "Range of cafes and restaurants in the Marina One development for the CBD lunch crowd.", mustTry: ["Poke Bowl", "Truffle Mac & Cheese", "Cold Brew Coffee"] }
+  ]},
+  { id: "bayfront", name: "Bayfront", code: "DT16/CE1", lines: ["dtl"], x: 740, y: 415, shops: [
+    { name: "Guy Savoy", cuisine: "Western", budget: 4, rating: 5, mall: "Marina Bay Sands", description: "Paris-meets-Singapore, Guy Savoy's MBS outpost carries 3-Michelin-star pedigree.", mustTry: ["Artichoke & Black Truffle Soup", "Colours of Caviar", "Pigeon en Croute"] },
+    { name: "Bread Street Kitchen", cuisine: "Western", budget: 3, rating: 4, mall: "Marina Bay Sands", description: "Gordon Ramsay's casual brasserie at MBS serving British classics with a modern spin.", mustTry: ["Fish & Chips", "Beef Wellington", "Sticky Toffee Pudding"] },
+    { name: "Rise Restaurant", cuisine: "Western", budget: 3, rating: 4, mall: "Marina Bay Sands Hotel", description: "Lavish hotel buffet at MBS with live cooking stations, seafood spread and dessert selection.", mustTry: ["Seafood on Ice", "Laksa Station", "Gelato Selection"] }
+  ]},
+  { id: "downtown", name: "Downtown", code: "DT17", lines: ["dtl"], x: 780, y: 415, shops: [
+    { name: "Shin Yeh", cuisine: "Chinese", budget: 2, rating: 4, mall: "Shenton Way area", description: "Taiwanese home-cooking style restaurant loved by office workers in the CBD.", mustTry: ["Three Cup Chicken", "Braised Pork Rice", "Oyster Vermicelli"] }
+  ]},
+  { id: "telok-ayer", name: "Telok Ayer", code: "DT18", lines: ["dtl"], x: 820, y: 420, shops: [
+    { name: "The Coconut Club", cuisine: "Malay", budget: 2, rating: 5, mall: "Ann Siang Hill", description: "Modern take on nasi lemak using premium ingredients and freshly pressed coconut milk.", mustTry: ["Nasi Lemak Set", "Chicken Rendang", "Sambal Kang Kong"] },
+    { name: "Ronin", cuisine: "Japanese", budget: 3, rating: 4, mall: "Ann Siang Road", description: "Intimate Japanese-inspired restaurant with a small omakase-style menu and natural wines.", mustTry: ["Tuna Tataki", "Wagyu Carpaccio", "House Made Tofu"] }
+  ]},
+  { id: "fort-canning", name: "Fort Canning", code: "DT20", lines: ["dtl"], x: 860, y: 428, shops: [
+    { name: "Flutes at the Fort", cuisine: "Western", budget: 3, rating: 4, mall: "Fort Canning Park", description: "Romantic restaurant in a colonial building at Fort Canning Park — perfect for a special occasion.", mustTry: ["Duck Leg Confit", "Seared Scallops", "Sticky Date Pudding"] }
+  ]},
+
+  // === Circle Line ===
+  { id: "caldecott", name: "Caldecott", code: "CC17/TE9", lines: ["ccl","tel"], x: 660, y: 280, shops: [
+    { name: "Thomson Plaza Food Stalls", cuisine: "Chinese", budget: 1, rating: 3, mall: "Thomson Plaza", description: "Handful of casual local eateries and coffee shops in the neighbourhood Thomson Plaza.", mustTry: ["Bak Chor Mee", "Chicken Rice", "Toast & Soft Boiled Eggs"] }
+  ]},
+  { id: "marymount", name: "Marymount", code: "CC16", lines: ["ccl"], x: 700, y: 270, shops: [
+    { name: "Sheng Siong Supermarket Deli", cuisine: "Chinese", budget: 1, rating: 3, mall: "Thomson V Two", description: "Nearby food options in this quiet residential enclave.", mustTry: ["Mixed Rice", "Char Siu", "Tofu Soup"] }
+  ]},
+  { id: "lorong-chuan", name: "Lorong Chuan", code: "CC14", lines: ["ccl"], x: 740, y: 275, shops: [
+    { name: "Lorong Chuan Village", cuisine: "Chinese", budget: 1, rating: 3, mall: "Lorong Chuan area", description: "Modest neighbourhood eats near this residential station.", mustTry: ["Chicken Rice", "Wonton Noodles", "Laksa"] }
+  ]},
+  { id: "serangoon", name: "Serangoon", code: "NE12/CC13", lines: ["nel","ccl"], x: 770, y: 290, shops: [
+    { name: "Nakhon Kitchen", cuisine: "Thai", budget: 2, rating: 5, mall: "NEX", description: "Authentic Thai restaurant beloved by locals, known for authentic curries and seafood.", mustTry: ["Green Curry Crab", "Tom Yum Soup", "Pad Kra Pao"] },
+    { name: "Suki-Ya", cuisine: "Japanese", budget: 2, rating: 4, mall: "NEX", description: "Japanese hot pot restaurant with unlimited shabu-shabu and sukiyaki options.", mustTry: ["Wagyu Sukiyaki", "Pork Shabu-Shabu", "Egg Dipping Sauce"] },
+    { name: "Xin Wang Hong Kong Cafe", cuisine: "Chinese", budget: 1, rating: 3, mall: "NEX", description: "Hong Kong style cafe chain serving wonton noodles, milk tea and pineapple buns.", mustTry: ["Wonton Noodles", "French Toast with Peanut Butter", "HK Milk Tea"] },
+    { name: "Swee Choon Tim Sum", cuisine: "Chinese", budget: 1, rating: 5, mall: "Serangoon Road area", description: "Legendary 24-hour dim sum restaurant famous for queues and affordable dumplings.", mustTry: ["Xiao Long Bao", "Custard Lava Bao", "Yam Ring"] }
+  ]},
+  { id: "bartley", name: "Bartley", code: "CC12", lines: ["ccl"], x: 790, y: 320 },
+  { id: "tai-seng", name: "Tai Seng", code: "CC11", lines: ["ccl"], x: 800, y: 360, shops: [
+    { name: "The Humble Plate", cuisine: "Western", budget: 2, rating: 4, mall: "Tai Seng Industrial area", description: "Cafe in a converted industrial space serving all-day brunch and specialty coffee.", mustTry: ["Smashed Avocado Toast", "Shakshuka", "Cold Brew Latte"] }
+  ]},
+  { id: "macpherson", name: "MacPherson", code: "CC10/DT26", lines: ["ccl","dtl"], x: 795, y: 400, shops: [
+    { name: "MacPherson Market", cuisine: "Chinese", budget: 1, rating: 4, mall: "MacPherson Market HC", description: "Old-school neighbourhood hawker centre serving heritage Chinese dishes.", mustTry: ["Chwee Kueh", "Carrot Cake", "Teochew Porridge"] }
+  ]},
+  { id: "dakota", name: "Dakota", code: "CC8", lines: ["ccl"], x: 780, y: 430, shops: [
+    { name: "Old Airport Road Food Centre", cuisine: "Chinese", budget: 1, rating: 5, mall: "Old Airport Road HC", description: "Singapore's largest hawker centre — an absolute must-visit with dozens of legendary stalls.", mustTry: ["Peng Kee BBQ Chicken Wings", "Laksa", "Hokkien Prawn Mee"] }
+  ]},
+  { id: "mountbatten", name: "Mountbatten", code: "CC7", lines: ["ccl"], x: 760, y: 455 },
+  { id: "stadium", name: "Stadium", code: "CC6", lines: ["ccl"], x: 730, y: 470, shops: [
+    { name: "Stadium Ancillary Stalls", cuisine: "Malay", budget: 1, rating: 3, mall: "National Stadium Area", description: "Hawker stalls around the Singapore Sports Hub precinct.", mustTry: ["Nasi Lemak", "Mee Goreng", "Satay"] }
+  ]},
+  { id: "nicoll-highway", name: "Nicoll Highway", code: "CC5", lines: ["ccl"], x: 700, y: 480 },
+  { id: "esplanade", name: "Esplanade", code: "CC3", lines: ["ccl"], x: 670, y: 490, shops: [
+    { name: "Makansutra Gluttons Bay", cuisine: "Chinese", budget: 1, rating: 4, mall: "Esplanade Waterfront", description: "Iconic Singapore hawker enclave curated by Makansutra — spectacular bay views at night.", mustTry: ["Oyster Omelette", "BBQ Stingray", "Satay"] }
+  ]},
+  { id: "bras-basah", name: "Bras Basah", code: "CC2", lines: ["ccl"], x: 650, y: 505, shops: [
+    { name: "National Museum Food Trucks", cuisine: "Western", budget: 2, rating: 3, mall: "National Museum Grounds", description: "Rotating food trucks parked at the National Museum on weekend evenings.", mustTry: ["Gourmet Burgers", "Truffle Fries", "Artisanal Ice Cream"] }
+  ]},
+  { id: "one-north", name: "one-north", code: "CC23", lines: ["ccl"], x: 472, y: 282, shops: [
+    { name: "Timbre+ Food Park", cuisine: "Western", budget: 2, rating: 4, mall: "one-north Fusionopolis", description: "Trendy food park with artisanal hawker stalls, craft beer and live music.", mustTry: ["Gourmet Laksa", "Craft Beer", "Smashed Burger"] },
+    { name: "Nakhon Kitchen", cuisine: "Thai", budget: 2, rating: 4, mall: "Star Vista", description: "Branch of the celebrated Thai restaurant with popular yam and curry dishes.", mustTry: ["Mango Salad", "Pad Thai", "Tom Yum Seafood"] }
+  ]},
+  { id: "kent-ridge", name: "Kent Ridge", code: "CC24", lines: ["ccl"], x: 455, y: 300, shops: [
+    { name: "Fine Food at NUS UTown", cuisine: "Western", budget: 1, rating: 3, mall: "NUS UTown", description: "University canteen with a mix of local and international stalls at student-friendly prices.", mustTry: ["Western Grill Set", "Japanese Bento", "Mixed Rice"] }
+  ]},
+  { id: "haw-par-villa", name: "Haw Par Villa", code: "CC25", lines: ["ccl"], x: 445, y: 325 },
+  { id: "pasir-panjang", name: "Pasir Panjang", code: "CC26", lines: ["ccl"], x: 440, y: 355, shops: [
+    { name: "Pasir Panjang Food Centre", cuisine: "Chinese", budget: 1, rating: 4, mall: "Pasir Panjang Food Centre", description: "Neighbourhood hawker centre known for good value zichar and seafood.", mustTry: ["Har Cheong Gai", "Salted Egg Crab", "Fried Carrot Cake"] }
+  ]},
+  { id: "labrador-park", name: "Labrador Park", code: "CC27", lines: ["ccl"], x: 445, y: 385 },
+  { id: "telok-blangah", name: "Telok Blangah", code: "CC28", lines: ["ccl"], x: 455, y: 410 },
+  { id: "harbourfront", name: "HarbourFront", code: "NE1/CC29", lines: ["nel","ccl"], x: 490, y: 448, shops: [
+    { name: "Long Beach Seafood", cuisine: "Chinese", budget: 3, rating: 4, mall: "VivoCity", description: "Popular seafood restaurant known for its black pepper crab and chilli crab.", mustTry: ["Black Pepper Crab", "Salted Egg Prawns", "You Tiao"] },
+    { name: "Crystal Jade La Mian Xiao Long Bao", cuisine: "Chinese", budget: 2, rating: 4, mall: "VivoCity", description: "Crystal Jade's noodle-focused branch with excellent hand-pulled noodles and XLB.", mustTry: ["Xiao Long Bao", "Braised Pork La Mian", "Spicy Wonton"] },
+    { name: "Food Republic VivoCity", cuisine: "Chinese", budget: 1, rating: 3, mall: "VivoCity", description: "Large heritage-themed food court with a great variety of local dishes.", mustTry: ["Chicken Rice", "Laksa", "Satay Bee Hoon"] },
+    { name: "IKEA Restaurant VivoCity area", cuisine: "Western", budget: 1, rating: 3, mall: "Harbourfront MRT vicinity", description: "Accessible from VivoCity, IKEA's self-service restaurant with its iconic meatballs.", mustTry: ["Swedish Meatballs", "Daim Cake", "Soft Serve"] }
+  ]},
+  { id: "moulmein", name: "Moulmein", code: "CC20", lines: ["ccl"], x: 495, y: 268 },
+  { id: "farrer-road", name: "Farrer Road", code: "CC20", lines: ["ccl"], x: 520, y: 260, shops: [
+    { name: "The Grandstand Food Hall", cuisine: "Western", budget: 2, rating: 3, mall: "The Grandstand", description: "Relaxed al fresco dining with a variety of food stalls and cafes.", mustTry: ["Fish & Chips", "Chicken Chop", "Ice Kachang"] }
+  ]},
+  { id: "holland-village", name: "Holland Village", code: "CC21", lines: ["ccl"], x: 515, y: 460, shops: [
+    { name: "Original Sin", cuisine: "Western", budget: 3, rating: 4, mall: "Holland Village", description: "Celebrated vegetarian Mediterranean restaurant with creative seasonal dishes.", mustTry: ["Mezze Platter", "Mushroom Risotto", "Lemon Tart"] },
+    { name: "Wala Wala", cuisine: "Western", budget: 2, rating: 4, mall: "Holland Village", description: "Laid-back sports bar and grill popular for nachos and live football screenings.", mustTry: ["Nachos", "Chicken Wings", "Wala Wala Burger"] },
+    { name: "Da Paolo Gastronomia", cuisine: "Western", budget: 3, rating: 4, mall: "Holland Village", description: "Italian deli and restaurant serving housemade pasta, charcuterie and espresso.", mustTry: ["Truffle Tagliolini", "Burrata", "Tiramisu"] }
+  ]},
+  { id: "circle-one-north", name: "one-north (CCL)", code: "CC23", lines: ["ccl"], x: 490, y: 448 },
+  { id: "harbourfront-ccl", name: "HarbourFront exit", code: "CC29", lines: ["ccl"], x: 490, y: 448 },
+
+  // === North East Line ===
+  { id: "punggol", name: "Punggol", code: "NE17", lines: ["nel"], x: 760, y: 280, shops: [
+    { name: "Punggol Hawker Centre", cuisine: "Chinese", budget: 1, rating: 4, mall: "Waterway Point", description: "Vibrant hawker centre with a good mix of Chinese, Malay and Indian food in a waterfront setting.", mustTry: ["Prawn Noodles", "Nasi Lemak", "Popiah"] },
+    { name: "Jollibee", cuisine: "Fast Food", budget: 1, rating: 4, mall: "Waterway Point", description: "Popular Filipino fast food chain with crispy fried chicken and rice meals.", mustTry: ["Chickenjoy", "Jolly Spaghetti", "Peach Mango Pie"] }
+  ]},
+  { id: "sengkang", name: "Sengkang", code: "NE16", lines: ["nel"], x: 730, y: 270, shops: [
+    { name: "Kopitiam at Compass One", cuisine: "Chinese", budget: 1, rating: 3, mall: "Compass One", description: "Convenient food court at the interchange mall with a good range of hawker dishes.", mustTry: ["Mixed Rice", "Laksa", "Ban Mian"] },
+    { name: "Ichiban Boshi", cuisine: "Japanese", budget: 2, rating: 3, mall: "Compass One", description: "Japanese casual dining restaurant in the Compass One mall.", mustTry: ["Salmon Teriyaki", "Ebi Tempura Udon", "Takoyaki"] }
+  ]},
+  { id: "hougang", name: "Hougang", code: "NE14", lines: ["nel"], x: 700, y: 265, shops: [
+    { name: "Hainanese Chicken Rice", cuisine: "Chinese", budget: 1, rating: 4, mall: "Hougang Ave 1 HC", description: "Classic chicken rice stall in the neighbourhood hawker centre.", mustTry: ["Steamed Chicken Rice", "Roast Chicken", "Chilli Sauce"] },
+    { name: "Prata Place", cuisine: "Indian", budget: 1, rating: 4, mall: "Hougang area", description: "Local prata shop open from early morning for breakfast and supper.", mustTry: ["Plain Prata", "Egg Coin Prata", "Fish Curry"] }
+  ]},
+  { id: "buangkok", name: "Buangkok", code: "NE15", lines: ["nel"], x: 670, y: 265 },
+  { id: "kovan", name: "Kovan", code: "NE13", lines: ["nel"], x: 650, y: 270, shops: [
+    { name: "Tenderfresh", cuisine: "Western", budget: 1, rating: 3, mall: "Heartland Mall Kovan", description: "Affordable Western food chain serving chicken chops, fish and chips.", mustTry: ["Chicken Chop", "Fish & Chips", "Mashed Potatoes"] }
+  ]},
+  { id: "woodleigh", name: "Woodleigh", code: "NE11", lines: ["nel"], x: 630, y: 280, shops: [
+    { name: "Woodleigh Mall Food Court", cuisine: "Chinese", budget: 1, rating: 3, mall: "Woodleigh Mall", description: "Brand new food court in the recently opened Woodleigh Mall with local and international stalls.", mustTry: ["Chicken Rice", "Ban Mian", "Japanese Bento"] }
+  ]},
+  { id: "potong-pasir", name: "Potong Pasir", code: "NE10", lines: ["nel"], x: 610, y: 295, shops: [
+    { name: "Potong Pasir Market & Food Centre", cuisine: "Chinese", budget: 1, rating: 4, mall: "Potong Pasir HC", description: "Old-school neighbourhood hawker centre with dedicated regulars.", mustTry: ["Hor Fun", "Carrot Cake", "Wonton Mee"] }
+  ]},
+  { id: "boon-keng", name: "Boon Keng", code: "NE9", lines: ["nel"], x: 590, y: 315 },
+  { id: "farrer-park", name: "Farrer Park", code: "NE8", lines: ["nel"], x: 580, y: 340, shops: [
+    { name: "Berseh Food Centre", cuisine: "Indian", budget: 1, rating: 4, mall: "Berseh Food Centre", description: "Multicultural hawker centre with excellent Indian and Chinese options.", mustTry: ["Chicken Briyani", "Thosai", "Roti Prata"] },
+    { name: "Khin Restaurant", cuisine: "Indian", budget: 2, rating: 4, mall: "Race Course Road", description: "North Indian restaurant famous for tandoori and curry dishes in a heritage setting.", mustTry: ["Butter Chicken", "Garlic Naan", "Dal Makhani"] }
+  ]},
+  { id: "little-india-nel", name: "Little India", code: "NE7/DT12", lines: ["nel","dtl"], x: 580, y: 370, shops: [
+    { name: "Mustafa Centre Food Court", cuisine: "Indian", budget: 1, rating: 3, mall: "Mustafa Centre", description: "24-hour food court within the legendary Mustafa Centre, always open.", mustTry: ["Chicken Briyani", "Murtabak", "Masala Tea"] },
+    { name: "Sakunthala's Restaurant", cuisine: "Indian", budget: 1, rating: 4, mall: "Race Course Road", description: "Classic South Indian banana-leaf restaurant in the Race Course Road row.", mustTry: ["Fish Head Curry", "Banana Leaf Rice", "Gulab Jamun"] }
+  ]},
+  { id: "clarke-quay", name: "Clarke Quay", code: "NE5", lines: ["nel"], x: 590, y: 395, shops: [
+    { name: "Jumbo Seafood", cuisine: "Chinese", budget: 3, rating: 5, mall: "Clarke Quay Riverside", description: "Singapore's most famous chilli crab restaurant on the iconic riverside.", mustTry: ["Chilli Crab", "Black Pepper Crab", "Mantou"] },
+    { name: "Café Iguana", cuisine: "Western", budget: 2, rating: 3, mall: "Clarke Quay", description: "Mexican-inspired waterfront bar and restaurant in the lively Clarke Quay entertainment strip.", mustTry: ["Nachos", "Chicken Quesadilla", "Frozen Margarita"] },
+    { name: "Bother Me (Hotpot)", cuisine: "Chinese", budget: 2, rating: 4, mall: "Clarke Quay", description: "Trendy hot pot bar with Sichuan and non-spicy broths, great for group dining.", mustTry: ["Mala Broth", "Wagyu Beef", "Handmade Fish Balls"] }
+  ]},
+  { id: "chinatown", name: "Chinatown", code: "NE4/DT19", lines: ["nel","dtl"], x: 600, y: 420, shops: [
+    { name: "Chinatown Complex Food Centre", cuisine: "Chinese", budget: 1, rating: 5, mall: "Chinatown Complex", description: "Massive hawker centre — home to Hawker Chan, the world's cheapest Michelin-starred meal.", mustTry: ["Hawker Chan Soya Sauce Chicken", "Hokkien Mee", "Rojak"] },
+    { name: "Smith Street Taps", cuisine: "Western", budget: 2, rating: 4, mall: "Chinatown Food Street", description: "Craft beer bar at the Chinatown food street with excellent local snacks.", mustTry: ["Craft Beer Selection", "Satay", "Oyster Omelette"] },
+    { name: "Ya Kun Kaya Toast", cuisine: "Cafe", budget: 1, rating: 4, mall: "Chinatown", description: "The original Ya Kun outlet in Chinatown, a must-visit for traditional kaya toast.", mustTry: ["Kaya Butter Toast", "Soft Boiled Eggs", "Kopi"] }
+  ]},
+  { id: "outram-nel", name: "Outram Park", code: "NE3", lines: ["nel"], x: 610, y: 450 },
+  { id: "harbourfront-nel", name: "HarbourFront", code: "NE1", lines: ["nel"], x: 620, y: 480 },
+
+  // === Thomson-East Coast Line ===
+  { id: "woodlands-north", name: "Woodlands North", code: "TE1", lines: ["tel"], x: 310, y: 180 },
+  { id: "springleaf", name: "Springleaf", code: "TE3", lines: ["tel"], x: 320, y: 275 },
+  { id: "lentor", name: "Lentor", code: "TE4", lines: ["tel"], x: 340, y: 305, shops: [
+    { name: "Lentor Modern Food Hall", cuisine: "Chinese", budget: 1, rating: 3, mall: "Lentor Modern", description: "New-generation food hall in the freshly opened Lentor Modern development.", mustTry: ["Chicken Rice", "Braised Duck", "Yong Tau Foo"] }
+  ]},
+  { id: "mayflower", name: "Mayflower", code: "TE5", lines: ["tel"], x: 360, y: 330 },
+  { id: "bright-hill", name: "Bright Hill", code: "TE6", lines: ["tel"], x: 390, y: 355, shops: [
+    { name: "Sin Ming Roti Prata", cuisine: "Indian", budget: 1, rating: 5, mall: "Sin Ming Centre", description: "Old-school neighbourhood prata shop beloved by locals for decades.", mustTry: ["Plain Prata", "Egg Prata", "Mutton Curry"] }
+  ]},
+  { id: "upper-thomson", name: "Upper Thomson", code: "TE7", lines: ["tel"], x: 420, y: 380, shops: [
+    { name: "Springleaf Prata Place", cuisine: "Indian", budget: 1, rating: 5, mall: "Upper Thomson Road", description: "Institution for late-night prata along Upper Thomson's eating strip.", mustTry: ["Paper Prata", "Chocolate Banana Prata", "Fish Head Curry"] },
+    { name: "Billy Bombers", cuisine: "Western", budget: 2, rating: 3, mall: "Upper Thomson Road", description: "Retro American diner with juicy burgers, hot dogs and classic milkshakes.", mustTry: ["Classic Beef Burger", "Hot Dog", "Oreo Milkshake"] },
+    { name: "Thomson Hills Kopitiam", cuisine: "Chinese", budget: 1, rating: 4, mall: "Upper Thomson Road", description: "Laid-back neighbourhood kopitiam popular for affordable local breakfast and mains.", mustTry: ["Kaya Toast Set", "Mee Pok", "Hainanese Chicken Rice"] }
+  ]},
+  { id: "caldecott-tel", name: "Caldecott", code: "TE8/CC17", lines: ["tel","ccl"], x: 450, y: 405 },
+  { id: "mount-pleasant", name: "Mount Pleasant", code: "TE9", lines: ["tel"], x: 475, y: 430 },
+  { id: "stevens-tel", name: "Stevens", code: "TE11/DT10", lines: ["tel","dtl"], x: 500, y: 455 },
+  { id: "napier", name: "Napier", code: "TE12", lines: ["tel"], x: 520, y: 470, shops: [
+    { name: "National Orchid Garden Restaurant", cuisine: "Western", budget: 3, rating: 4, mall: "Botanic Gardens vicinity", description: "Upscale dining near the Botanic Gardens with panoramic views and seasonal menus.", mustTry: ["Duck Breast", "Garden Salad", "Passion Fruit Tart"] },
+    { name: "Botanico", cuisine: "Western", budget: 3, rating: 4, mall: "Botanic Gardens (Gallop Road)", description: "Romantic restaurant within the Botanic Gardens offering a garden-to-table dining experience.", mustTry: ["Grass-fed Steak", "Mushroom Risotto", "Lemon Tart"] },
+    { name: "The White Rabbit", cuisine: "Western", budget: 3, rating: 4, mall: "Dempsey Road", description: "Beautiful colonial chapel turned restaurant serving modern European in a fairy-tale setting.", mustTry: ["Burrata", "Pan Seared Foie Gras", "Dark Chocolate Fondant"] }
+  ]},
+  { id: "orchard-blvd", name: "Orchard Boulevard", code: "TE13", lines: ["tel"], x: 560, y: 460, shops: [
+    { name: "Takashimaya Japanese Restaurant Floor", cuisine: "Japanese", budget: 3, rating: 4, mall: "Ngee Ann City", description: "Multiple Japanese restaurants on the dedicated Japanese restaurant floor in Takashimaya.", mustTry: ["Kamameshi Rice", "Ramen Set", "Matcha Desserts"] },
+    { name: "Iggy's", cuisine: "Western", budget: 4, rating: 5, mall: "Hilton Singapore Orchard", description: "Long-standing fine dining destination serving modern European cuisine in intimate surroundings.", mustTry: ["Seasonal Tasting Menu", "Foie Gras", "Chocolate Delice"] },
+    { name: "Akira Back", cuisine: "Japanese", budget: 4, rating: 4, mall: "JW Marriott Hotel Singapore South Beach", description: "Korean-born chef Akira Back's Japanese-inspired creative dining.", mustTry: ["Tuna Pizza", "AB Wagyu Rib-Eye", "Miso Black Cod"] }
+  ]},
+  { id: "great-world", name: "Great World", code: "TE15", lines: ["tel"], x: 600, y: 490, shops: [
+    { name: "The Market Grill", cuisine: "Western", budget: 3, rating: 4, mall: "Great World City", description: "Casual grill restaurant specialising in premium beef cuts and fresh seafood.", mustTry: ["Wagyu Beef Burger", "Grilled Swordfish", "Truffle Fries"] },
+    { name: "Tanuki Raw", cuisine: "Japanese", budget: 2, rating: 4, mall: "Great World City", description: "Modern Japanese restaurant serving omakase-style small plates, cocktails and fresh oysters.", mustTry: ["Fresh Oysters", "Salmon Tataki", "Japanese Gin Cocktail"] },
+    { name: "Limaa", cuisine: "Indian", budget: 2, rating: 4, mall: "Great World City", description: "Contemporary South Indian restaurant with a modern spin on Tamil Nadu classics.", mustTry: ["Chettinad Chicken Curry", "Masala Dosa", "Payasam"] },
+    { name: "Maguro Donya Miurasan", cuisine: "Japanese", budget: 2, rating: 4, mall: "Great World City", description: "Tuna-specialist restaurant sourcing directly from Miura, Japan — exceptional freshness.", mustTry: ["Tuna Sashimi Platter", "Toro Nigiri", "Tuna Don"] }
+  ]},
+  { id: "havelock", name: "Havelock", code: "TE16", lines: ["tel"], x: 620, y: 510, shops: [
+    { name: "Chui Huay Lim Club Restaurant", cuisine: "Chinese", budget: 3, rating: 4, mall: "Lim Teck Kim Road area", description: "Traditional Teochew private club restaurant offering classic Teochew cuisine.", mustTry: ["Steamed Fish", "Teochew Porridge", "Braised Duck"] }
+  ]},
+  { id: "maxwell", name: "Maxwell", code: "TE18", lines: ["tel"], x: 640, y: 530, shops: [
+    { name: "Maxwell Food Centre", cuisine: "Chinese", budget: 1, rating: 5, mall: "Maxwell Food Centre", description: "Legendary Chinatown hawker centre, home to Tian Tian Chicken Rice — possibly Singapore's most famous.", mustTry: ["Tian Tian Chicken Rice", "Zhen Zhen Porridge", "Nam Kee Pau"] },
+    { name: "COMO Cuisine", cuisine: "Western", budget: 4, rating: 4, mall: "COMO Dempsey", description: "Clean and healthy modern cuisine in the elegant COMO Dempsey complex.", mustTry: ["Organic Green Salad", "Wagyu Short Rib", "Yuzu Pavlova"] }
+  ]},
+  { id: "shenton-way", name: "Shenton Way", code: "TE19", lines: ["tel"], x: 660, y: 555, shops: [
+    { name: "Amoy Street Food Centre", cuisine: "Chinese", budget: 1, rating: 5, mall: "Amoy Street FC", description: "Heritage hawker centre packed with CBD workers at lunch — exceptional food density.", mustTry: ["A Noodle Story (Ramen)", "Hoo Kee Rice Dumplings", "Hong Kee Beef Noodle"] },
+    { name: "Ce La Vi", cuisine: "Western", budget: 4, rating: 4, mall: "Marina Bay Sands vicinity", description: "Sky-high rooftop bar and restaurant with panoramic views of the Marina Bay skyline.", mustTry: ["Wagyu Carpaccio", "Seared Scallops", "Panoramic Cocktails"] }
+  ]},
+  { id: "marina-bay-tel", name: "Marina Bay", code: "TE20/NS27/CE2", lines: ["tel","nsl"], x: 670, y: 575 },
+  { id: "marine-parade", name: "Marine Parade", code: "TE26", lines: ["tel"], x: 660, y: 640, shops: [
+    { name: "Katong Laksa (328 Katong Laksa)", cuisine: "Chinese", budget: 1, rating: 5, mall: "East Coast Road", description: "Possibly the most famous laksa in Singapore — rich, coconut-heavy and served with cut noodles.", mustTry: ["Katong Laksa", "Prawn Roll", "Otah"] },
+    { name: "Chin Mee Chin Confectionery", cuisine: "Cafe", budget: 1, rating: 5, mall: "East Coast Road", description: "Old-school 1950s kopitiam preserved as a heritage gem — famous kaya toast and soft boiled eggs.", mustTry: ["Kaya Toast", "Soft Boiled Eggs", "Coffee Powder Bun"] },
+    { name: "Kim's Place Seafood", cuisine: "Chinese", budget: 2, rating: 4, mall: "East Coast Road", description: "Beloved zichar restaurant specialising in crab, prawns and wok-fried seafood.", mustTry: ["Chilli Crab", "Hor Fun", "Salted Egg Squid"] }
+  ]},
+  { id: "marine-terrace", name: "Marine Terrace", code: "TE27", lines: ["tel"], x: 660, y: 660, shops: [
+    { name: "East Coast Lagoon Food Village", cuisine: "Chinese", budget: 1, rating: 5, mall: "East Coast Lagoon FV", description: "Open-air seaside hawker centre, perfect for evening dining with sea breeze.", mustTry: ["Satay", "Barbecue Seafood", "Laksa"] },
+    { name: "Guan Hoe Soon", cuisine: "Chinese", budget: 2, rating: 4, mall: "Joo Chiat Place", description: "Singapore's oldest Peranakan restaurant serving authentic Nonya cuisine since 1953.", mustTry: ["Babi Pongteh", "Ngoh Hiang", "Blue Pea Rice"] }
+  ]},
+  { id: "tanjong-katong", name: "Tanjong Katong", code: "TE28", lines: ["tel"], x: 650, y: 680, shops: [
+    { name: "Smokey's BBQ", cuisine: "Western", budget: 2, rating: 4, mall: "Tanjong Katong Road", description: "American barbecue restaurant with smoked meats, ribs and craft beer in a casual space.", mustTry: ["Smoked Brisket", "Baby Back Ribs", "Pulled Pork Burger"] },
+    { name: "Peranakan Inn", cuisine: "Chinese", budget: 2, rating: 4, mall: "Tanjong Katong Road", description: "Heritage Peranakan restaurant serving the Straits Chinese cuisine of Singapore's east.", mustTry: ["Nyonya Laksa", "Buah Keluak Chicken", "Pulut Hitam"] },
+    { name: "Old Hokkien Street Fried Hokkien Mee", cuisine: "Chinese", budget: 1, rating: 5, mall: "Tanjong Katong area", description: "Local favourite stall for wok-fried Hokkien prawn mee with rich prawn stock.", mustTry: ["Hokkien Prawn Mee", "Pork Lard Topping", "Sambal Chilli"] }
+  ]},
+  { id: "katong-park", name: "Katong Park", code: "TE29", lines: ["tel"], x: 640, y: 700, shops: [
+    { name: "Chin Huat Live Seafood", cuisine: "Chinese", budget: 2, rating: 4, mall: "East Coast Road", description: "Popular seafood restaurant with live tanks — pick your own crab or fish.", mustTry: ["Steamed Live Fish", "Cereal Prawns", "Sambal Kangkong"] },
+    { name: "East Coast Road Peranakan", cuisine: "Chinese", budget: 2, rating: 4, mall: "East Coast Road", description: "Cluster of Peranakan eateries serving Singapore's unique Straits Chinese heritage food.", mustTry: ["Otah Otah", "Nyonya Pineapple Tart", "Babi Pongteh"] }
+  ]},
+  { id: "bayshore", name: "Bayshore", code: "TE30", lines: ["tel"], x: 630, y: 720, shops: [
+    { name: "East Coast Park Seafood Centre", cuisine: "Chinese", budget: 2, rating: 4, mall: "East Coast Park", description: "Cluster of restaurants along East Coast Park seafront — perfect for dining by the sea.", mustTry: ["Chilli Crab", "BBQ Sambal Stingray", "White Pepper Crab"] }
+  ]},
+  { id: "siglap", name: "Siglap", code: "TE31", lines: ["tel"], x: 620, y: 740, shops: [
+    { name: "Siglap Village", cuisine: "Western", budget: 2, rating: 4, mall: "Siglap Road", description: "Charming cluster of cafes and bistros in the laid-back Siglap neighbourhood.", mustTry: ["Brunch Set", "Artisan Sandwich", "Specialty Coffee"] },
+    { name: "Spizza", cuisine: "Western", budget: 2, rating: 4, mall: "Siglap Road", description: "Italian restaurant beloved in the East for wood-fired pizzas and homemade pasta.", mustTry: ["Margherita Pizza", "Truffle Pasta", "Panna Cotta"] }
+  ]},
+  { id: "gardens-by-bay", name: "Gardens by the Bay", code: "TE22", lines: ["tel"], x: 650, y: 680, shops: [
+    { name: "Pollen", cuisine: "Western", budget: 4, rating: 5, mall: "Gardens by the Bay Flower Dome", description: "Stunning restaurant inside the Flower Dome, offering modern European cuisine amid tropical flora.", mustTry: ["Hokkaido Scallop", "John Dory", "Valrhona Dark Chocolate"] },
+    { name: "Satay by the Bay", cuisine: "Malay", budget: 1, rating: 4, mall: "Gardens by the Bay", description: "Al fresco hawker centre next to Gardens by the Bay with great night views.", mustTry: ["Satay", "BBQ Stingray", "Carrot Cake"] }
+  ]}
 ];
 
-// Cuisine CSS class map
-const CUISINE_CLASS = {
-  'Chinese': 'cuisine-chinese',
-  'Malay': 'cuisine-malay',
-  'Indian': 'cuisine-indian',
-  'Japanese': 'cuisine-japanese',
-  'Korean': 'cuisine-korean',
-  'Western': 'cuisine-western',
-  'Thai': 'cuisine-thai',
-  'Cafe': 'cuisine-cafe',
-  'Fast Food': 'cuisine-fastfood',
-  'Seafood': 'cuisine-seafood',
-  'Hawker': 'cuisine-hawker',
-  'Italian': 'cuisine-italian',
-  'Vietnamese': 'cuisine-western'
-};
+// De-duplicate stations that appear multiple times (same logical station)
+const seenIds = new Set();
+const UNIQUE_STATIONS = STATIONS.filter(s => {
+  if (seenIds.has(s.id)) return false;
+  seenIds.add(s.id);
+  return true;
+});
+
+// A simplified set of key stations for rendering (avoid clutter)
+// We'll render all but mark them differently
+const KEY_STATIONS = new Set([
+  "jurong-east","woodlands","ang-mo-kio","bishan","toa-payoh","orchard","somerset",
+  "dhoby-ghaut","city-hall","raffles-place","marina-bay","bugis","tampines",
+  "harbourfront","serangoon","great-world","punggol","sengkang","hougang",
+  "kovan","farrer-park","clarke-quay","chinatown","raffles-place",
+  "caldecott","marymount","lorong-chuan","bartley","macpherson","paya-lebar",
+  "buona-vista","newton","bishan","outram-park","tanjong-pagar","lavender",
+  "bukit-panjang","beauty-world","botanic-gardens","little-india",
+  "woodlands-north","lentor","mayflower","upper-thomson","mount-pleasant",
+  "napier","orchard-blvd","great-world","havelock","maxwell","gardens-by-bay",
+  "springleaf","bright-hill","stevens","stevens-tel","shenton-way","caldecott-tel",
+  "admiralty","sembawang","yishun","khatib","novena",
+  "clementi","queenstown","redhill","tiong-bahru","boon-lay","pioneer",
+  "bukit-batok","choa-chu-kang","yew-tee","harbourfront-nel",
+  "marine-parade","marine-terrace","tanjong-katong","katong-park","bayshore","siglap"
+]);
 
 const LINE_COLORS = {
-  nsl: '#d42e12', ewl: '#009645', ccl: '#fa9e0d',
-  dtl: '#005ec4', nel: '#9b0fac', tel: '#9d5b25'
+  nsl: "#d42e12",
+  ewl: "#009645",
+  ccl: "#fa9e0d",
+  dtl: "#005ec4",
+  nel: "#9b0fac",
+  tel: "#9d5b25"
 };
 
-// ===== STATE =====
-let activeLine = 'all';
-let activeCuisine = 'all';
-let activeBudget = 'all';
-let activeRating = 'all';
-let activeDetail = null;
+// ============================================================
+// RENDER STATIONS
+// ============================================================
+function renderStations() {
+  const stLayer = document.getElementById("stations-layer");
+  const lblLayer = document.getElementById("labels-layer");
 
-// ===== RENDER =====
-function renderStars(rating) {
-  let html = '<div class="rating-stars">';
-  for (let i = 1; i <= 5; i++) {
-    if (rating >= i) html += '<span class="star filled">&#9733;</span>';
-    else if (rating >= i - 0.5) html += '<span class="star half">&#9733;</span>';
-    else html += '<span class="star">&#9733;</span>';
-  }
-  html += `<span class="rating-num">${rating.toFixed(1)}</span></div>`;
-  return html;
+  // Render a representative set to avoid extreme clutter
+  const toRender = UNIQUE_STATIONS.filter(s => KEY_STATIONS.has(s.id));
+
+  toRender.forEach(station => {
+    const isInterchange = station.lines.length > 1;
+    const hasShops = station.shops && station.shops.length > 0;
+    const primaryColor = LINE_COLORS[station.lines[0]] || "#888";
+
+    // Outer glow for shops
+    if (hasShops) {
+      const glow = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      glow.setAttribute("cx", station.x);
+      glow.setAttribute("cy", station.y);
+      glow.setAttribute("r", isInterchange ? 14 : 10);
+      glow.setAttribute("fill", "none");
+      glow.setAttribute("stroke", "#f0a500");
+      glow.setAttribute("stroke-width", "2");
+      glow.setAttribute("opacity", "0.6");
+      stLayer.appendChild(glow);
+    }
+
+    // Main dot
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", station.x);
+    circle.setAttribute("cy", station.y);
+    circle.setAttribute("r", isInterchange ? 9 : 6);
+    circle.setAttribute("fill", isInterchange ? "#fff" : primaryColor);
+    circle.setAttribute("stroke", primaryColor);
+    circle.setAttribute("stroke-width", isInterchange ? 3 : 0);
+    circle.setAttribute("class", "station-dot");
+    circle.setAttribute("data-id", station.id);
+    circle.style.cursor = "pointer";
+    stLayer.appendChild(circle);
+
+    // Food indicator dot
+    if (hasShops) {
+      const foodIndicator = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      foodIndicator.setAttribute("cx", station.x + (isInterchange ? 9 : 6));
+      foodIndicator.setAttribute("cy", station.y - (isInterchange ? 9 : 6));
+      foodIndicator.setAttribute("r", 4);
+      foodIndicator.setAttribute("fill", "#f0a500");
+      foodIndicator.style.pointerEvents = "none";
+      stLayer.appendChild(foodIndicator);
+    }
+
+    // Label
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", station.x + 13);
+    text.setAttribute("y", station.y + 4);
+    text.setAttribute("font-size", "9");
+    text.setAttribute("fill", "#c0c0d0");
+    text.setAttribute("font-family", "system-ui, sans-serif");
+    text.setAttribute("pointer-events", "none");
+    text.textContent = station.name;
+    lblLayer.appendChild(text);
+
+    // Click handler
+    circle.addEventListener("click", () => openStation(station.id));
+
+    // Touch handler
+    circle.addEventListener("touchend", (e) => {
+      e.preventDefault();
+      openStation(station.id);
+    });
+  });
 }
 
-function renderCard(r, stationId) {
-  const cls = CUISINE_CLASS[r.cuisine] || 'cuisine-western';
-  return `
-    <div class="restaurant-card" onclick="openDetail('${stationId}','${r.name.replace(/'/g,"\\'")}')">
-      <div class="card-top">
-        <span class="cuisine-badge ${cls}">${r.cuisine}</span>
-        <span class="budget-badge">${r.budget}</span>
-      </div>
-      <div class="restaurant-name">${r.name}</div>
-      <div class="restaurant-mall">&#x1F3EC; ${r.mall}</div>
-      <div class="restaurant-desc">${r.desc}</div>
-      <div class="card-bottom">
-        ${renderStars(r.rating)}
-      </div>
-    </div>`;
-}
+// ============================================================
+// PANEL LOGIC
+// ============================================================
+let currentStation = null;
 
-function render() {
-  const query = document.getElementById('search-input').value.toLowerCase().trim();
-  const list = document.getElementById('stations-list');
-  const empty = document.getElementById('empty-state');
-  let totalCount = 0;
-  let html = '';
+function openStation(stationId) {
+  const station = UNIQUE_STATIONS.find(s => s.id === stationId);
+  if (!station) return;
+  currentStation = station;
 
-  STATIONS.forEach(station => {
-    // Line filter
-    if (activeLine !== 'all' && !station.lines.includes(activeLine)) return;
-    // Station name in search
-    const stationMatch = station.name.toLowerCase().includes(query);
+  document.getElementById("panel-station-name").textContent = station.name;
+  document.getElementById("panel-station-code").textContent = station.code;
 
-    // Filter restaurants
-    const filtered = station.restaurants.filter(r => {
-      if (activeCuisine !== 'all' && r.cuisine !== activeCuisine) return false;
-      if (activeBudget !== 'all' && r.budget !== activeBudget) return false;
-      if (activeRating !== 'all' && r.rating < parseFloat(activeRating)) return false;
-      if (query && !stationMatch && !r.name.toLowerCase().includes(query) && !r.cuisine.toLowerCase().includes(query) && !r.mall.toLowerCase().includes(query)) return false;
-      return true;
+  const container = document.getElementById("shops-container");
+  container.innerHTML = "";
+
+  // Get active filters
+  const activeCuisine = document.querySelector('.filter-chip.active[data-filter="cuisine"]')?.dataset.value || "all";
+  const activeBudget = document.querySelector('.filter-chip.active[data-filter="budget"]')?.dataset.value || "all";
+  const searchQuery = document.getElementById("search-input")?.value.toLowerCase() || "";
+
+  let shops = station.shops || [];
+  if (activeCuisine !== "all") shops = shops.filter(s => s.cuisine === activeCuisine);
+  if (activeBudget !== "all") shops = shops.filter(s => String(s.budget) === activeBudget);
+  if (searchQuery) shops = shops.filter(s => s.name.toLowerCase().includes(searchQuery) || s.cuisine.toLowerCase().includes(searchQuery));
+
+  if (shops.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🍽️</div>
+        <p>No restaurants match your current filters for this station.<br>Try adjusting your cuisine or budget filter.</p>
+      </div>`;
+  } else {
+    const label = document.createElement("div");
+    label.className = "shops-label";
+    label.textContent = `${shops.length} restaurant${shops.length > 1 ? "s" : ""} nearby`;
+    container.appendChild(label);
+
+    const grid = document.createElement("div");
+    grid.className = "shop-cards";
+
+    shops.forEach((shopData) => {
+      const budgetStr = "$".repeat(shopData.budget);
+      const stars = "★".repeat(shopData.rating) + "☆".repeat(5 - shopData.rating);
+      const cuisineColors = {
+        Chinese: "#c0392b", Malay: "#27ae60", Indian: "#f39c12", Japanese: "#2980b9",
+        Korean: "#8e44ad", Western: "#2c3e50", Thai: "#16a085", Cafe: "#795548",
+        "Fast Food": "#e74c3c", Vietnamese: "#1abc9c"
+      };
+      const color = cuisineColors[shopData.cuisine] || "#888";
+      const card = document.createElement("div");
+      card.className = "shop-card";
+      card.innerHTML = `
+        <div class="shop-badge" style="background:${color}22;color:${color};border:1px solid ${color}55">
+          ${shopData.cuisine}
+        </div>
+        <div class="shop-name">${shopData.name}</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+          <span style="font-size:0.78rem;color:var(--accent);font-weight:700">${budgetStr}</span>
+          <span style="font-size:0.78rem;color:#f0a500">${stars}</span>
+        </div>
+        <div class="shop-location">📍 ${shopData.mall}</div>
+      `;
+      card.addEventListener("click", () => openDetail(shopData, station.name));
+      grid.appendChild(card);
     });
 
-    if (filtered.length === 0) return;
-    totalCount += filtered.length;
-
-    // Station dot color (first line)
-    const lineColor = LINE_COLORS[station.lines[0]] || '#888';
-
-    html += `
-      <div class="station-section" id="sec-${station.id}">
-        <div class="station-header">
-          <div class="station-dot" style="background:${lineColor}"></div>
-          <div class="station-name-block">
-            <div class="station-name-text">${station.name}</div>
-            <div class="station-meta">${station.code} &middot; ${station.malls}</div>
-          </div>
-          <div class="station-count">${filtered.length} place${filtered.length !== 1 ? 's' : ''}</div>
-        </div>
-        <div class="restaurant-grid">
-          ${filtered.map(r => renderCard(r, station.id)).join('')}
-        </div>
-      </div>`;
-  });
-
-  list.innerHTML = html;
-  document.getElementById('result-count').textContent = totalCount + (totalCount === 1 ? ' place' : ' places');
-
-  if (totalCount === 0) {
-    empty.classList.add('visible');
-  } else {
-    empty.classList.remove('visible');
+    container.appendChild(grid);
   }
+
+  document.getElementById("station-panel").classList.add("open");
+  document.getElementById("backdrop").classList.add("visible");
 }
 
-function applyFilters() { render(); }
-
-// ===== FILTER TOGGLES =====
-function toggleLine(el) {
-  document.querySelectorAll('#line-filters .filter-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  activeLine = el.dataset.line;
-  render();
-}
-function toggleCuisine(el) {
-  document.querySelectorAll('#cuisine-filters .filter-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  activeCuisine = el.dataset.cuisine;
-  render();
-}
-function toggleBudget(el) {
-  document.querySelectorAll('#budget-filters .filter-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  activeBudget = el.dataset.budget;
-  render();
-}
-function toggleRating(el) {
-  document.querySelectorAll('#rating-filters .filter-chip').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  activeRating = el.dataset.rating;
-  render();
+function closePanel() {
+  document.getElementById("station-panel").classList.remove("open");
+  document.getElementById("backdrop").classList.remove("visible");
+  closeDetail();
 }
 
-// ===== DETAIL PANEL =====
-function openDetail(stationId, restaurantName) {
-  const station = STATIONS.find(s => s.id === stationId);
-  if (!station) return;
-  const r = station.restaurants.find(res => res.name === restaurantName);
-  if (!r) return;
+function openDetail(shopData, stationName) {
+  const cuisineColors = {
+    Chinese: "#c0392b", Malay: "#27ae60", Indian: "#f39c12", Japanese: "#2980b9",
+    Korean: "#8e44ad", Western: "#2c3e50", Thai: "#16a085", Cafe: "#795548",
+    "Fast Food": "#e74c3c", Vietnamese: "#1abc9c"
+  };
+  const color = cuisineColors[shopData.cuisine] || "#888";
+  const budgetStr = "$".repeat(shopData.budget);
+  const budgetLabel = ["", "Budget", "Moderate", "Pricey", "Fine Dining"][shopData.budget] || "";
+  const stars = "★".repeat(shopData.rating) + "☆".repeat(5 - shopData.rating);
 
-  activeDetail = { station, r };
+  document.getElementById("detail-shop-name").textContent = shopData.name;
+  document.getElementById("detail-shop-sub").textContent = `${shopData.mall} · near ${stationName}`;
 
-  const cls = CUISINE_CLASS[r.cuisine] || 'cuisine-western';
-  const lineColor = LINE_COLORS[station.lines[0]] || '#888';
+  const body = document.getElementById("detail-body");
+  body.innerHTML = "";
 
-  document.getElementById('detail-name').textContent = r.name;
-  document.getElementById('detail-sub').textContent = `${r.cuisine} · ${r.mall} · ${station.name}`;
+  // Badges row
+  const badgeRow = document.createElement("div");
+  badgeRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px";
+  badgeRow.innerHTML = `
+    <span class="shop-badge" style="background:${color}22;color:${color};border:1px solid ${color}55">${shopData.cuisine}</span>
+    <span class="shop-badge" style="background:#f0a50020;color:#f0a500;border:1px solid #f0a50055">${budgetStr} · ${budgetLabel}</span>
+    <span class="shop-badge" style="background:#ffffff10;color:#f0a500;border:1px solid #f0a50033;font-size:0.85rem">${stars}</span>
+  `;
+  body.appendChild(badgeRow);
 
-  const body = document.getElementById('detail-body');
-  body.innerHTML = `
-    <div class="detail-info-grid">
-      <div class="info-block">
-        <div class="info-block-label">Cuisine</div>
-        <div class="info-block-value"><span class="cuisine-badge ${cls}" style="font-size:0.8rem">${r.cuisine}</span></div>
-      </div>
-      <div class="info-block">
-        <div class="info-block-label">Budget</div>
-        <div class="info-block-value accent">${r.budget}</div>
-      </div>
-      <div class="info-block">
-        <div class="info-block-label">Rating</div>
-        <div class="info-block-value">${renderStars(r.rating)}</div>
-      </div>
-      <div class="info-block">
-        <div class="info-block-label">MRT Line</div>
-        <div class="info-block-value" style="display:flex;gap:6px;flex-wrap:wrap">
-          ${station.lines.map(l => `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${LINE_COLORS[l]};vertical-align:middle"></span> ${l.toUpperCase()}`).join(' ')}
-        </div>
-      </div>
-    </div>
-
-    <div class="detail-section-title">About</div>
-    <div class="detail-desc-block">${r.desc}</div>
-
-    <div class="detail-section-title">Must Try</div>
-    <div class="must-try-list">
-      ${r.mustTry.map(item => `<div class="must-try-item"><div class="must-try-dot"></div>${item}</div>`).join('')}
-    </div>
-
-    <div class="detail-section-title">Location</div>
-    <div class="detail-location-block">
-      <div class="location-row">
-        <div class="location-pin">&#x1F4CD;</div>
-        <div class="location-text">
-          <div class="location-name">${r.mall}</div>
-          <div class="location-station"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${lineColor};vertical-align:middle;margin-right:4px"></span>${station.name} MRT (${station.code})</div>
-        </div>
+  // Location
+  const locBlock = document.createElement("div");
+  locBlock.className = "location-block";
+  locBlock.innerHTML = `
+    <div class="location-row">
+      <span class="location-pin">📍</span>
+      <div class="location-text">
+        <div class="location-floor">${shopData.mall}</div>
+        <div class="location-directions">Near ${stationName} MRT</div>
       </div>
     </div>
   `;
+  body.appendChild(locBlock);
 
-  document.getElementById('detail-panel').classList.add('open');
-  document.getElementById('backdrop').classList.add('visible');
-  document.body.style.overflow = 'hidden';
+  // Description
+  if (shopData.description) {
+    const descTitle = document.createElement("div");
+    descTitle.className = "section-title";
+    descTitle.textContent = "About";
+    body.appendChild(descTitle);
+    const desc = document.createElement("div");
+    desc.style.cssText = "font-size:0.9rem;color:var(--text);line-height:1.6;margin-bottom:8px";
+    desc.textContent = shopData.description;
+    body.appendChild(desc);
+  }
+
+  // Must Try
+  if (shopData.mustTry && shopData.mustTry.length > 0) {
+    const mustTryTitle = document.createElement("div");
+    mustTryTitle.className = "section-title";
+    mustTryTitle.textContent = "Must Try";
+    body.appendChild(mustTryTitle);
+
+    const menuList = document.createElement("div");
+    menuList.className = "menu-list";
+    shopData.mustTry.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "menu-item";
+      row.innerHTML = `
+        <span class="menu-item-name">🍴 ${item}</span>
+      `;
+      menuList.appendChild(row);
+    });
+    body.appendChild(menuList);
+  }
+
+  // Spacer
+  const spacer = document.createElement("div");
+  spacer.style.height = "24px";
+  body.appendChild(spacer);
+
+  document.getElementById("detail-panel").classList.add("open");
 }
 
 function closeDetail() {
-  document.getElementById('detail-panel').classList.remove('open');
-  document.getElementById('backdrop').classList.remove('visible');
-  document.body.style.overflow = '';
-  activeDetail = null;
+  document.getElementById("detail-panel").classList.remove("open");
 }
 
-// ===== INIT =====
-render();
+function toggleLegend() {
+  const l = document.getElementById("legend");
+  l.classList.toggle("open");
+}
+
+// ============================================================
+// FILTER LOGIC
+// ============================================================
+function toggleFilter(el) {
+  const filterType = el.dataset.filter;
+  // Deactivate all chips of same filter type
+  document.querySelectorAll(`.filter-chip[data-filter="${filterType}"]`).forEach(c => c.classList.remove("active"));
+  el.classList.add("active");
+  // If line filter changed, update map highlights
+  if (filterType === "line") applyLineFilter(el.dataset.value);
+  // If station panel is open, re-render it
+  if (currentStation) openStation(currentStation.id);
+}
+
+function applyLineFilter(lineVal) {
+  const stLayer = document.getElementById("stations-layer");
+  const lblLayer = document.getElementById("labels-layer");
+  if (!stLayer) return;
+  // Dim stations not matching the line filter
+  UNIQUE_STATIONS.forEach(station => {
+    const dots = stLayer.querySelectorAll(`[data-id="${station.id}"]`);
+    const matches = lineVal === "all" || station.lines.includes(lineVal);
+    dots.forEach(d => { d.style.opacity = matches ? "1" : "0.2"; });
+  });
+  // Also dim/show labels
+  lblLayer.querySelectorAll("text").forEach((txt, idx) => {
+    const st = UNIQUE_STATIONS.filter(s => KEY_STATIONS.has(s.id))[idx];
+    if (!st) return;
+    const matches = lineVal === "all" || st.lines.includes(lineVal);
+    txt.style.opacity = matches ? "1" : "0.15";
+  });
+}
+
+function applyFilters() {
+  // If station panel is open, re-render with new search/filter
+  if (currentStation) openStation(currentStation.id);
+}
+
+// ============================================================
+// MAP HEIGHT
+// ============================================================
+function setMapHeight() {
+  const header = document.querySelector("header");
+  const h = window.innerHeight - header.offsetHeight;
+  document.getElementById("map-wrapper").style.height = h + "px";
+}
+
+// ============================================================
+// PINCH-ZOOM + PAN
+// ============================================================
+let scale = 1, minScale = 0.5, maxScale = 4;
+let panX = 0, panY = 0;
+let lastDist = 0, isDragging = false;
+let dragStartX, dragStartY, panStartX, panStartY;
+
+function applyTransform(animate) {
+  const el = document.getElementById("map-svg-container");
+  el.style.transition = animate ? "transform 0.3s ease" : "none";
+  el.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+
+const mapWrapper = document.getElementById("map-wrapper");
+
+mapWrapper.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newScale = Math.min(maxScale, Math.max(minScale, scale * delta));
+  const rect = mapWrapper.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  panX = mx - (mx - panX) * (newScale / scale);
+  panY = my - (my - panY) * (newScale / scale);
+  scale = newScale;
+  applyTransform(false);
+}, { passive: false });
+
+mapWrapper.addEventListener("mousedown", (e) => {
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  panStartX = panX;
+  panStartY = panY;
+});
+window.addEventListener("mousemove", (e) => {
+  if (!isDragging) return;
+  panX = panStartX + (e.clientX - dragStartX);
+  panY = panStartY + (e.clientY - dragStartY);
+  applyTransform(false);
+});
+window.addEventListener("mouseup", () => { isDragging = false; });
+
+// Touch pan + pinch
+let lastTouchX, lastTouchY, touchStartPanX, touchStartPanY;
+
+mapWrapper.addEventListener("touchstart", (e) => {
+  if (e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    lastDist = Math.hypot(dx, dy);
+  } else if (e.touches.length === 1) {
+    lastTouchX = e.touches[0].clientX;
+    lastTouchY = e.touches[0].clientY;
+    touchStartPanX = panX;
+    touchStartPanY = panY;
+  }
+}, { passive: true });
+
+mapWrapper.addEventListener("touchmove", (e) => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.hypot(dx, dy);
+    const pinchScale = dist / lastDist;
+    const newScale = Math.min(maxScale, Math.max(minScale, scale * pinchScale));
+    const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+    const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    const rect = mapWrapper.getBoundingClientRect();
+    const cx = mx - rect.left;
+    const cy = my - rect.top;
+    panX = cx - (cx - panX) * (newScale / scale);
+    panY = cy - (cy - panY) * (newScale / scale);
+    scale = newScale;
+    lastDist = dist;
+    applyTransform(false);
+  } else if (e.touches.length === 1) {
+    const dx = e.touches[0].clientX - lastTouchX;
+    const dy = e.touches[0].clientY - lastTouchY;
+    panX = touchStartPanX + (e.touches[0].clientX - lastTouchX + (panX - touchStartPanX));
+    panY = touchStartPanY + (e.touches[0].clientY - lastTouchY + (panY - touchStartPanY));
+    // simpler:
+    panX += dx * 0.5;
+    panY += dy * 0.5;
+    lastTouchX = e.touches[0].clientX;
+    lastTouchY = e.touches[0].clientY;
+    applyTransform(false);
+  }
+}, { passive: false });
+
+// ============================================================
+// INIT
+// ============================================================
+renderStations();
+setMapHeight();
+window.addEventListener("resize", setMapHeight);
 </script>
 </body>
 </html>
