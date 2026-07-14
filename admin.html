@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 — Not Found</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0a0a1a; color: #e0e0e0; min-height: 100vh; }
+
+    /* Fake 404 shown before auth */
+    #fake-404 { display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; }
+    #fake-404 h1 { font-size: 4rem; color: #333; }
+    #fake-404 p { color: #555; font-size: 1.1rem; margin-top: 8px; }
+    /* Triple-click the 404 text to reveal auth */
+    #fake-404 h1 { cursor: default; user-select: none; }
+
+    /* Auth gate */
+    #admin-auth { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a1a; z-index: 999; align-items: center; justify-content: center; }
+    #admin-auth-box { background: #12122a; border: 1px solid #2a2a4a; border-radius: 12px; padding: 32px; max-width: 340px; width: 90%; text-align: center; }
+    #admin-auth-box h3 { color: #ff4757; margin-bottom: 16px; }
+    #admin-auth-box input { display: block; width: 100%; padding: 10px 14px; margin-bottom: 10px; background: #1a1a3e; border: 1px solid #2a2a4a; border-radius: 6px; color: #e0e0e0; font-size: 0.95rem; outline: none; }
+    #admin-auth-box input:focus { border-color: #ff4757; }
+    #admin-auth-box button { width: 100%; padding: 10px; background: #ff4757; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    #admin-auth-box .err { color: #ff4757; font-size: 0.8rem; margin-top: 8px; min-height: 18px; }
+
+    /* Admin panel */
+    #admin-panel { display: none; padding: 20px; max-width: 1000px; margin: 0 auto; }
+    #admin-panel h2 { color: #ff4757; margin-bottom: 20px; text-align: center; }
+    .panel-section { background: #12122a; border: 1px solid #2a2a4a; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+    .panel-section h3 { color: #00d4ff; margin-bottom: 12px; font-size: 1.1rem; }
+    .panel-section table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .panel-section th { text-align: left; color: #7b68ee; padding: 6px 8px; border-bottom: 1px solid #2a2a4a; }
+    .panel-section td { padding: 6px 8px; border-bottom: 1px solid #1a1a3e; color: #c0c0d0; word-break: break-all; }
+    .panel-section .empty { color: #555; font-style: italic; padding: 12px; }
+
+    /* Code generator */
+    #gen-section input { padding: 8px 12px; background: #1a1a3e; border: 1px solid #2a2a4a; border-radius: 6px; color: #e0e0e0; margin-right: 8px; outline: none; }
+    #gen-section button { padding: 8px 16px; background: #7b68ee; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 8px; }
+    #gen-result { color: #00ff88; margin-top: 10px; font-family: monospace; font-size: 0.9rem; }
+
+    .tag-ok { color: #00ff88; }
+    .tag-fail { color: #ff4757; }
+    .tag-admin { color: #ff4757; font-weight: bold; }
+    .tag-user { color: #00d4ff; }
+
+    .btn-small { padding: 4px 10px; background: #ff4757; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+    .btn-export { padding: 8px 16px; background: #00d4ff; color: #0a0a1a; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-top: 10px; }
+
+    #activity-filter { padding: 6px 10px; background: #1a1a3e; border: 1px solid #2a2a4a; border-radius: 6px; color: #e0e0e0; margin-bottom: 10px; outline: none; }
+
+    @media (max-width: 600px) {
+      .panel-section table { font-size: 0.75rem; }
+      .panel-section td, .panel-section th { padding: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Fake 404 page -->
+  <div id="fake-404">
+    <div>
+      <h1 id="trigger-404">404</h1>
+      <p>Page not found</p>
+    </div>
+  </div>
+
+  <!-- Admin auth -->
+  <div id="admin-auth">
+    <div id="admin-auth-box">
+      <h3>Restricted Access</h3>
+      <input type="password" id="admin-pass" placeholder="Access code" autocomplete="off" />
+      <button id="admin-login-btn">Enter</button>
+      <div class="err" id="admin-err"></div>
+    </div>
+  </div>
+
+  <!-- Admin panel -->
+  <div id="admin-panel">
+    <h2>Surveillance Dashboard</h2>
+
+    <!-- Registered Users -->
+    <div class="panel-section">
+      <h3>Registered Users</h3>
+      <table>
+        <thead><tr><th>Username</th><th>Role</th><th>Registered</th><th>Action</th></tr></thead>
+        <tbody id="users-table"></tbody>
+      </table>
+    </div>
+
+    <!-- Code Generator -->
+    <div class="panel-section" id="gen-section">
+      <h3>Generate Invite Code</h3>
+      <div>
+        <input type="text" id="gen-username" placeholder="Username for this code" />
+        <button id="gen-btn">Generate Code</button>
+      </div>
+      <div id="gen-result"></div>
+      <div style="margin-top:14px;color:#888;font-size:0.8rem;">
+        Note: New codes must be added to auth.js APPROVED list and redeployed. This generates the format — you'll need to tell your bot to add it to the code.
+      </div>
+    </div>
+
+    <!-- Login Attempts -->
+    <div class="panel-section">
+      <h3>Login Attempts</h3>
+      <table>
+        <thead><tr><th>Time</th><th>Code</th><th>Username</th><th>Result</th><th>Reason</th></tr></thead>
+        <tbody id="login-table"></tbody>
+      </table>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="panel-section">
+      <h3>Activity Log</h3>
+      <input type="text" id="activity-filter" placeholder="Filter by user, page, or action..." />
+      <table>
+        <thead><tr><th>Time</th><th>User</th><th>Page</th><th>Action</th><th>Detail</th></tr></thead>
+        <tbody id="activity-table"></tbody>
+      </table>
+      <button class="btn-export" id="export-btn">Export All Logs (JSON)</button>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    'use strict';
+
+    var ADMIN_CODE = 'JK2E3';
+    var clickCount = 0;
+    var clickTimer = null;
+
+    // Triple-click the 404 to reveal auth
+    document.getElementById('trigger-404').addEventListener('click', function() {
+      clickCount++;
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(function() { clickCount = 0; }, 600);
+      if (clickCount >= 3) {
+        clickCount = 0;
+        document.getElementById('fake-404').style.display = 'none';
+        document.getElementById('admin-auth').style.display = 'flex';
+        document.getElementById('admin-pass').focus();
+      }
+    });
+
+    // Admin login
+    document.getElementById('admin-login-btn').onclick = function() {
+      var pass = document.getElementById('admin-pass').value.trim();
+      if (pass === ADMIN_CODE) {
+        document.getElementById('admin-auth').style.display = 'none';
+        document.getElementById('admin-panel').style.display = 'block';
+        loadDashboard();
+      } else {
+        document.getElementById('admin-err').textContent = 'Invalid access code';
+      }
+    };
+    document.getElementById('admin-pass').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') document.getElementById('admin-login-btn').click();
+    });
+
+    function fmtTime(iso) {
+      if (!iso) return '-';
+      var d = new Date(iso);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    }
+
+    function loadDashboard() {
+      // Registered Users
+      var usersBody = document.getElementById('users-table');
+      usersBody.innerHTML = '';
+      // Scan localStorage for registration keys
+      var users = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.startsWith('sf_reg_')) {
+          var uname = key.replace('sf_reg_', '');
+          users.push({ username: uname, regDate: localStorage.getItem(key) });
+        }
+      }
+      if (users.length === 0) {
+        usersBody.innerHTML = '<tr><td colspan="4" class="empty">No registered users yet</td></tr>';
+      } else {
+        users.forEach(function(u) {
+          var isAdm = u.username.toLowerCase() === 'jk2e3';
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + u.username + '</td>' +
+            '<td><span class="' + (isAdm ? 'tag-admin' : 'tag-user') + '">' + (isAdm ? 'ADMIN' : 'user') + '</span></td>' +
+            '<td>' + fmtTime(u.regDate) + '</td>' +
+            '<td>' + (isAdm ? '-' : '<button class="btn-small" onclick="revokeUser(\'' + u.username + '\')">Revoke</button>') + '</td>';
+          usersBody.appendChild(tr);
+        });
+      }
+
+      // Login Attempts
+      var loginBody = document.getElementById('login-table');
+      loginBody.innerHTML = '';
+      var loginLogs = [];
+      try { loginLogs = JSON.parse(localStorage.getItem('sf_login_attempts') || '[]'); } catch(e) {}
+      loginLogs = loginLogs.slice(-100).reverse();
+      if (loginLogs.length === 0) {
+        loginBody.innerHTML = '<tr><td colspan="5" class="empty">No login attempts recorded</td></tr>';
+      } else {
+        loginLogs.forEach(function(l) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + fmtTime(l.ts) + '</td>' +
+            '<td>' + (l.code || '-') + '</td>' +
+            '<td>' + (l.username || '-') + '</td>' +
+            '<td><span class="' + (l.success ? 'tag-ok' : 'tag-fail') + '">' + (l.success ? 'OK' : 'FAIL') + '</span></td>' +
+            '<td>' + (l.reason || '') + '</td>';
+          loginBody.appendChild(tr);
+        });
+      }
+
+      // Activity Log
+      loadActivityLog('');
+      document.getElementById('activity-filter').addEventListener('input', function() {
+        loadActivityLog(this.value);
+      });
+
+      // Export
+      document.getElementById('export-btn').onclick = function() {
+        var data = {
+          loginAttempts: JSON.parse(localStorage.getItem('sf_login_attempts') || '[]'),
+          activityLog: JSON.parse(localStorage.getItem('sf_activity_log') || '[]'),
+          exportedAt: new Date().toISOString()
+        };
+        var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'soloforte-surveillance-' + new Date().toISOString().slice(0,10) + '.json';
+        a.click();
+      };
+    }
+
+    function loadActivityLog(filter) {
+      var body = document.getElementById('activity-table');
+      body.innerHTML = '';
+      var logs = [];
+      try { logs = JSON.parse(localStorage.getItem('sf_activity_log') || '[]'); } catch(e) {}
+      var f = (filter || '').toLowerCase();
+      logs = logs.filter(function(l) {
+        if (!f) return true;
+        return (l.user + ' ' + l.page + ' ' + l.action + ' ' + l.detail).toLowerCase().indexOf(f) >= 0;
+      }).slice(-200).reverse();
+
+      if (logs.length === 0) {
+        body.innerHTML = '<tr><td colspan="5" class="empty">No activity recorded' + (f ? ' matching filter' : '') + '</td></tr>';
+      } else {
+        logs.forEach(function(l) {
+          var tr = document.createElement('tr');
+          var detail = (l.detail || '').length > 80 ? l.detail.substring(0, 80) + '...' : (l.detail || '-');
+          tr.innerHTML = '<td>' + fmtTime(l.ts) + '</td>' +
+            '<td>' + (l.user || '-') + '</td>' +
+            '<td>' + (l.page || '-') + '</td>' +
+            '<td>' + (l.action || '-') + '</td>' +
+            '<td>' + detail + '</td>';
+          body.appendChild(tr);
+        });
+      }
+    }
+
+    // Global revoke function
+    window.revokeUser = function(username) {
+      if (confirm('Revoke access for "' + username + '"? They will need a new invite code to get back in.')) {
+        localStorage.removeItem('sf_reg_' + username.toLowerCase());
+        loadDashboard();
+      }
+    };
+
+    // Code generator
+    document.getElementById('gen-btn').onclick = function() {
+      var username = document.getElementById('gen-username').value.trim();
+      if (!username) { document.getElementById('gen-result').textContent = 'Enter a username first'; return; }
+      var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      var code = 'SOLO-';
+      for (var i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+      code += '-';
+      for (var j = 0; j < 4; j++) code += chars[Math.floor(Math.random() * chars.length)];
+
+      document.getElementById('gen-result').innerHTML =
+        'Code: <strong>' + code + '</strong> | Username: <strong>' + username + '</strong><br>' +
+        '<span style="color:#888">Add to auth.js: { code: \'' + code + '\', username: \'' + username + '\', role: \'user\' }</span>';
+    };
+  })();
+  </script>
+</body>
+</html>
