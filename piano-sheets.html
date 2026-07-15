@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
   <title>Piano Sheets - SoloForte AI</title>
   <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js"></script>
   <style>
@@ -215,6 +217,7 @@
       align-items: center;
       gap: 20px;
       border-bottom: 1px solid #2a2a4a;
+      flex-wrap: wrap;
     }
     .sheet-header .back-btn {
       padding: 8px 20px;
@@ -232,6 +235,9 @@
       transform: translateY(-2px);
       box-shadow: 0 4px 15px rgba(123, 104, 238, 0.4);
     }
+    .sheet-header-info {
+      flex: 1;
+    }
     .sheet-header-info h2 {
       font-size: 1.3rem;
       color: #d0d0f0;
@@ -241,6 +247,27 @@
       font-size: 0.88rem;
       color: #7b68ee;
       font-style: italic;
+    }
+    .notes-toggle-btn {
+      padding: 8px 16px;
+      background: #1a1a3e;
+      color: #7b68ee;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border: 1px solid #3a3a6a;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .notes-toggle-btn:hover {
+      background: #2a2a5e;
+      border-color: #7b68ee;
+    }
+    .notes-toggle-btn.active {
+      background: #7b68ee;
+      color: #fff;
+      border-color: #7b68ee;
     }
 
     .sheet-render-area {
@@ -268,6 +295,45 @@
       font-weight: bold !important;
     }
 
+    /* -- Melody Guide -- */
+    .melody-guide {
+      max-width: 960px;
+      margin: 0 auto 32px;
+      padding: 24px 28px;
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      display: none;
+    }
+    .melody-guide.visible { display: block; }
+    .melody-guide h3 {
+      font-size: 1rem;
+      color: #7b68ee;
+      margin-bottom: 12px;
+      font-weight: 700;
+    }
+    .melody-guide .guide-section {
+      margin-bottom: 14px;
+    }
+    .melody-guide .guide-label {
+      font-size: 0.8rem;
+      color: #8888aa;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .melody-guide .guide-notes {
+      font-family: 'Courier New', monospace;
+      font-size: 0.95rem;
+      color: #d0d0f0;
+      line-height: 1.8;
+      word-spacing: 4px;
+      white-space: pre-wrap;
+    }
+    .melody-guide .guide-notes .bar {
+      color: #555577;
+    }
+
     /* -- Footer -- */
     footer {
       text-align: center;
@@ -284,6 +350,7 @@
       .sheet-render-area { padding: 20px 12px; margin: 16px 8px; }
       .sheet-header { padding: 14px 16px; gap: 12px; }
       .sheet-header-info h2 { font-size: 1.05rem; }
+      .melody-guide { margin: 0 8px 16px; padding: 16px; }
     }
   </style>
 </head>
@@ -480,6 +547,22 @@
         </div>
       </div>
 
+      <div class="sheet-card"
+           data-title="Detective Conan Main Theme"
+           data-nickname="Case Closed"
+           data-composer="Katsuo Ono"
+           data-difficulty="advanced"
+           data-song-id="detective-conan">
+        <div class="card-title">Detective Conan Main Theme</div>
+        <div class="card-nickname">"Case Closed"</div>
+        <div class="card-composer">Katsuo Ono</div>
+        <div class="card-grade">Grade 7 | Full Arrangement</div>
+        <div class="card-footer">
+          <span class="difficulty advanced">Advanced</span>
+          <button class="view-btn" onclick="openSheet('detective-conan')">View Sheet</button>
+        </div>
+      </div>
+
     </div>
 
     <div class="empty-state" id="emptyState">
@@ -497,8 +580,10 @@
         <h2 id="sheetTitle"></h2>
         <span class="sheet-composer" id="sheetComposer"></span>
       </div>
+      <button class="notes-toggle-btn" id="notesToggle" onclick="toggleNoteGuide()">Show Note Names</button>
     </div>
     <div class="sheet-render-area" id="sheetRenderArea"></div>
+    <div class="melody-guide" id="melodyGuide"></div>
   </div>
 
   <footer id="mainFooter">
@@ -506,11 +591,16 @@
   </footer>
 
   <script>
-    // -- Song ABC Notation Data (Grade 7-8, Advanced Both Hands) --
+    // -- Song ABC Notation Data (Grade 7-8, Faithful Arrangements) --
     const songData = {
       'river-flows': {
         title: 'River Flows in You',
         composer: 'Yiruma',
+        noteGuide: {
+          intro: 'A  G#  A  |  E  C#  B  A  C#  E  |  D  C#  B  A  G#  A  B  C#',
+          melody: 'A  C#  E  A  C#\'  E\'  C#\'  |  B  A  G#  F#  E  D  |  A  C#  E  A  C#\'  E\'  C#\'  |  B  A  G#  F#  E  D',
+          chorus: 'E  A  |  E  A  E  G#  |  D  F#  D  F#  |  E  A  E  G#  |  A  G#  F#  E  D  C#  |  B  A  B  C#'
+        },
         abc: `X:1
 T:River Flows in You
 C:Yiruma
@@ -521,129 +611,144 @@ K:A
 %%staves {(RH) (LH)}
 V:RH clef=treble name="Piano"
 V:LH clef=bass name=""
-%% Intro - the iconic opening run
-[V:RH]| z4 e2c2 B2A2 c2e2 | d2c2 B2A2 G2A2 B2c2 |
-[V:LH]| A,,4 E,2A,2 C4 E,2A,2 | D,4 A,,2D,2 E,4 B,,2E,2 |
-[V:RH]| z4 e2c2 B2A2 c2e2 | d2c2 B2A2 G2A2 B4 |
-[V:LH]| A,,4 E,2A,2 C4 E,2A,2 | D,4 A,,2D,2 E,4 B,,4 |
-%% A section - melody with flowing LH arpeggios
-[V:RH]| A4 c2e2 a2c'2e'2c'2 | b4 a2g2 f2e2 d4 |
-[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | D,2A,,2D,2F,2 E,2B,,2E,2G,2 |
-[V:RH]| A4 c2e2 a2c'2e'2c'2 | b4 a2g2 f2e2 d4 |
-[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | D,2A,,2D,2F,2 E,2B,,2E,2G,2 |
-[V:RH]| [Ae]4 [ce]4 [Ac]4 [ce]4 | [Bd]4 [df]4 [Bd]4 [df]4 |
-[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | D,2A,,2D,2F,2 E,2B,,2E,2G,2 |
-%% B section - climax with octaves and chords
-[V:RH]| [ea]4 [ea]2[eg]2 [df]2[ce]2[Bd]2[Ac]2 | [ea]4 [eg]2[df]2 [ce]4 [Bd]4 |
-[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | D,2A,,2D,2F,2 E,2B,,2E,2G,2 |
-[V:RH]| a4 a2g2 f2g2 a2b2 | c'4 b2a2 g2f2 e4 |
-[V:LH]| F,2C,2F,2A,2 C2F,2A,2C2 | D,2A,,2D,2F,2 E,2B,,2E,2G,2 |
-[V:RH]| a4 a2g2 f2e2 d2c2 | B4 A4 B4 c4 |
-[V:LH]| F,2C,2F,2A,2 D,2A,,2D,2F,2 | E,2B,,2E,2G,2 A,,2E,2A,2C2 |
-%% Return to A theme
-[V:RH]| z4 e2c2 B2A2 c2e2 | d2c2 B2A2 G2A2 B2c2 |
-[V:LH]| A,,4 E,2A,2 C4 E,2A,2 | D,4 A,,2D,2 E,4 B,,2E,2 |
-[V:RH]| A4 c2e2 a2c'2e'2c'2 | b4 a2g2 f2e2 d4 |
-[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | D,2A,,2D,2F,2 E,2B,,2E,2G,2 |
-%% Ending
-[V:RH]| [Ace]8 [Ace]8 | [A,CEA]16 |
-[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | [A,,E,A,]16 |`
+%% Intro - iconic descending pattern
+[V:RH]| z4 e2c2 B2A2 c2e2 | f2e2 d2c2 B2A2 ^G2A2 |
+[V:LH]| A,,2E,2A,2C2 E2C2A,2E,2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+[V:RH]| z4 e2c2 B2A2 c2e2 | f2e2 d2c2 B2c2 B4 |
+[V:LH]| A,,2E,2A,2C2 E2C2A,2E,2 | D,2A,,2D,2F,2 E,4 B,,4 |
+%% A section - main melody with flowing arpeggios
+[V:RH]| A4 c2e2 a4 e4 | f4 e2d2 c2B2 A4 |
+[V:LH]| A,,2E,2A,2C2 E2C2A,2E,2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+[V:RH]| A4 c2e2 a4 e4 | f4 e2d2 c2B2 A4 |
+[V:LH]| A,,2E,2A,2C2 E2C2A,2E,2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+[V:RH]| A4 c2e2 a4 c'4 | b4 a2^g2 f2e2 d4 |
+[V:LH]| F,2C2F2A2 C2F2A2c2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+[V:RH]| A4 c2e2 a4 c'4 | b4 a2^g2 f2e2 d4 |
+[V:LH]| F,2C2F2A2 C2F2A2c2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+%% B section - the soaring climax
+[V:RH]| [ea]4 [ea]2[d^g]2 [ce]2[Bd]2[Ac]2[^GB]2 | [Ac]4 [Bd]4 [ce]4 [df]4 |
+[V:LH]| A,,2E,2A,2C2 E2C2A,2E,2 | F,2C2F2A2 E,2B,,2E,2^G,2 |
+[V:RH]| [ea]4 [ea]2[d^g]2 [cf]2[Be]2[Ad]2[^Gc]2 | [Ad]4 [Be]4 [cf]4 [Bd]4 |
+[V:LH]| D,2A,,2D,2F,2 A,,2E,,2A,,2C,2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+[V:RH]| a4 a2^g2 f2^g2 a2b2 | c'4 b2a2 ^g2f2 e4 |
+[V:LH]| F,2C2F2A2 C2F2A2c2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+[V:RH]| a4 a2^g2 f2e2 d2c2 | B4 A4 B4 c4 |
+[V:LH]| F,2C2F2A2 D,2A,,2D,2F,2 | E,2B,,2E,2^G,2 A,,2E,2A,2C2 |
+%% Return to theme then ending
+[V:RH]| z4 e2c2 B2A2 c2e2 | f2e2 d2c2 B2A2 ^G2A2 |
+[V:LH]| A,,2E,2A,2C2 E2C2A,2E,2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+[V:RH]| A4 c2e2 a4 e4 | f4 e2d2 c2B2 A4 |
+[V:LH]| A,,2E,2A,2C2 E2C2A,2E,2 | D,2A,,2D,2F,2 E,2B,,2E,2^G,2 |
+[V:RH]| [Ace]8 z4 [Ace]4 | [A,CEAce]16 |
+[V:LH]| A,,2E,2A,2C2 E2C2A,2E,2 | [A,,E,A,]16 |`
       },
       'moonlight': {
         title: 'Moonlight Sonata (1st Movement)',
         composer: 'Ludwig van Beethoven',
+        noteGuide: {
+          intro: 'Triplet pattern throughout: G# C# E  |  G# C# E  |  G# C# E  |  G# C# E',
+          melody: 'G#  |  G#  A  |  G#  F#  |  E  D#  |  C#  |  (melody emerges on top of triplets)',
+          bass: 'C#  C#  |  A  A  |  F#  F#  |  G#  G#  |  C#  C#'
+        },
         abc: `X:1
 T:Moonlight Sonata - 1st Movement
 C:Ludwig van Beethoven
 M:4/4
 L:1/8
-Q:1/4=56
+Q:1/4=54
 K:C#min
 %%staves {(RH) (LH)}
 V:RH clef=treble name="Piano"
 V:LH clef=bass name=""
-%% Opening - iconic triplet arpeggios over bass octaves and melody
-[V:RH]| E^G B E ^G B E ^G B E ^G B |
-[V:LH]| [C,,^G,,]4 [C,,^G,,]4 [C,,^G,,]4 |
-[V:RH]| E^G B E ^G B E ^G B E ^G B |
-[V:LH]| [C,,^G,,]4 [C,,^G,,]4 [C,,^G,,]4 |
-[V:RH]| EA c EA c EA c EA c |
-[V:LH]| [A,,,E,,]4 [A,,,E,,]4 [A,,,E,,]4 |
-[V:RH]| EA c EA c EA c EA c |
-[V:LH]| [A,,,E,,]4 [A,,,E,,]4 [A,,,E,,]4 |
-[V:RH]| ^D^F B ^D ^F B ^D ^F B ^D ^F B |
-[V:LH]| [B,,,^F,,]4 [B,,,^F,,]4 [B,,,^F,,]4 |
-[V:RH]| ^D^F B ^D ^F B ^D ^F B ^D ^F B |
-[V:LH]| [B,,,^F,,]4 [B,,,^F,,]4 [B,,,^F,,]4 |
-%% Theme develops - melody note on top of triplets
-[V:RH]| E^G c E ^G c E ^G c E ^G c |
-[V:LH]| [C,,^G,,C,]4 [C,,^G,,C,]4 [C,,^G,,C,]4 |
-[V:RH]| EA c EA c EA c EA c |
-[V:LH]| [A,,,E,,A,,]4 [A,,,E,,A,,]4 [A,,,E,,A,,]4 |
-[V:RH]| ^D^F B ^D ^F B E ^G B E ^G B |
-[V:LH]| [B,,,^F,,B,,]4 [B,,,^F,,B,,]4 [E,,,B,,,E,,]4 |
-[V:RH]| EA c EA c ^D ^F B ^D ^F B |
-[V:LH]| [A,,,E,,A,,]4 [A,,,E,,A,,]4 [B,,,^F,,B,,]4 |
-%% Middle section with bass melody
-[V:RH]| E^G B E ^G B E ^G ^A E ^G ^A |
-[V:LH]| [E,,,B,,,E,,]4 [E,,,B,,,E,,]4 [C,,^G,,]4 |
-[V:RH]| ^FA c ^F A c ^F A c ^F A c |
-[V:LH]| [^F,,,C,,^F,,]4 [^F,,,C,,^F,,]4 [^F,,,C,,^F,,]4 |
-[V:RH]| E^G B E ^G B E ^G B E ^G B |
-[V:LH]| [E,,,B,,,E,,]4 [E,,,B,,,E,,]4 [E,,,B,,,E,,]4 |
-[V:RH]| ^D^F B ^D ^F B ^D ^F B ^D ^F B |
-[V:LH]| [B,,,^F,,B,,]4 [B,,,^F,,B,,]4 [B,,,^F,,B,,]4 |
-%% Recapitulation
-[V:RH]| E^G B E ^G B E ^G B E ^G B |
-[V:LH]| [C,,^G,,]4 [C,,^G,,]4 [C,,^G,,]4 |
-[V:RH]| EA c EA c EA c EA c |
-[V:LH]| [A,,,E,,A,,]4 [A,,,E,,A,,]4 [A,,,E,,A,,]4 |
-[V:RH]| ^D^F B ^D ^F B ^D ^F B ^D ^F B |
-[V:LH]| [B,,,^F,,B,,]4 [B,,,^F,,B,,]4 [B,,,^F,,B,,]4 |
-%% Ending - quiet resolution
-[V:RH]| CE ^G CE ^G CE ^G CE ^G |
-[V:LH]| [C,,^G,,C,]4 [C,,^G,,C,]4 [C,,^G,,C,]4 |
-[V:RH]| [C,E,^G,C]6 z6 |
-[V:LH]| [C,,^G,,C,]6 z6 |`
+%% mm.1-4: Opening triplet arpeggios - the iconic C#m pattern
+[V:RH]| (3E^G B (3E ^G B (3E ^G B (3E ^G B |
+[V:LH]| [C,,^G,,C,]4 [C,,^G,,C,]4 |
+[V:RH]| (3E^G B (3E ^G B (3E ^G B (3E ^G B |
+[V:LH]| [C,,^G,,C,]4 [C,,^G,,C,]4 |
+[V:RH]| (3EA c (3E A c (3E A c (3E A c |
+[V:LH]| [A,,,E,,A,,]4 [A,,,E,,A,,]4 |
+[V:RH]| (3EA c (3E A c (3E A c (3E A c |
+[V:LH]| [A,,,E,,A,,]4 [A,,,E,,A,,]4 |
+%% mm.5-8: Theme statement with melody note ^G# on top
+[V:RH]| (3^D^F B (3^D ^F B (3^D ^F B (3^D ^F B |
+[V:LH]| [B,,,^F,,B,,]4 [B,,,^F,,B,,]4 |
+[V:RH]| (3E^G B (3E ^G B (3E ^G B (3E ^G B |
+[V:LH]| [E,,B,,,E,,,]4 [E,,B,,,E,,,]4 |
+[V:RH]| (3E^G c (3E ^G c (3E ^G c (3E ^G c |
+[V:LH]| [C,,^G,,C,]4 [C,,^G,,C,]4 |
+[V:RH]| (3EA c (3E A c (3^D ^F B (3^D ^F B |
+[V:LH]| [A,,,E,,A,,]4 [B,,,^F,,B,,]4 |
+%% mm.9-12: Development - rising melodic line
+[V:RH]| (3E^G B (3E ^G B (3E ^G ^A (3E ^G ^A |
+[V:LH]| [E,,B,,,E,,,]4 [C,,^G,,C,]4 |
+[V:RH]| (3^FA c (3^F A c (3^F A c (3^F A c |
+[V:LH]| [^F,,,C,,^F,,]4 [^F,,,C,,^F,,]4 |
+[V:RH]| (3E^G B (3E ^G B (3E ^G B (3E ^G B |
+[V:LH]| [E,,B,,,E,,,]4 [E,,B,,,E,,,]4 |
+[V:RH]| (3^D^F B (3^D ^F B (3^D ^F B (3^D ^F B |
+[V:LH]| [B,,,^F,,B,,]4 [B,,,^F,,B,,]4 |
+%% mm.13-16: Recapitulation of opening
+[V:RH]| (3E^G B (3E ^G B (3E ^G B (3E ^G B |
+[V:LH]| [C,,^G,,C,]4 [C,,^G,,C,]4 |
+[V:RH]| (3EA c (3E A c (3E A c (3E A c |
+[V:LH]| [A,,,E,,A,,]4 [A,,,E,,A,,]4 |
+[V:RH]| (3^D^F B (3^D ^F B (3^D ^F B (3^D ^F B |
+[V:LH]| [B,,,^F,,B,,]4 [B,,,^F,,B,,]4 |
+%% Ending - quiet resolution on C# minor
+[V:RH]| (3CE ^G (3C E ^G (3C E ^G (3C E ^G |
+[V:LH]| [C,,^G,,C,]4 [C,,^G,,C,]4 |
+[V:RH]| [C,E,^G,CE]8 z8 |
+[V:LH]| [C,,^G,,C,]8 z8 |`
       },
       'fur-elise': {
         title: 'Fur Elise',
         composer: 'Ludwig van Beethoven',
+        noteGuide: {
+          intro: 'E  D#  E  D#  E  B  D  C',
+          melody: 'A  -  |  C  E  A  |  B  -  |  E  G#  B  |  C  -  |  E  E  D#',
+          sectionB: 'B  C  D  E  |  C  -  |  D  E  F  |  E  -  |  D  C  B  A',
+          sectionC: 'A  B  C  D  |  E  G  F  E  D  F  |  E  D  C  B  A  G#  A  B  |  C'
+        },
         abc: `X:1
 T:Fur Elise (Complete)
 C:Ludwig van Beethoven
 M:3/8
-L:1/32
-Q:3/8=50
+L:1/16
+Q:3/8=60
 K:Am
 %%staves {(RH) (LH)}
 V:RH clef=treble name="Piano"
 V:LH clef=bass name=""
-%% A section - main theme
-[V:RH]|: e2^d2 | e2^d2 e2B2 d2c2 | A4 z2 C2E2A2 | B4 z2 E2^G2B2 | c4 z2 E2e2^d2 |
-[V:LH]|: z4 | z12 | A,,4 E,4 A,4 | E,,4 E,4 ^G,4 | A,,4 E,4 A,4 |
-[V:RH] e2^d2 e2B2 d2c2 | A4 z2 C2E2A2 | B4 z2 E2c2B2 | A4 z4 :|
-[V:LH] z12 | A,,4 E,4 A,4 | E,,4 E,4 ^G,4 | A,,4 E,4 z2 :|
-%% B section - contrasting middle
-[V:RH]|: z4 | B2c2 d4 e4 | c4 z2 d2e2f2 | B4 z2 c2d2e2 | A4 z2 B2c2d2 |
-[V:LH]|: z4 | C,4 G,4 C4 | A,,4 E,4 A,4 | E,,4 E,4 ^G,4 | A,,4 E,4 A,4 |
-[V:RH] e4 z2 d2e2f2 | e4 z2 d2e2f2 | e2^d2 e2B2 d2c2 | A4 z2 C2E2A2 |
-[V:LH] C,4 G,4 C4 | z12 | z12 | A,,4 E,4 A,4 |
-[V:RH] B4 z2 E2^G2B2 | c4 z2 E2e2^d2 | e2^d2 e2B2 d2c2 | A4 z2 C2E2A2 |
-[V:LH] E,,4 E,4 ^G,4 | A,,4 E,4 A,4 | z12 | A,,4 E,4 A,4 |
-[V:RH] B4 z2 E2c2B2 | A4 z4 :|
-[V:LH] E,,4 E,4 ^G,4 | A,,4 E,4 z2 :|
-%% C section - dramatic F major episode
-[V:RH]|: z4 | B2c2 d4 e4 | [eg]6 z2 [fa]2[eg]2[df]2 | [ce]6 z2 [df]2[ce]2[Bd]2 | [Ac]6 z2 B2c2d2 |
-[V:LH]|: z4 | C,4 G,4 [CE]4 | F,,4 C,4 F,4 | G,,4 D,4 G,4 | A,,4 E,4 A,4 |
-[V:RH] d2c2B2A2^G2A2B2c2 | d4 e4 f4 | e2d2c2B2A2^G2A2B2 | c4 z2 E2e2^d2 |
-[V:LH] ^G,,4 ^D,4 ^G,4 | A,,4 E,4 A,4 | E,,4 B,,4 E,4 | A,,4 E,4 A,4 |
-[V:RH] e2^d2 e2B2 d2c2 | A4 z2 C2E2A2 | B4 z2 E2c2B2 | A8 :|
-[V:LH] z12 | A,,4 E,4 A,4 | E,,4 E,4 ^G,4 | [A,,E,A,]8 z2 :|`
+%% A section - the famous theme
+[V:RH]|: e2^d2 | e2^d2 e2B2 d2c2 | A4 z2 C2E2A2 | B4 z2 E2^G2B2 |
+[V:LH]|: z4 | z2 z2 z2 z2 z2 z2 | A,,2E,2A,2 z2 z2 z2 | E,,2E,2^G,2 z2 z2 z2 |
+[V:RH] c4 z2 E2e2^d2 | e2^d2 e2B2 d2c2 | A4 z2 C2E2A2 | B4 z2 E2c2B2 | A4 z2 e2^d2 :|
+[V:LH] A,,2E,2A,2 z2 z2 z2 | z2 z2 z2 z2 z2 z2 | A,,2E,2A,2 z2 z2 z2 | E,,2E,2^G,2 z2 z2 z2 | A,,2E,2A,2 z4 :|
+%% B section - lyrical episode in C major
+[V:RH]| z2 B2c2 | d4 G2 F2E2^F2 | G4 z2 E2c2B2 | A4 z2 E2A2B2 |
+[V:LH]| z4 z2 | C,2G,,2C,2 G,,2C,2E,2 | A,,2E,,2A,,2 E,,2A,,2C,2 | E,,2B,,,2E,,2 B,,,2E,,2^G,,2 |
+[V:RH] c4 z2 E2A2B2 | c4 z2 E2A2c2 | B4 z2 E2^G2B2 | e2^d2 e2B2 d2c2 |
+[V:LH] A,,2E,,2A,,2 E,,2A,,2C,2 | C,2G,,2C,2 E,,2C,2G,,2 | E,,2B,,,2E,,2 B,,,2E,,2^G,,2 | z2 z2 z2 z2 z2 z2 |
+[V:RH] A4 z2 C2E2A2 | B4 z2 E2^G2B2 | c4 z2 E2e2^d2 | e2^d2 e2B2 d2c2 |
+[V:LH] A,,2E,,2A,,2 z2 z2 z2 | E,,2E,2^G,2 z2 z2 z2 | A,,2E,2A,2 z2 z2 z2 | z2 z2 z2 z2 z2 z2 |
+[V:RH] A4 z2 C2E2A2 | B4 z2 E2c2B2 | A4 z4 |
+[V:LH] A,,2E,2A,2 z2 z2 z2 | E,,2E,2^G,2 z2 z2 z2 | A,,4 z4 z2 |
+%% C section - dramatic F major / Dm episode
+[V:RH]| z2 B2c2 | d4 A2 F2e2d2 | [eg]4 z2 [fa]2[eg]2[df]2 | [ce]4 z2 [df]2[ce]2[Bd]2 |
+[V:LH]| z4 z2 | B,,2F,,2B,,2 z2 z2 z2 | C,2G,,2C,2 z2 z2 z2 | G,,2D,,2G,,2 z2 z2 z2 |
+[V:RH] [Ac]4 z2 B2c2d2 | e2f2e2d2c2B2 | A2^G2A2B2c2d2 | e2d2c2B2A2^G2 |
+[V:LH] A,,2E,,2A,,2 z2 z2 z2 | ^G,,2^D,2^G,2 z2 z2 z2 | A,,2E,2A,2 z2 z2 z2 | E,,2B,,2E,2 z2 z2 z2 |
+[V:RH] A2B2c4 z2 E2 | e2^d2 e2B2 d2c2 | A4 z2 C2E2A2 | B4 z2 E2c2B2 | [A,CEA]6 z4 z2 |
+[V:LH] A,,2E,2A,2 z2 z2 z2 | z2 z2 z2 z2 z2 z2 | A,,2E,2A,2 z2 z2 z2 | E,,2E,2^G,2 z2 z2 z2 | [A,,E,A,]6 z4 z2 |`
       },
       'canon-d': {
         title: 'Canon in D',
         composer: 'Johann Pachelbel',
+        noteGuide: {
+          chords: 'D  A  Bm  F#m  |  G  D  G  A',
+          melody: 'F#  E  D  C#  |  B  A  B  C#  |  D  C#  B  A  |  G  F#  G  A',
+          variation: 'D  F#  A  D\'  |  C#  A  E  C#  |  B  F#  D  B  |  A  F#  C#  A'
+        },
         abc: `X:1
 T:Canon in D (Concert Arrangement)
 C:Johann Pachelbel
@@ -654,99 +759,106 @@ K:D
 %%staves {(RH) (LH)}
 V:RH clef=treble name="Piano"
 V:LH clef=bass name=""
-%% Theme - stately chords
-[V:RH]|: [df']8 [ce']8 | [Bd']8 [Ac']8 |
-[V:LH]|: D,2A,,2D,2F,2 A,,2E,,2A,,2C,2 | B,,2F,,2B,,2D,2 ^F,,2C,,2^F,,2A,,2 |
+%% Theme - the famous chord progression D-A-Bm-F#m-G-D-G-A
+[V:RH]| [df']8 [ce']8 | [Bd']8 [Ac']8 |
+[V:LH]| D,2A,,2D,2F,2 A,4 A,,2E,,2A,,2C,2 E,4 | B,,2F,,2B,,2D,2 F,4 F,,2C,,2F,,2A,,2 C,4 |
 [V:RH]| [GB]8 [FA]8 | [GB]8 [Ac']8 |
-[V:LH]| G,,2D,,2G,,2B,,2 D,,2A,,,2D,,2F,,2 | G,,2D,,2G,,2B,,2 A,,2E,,2A,,2C,2 |
-%% Variation 1 - running eighth notes
-[V:RH]| d2f2g2a2 a2g2f2e2 | d2f2g2a2 b2a2g2f2 |
-[V:LH]| D,2A,,2D,2F,2 A,,2E,,2A,,2C,2 | B,,2F,,2B,,2D,2 ^F,,2C,,2^F,,2A,,2 |
-[V:RH]| g2f2e2d2 c2d2e2f2 | g2f2e2d2 e2f2g2a2 |
-[V:LH]| G,,2D,,2G,,2B,,2 D,,2A,,,2D,,2F,,2 | G,,2D,,2G,,2B,,2 A,,2E,,2A,,2C,2 |
-%% Variation 2 - flowing sixteenths with LH arpeggios
-[V:RH]| f2e2d2c2 B2c2d2e2 | d2c2B2A2 G2A2B2c2 |
-[V:LH]| D,2A,,2D,2F,2A,2F,2D,2A,,2 | B,,2^F,,2B,,2D,2^F,2D,2B,,2^F,,2 |
-[V:RH]| e2d2c2B2 A2B2c2d2 | e2d2c2d2 e2f2g2a2 |
+[V:LH]| G,,2D,,2G,,2B,,2 D,4 D,,2A,,,2D,,2F,,2 A,,4 | G,,2D,,2G,,2B,,2 D,4 A,,2E,,2A,,2C,2 E,4 |
+%% Variation 1 - melody in running 8th notes
+[V:RH]| f'2e'2d'2f'2 e'2d'2c'2e'2 | d'2c'2B2d'2 c'2B2A2c'2 |
+[V:LH]| D,2A,,2D,2F,2 A,4 A,,2E,,2A,,2C,2 E,4 | B,,2F,,2B,,2D,2 F,4 F,,2C,,2F,,2A,,2 C,4 |
+[V:RH]| B2A2G2B2 A2G2F2A2 | G2F2E2G2 A2B2c'2e'2 |
+[V:LH]| G,,2D,,2G,,2B,,2 D,4 D,,2A,,,2D,,2F,,2 A,,4 | G,,2D,,2G,,2B,,2 D,4 A,,2E,,2A,,2C,2 E,4 |
+%% Variation 2 - flowing 16th note figuration
+[V:RH]| d'2c'2d'2f'2 c'2B2c'2e'2 | B2A2B2d'2 A2G2A2c'2 |
+[V:LH]| D,2A,,2D,2F,2A,2F,2D,2A,,2 | B,,2F,,2B,,2D,2F,2D,2B,,2F,,2 |
+[V:RH]| G2F2G2B2 F2E2F2A2 | G2A2B2c'2 d'2e'2f'2e'2 |
 [V:LH]| G,,2D,,2G,,2B,,2D,2B,,2G,,2D,,2 | G,,2D,,2G,,2B,,2 A,,2E,,2A,,2C,2 |
-%% Variation 3 - virtuosic runs and octaves
-[V:RH]| d'2c'2d'2e'2 c'2B2c'2d'2 | B2A2B2c'2 A2G2A2B2 |
-[V:LH]| D,4 F,2A,2 A,,4 C,2E,2 | B,,4 D,2F,2 ^F,,4 A,,2C,2 |
-[V:RH]| G2A2B2c'2 A2G2F2E2 | G2A2B2c'2 d'2c'2B2A2 |
-[V:LH]| G,,4 B,,2D,2 D,,4 F,,2A,,2 | G,,4 B,,2D,2 A,,4 C,2E,2 |
-[V:RH]| [df']2[ce']2[df']2[eg']2 [Ac']2[GB]2[Ac']2[Bd']2 |
+%% Variation 3 - virtuosic runs
+[V:RH]| d2f2a2d'2 f'2d'2a2f2 | c2e2a2c'2 e'2c'2a2e2 |
+[V:LH]| D,4 A,,4 A,4 E,4 | B,,4 F,,4 F,4 C,4 |
+[V:RH]| B,2d2f2B2 d'2B2f2d2 | G,2B,2d2G2 A,2c2e2A2 |
+[V:LH]| G,,4 D,,4 D,4 A,,4 | G,,4 D,,4 A,,4 E,,4 |
+%% Variation 4 - full chords with melody
+[V:RH]| [df']2[ce']2[df']2[eg']2 [ce']2[Bd']2[ce']2[df']2 |
 [V:LH]| D,2A,,2D,2F,2 A,,2E,,2A,,2C,2 |
+[V:RH]| [Bd']2[Ac']2[Bd']2[ce']2 [Ac']2[GB]2[Ac']2[Bd']2 |
+[V:LH]| B,,2F,,2B,,2D,2 F,,2C,,2F,,2A,,2 |
 [V:RH]| [GB]2[FA]2[GB]2[Ac']2 [FA]2[EG]2[DF]2[CE]2 |
-[V:LH]| B,,2F,,2B,,2D,2 ^F,,2C,,2^F,,2A,,2 |
-[V:RH]| [DF]2[EG]2[FA]2[GB]2 [FA]2[EG]2[DF]2[CE]2 |
 [V:LH]| G,,2D,,2G,,2B,,2 D,,2A,,,2D,,2F,,2 |
-[V:RH]| [EG]2[DF]2[CE]2[DF]2 [EG]2[FA]2[GB]2[Ac']2 |
+[V:RH]| [DF]2[EG]2[FA]2[GB]2 [ce']2[Bd']2[Ac']2[ce']2 |
 [V:LH]| G,,2D,,2G,,2B,,2 A,,2E,,2A,,2C,2 |
-%% Grand finale
+%% Grand finale - full chords
 [V:RH]| [d'f'a']4 [c'e'g']4 [Bd'f']4 [Ac'e']4 |
-[V:LH]| D,4 A,,4 B,,4 ^F,,4 |
-[V:RH]| [GBd]4 [FAc]4 [GBd]4 [Ac'e']4 |
+[V:LH]| D,4 A,,4 B,,4 F,,4 |
+[V:RH]| [GBd']4 [FAc']4 [GBd']4 [Ac'e']4 |
 [V:LH]| G,,4 D,,4 G,,4 A,,4 |
-[V:RH]| [D,F,A,Df]16 :|
-[V:LH]| [D,,A,,,D,,,]16 :|`
+[V:RH]| [D,F,A,Ddf']16 |
+[V:LH]| [D,,A,,,D,,,]16 |`
       },
       'unravel': {
         title: 'Unravel (Tokyo Ghoul OP)',
         composer: 'TK (Tooru Kitajima)',
+        noteGuide: {
+          intro: 'G  Ab  Bb  C  |  Bb  Ab  G  F  |  Eb  D  C',
+          verse: 'C  C  Bb  Ab  G  |  G  Ab  Bb  C  Bb  Ab  G',
+          chorus: 'Eb  F  G  Ab  |  Bb  C  Bb  Ab  G  |  F  Eb  D  Eb  |  C'
+        },
         abc: `X:1
 T:Unravel (Tokyo Ghoul OP)
 C:TK (Tooru Kitajima) / arr. Animenz-style
 M:4/4
 L:1/16
-Q:1/4=132
+Q:1/4=135
 K:Cm
 %%staves {(RH) (LH)}
 V:RH clef=treble name="Piano"
 V:LH clef=bass name=""
-%% Intro - haunting arpeggios
-[V:RH]| z8 G4 A2B2 | c4 B4 G8 |
-[V:LH]| C,2G,,2C,2E,2 G,2E,2C,2G,,2 | A,,2E,,2A,,2C,2 E,2C,2A,,2E,,2 |
-[V:RH]| z8 G4 A2B2 | c4 d4 e4 d4 |
-[V:LH]| C,2G,,2C,2E,2 G,2E,2C,2G,,2 | F,,2C,,2F,,2A,,2 G,,2D,,2G,,2B,,2 |
-%% Verse - melody with driving octave bass
-[V:RH]| c4 B4 G8 | z8 G4 A2B2 |
-[V:LH]| A,,2E,,2A,,2C,2 E,2C,2A,,2E,,2 | C,2G,,2C,2E,2 G,2E,2C,2G,,2 |
-[V:RH]| [ce]4 [df]4 [eg]8 | [df]4 [ce]4 [Bd]8 |
-[V:LH]| F,,2C,,2F,,2A,,2 C,2A,,2F,,2C,,2 | B,,,2F,,2B,,,2D,,2 G,,2D,,2G,,2B,,2 |
-[V:RH]| z4 c2d2 [eg]4 [cg]4 | [df]4 [ce]4 [Bd]4 [Ac]4 |
-[V:LH]| A,,2E,,2A,,2C,2 C,2G,,2C,2E,2 | F,,2C,,2F,,2A,,2 G,,2D,,2G,,2B,,2 |
-[V:RH]| [GB]4 [FA]4 [EG]8 | z8 G4 A2B2 |
-[V:LH]| E,,2B,,,2E,,2G,,2 B,,2G,,2E,,2B,,,2 | C,2G,,2C,2E,2 G,2E,2C,2G,,2 |
-%% Pre-chorus - building intensity
-[V:RH]| [Ec]4 [DB]4 [EG]4 [CE]4 | [EG]8 z8 |
-[V:LH]| A,,2E,,2A,,2C,2 E,2C,2G,,2E,,2 | C,2G,,2C,2E,2 G,4 E,4 |
-[V:RH]| z4 c2d2 [eg]4 [cg]4 | [cg]4 [Bf]4 [Ae]4 [Gd]4 |
-[V:LH]| A,,2E,,2A,,2C,2 C,2G,,2C,2E,2 | F,,2C,,2F,,2A,,2 G,,2D,,2G,,2B,,2 |
-%% Chorus - full power, octaves and chords
-[V:RH]| [Ge]8 z8 G4 A2B2 |
-[V:LH]| C,2G,,2C,2E,2 G,2E,2C,2G,,2 C,2G,,2C,2E,2 |
-[V:RH]| [ce]4 [dB]4 [ce]4 [df]4 | [eg]4 [df]4 [ce]4 [dB]4 |
-[V:LH]| A,,2E,,2A,,2C,2 A,,2E,,2A,,4 | F,,2C,,2F,,2A,,2 G,,2D,,2G,,2B,,2 |
-[V:RH]| [ce]4 [df]4 [eg]4 [cg]4 | [cg]4 [Bf]4 [Ae]4 [Gd]4 |
-[V:LH]| F,,2C,,2F,,2A,,2 C,2G,,2C,2E,2 | B,,,2F,,2B,,,2D,,2 G,,2D,,2G,,2B,,2 |
-[V:RH]| [Ec]8 [DB]8 | [C,E,G,C]16 |
-[V:LH]| A,,2E,,2A,,2C,2 E,,2B,,,2E,,2G,,2 | [C,,G,,C,]16 |
-%% Bridge - high register melody with running bass
-[V:RH]| z4 e2f2 g4 a4 | g4 f4 e4 d4 |
-[V:LH]| A,,2E,,2A,,2C,2 E,2C,2A,,2E,,2 | F,,2C,,2F,,2A,,2 G,,2D,,2G,,2B,,2 |
-[V:RH]| [eg]4 [fa]4 [gc']8 | [gc']4 [fb]4 [ea]4 [dg]4 |
-[V:LH]| A,,2E,,2A,,2C,2 C,2G,,2C,2E,2 | F,,2C,,2F,,2A,,2 E,,2B,,,2E,,2G,,2 |
-[V:RH]| [fa]4 [gb]4 [ac']8 | [gb]4 [fa]4 [eg]8 |
-[V:LH]| F,,2C,,2F,,2A,,2 C,2G,,2C,2E,2 | E,,2B,,,2E,,2G,,2 B,,2G,,2E,,2B,,,2 |
-%% Final chorus reprise
-[V:RH]| [eg]4 [fa]4 [gc']4 [ea]4 | [gc']4 [fb]4 [ea]4 [dg]4 |
-[V:LH]| A,,2E,,2A,,2C,2 C,2G,,2C,2E,2 | F,,2C,,2F,,2A,,2 G,,2D,,2G,,2B,,2 |
-[V:RH]| [C,E,G,C,E]16 | [C,E,G,C,E]16 |
-[V:LH]| [C,,G,,C,]8 [C,,G,,C,]8 | [C,,G,,C,]16 |`
+%% Intro - haunting melody over arpeggios
+[V:RH]| z8 G4 _A2B2 | c4 B4 G8 |
+[V:LH]| C,2G,,2C,2E,2 G,2E,2C,2G,,2 | _A,,2E,,2_A,,2C,2 E,2C,2_A,,2E,,2 |
+[V:RH]| z8 G4 _A2B2 | c4 d4 e4 d4 |
+[V:LH]| C,2G,,2C,2E,2 G,2E,2C,2G,,2 | F,,2C,,2F,,2_A,,2 G,,2D,,2G,,2B,,2 |
+%% Verse - driving octave bass with melody
+[V:RH]| c4 B2_A2 G8 | z4 E2F2 G4 _A2B2 |
+[V:LH]| C,2G,,2C,2E,2 G,2E,2C,2G,,2 | _A,,2E,,2_A,,2C,2 E,2C,2_A,,2E,,2 |
+[V:RH]| c4 d4 e4 f4 | e4 d4 c4 B4 |
+[V:LH]| F,,2C,,2F,,2_A,,2 C,2_A,,2F,,2C,,2 | G,,2D,,2G,,2B,,2 D,2B,,2G,,2D,,2 |
+[V:RH]| c4 B2_A2 G4 E4 | G4 _A4 B4 c4 |
+[V:LH]| _A,,2E,,2_A,,2C,2 E,2C,2_A,,2E,,2 | F,,2C,,2F,,2_A,,2 G,,2D,,2G,,2B,,2 |
+[V:RH]| [EG]4 [F_A]4 [GB]4 [_Ac]4 | [GB]8 z8 |
+[V:LH]| _A,,2E,,2_A,,2C,2 F,,2C,,2F,,2_A,,2 | G,,2D,,2G,,2B,,2 D,4 B,,4 |
+%% Pre-chorus - building tension
+[V:RH]| z4 c2d2 [eg]4 [cg]4 | [df]4 [ce]4 [Bd]4 [_Ac]4 |
+[V:LH]| _A,,2E,,2_A,,2C,2 C,2G,,2C,2E,2 | F,,2C,,2F,,2_A,,2 G,,2D,,2G,,2B,,2 |
+[V:RH]| [GB]4 [F_A]4 [EG]8 | z4 c2d2 e4 f4 |
+[V:LH]| E,,2B,,,2E,,2G,,2 B,,2G,,2E,,2B,,,2 | _A,,2E,,2_A,,2C,2 F,,2C,,2F,,2_A,,2 |
+%% Chorus - full power with octaves and chords
+[V:RH]| [eg]4 [f_a]4 [gb]4 [_ac']4 | [gb]4 [f_a]4 [eg]4 [df]4 |
+[V:LH]| C,2G,,2C,2E,2 G,2E,2C,2G,,2 | _A,,2E,,2_A,,2C,2 B,,2F,,2B,,2D,2 |
+[V:RH]| [ce]4 [df]4 [eg]4 [cg]4 | [cg]4 [Bf]4 [_Ae]4 [Gd]4 |
+[V:LH]| _A,,2E,,2_A,,2C,2 C,2G,,2C,2E,2 | F,,2C,,2F,,2_A,,2 G,,2D,,2G,,2B,,2 |
+[V:RH]| [eg]4 [f_a]4 [gb]4 [e_a]4 | [gc']4 [fb]4 [e_a]4 [dg]4 |
+[V:LH]| C,2G,,2C,2E,2 _A,,2E,,2_A,,2C,2 | F,,2C,,2F,,2_A,,2 G,,2D,,2G,,2B,,2 |
+%% Bridge - high register melody
+[V:RH]| [eg]8 z4 [df]2[eg]2 | [f_a]4 [eg]4 [df]4 [ce]4 |
+[V:LH]| _A,,2E,,2_A,,2C,2 E,2C,2_A,,2E,,2 | F,,2C,,2F,,2_A,,2 G,,2D,,2G,,2B,,2 |
+[V:RH]| [ce]4 [Bd]4 [ce]4 [df]4 | [eg]4 [df]4 [ce]4 [Bd]4 |
+[V:LH]| _A,,2E,,2_A,,2C,2 C,2G,,2C,2E,2 | F,,2C,,2F,,2_A,,2 E,,2B,,,2E,,2G,,2 |
+%% Final chorus reprise - maximum intensity
+[V:RH]| [eg]4 [f_a]4 [gc']4 [e_a]4 | [gc']4 [fb]4 [e_a]4 [dg]4 |
+[V:LH]| C,2G,,2C,2E,2 _A,,2E,,2_A,,2C,2 | F,,2C,,2F,,2_A,,2 G,,2D,,2G,,2B,,2 |
+[V:RH]| [Ec]4 [DB]4 [C_A,]4 [EG]4 | [C,E,G,CE]16 |
+[V:LH]| _A,,2E,,2_A,,2C,2 E,,2B,,,2E,,2G,,2 | [C,,G,,C,]16 |`
       },
       'counting-stars': {
         title: 'Counting Stars',
         composer: 'OneRepublic',
+        noteGuide: {
+          verse: 'E  E  E  E  |  E  E  D  C  |  D  E  -  |  A  -',
+          prechorus: 'E  G  A  |  C  B  A  |  G  E  D  |  E  -',
+          chorus: 'E  G  A  |  A  A  G  E  |  D  C  -  |  C  D  |  (I see this life like a swinging vine)'
+        },
         abc: `X:1
 T:Counting Stars
 C:OneRepublic (Ryan Tedder)
@@ -757,43 +869,93 @@ K:Am
 %%staves {(RH) (LH)}
 V:RH clef=treble name="Piano"
 V:LH clef=bass name=""
-%% Intro - Am arpeggio pickup
+%% Intro riff - Am arpeggio
 [V:RH]| z4 E2 E2 | E2 E2 D2 C2 | D2 E4 z2 | A,4 z4 |
 [V:LH]| A,,2 E,2 A,2 E,2 | C,2 G,2 C2 G,2 | G,,2 D,2 G,2 D,2 | F,,2 C,2 F,2 C,2 |
-%% Verse 1 - "Lately I been, I been losing sleep"
+%% Verse - "Lately I been, I been losing sleep"
 [V:RH]| E2 E2 E2 E2 | E2 E2 D2 C2 | D2 E4 z2 | A,4 z4 |
 [V:LH]| A,,2 E,2 A,2 E,2 | C,2 G,2 C2 G,2 | G,,2 D,2 G,2 D,2 | F,,2 C,2 F,2 C,2 |
 [V:RH]| E2 E2 E2 E2 | E2 D2 C2 D2 | E4 E4 | A,6 z2 |
 [V:LH]| A,,2 E,2 A,2 E,2 | C,2 G,2 C2 G,2 | G,,2 D,2 G,2 D,2 | F,,2 C,2 F,2 C,2 |
 %% Pre-chorus - "Old, but I'm not that old"
 [V:RH]| E4 G2 A2 | c4 B2 A2 | G4 E2 D2 | E6 z2 |
-[V:LH]| A,,2 E,2 A,2 C,2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
+[V:LH]| A,,2 E,2 A,2 C2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
 [V:RH]| E4 G2 A2 | c4 B2 A2 | G6 E2 | A,6 z2 |
-[V:LH]| A,,2 E,2 A,2 C,2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | A,,2 E,2 A,2 C,2 |
+[V:LH]| A,,2 E,2 A,2 C2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | A,,2 E,2 A,2 C2 |
 %% Chorus - "I see this life, like a swinging vine"
 [V:RH]| E4 G2 A2 | A2 A2 G2 E2 | D2 C4 z2 | C4 D4 |
-[V:LH]| A,,2 E,2 A,2 C,2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
+[V:LH]| A,,2 E,2 A,2 C2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
 [V:RH]| E4 G2 A2 | A2 A2 G2 E2 | D4 C4 | A,6 z2 |
-[V:LH]| A,,2 E,2 A,2 C,2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
-%% Chorus - "Take me high and I'll sing"
+[V:LH]| A,,2 E,2 A,2 C2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
+%% Chorus - "Take me high and I'll sing" - fuller chords
 [V:RH]| [Ac]4 [ce]2 [ce]2 | [ce]2 [Bd]2 [Ac]2 [GB]2 | [EG]4 [EG]4 | [EG]4 z4 |
-[V:LH]| A,,2 E,2 A,2 C,2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
+[V:LH]| A,,2 E,2 A,2 C2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
 [V:RH]| [Ac]4 [ce]2 [ce]2 | [ce]2 [Bd]2 [Ac]2 [GB]2 | [EG]4 [DF]4 | [A,CE]6 z2 |
-[V:LH]| A,,2 E,2 A,2 C,2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | A,,2 E,2 A,2 C,2 |
-%% Verse 2 - "Lately I been, I been praying hard"
-[V:RH]| E2 E2 E2 E2 | E2 E2 D2 C2 | D2 E4 z2 | A,4 z4 |
-[V:LH]| A,,2 E,2 A,2 E,2 | C,2 G,2 C2 G,2 | G,,2 D,2 G,2 D,2 | F,,2 C,2 F,2 C,2 |
-[V:RH]| E2 E2 E2 E2 | E2 D2 C2 D2 | E4 E4 | A,6 z2 |
-[V:LH]| A,,2 E,2 A,2 E,2 | C,2 G,2 C2 G,2 | G,,2 D,2 G,2 D,2 | F,,2 C,2 F,2 C,2 |
-%% Final Chorus - full chords
+[V:LH]| A,,2 E,2 A,2 C2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | A,,2 E,2 A,2 C2 |
+%% Final Chorus - full chords, maximum energy
 [V:RH]| [Ace]4 [Ace]2 [Ace]2 | [ceg]2 [Bdg]2 [Ace]2 [GBe]2 | [EGc]4 [EGc]4 | [EGc]4 z4 |
-[V:LH]| A,,2 E,2 A,2 C,2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
+[V:LH]| A,,2 E,2 A,2 C2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | F,,2 C,2 F,2 A,2 |
 [V:RH]| [Ace]4 [Ace]2 [Ace]2 | [ceg]2 [Bdg]2 [Ace]2 [GBe]2 | [EGc]6 z2 | [A,,A,Ace]8 |
-[V:LH]| A,,2 E,2 A,2 C,2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | [A,,E,A,]8 |`
+[V:LH]| A,,2 E,2 A,2 C2 | C,2 G,2 C2 E2 | G,,2 D,2 G,2 B,2 | [A,,E,A,]8 |`
+      },
+      'rewrite-stars': {
+        title: 'Rewrite the Stars',
+        composer: 'Zac Efron & Zendaya (The Greatest Showman)',
+        noteGuide: {
+          verse: 'B  D  E  |  B  A  |  G  A  B  |  D  -',
+          prechorus: 'D  E  D  B  |  A  G  -  |  D  E  D  B  |  C  B',
+          chorus: 'D  E  F#  G  |  A  B  -  |  B  A  G  F#  |  E  D'
+        },
+        abc: `X:1
+T:Rewrite the Stars
+C:Benj Pasek & Justin Paul (The Greatest Showman)
+M:4/4
+L:1/8
+Q:1/4=76
+K:G
+%%staves {(RH) (LH)}
+V:RH clef=treble name="Piano"
+V:LH clef=bass name=""
+%% Intro - gentle G major arpeggios
+[V:RH]| z4 B,2 D2 | G4 z4 | z4 B,2 D2 | G4 A4 |
+[V:LH]| G,,2 D,2 G,2 B,2 | G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 |
+%% Verse - "You know I want you"
+[V:RH]| B,4 D2 E2 | B4 A4 | G4 A2 B2 | D6 z2 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+[V:RH]| B,4 D2 E2 | B4 B2 c2 | d4 B2 A2 | G6 z2 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+%% Pre-chorus - "All I want is to fly with you"
+[V:RH]| d2 e2 d2 B2 | A2 G4 z2 | d2 e2 d2 B2 | c4 B4 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+[V:RH]| e2 d2 B2 G2 | A4 G4 | F2 G2 A2 B2 | d6 z2 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+%% Chorus - "What if we rewrite the stars"
+[V:RH]| d2 e2 f2 g2 | a2 b4 z2 | b2 a2 g2 f2 | e4 d4 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+[V:RH]| d2 e2 f2 g2 | a2 b4 a2 | g2 f2 e2 d2 | G6 z2 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+%% Chorus continued - "Say you were made to be mine"
+[V:RH]| d2 e2 f2 g2 | a4 b4 | a2 g2 f2 e2 | d4 B4 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+[V:RH]| d2 e2 f2 g2 | a2 b2 a2 g2 | f2 e2 d2 e2 | G6 z2 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+%% Full-chord chorus reprise
+[V:RH]| [Gd]2 [Ae]2 [Bf]2 [cg]2 | [da]2 [eb]4 z2 | [eb]2 [da]2 [cg]2 [Bf]2 | [Ae]4 [Gd]4 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+[V:RH]| [Gd]2 [Ae]2 [Bf]2 [cg]2 | [da]2 [eb]4 [da]2 | [cg]2 [Bf]2 [Ae]2 [Gd]2 | [GBd]6 z2 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
+%% Outro
+[V:RH]| [Gd]4 [Ae]2 [Bf]2 | [cg]4 [eb]4 | [Gd]4 [BG]4 | [G,B,DG]8 |
+[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | [G,,D,G,]8 |`
       },
       'across-stars': {
         title: 'Across the Stars',
         composer: 'John Williams (Star Wars: Episode II)',
+        noteGuide: {
+          theme: 'A  D  |  F  E  |  D  C  |  D  -',
+          development: 'A  D  |  F  G  |  A  G  |  F  -',
+          climax: 'D  D  E  |  F  A  E  |  D  F  E  |  D  -'
+        },
         abc: `X:1
 T:Across the Stars (Love Theme)
 C:John Williams - Star Wars Episode II
@@ -808,29 +970,34 @@ V:LH clef=bass name=""
 [V:RH]| z4 z2 A,2 D4 | F8 E4 | D8 C4 | D8 z4 |
 [V:LH]| D,,4 A,,4 D,4 | D,,4 A,,4 D,4 | A,,4 E,,4 A,,4 | D,,4 A,,4 D,4 |
 [V:RH]| z4 z2 A,2 D4 | F8 G4 | A8 G4 | F8 z4 |
-[V:LH]| D,,4 A,,4 D,4 | B,,4 F,,4 B,,4 | C,4 G,,4 C,4 | D,,4 A,,4 D,4 |
-%% Theme development - sweeping melody
-[V:RH]| A4 A4 B4 | [cA]8 [BA]4 | [AG]4 [FD]4 [ED]4 | [DA]8 z4 |
+[V:LH]| D,,4 A,,4 D,4 | _B,,4 F,,4 _B,,4 | C,4 G,,4 C,4 | D,,4 A,,4 D,4 |
+%% Theme development - the melody opens up
+[V:RH]| A4 A4 _B4 | c8 _B4 | A4 G4 F4 | D8 z4 |
 [V:LH]| F,,4 C,4 F,4 | F,,4 C,4 F,4 | C,4 G,,4 C,4 | D,,4 A,,4 D,4 |
-[V:RH]| d4 d4 e4 | [fd]8 [ec]4 | [dB]4 [cA]4 [BA]4 | [AF]8 z4 |
-[V:LH]| B,,4 F,,4 B,,4 | B,,4 F,,4 B,,4 | G,,4 D,,4 G,,4 | D,,4 A,,4 D,4 |
-%% Passionate climax - octave leaps and rich chords
-[V:RH]| [dA]4 [dA]4 [eB]4 | [fcA]8 [eBA]4 | [dAF]4 [fcA]4 [eBA]4 | [dAF]8 z4 |
-[V:LH]| D,,4 A,,4 D,4 | F,,4 C,4 F,4 | B,,4 F,,4 B,,4 | D,,4 A,,4 D,4 |
-[V:RH]| [fd]4 [fd]4 [ge]4 | [afd]8 [gec]4 | [fdB]4 [ecA]4 [dBA]4 | [dAF]8 z4 |
-[V:LH]| B,,4 F,,4 B,,4 | B,,4 F,,4 B,,4 | G,,4 D,,4 G,,4 | D,,4 A,,4 D,4 |
-%% Tender reprise - soft return of theme
+[V:RH]| d4 d4 e4 | f8 e4 | d4 c4 _B4 | A8 z4 |
+[V:LH]| _B,,4 F,,4 _B,,4 | _B,,4 F,,4 _B,,4 | G,,4 D,,4 G,,4 | D,,4 A,,4 D,4 |
+%% Passionate climax - rich chords
+[V:RH]| [dA]4 [dA]4 [e_B]4 | [fcA]8 [e_BA]4 | [dAF]4 [cAF]4 [_BAE]4 | [dAF]8 z4 |
+[V:LH]| D,,4 A,,4 D,4 | F,,4 C,4 F,4 | _B,,4 F,,4 _B,,4 | D,,4 A,,4 D,4 |
+[V:RH]| [fd]4 [fd]4 [ge]4 | [afd]8 [gec]4 | [fd_B]4 [ecA]4 [d_BA]4 | [dAF]8 z4 |
+[V:LH]| _B,,4 F,,4 _B,,4 | _B,,4 F,,4 _B,,4 | G,,4 D,,4 G,,4 | D,,4 A,,4 D,4 |
+%% Tender reprise - gentle return
 [V:RH]| z4 z2 A,2 D4 | F8 E4 | [DA]8 [CG]4 | [DA]8 z4 |
 [V:LH]| D,,2A,,2D,2F,2 A,,2D,2 | D,,2A,,2D,2F,2 A,,2D,2 | A,,2E,,2A,,2C,2 E,,2A,,2 | D,,2A,,2D,2F,2 A,,2D,2 |
-[V:RH]| [FA]4 [FA]4 [GB]4 | [AcF]8 [GBE]4 | [FAD]4 [EGC]4 [DFA,]4 | [DFA,]8 z4 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2 | F,,2C,2F,2A,2 C,2F,2 | B,,2F,,2B,,2D,2 G,,2D,,2 | D,,2A,,2D,2F,2 A,,2D,2 |
-%% Grand finale - full orchestral feel
-[V:RH]| [dAFD]4 [dAFD]4 [eBGE]4 | [fcAF]8 [eBGE]4 | [dAFD]8 [cGEC]4 | [dAFD]12 |
-[V:LH]| D,,2A,,2D,2F,2 A,,2D,2 | F,,2C,2F,2A,2 C,2F,2 | B,,2F,,2B,,2D,2 G,,2D,,2 | [D,,A,,D,F,]12 |`
+[V:RH]| [FA]4 [FA]4 [G_B]4 | [AcF]8 [G_BE]4 | [FAD]4 [EGC]4 [DFA,]4 | [DFA,]8 z4 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2 | F,,2C,2F,2A,2 C,2F,2 | _B,,2F,,2_B,,2D,2 G,,2D,,2 | D,,2A,,2D,2F,2 A,,2D,2 |
+%% Grand finale
+[V:RH]| [dAFD]4 [dAFD]4 [e_BGE]4 | [fcAF]8 [e_BGE]4 | [dAFD]8 [cGEC]4 | [dAFD]12 |
+[V:LH]| D,,2A,,2D,2F,2 A,,2D,2 | F,,2C,2F,2A,2 C,2F,2 | _B,,2F,,2_B,,2D,2 G,,2D,,2 | [D,,A,,D,F,]12 |`
       },
       'sign-times': {
         title: 'Sign of the Times',
         composer: 'Harry Styles',
+        noteGuide: {
+          verse: 'F  G  A  G  |  F  -  |  C  D  |  F  F  G  A  |  G  -',
+          prechorus: 'A  A  Bb  A  |  G  -  |  F  G  |  A  A  Bb  C  |  Bb  -',
+          chorus: 'C  -  |  C  Bb  |  C  A  G  A  |  G  -  |  F  G  |  A  G  F  E  F  D'
+        },
         abc: `X:1
 T:Sign of the Times
 C:Harry Styles
@@ -841,91 +1008,36 @@ K:F
 %%staves {(RH) (LH)}
 V:RH clef=treble name="Piano"
 V:LH clef=bass name=""
-%% Intro - building piano chords
-[V:RH]| [FA]8 [FA]4 [GB]4 | [Ac]8 z8 | [FA]8 [FA]4 [GB]4 | [Ac]8 z8 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 |
-%% Verse - "Just stop your crying"
+%% Intro - sustained piano chords
+[V:RH]| [FA]8 [FA]4 [G_B]4 | [Ac]8 z8 | [FA]8 [FA]4 [G_B]4 | [Ac]8 z8 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 |
+%% Verse - "Just stop your crying, it's a sign of the times"
 [V:RH]| z4 F2G2 A4 G4 | F8 z4 C2D2 | F4 F4 G4 A4 | G8 z8 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 | F,,2C,2F,2A,2 C,2F,2A,2C2 |
-[V:RH]| z4 F2G2 A4 c4 | B8 A4 G4 | F8 G4 A4 | G8 z8 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | D,2A,,2D,2F,2 A,,2D,2F,2A,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 |
-%% Pre-chorus - "We don't talk enough"
-[V:RH]| [cA]4 [cA]4 [dB]4 [cA]4 | [BG]8 z4 [AF]2[BG]2 | [cA]4 [cA]4 [dB]4 [ec]4 | [dB]8 z8 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 |
-%% Chorus - "We gotta get away" - soaring
-[V:RH]| [fc]8 [fc]4 [ed]4 | [fc]4 [Ac]4 [BG]4 [Ac]4 | [BG]8 z4 [AF]2[BG]2 | [cA]4 [BG]2[AF]2 [GE]4 [FD]4 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 |
-[V:RH]| [fc]8 [fc]4 [ed]4 | [fc]4 [Ac]4 [dB]4 [cA]4 | [dB]8 [cA]4 [BG]4 | [AF]8 z8 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | B,,2F,,2B,,2D,2 C,2G,,2C,2E,2 | F,,2C,2F,2A,2 C,2F,2A,2C2 |
-%% Chorus climax - full chords, powerful
-[V:RH]| [fcA]8 [fcA]4 [edB]4 | [fcA]8 [AcF]4 [BGE]4 | [BGE]8 z4 [AF]2[BG]2 | [cAF]4 [BGE]2[AFD]2 [GEC]4 [FDB,]4 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 |
-[V:RH]| [fcA]8 [fcA]4 [edB]4 | [fcA]8 [dBG]4 [cAF]4 | [dBG]8 [cAF]4 [BGE]4 | [AFCA,]16 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | D,2A,,2D,2F,2 B,,2F,,2B,,2D,2 | B,,2F,,2B,,2D,2 C,2G,,2C,2E,2 | [F,,C,F,A,]16 |
-%% Outro - gentle resolution
-[V:RH]| [FA]8 [FA]4 [GB]4 | [Ac]8 z8 | [FA]8 [GE]4 [FD]4 | [FAcf]16 |
-[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | B,,2F,,2B,,2D,2 C,2G,,2C,2E,2 | [F,,C,F,A,]16 |`
-      },
-      'rewrite-stars': {
-        title: 'Rewrite the Stars',
-        composer: 'Zac Efron & Zendaya (The Greatest Showman)',
-        abc: `X:1
-T:Rewrite the Stars
-C:Benj Pasek & Justin Paul (The Greatest Showman)
-M:4/4
-L:1/8
-Q:1/4=76
-K:G
-%%staves {(RH) (LH)}
-V:RH clef=treble name="Piano"
-V:LH clef=bass name=""
-%% Intro - flowing G major arpeggios
-[V:RH]| z4 B,2 D2 | B4 z4 | z4 B,2 D2 | G4 z4 |
-[V:LH]| G,,2 D,2 G,2 B,2 | G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 |
-%% Verse 1 - "You know I want you"
-%% Melody centers on B-D-E
-[V:RH]| B,4 D2 E2 | B4 A4 | G4 A2 B2 | D6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-[V:RH]| B,4 D2 E2 | B4 B2 c2 | d4 B2 A2 | G6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-%% "It's not a secret I try to hide"
-[V:RH]| B,4 D2 E2 | B4 A4 | G2 A2 B2 A2 | G6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-[V:RH]| B,4 D2 E2 | G4 A2 B2 | d4 B2 G2 | G6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-%% Pre-chorus - "All I want is to fly with you"
-[V:RH]| d2 e2 d2 B2 | A2 G4 z2 | d2 e2 d2 B2 | c4 B4 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-[V:RH]| e2 d2 B2 G2 | A4 G4 | F2 G2 A2 B2 | d6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-%% Chorus - "What if we rewrite the stars"
-%% Melody soars: D-E-F#-G-A-B
-[V:RH]| d2 e2 f2 g2 | a2 b4 z2 | b2 a2 g2 f2 | e4 d4 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-[V:RH]| d2 e2 f2 g2 | a2 b4 a2 | g2 f2 e2 d2 | G6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-%% "Say that the chance we had"
-[V:RH]| d2 e2 f2 g2 | a4 b4 | a2 g2 f2 e2 | d4 B4 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-[V:RH]| d2 e2 f2 g2 | a2 b2 a2 g2 | f2 e2 d2 e2 | G6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-%% Full-chord chorus reprise
-[V:RH]| [Gd]2 [Ae]2 [Bf]2 [cg]2 | [da]2 [eb]4 z2 | [eb]2 [da]2 [cg]2 [Bf]2 | [Ae]4 [Gd]4 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-[V:RH]| [Gd]2 [Ae]2 [Bf]2 [cg]2 | [da]2 [eb]4 [da]2 | [cg]2 [Bf]2 [Ae]2 [Gd]2 | [GBd]6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-%% Bridge - "All I want is to fly with you" (high register)
-[V:RH]| b2 a2 g2 f2 | e2 d4 z2 | e2 f2 g2 a2 | b6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-[V:RH]| b2 a2 g2 f2 | e2 d2 B2 G2 | A2 B2 d2 e2 | g6 z2 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | D,2 A,,2 D,2 F,2 |
-%% Outro - gentle resolution
-[V:RH]| [Gd]4 [Ae]2 [Bf]2 | [cg]4 [eb]4 | [Gd]4 [BG]4 | [G,B,DG]8 |
-[V:LH]| G,,2 D,2 G,2 B,2 | E,,2 B,,2 E,2 G,2 | C,2 G,,2 C,2 E,2 | [G,,D,G,]8 |`
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 | F,,2C,2F,2A,2 C,2F,2A,2C2 |
+[V:RH]| z4 F2G2 A4 c4 | _B8 A4 G4 | F8 G4 A4 | G8 z8 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | D,2A,,2D,2F,2 A,,2D,2F,2A,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 |
+%% Pre-chorus - "We don't talk enough, we should open up"
+[V:RH]| [cA]4 [cA]4 [d_B]4 [cA]4 | [_BG]8 z4 [AF]2[_BG]2 | [cA]4 [cA]4 [d_B]4 [ec]4 | [d_B]8 z8 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 |
+%% Chorus - "We gotta get away" - soaring melody
+[V:RH]| [fc]8 [fc]4 [ed]4 | [fc]4 [Ac]4 [_BG]4 [Ac]4 | [_BG]8 z4 [AF]2[_BG]2 | [cA]4 [_BG]2[AF]2 [GE]4 [FD]4 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 |
+[V:RH]| [fc]8 [fc]4 [ed]4 | [fc]4 [Ac]4 [d_B]4 [cA]4 | [d_B]8 [cA]4 [_BG]4 | [AF]8 z8 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | _B,,2F,,2_B,,2D,2 C,2G,,2C,2E,2 | F,,2C,2F,2A,2 C,2F,2A,2C2 |
+%% Chorus climax - full chords
+[V:RH]| [fcA]8 [fcA]4 [ed_B]4 | [fcA]8 [AcF]4 [_BGE]4 | [_BGE]8 z4 [AF]2[_BG]2 | [cAF]4 [_BGE]2[AFD]2 [GEC]4 [FD_B,]4 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 |
+[V:RH]| [fcA]8 [fcA]4 [ed_B]4 | [fcA]8 [d_BG]4 [cAF]4 | [d_BG]8 [cAF]4 [_BGE]4 | [AFCA,]16 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | D,2A,,2D,2F,2 _B,,2F,,2_B,,2D,2 | _B,,2F,,2_B,,2D,2 C,2G,,2C,2E,2 | [F,,C,F,A,]16 |`
       },
       'champagne-coast': {
         title: 'Champagne Coast',
         composer: 'Blood Cultures',
+        noteGuide: {
+          intro: 'Eb  G  Bb  |  G  |  Eb  G  Bb  |  Eb\'',
+          verse: 'Bb  Bb  C  |  D  Bb  |  G  -  |  Eb  G  |  Bb  Bb  C  D  Eb  |  D  -',
+          chorus: 'Bb  Eb  |  Bb  Eb  Bb  G  |  C  Eb  Bb  D  |  G  Bb  D  F  |  Eb  G  Bb  Eb'
+        },
         abc: `X:1
 T:Champagne Coast
 C:Blood Cultures
@@ -937,28 +1049,33 @@ K:Eb
 V:RH clef=treble name="Piano"
 V:LH clef=bass name=""
 %% Intro - dreamy synth-like arpeggios
-[V:RH]| z4 E2G2 B4 G4 | z4 E2G2 B4 e4 | z4 c2B2 G4 E4 | z4 F2G2 B4 G4 |
-[V:LH]| E,,2B,,2E,2G,2 B,,2E,2G,2B,2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 | A,,2E,,2A,,2C,2 E,,2A,,2C,2E,2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 |
+[V:RH]| z4 E2G2 _B4 G4 | z4 E2G2 _B4 e4 | z4 c2_B2 G4 E4 | z4 F2G2 _B4 G4 |
+[V:LH]| E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 | E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 | _A,,2E,,2_A,,2C,2 E,,2_A,,2C,2E,2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 |
 %% Verse - "All of the beautiful people"
-[V:RH]| B4 B2c2 d4 B4 | G8 z4 E2G2 | B4 B2c2 d4 e4 | d8 z8 |
-[V:LH]| E,,2B,,2E,2G,2 B,,2E,2G,2B,2 | A,,2E,,2A,,2C,2 E,,2A,,2C,2E,2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 |
-[V:RH]| B4 B2c2 d4 e4 | f4 e4 d4 c4 | B4 G4 E4 G4 | B8 z8 |
-[V:LH]| E,,2B,,2E,2G,2 B,,2E,2G,2B,2 | A,,2E,,2A,,2C,2 E,,2A,,2C,2E,2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 |
-%% Pre-chorus - building energy
-[V:RH]| [EG]4 [EG]2[FB]2 [Gc]4 [FB]4 | [EG]8 z4 [DF]2[EG]2 | [FB]4 [Gc]4 [Bd]4 [ce]4 | [Bd]8 z8 |
-[V:LH]| A,,2E,,2A,,2C,2 E,,2A,,2C,2E,2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | A,,2E,,2A,,2C,2 E,,2A,,2C,2E,2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 |
+[V:RH]| _B4 _B2c2 d4 _B4 | G8 z4 E2G2 | _B4 _B2c2 d4 e4 | d8 z8 |
+[V:LH]| E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 | _A,,2E,,2_A,,2C,2 E,,2_A,,2C,2E,2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 |
+[V:RH]| _B4 _B2c2 d4 e4 | f4 e4 d4 c4 | _B4 G4 E4 G4 | _B8 z8 |
+[V:LH]| E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 | _A,,2E,,2_A,,2C,2 E,,2_A,,2C,2E,2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 |
+%% Pre-chorus
+[V:RH]| [EG]4 [EG]2[F_B]2 [Gc]4 [F_B]4 | [EG]8 z4 [DF]2[EG]2 | [F_B]4 [Gc]4 [_Bd]4 [ce]4 | [_Bd]8 z8 |
+[V:LH]| _A,,2E,,2_A,,2C,2 E,,2_A,,2C,2E,2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | _A,,2E,,2_A,,2C,2 E,,2_A,,2C,2E,2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 |
 %% Chorus - "On the champagne coast"
-[V:RH]| [Be]4 [Be]2[cd]2 [Be]4 [Gd]4 | [ce]4 [Bd]4 [Gc]4 [FB]4 | [Be]4 [Be]2[cf]2 [dg]4 [cf]4 | [Be]8 z8 |
-[V:LH]| E,,2B,,2E,2G,2 B,,2E,2G,2B,2 | A,,2E,,2A,,2C,2 E,,2A,,2C,2E,2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 |
-[V:RH]| [Be]4 [Be]2[cd]2 [Be]4 [Gd]4 | [cf]4 [Be]4 [Gd]4 [Ec]4 | [DF]4 [EG]4 [GB]4 [Bd]4 | [EGBe]16 |
-[V:LH]| E,,2B,,2E,2G,2 B,,2E,2G,2B,2 | A,,2E,,2A,,2C,2 E,,2A,,2C,2E,2 | B,,2F,,2B,,2D,2 F,,2B,,2D,2F,2 | [E,,B,,E,G,]16 |
-%% Outro - fade out arpeggios
-[V:RH]| z4 E2G2 B4 G4 | z4 E2G2 B4 e4 | [EGBe]8 [EGBe]8 | [E,G,B,EGB]16 |
-[V:LH]| E,,2B,,2E,2G,2 B,,2E,2G,2B,2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 | A,,2E,,2A,,2C,2 B,,2F,,2B,,2D,2 | [E,,B,,E,G,]16 |`
+[V:RH]| [_Be]4 [_Be]2[cd]2 [_Be]4 [Gd]4 | [ce]4 [_Bd]4 [Gc]4 [F_B]4 | [_Be]4 [_Be]2[cf]2 [dg]4 [cf]4 | [_Be]8 z8 |
+[V:LH]| E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 | _A,,2E,,2_A,,2C,2 E,,2_A,,2C,2E,2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 |
+[V:RH]| [_Be]4 [_Be]2[cd]2 [_Be]4 [Gd]4 | [cf]4 [_Be]4 [Gd]4 [Ec]4 | [DF]4 [EG]4 [G_B]4 [_Bd]4 | [EG_Be]16 |
+[V:LH]| E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 | _A,,2E,,2_A,,2C,2 E,,2_A,,2C,2E,2 | _B,,2F,,2_B,,2D,2 F,,2_B,,2D,2F,2 | [E,,_B,,E,G,]16 |
+%% Outro
+[V:RH]| z4 E2G2 _B4 G4 | z4 E2G2 _B4 e4 | [EG_Be]8 [EG_Be]8 | [E,G,_B,EG_B]16 |
+[V:LH]| E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 | E,,2_B,,2E,2G,2 _B,,2E,2G,2_B,2 | _A,,2E,,2_A,,2C,2 _B,,2F,,2_B,,2D,2 | [E,,_B,,E,G,]16 |`
       },
       'love-story': {
         title: 'Love Story',
         composer: 'Indila',
+        noteGuide: {
+          intro: 'A  C  E  |  C  |  B  D  E  D  |  A  C  E  A\'  |  G  F  E  D',
+          verse: 'A  A  B  C  B  |  A  -  |  E  A  |  B  B  C  D  C  |  B  -',
+          chorus: 'E  A  |  E  A  E  D  |  C  B  C  D  |  E  A  E  F  |  G  C  F  |  E  A'
+        },
         abc: `X:1
 T:Love Story
 C:Indila
@@ -972,15 +1089,15 @@ V:LH clef=bass name=""
 %% Intro - haunting minor arpeggios
 [V:RH]| z4 A2c2 e4 c4 | z4 B2d2 e4 d4 | z4 A2c2 e4 a4 | g4 f4 e4 d4 |
 [V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | G,,2D,2G,2B,2 D,2G,2B,2D2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 |
-%% Verse 1 - "Pas très loin de chez moi"
+%% Verse - melody with flowing accompaniment
 [V:RH]| A4 A2B2 c4 B4 | A8 z4 E2A2 | B4 B2c2 d4 c4 | B8 z8 |
 [V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | G,,2D,2G,2B,2 D,2G,2B,2D2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 |
 [V:RH]| c4 c2d2 e4 d4 | c4 B4 A4 G4 | A4 B4 c4 e4 | d8 z8 |
 [V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | G,,2D,2G,2B,2 D,2G,2B,2D2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 |
-%% Pre-chorus - building intensity
+%% Pre-chorus - building
 [V:RH]| [Ac]4 [Ac]2[Bd]2 [ce]4 [Bd]4 | [Ac]8 z4 [GA]2[Ac]2 | [Bd]4 [ce]4 [df]4 [ce]4 | [Bd]8 z8 |
 [V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | G,,2D,2G,2B,2 D,2G,2B,2D2 | D,,2A,,2D,2F,2 A,,2D,2F,2A,2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 |
-%% Chorus - "Love story" - soaring and emotional
+%% Chorus - "Love story" soaring emotional melody
 [V:RH]| [ea]4 [ea]2[dg]2 [ce]4 [Bd]4 | [Ac]4 [Bd]4 [ce]4 [df]4 | [ea]4 [ea]2[fb]2 [gc']4 [fb]4 | [ea]8 z8 |
 [V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | D,,2A,,2D,2F,2 A,,2D,2F,2A,2 | E,,2B,,2E,2G,2 B,,2E,2G,2B,2 |
 [V:RH]| [ea]4 [ea]2[dg]2 [ce]4 [Bd]4 | [cf]4 [Be]4 [Ad]4 [Gc]4 | [AB]4 [Bc]4 [ce]4 [Bd]4 | [Ace]16 |
@@ -988,9 +1105,53 @@ V:LH clef=bass name=""
 %% Bridge - dramatic pause then return
 [V:RH]| z8 e4 d4 | c4 B4 A8 | z4 A2c2 e4 a4 | g4 f4 e4 d4 |
 [V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | F,,2C,2F,2A,2 E,,2B,,2E,2G,2 | D,,2A,,2D,2F,2 A,,2D,2F,2A,2 | G,,2D,2G,2B,2 E,,2B,,2E,2G,2 |
-%% Final chorus - full power chords
+%% Final chorus - full power
 [V:RH]| [eac']4 [eac']2[dgb]2 [cea]4 [Bdg]4 | [Acf]4 [Bde]4 [cea]4 [dfb]4 | [eac']4 [eac']2[fbd']2 [gce']4 [fbd']4 | [A,CEAce]16 |
 [V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | F,,2C,2F,2A,2 G,,2D,2G,2B,2 | D,,2A,,2D,2F,2 E,,2B,,2E,2G,2 | [A,,E,A,C]16 |`
+      },
+      'detective-conan': {
+        title: 'Detective Conan Main Theme',
+        composer: 'Katsuo Ono',
+        noteGuide: {
+          intro: 'E  E  E  |  D#  E  F  E  |  D  C  B  A',
+          theme: 'A  A  A  G#  A  B  C\'  |  B  A  G#  A  |  E  E  E  D#  E  F  |  E  D  C  B  A',
+          bridge: 'C  D  E  F  |  E  D  C  B  |  A  B  C  D  |  E  F  E  D  C',
+          climax: 'A\'  G#  A  B  C\'  |  B  A  G#  F  E  |  A  -'
+        },
+        abc: `X:1
+T:Detective Conan Main Theme
+C:Katsuo Ono
+M:4/4
+L:1/16
+Q:1/4=140
+K:Am
+%%staves {(RH) (LH)}
+V:RH clef=treble name="Piano"
+V:LH clef=bass name=""
+%% Intro - tense, driving rhythm
+[V:RH]| E4 E4 E4 E4 | ^D4 E4 F4 E4 | D4 C4 B,4 A,4 | E4 z4 E4 z4 |
+[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | A,,2E,2A,2C2 E,2A,2C2E2 | F,,2C,2F,2A,2 E,,2B,,2E,2^G,2 | A,,2E,2A,2C2 E,2A,2C2E2 |
+%% Main theme - the iconic detective melody
+[V:RH]| A4 A4 ^G4 A4 | B4 c8 B4 | A4 ^G4 A4 B4 | c4 B4 A4 ^G4 |
+[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | E,,2B,,2E,2^G,2 B,,2E,2^G,2B,2 | A,,2E,2A,2C2 E,2A,2C2E2 | A,,2E,2A,2C2 E,,2B,,2E,2^G,2 |
+[V:RH]| E4 E4 ^D4 E4 | F4 E4 D4 C4 | B,4 A,4 B,4 C4 | A,8 z8 |
+[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | D,2A,,2D,2F,2 A,,2D,2F,2A,2 | E,,2B,,2E,2^G,2 A,,2E,2A,2C2 | A,,2E,2A,2C2 E,4 C4 |
+%% B section - contrasting passage in relative major
+[V:RH]| C4 D4 E4 F4 | E4 D4 C4 B,4 | A,4 B,4 C4 D4 | E4 F4 E4 D4 |
+[V:LH]| C,2G,,2C,2E,2 G,,2C,2E,2G,2 | G,,2D,2G,2B,2 D,2G,2B,2D2 | F,,2C,2F,2A,2 C,2F,2A,2C2 | C,2G,,2C,2E,2 E,,2B,,2E,2^G,2 |
+[V:RH]| C4 D4 E4 F4 | G4 F4 E4 D4 | C4 D4 E4 ^G4 | A8 z8 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | G,,2D,2G,2B,2 D,2G,2B,2D2 | A,,2E,2A,2C2 E,,2B,,2E,2^G,2 | A,,2E,2A,2C2 E,2A,2C2E2 |
+%% Return of main theme - with chords and intensity
+[V:RH]| [Ae]4 [Ae]4 [^Gd]4 [Ae]4 | [Bf]4 [ce]8 [Bd]4 | [Ae]4 [^Gd]4 [Ae]4 [Bf]4 | [cg]4 [bf]4 [ae]4 [^gd]4 |
+[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | E,,2B,,2E,2^G,2 B,,2E,2^G,2B,2 | A,,2E,2A,2C2 E,2A,2C2E2 | A,,2E,2A,2C2 E,,2B,,2E,2^G,2 |
+[V:RH]| [Ee]4 [Ee]4 [^Dd]4 [Ee]4 | [Ff]4 [Ee]4 [Dd]4 [Cc]4 | [B,d]4 [A,c]4 [B,d]4 [Ce]4 | [A,ce]8 z8 |
+[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | D,2A,,2D,2F,2 A,,2D,2F,2A,2 | E,,2B,,2E,2^G,2 A,,2E,2A,2C2 | A,,2E,2A,2C2 E,4 C4 |
+%% Climax - dramatic octave melody with full chords
+[V:RH]| [Aa]4 [^Gg]4 [Aa]4 [Bb]4 | [cc']8 [Bb]4 [Aa]4 | [^Gg]4 [Ff]4 [Ee]8 | [Aa]8 z8 |
+[V:LH]| A,,2E,2A,2C2 E,2A,2C2E2 | C,2G,,2C,2E,2 G,,2C,2E,2G,2 | E,,2B,,2E,2^G,2 B,,2E,2^G,2B,2 | A,,2E,2A,2C2 E,2A,2C2E2 |
+%% Ending - resolving tension
+[V:RH]| [ce]4 [df]4 [eg]4 [fa]4 | [eg]4 [df]4 [ce]4 [Bd]4 | [Ace]8 [^GBe]8 | [A,CEAce]16 |
+[V:LH]| F,,2C,2F,2A,2 C,2F,2A,2C2 | G,,2D,2G,2B,2 E,,2B,,2E,2^G,2 | A,,2E,2A,2C2 E,,2B,,2E,2^G,2 | [A,,E,A,CE]16 |`
       }
     };
 
@@ -1006,7 +1167,7 @@ V:LH clef=bass name=""
 
       cards.forEach(card => {
         const title    = card.dataset.title.toLowerCase();
-        const nickname = card.dataset.nickname.toLowerCase();
+        const nickname = (card.dataset.nickname || '').toLowerCase();
         const composer = card.dataset.composer.toLowerCase();
         const matches  = !q || title.includes(q) || nickname.includes(q) || composer.includes(q);
 
@@ -1021,13 +1182,78 @@ V:LH clef=bass name=""
       emptyState.style.display = visible === 0 ? 'block' : 'none';
     });
 
+    // -- Note Names Guide --
+    let noteGuideVisible = false;
+    let currentSongId = null;
+
+    function toggleNoteGuide() {
+      noteGuideVisible = !noteGuideVisible;
+      const btn = document.getElementById('notesToggle');
+      const guide = document.getElementById('melodyGuide');
+
+      if (noteGuideVisible) {
+        btn.classList.add('active');
+        btn.textContent = 'Hide Note Names';
+        showNoteGuide(currentSongId);
+        guide.classList.add('visible');
+      } else {
+        btn.classList.remove('active');
+        btn.textContent = 'Show Note Names';
+        guide.classList.remove('visible');
+      }
+    }
+
+    function showNoteGuide(songId) {
+      const song = songData[songId];
+      if (!song || !song.noteGuide) return;
+
+      const guide = document.getElementById('melodyGuide');
+      let html = '<h3>Melody Note Names</h3>';
+
+      const sectionLabels = {
+        intro: 'Intro',
+        melody: 'Main Melody',
+        theme: 'Theme',
+        verse: 'Verse',
+        prechorus: 'Pre-Chorus',
+        chorus: 'Chorus',
+        bridge: 'Bridge',
+        sectionB: 'Section B',
+        sectionC: 'Section C',
+        bass: 'Bass Line',
+        chords: 'Chord Progression',
+        development: 'Development',
+        climax: 'Climax',
+        variation: 'Variation'
+      };
+
+      for (const [key, notes] of Object.entries(song.noteGuide)) {
+        const label = sectionLabels[key] || key;
+        const formatted = notes.replace(/\|/g, '<span class="bar">|</span>');
+        html += `<div class="guide-section">
+          <div class="guide-label">${label}</div>
+          <div class="guide-notes">${formatted}</div>
+        </div>`;
+      }
+
+      guide.innerHTML = html;
+    }
+
     // -- Sheet Music View --
     function openSheet(songId) {
       const song = songData[songId];
       if (!song) return;
 
+      currentSongId = songId;
       document.getElementById('sheetTitle').textContent = song.title;
       document.getElementById('sheetComposer').textContent = song.composer;
+
+      // Reset note guide state
+      noteGuideVisible = false;
+      const btn = document.getElementById('notesToggle');
+      btn.classList.remove('active');
+      btn.textContent = 'Show Note Names';
+      document.getElementById('melodyGuide').classList.remove('visible');
 
       const overlay = document.getElementById('sheetOverlay');
       overlay.classList.add('open');
@@ -1050,7 +1276,9 @@ V:LH clef=bass name=""
     function closeSheet() {
       document.getElementById('sheetOverlay').classList.remove('open');
       document.getElementById('sheetRenderArea').innerHTML = '';
+      document.getElementById('melodyGuide').classList.remove('visible');
       document.body.style.overflow = '';
+      currentSongId = null;
     }
 
     document.addEventListener('keydown', e => {
