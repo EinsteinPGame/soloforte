@@ -1,0 +1,1915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Learn to Code - SoloForte AI</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0a0a1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: #0d0d25;
+      border-bottom: 1px solid #1a1a3e;
+    }
+    .top-bar a {
+      color: #7b68ee;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .top-bar h1 {
+      font-size: 1.1rem;
+      color: #d0d0f0;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* Language selection */
+    .lang-select {
+      text-align: center;
+      padding: 60px 20px;
+    }
+    .lang-select h2 {
+      font-size: 2rem;
+      margin-bottom: 10px;
+      background: linear-gradient(90deg, #7b68ee, #00d4ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .lang-select .sub {
+      color: #8888aa;
+      margin-bottom: 40px;
+      font-size: 1rem;
+    }
+    .lang-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .lang-card {
+      background: #12122a;
+      border: 2px solid #2a2a4a;
+      border-radius: 14px;
+      padding: 30px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .lang-card:hover { border-color: #7b68ee; transform: translateY(-4px); }
+    .lang-card .icon { font-size: 3rem; margin-bottom: 14px; }
+    .lang-card h3 { color: #00d4ff; font-size: 1.3rem; margin-bottom: 8px; }
+    .lang-card p { color: #8888aa; font-size: 0.9rem; line-height: 1.5; }
+    .lang-card .best-for {
+      margin-top: 12px;
+      padding: 4px 12px;
+      background: #1a1a3e;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      color: #7b68ee;
+      display: inline-block;
+    }
+
+    /* Course view */
+    .course-view { display: none; }
+    .course-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .course-header h2 { color: #00d4ff; font-size: 1.5rem; }
+    .back-btn {
+      background: #1a1a3e;
+      border: 1px solid #2a2a4a;
+      color: #7b68ee;
+      padding: 6px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .back-btn:hover { border-color: #7b68ee; }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #1a1a3e;
+      border-radius: 3px;
+      margin-bottom: 30px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7b68ee, #00d4ff);
+      border-radius: 3px;
+      transition: width 0.4s;
+    }
+    .progress-text {
+      text-align: right;
+      font-size: 0.8rem;
+      color: #8888aa;
+      margin-bottom: 6px;
+    }
+
+    /* Lesson list */
+    .lesson-list { display: flex; flex-direction: column; gap: 10px; }
+    .lesson-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 16px 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .lesson-item:hover { border-color: #7b68ee; }
+    .lesson-item.completed { border-color: #2ecc71; }
+    .lesson-item.active { border-color: #00d4ff; background: #0d1a2a; }
+    .lesson-item.locked { opacity: 0.5; cursor: not-allowed; }
+    .lesson-num {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: #1a1a3e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.9rem;
+      color: #7b68ee;
+      flex-shrink: 0;
+    }
+    .lesson-item.completed .lesson-num { background: #2ecc71; color: #fff; }
+    .lesson-info h4 { color: #d0d0f0; font-size: 1rem; margin-bottom: 2px; }
+    .lesson-info p { color: #8888aa; font-size: 0.8rem; }
+
+    /* Lesson content */
+    .lesson-content { display: none; }
+    .lesson-content.active { display: block; }
+    .lesson-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: #7b68ee;
+      cursor: pointer;
+      font-size: 0.9rem;
+      margin-bottom: 20px;
+      background: none;
+      border: none;
+    }
+    .lesson-title {
+      font-size: 1.6rem;
+      color: #00d4ff;
+      margin-bottom: 20px;
+    }
+    .lesson-body {
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 24px;
+      line-height: 1.8;
+      font-size: 0.95rem;
+    }
+    .lesson-body h3 {
+      color: #7b68ee;
+      margin: 20px 0 10px;
+      font-size: 1.1rem;
+    }
+    .lesson-body h3:first-child { margin-top: 0; }
+    .lesson-body p { margin-bottom: 14px; color: #ccc; }
+    .lesson-body ul {
+      margin: 10px 0 14px 20px;
+      color: #bbb;
+    }
+    .lesson-body li { margin-bottom: 6px; }
+    .lesson-body strong { color: #00d4ff; }
+    .lesson-body em { color: #d4a017; font-style: normal; }
+
+    /* Code blocks */
+    .code-block {
+      background: #0a0a16;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 14px 0;
+      font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      overflow-x: auto;
+      position: relative;
+      color: #e0e0e0;
+    }
+    .code-block .comment { color: #6a6a8a; }
+    .code-block .keyword { color: #c792ea; }
+    .code-block .string { color: #c3e88d; }
+    .code-block .func { color: #82aaff; }
+    .code-block .number { color: #f78c6c; }
+    .code-block .tag { color: #f07178; }
+    .code-block .attr { color: #ffcb6b; }
+
+    /* Interactive code playground */
+    .playground {
+      background: #0d0d25;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      margin: 20px 0;
+      overflow: hidden;
+    }
+    .playground-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: #12122a;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .playground-header span { color: #7b68ee; font-size: 0.85rem; font-weight: 600; }
+    .run-btn {
+      background: linear-gradient(90deg, #7b68ee, #00d4ff);
+      color: #fff;
+      border: none;
+      padding: 6px 18px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .run-btn:hover { opacity: 0.9; }
+    .playground textarea {
+      width: 100%;
+      min-height: 100px;
+      background: #0a0a16;
+      color: #e0e0e0;
+      border: none;
+      padding: 14px;
+      font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+      font-size: 0.88rem;
+      line-height: 1.6;
+      resize: vertical;
+      outline: none;
+    }
+    .playground-output {
+      padding: 12px 14px;
+      background: #080818;
+      border-top: 1px solid #2a2a4a;
+      min-height: 40px;
+      font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: #2ecc71;
+      white-space: pre-wrap;
+    }
+    .playground-output.error { color: #ff6b6b; }
+
+    /* Quiz */
+    .quiz-box {
+      background: #12122a;
+      border: 2px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .quiz-box h4 {
+      color: #d4a017;
+      margin-bottom: 14px;
+      font-size: 1rem;
+    }
+    .quiz-option {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: #1a1a3e;
+      border: 1px solid #2a2a4a;
+      color: #ccc;
+      padding: 10px 16px;
+      margin-bottom: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.15s;
+    }
+    .quiz-option:hover { border-color: #7b68ee; }
+    .quiz-option.correct { background: #1a3e1a; border-color: #2ecc71; color: #2ecc71; }
+    .quiz-option.wrong { background: #3e1a1a; border-color: #ff6b6b; color: #ff6b6b; }
+    .quiz-feedback {
+      margin-top: 10px;
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .quiz-feedback.show { display: block; }
+    .quiz-feedback.correct { background: #1a3e1a; color: #2ecc71; }
+    .quiz-feedback.wrong { background: #3e1a1a; color: #ff6b6b; }
+
+    /* Next/Complete buttons */
+    .lesson-nav {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 24px;
+      gap: 12px;
+    }
+    .nav-btn {
+      padding: 10px 24px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+    .nav-btn.next {
+      background: linear-gradient(90deg, #7b68ee, #00d4ff);
+      color: #fff;
+      margin-left: auto;
+    }
+    .nav-btn.next:hover { transform: translateY(-2px); }
+
+    /* Achievements */
+    .achievement-popup {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #1a3e1a;
+      border: 2px solid #2ecc71;
+      border-radius: 10px;
+      padding: 16px 20px;
+      z-index: 999;
+      animation: slideIn 0.3s, fadeOut 0.5s 2.5s forwards;
+      max-width: 300px;
+    }
+    .achievement-popup h4 { color: #2ecc71; margin-bottom: 4px; }
+    .achievement-popup p { color: #aaa; font-size: 0.85rem; }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes fadeOut { to { opacity: 0; transform: translateY(-20px); } }
+
+    @media (max-width: 600px) {
+      .lang-select h2 { font-size: 1.4rem; }
+      .lesson-title { font-size: 1.2rem; }
+      .lesson-body { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <script src="auth.js"></script>
+  <div class="top-bar">
+    <a href="index.html">< Home</a>
+    <h1>Learn to Code</h1>
+    <span id="xp-display" style="color:#d4a017;font-size:0.85rem;font-weight:600">0 XP</span>
+  </div>
+
+  <div class="container">
+    <!-- Language Selection -->
+    <div id="lang-select" class="lang-select">
+      <h2>Choose Your First Language</h2>
+      <p class="sub">No experience needed. Pick one and start from zero.</p>
+      <div class="lang-cards">
+        <div class="lang-card" onclick="selectLang('python')">
+          <div class="icon">&#x1F40D;</div>
+          <h3>Python</h3>
+          <p>The most beginner-friendly language. Used for AI, data science, automation, and games.</p>
+          <span class="best-for">Best for: beginners</span>
+        </div>
+        <div class="lang-card" onclick="selectLang('javascript')">
+          <div class="icon">&#x26A1;</div>
+          <h3>JavaScript</h3>
+          <p>The language of the web. Makes websites interactive. Powers all your browser games.</p>
+          <span class="best-for">Best for: web & games</span>
+        </div>
+        <div class="lang-card" onclick="selectLang('html')">
+          <div class="icon">&#x1F310;</div>
+          <h3>HTML & CSS</h3>
+          <p>The building blocks of every website. HTML = structure, CSS = style. Not technically "programming" but essential.</p>
+          <span class="best-for">Best for: websites</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Course View -->
+    <div id="course-view" class="course-view">
+      <div class="course-header">
+        <button class="back-btn" onclick="showLangSelect()">< All Courses</button>
+        <h2 id="course-title"></h2>
+      </div>
+      <div class="progress-text" id="progress-text">0 / 0 lessons</div>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="lesson-list" id="lesson-list"></div>
+    </div>
+
+    <!-- Lesson Content -->
+    <div id="lesson-content" class="lesson-content"></div>
+  </div>
+
+<script>
+// ── Course Data ──
+const COURSES = {
+  python: {
+    title: "Python",
+    icon: "\u{1F40D}",
+    lessons: [
+      {
+        title: "What is Programming?",
+        content: `
+<h3>Welcome to coding!</h3>
+<p>Programming is just <strong>giving instructions to a computer</strong>. That's it. You write instructions in a language the computer understands, and it follows them exactly.</p>
+<p>Think of it like writing a recipe. Each line tells the computer what to do next, step by step.</p>
+
+<h3>Why Python?</h3>
+<p>Python is the most beginner-friendly language because it reads almost like English. Compare:</p>
+<div class="code-block"><span class="comment"># Python</span>
+<span class="func">print</span>(<span class="string">"Hello, world!"</span>)</div>
+<p>That's a complete program. It tells the computer: <em>display the text "Hello, world!" on the screen</em>.</p>
+
+<h3>What can Python do?</h3>
+<ul>
+<li><strong>Games</strong> — your RPS Legends Pygame version was Python</li>
+<li><strong>AI & Machine Learning</strong> — ChatGPT was built with Python</li>
+<li><strong>Automation</strong> — make your computer do boring tasks for you</li>
+<li><strong>Data analysis</strong> — crunch numbers, make charts</li>
+<li><strong>Web apps</strong> — Instagram's backend is Python</li>
+</ul>`,
+        quiz: {
+          question: "What is programming?",
+          options: ["A type of computer game", "Giving instructions to a computer", "A social media app", "A type of math"],
+          correct: 1,
+          explanation: "Programming is giving instructions to a computer in a language it can understand!"
+        }
+      },
+      {
+        title: "Your First Python Code",
+        content: `
+<h3>The print() function</h3>
+<p>The very first thing you learn in any language is how to make it display text. In Python, you use <strong>print()</strong>.</p>
+<div class="code-block"><span class="func">print</span>(<span class="string">"Hello, world!"</span>)</div>
+<p>Let's break it down:</p>
+<ul>
+<li><strong>print</strong> — a built-in command (called a <em>function</em>) that displays text</li>
+<li><strong>( )</strong> — parentheses wrap what you want to print</li>
+<li><strong>" "</strong> — quotation marks wrap text (called a <em>string</em>)</li>
+</ul>
+
+<h3>Try it yourself</h3>
+<p>Type some print statements in the box below and hit Run. Try changing the text!</p>`,
+        playground: {
+          lang: "python",
+          starter: 'print("Hello, world!")\nprint("My name is Kyle")\nprint("I am learning Python!")',
+        },
+        quiz: {
+          question: 'What will this code display?\n\nprint("I love coding")',
+          options: ["print(I love coding)", "I love coding", "\"I love coding\"", "An error"],
+          correct: 1,
+          explanation: "print() displays whatever text is inside the quotes. The quotes themselves don't show up!"
+        }
+      },
+      {
+        title: "Variables — Storing Information",
+        content: `
+<h3>What is a variable?</h3>
+<p>A <strong>variable</strong> is like a labeled box where you store information. You give it a name, and put a value inside.</p>
+<div class="code-block"><span class="keyword">name</span> = <span class="string">"Kyle"</span>
+<span class="keyword">age</span> = <span class="number">14</span>
+<span class="keyword">score</span> = <span class="number">99.5</span>
+
+<span class="func">print</span>(name)      <span class="comment"># Kyle</span>
+<span class="func">print</span>(age)       <span class="comment"># 14</span>
+<span class="func">print</span>(score)     <span class="comment"># 99.5</span></div>
+
+<h3>The = sign</h3>
+<p>In programming, <strong>=</strong> doesn't mean "equals" like in math. It means <em>"store this value in this variable"</em>. Think of it as an arrow pointing left: <em>name ← "Kyle"</em>.</p>
+
+<h3>Types of data</h3>
+<ul>
+<li><strong>String</strong> (text) — wrapped in quotes: <span class="code-block" style="display:inline;padding:2px 8px;margin:0"><span class="string">"Hello"</span></span></li>
+<li><strong>Integer</strong> (whole number) — no quotes: <span class="code-block" style="display:inline;padding:2px 8px;margin:0"><span class="number">42</span></span></li>
+<li><strong>Float</strong> (decimal number) — <span class="code-block" style="display:inline;padding:2px 8px;margin:0"><span class="number">3.14</span></span></li>
+<li><strong>Boolean</strong> (true/false) — <span class="code-block" style="display:inline;padding:2px 8px;margin:0"><span class="keyword">True</span></span> or <span class="code-block" style="display:inline;padding:2px 8px;margin:0"><span class="keyword">False</span></span></li>
+</ul>
+
+<h3>Using variables in print</h3>
+<div class="code-block"><span class="keyword">name</span> = <span class="string">"Kyle"</span>
+<span class="keyword">level</span> = <span class="number">5</span>
+<span class="func">print</span>(<span class="string">"Player:"</span>, name, <span class="string">"Level:"</span>, level)</div>
+<p>Output: <em>Player: Kyle Level: 5</em></p>`,
+        playground: {
+          lang: "python",
+          starter: 'name = "Kyle"\nfav_game = "Emblem Fury"\nlevel = 10\n\nprint("Name:", name)\nprint("Favorite game:", fav_game)\nprint("Level:", level)',
+        },
+        quiz: {
+          question: "What does this code print?\n\nx = 10\nx = 20\nprint(x)",
+          options: ["10", "20", "10 20", "Error"],
+          correct: 1,
+          explanation: "When you assign a new value to a variable, it replaces the old one. x was 10, then became 20."
+        }
+      },
+      {
+        title: "Math — Calculations",
+        content: `
+<h3>Python as a calculator</h3>
+<p>Python can do math. The basic operators are:</p>
+<div class="code-block"><span class="func">print</span>(<span class="number">10</span> + <span class="number">3</span>)    <span class="comment"># 13  (addition)</span>
+<span class="func">print</span>(<span class="number">10</span> - <span class="number">3</span>)    <span class="comment"># 7   (subtraction)</span>
+<span class="func">print</span>(<span class="number">10</span> * <span class="number">3</span>)    <span class="comment"># 30  (multiplication)</span>
+<span class="func">print</span>(<span class="number">10</span> / <span class="number">3</span>)    <span class="comment"># 3.33 (division)</span>
+<span class="func">print</span>(<span class="number">10</span> ** <span class="number">2</span>)   <span class="comment"># 100 (power — 10 squared)</span>
+<span class="func">print</span>(<span class="number">10</span> % <span class="number">3</span>)    <span class="comment"># 1   (remainder)</span></div>
+
+<h3>Math with variables</h3>
+<div class="code-block"><span class="keyword">hp</span> = <span class="number">100</span>
+<span class="keyword">damage</span> = <span class="number">25</span>
+<span class="keyword">hp</span> = hp - damage
+<span class="func">print</span>(<span class="string">"HP remaining:"</span>, hp)  <span class="comment"># 75</span></div>
+<p>See how <strong>hp = hp - damage</strong> works? It takes the current value of hp (100), subtracts damage (25), and stores the result (75) back in hp.</p>
+
+<h3>Combining text and math</h3>
+<div class="code-block"><span class="keyword">price</span> = <span class="number">4.50</span>
+<span class="keyword">quantity</span> = <span class="number">3</span>
+<span class="keyword">total</span> = price * quantity
+<span class="func">print</span>(<span class="string">"Total: $"</span> + <span class="func">str</span>(total))  <span class="comment"># Total: $13.5</span></div>
+<p><strong>str()</strong> converts a number to text so you can join it with other text using <strong>+</strong>.</p>`,
+        playground: {
+          lang: "python",
+          starter: '# Try some math!\nhp = 100\ndamage = 30\nhp = hp - damage\nprint("HP left:", hp)\n\n# Calculate your age in days\nage = 14\ndays = age * 365\nprint("You have lived", days, "days!")',
+        },
+        quiz: {
+          question: "What does 10 % 3 give you?",
+          options: ["3.33", "3", "1", "0.3"],
+          correct: 2,
+          explanation: "% gives you the remainder after division. 10 divided by 3 is 3 remainder 1. So 10 % 3 = 1."
+        }
+      },
+      {
+        title: "Conditions — Making Decisions",
+        content: `
+<h3>if / else</h3>
+<p>Programs need to make decisions. <strong>if</strong> lets your code choose what to do based on a condition.</p>
+<div class="code-block"><span class="keyword">hp</span> = <span class="number">30</span>
+
+<span class="keyword">if</span> hp > <span class="number">50</span>:
+    <span class="func">print</span>(<span class="string">"You're healthy!"</span>)
+<span class="keyword">elif</span> hp > <span class="number">0</span>:
+    <span class="func">print</span>(<span class="string">"Low HP! Be careful!"</span>)
+<span class="keyword">else</span>:
+    <span class="func">print</span>(<span class="string">"Game Over!"</span>)</div>
+
+<h3>How it works</h3>
+<ul>
+<li><strong>if</strong> — checks the first condition</li>
+<li><strong>elif</strong> — "else if" — checks another condition if the first was false</li>
+<li><strong>else</strong> — runs if nothing above was true</li>
+<li><strong>:</strong> — every condition line ends with a colon</li>
+<li><strong>indentation</strong> — the code inside each block is indented (4 spaces). This is how Python knows what belongs to each condition</li>
+</ul>
+
+<h3>Comparison operators</h3>
+<div class="code-block"><span class="number">10</span> == <span class="number">10</span>   <span class="comment"># True  (equal to)</span>
+<span class="number">10</span> != <span class="number">5</span>    <span class="comment"># True  (not equal to)</span>
+<span class="number">10</span> > <span class="number">5</span>     <span class="comment"># True  (greater than)</span>
+<span class="number">10</span> < <span class="number">5</span>     <span class="comment"># False (less than)</span>
+<span class="number">10</span> >= <span class="number">10</span>   <span class="comment"># True  (greater or equal)</span>
+<span class="number">10</span> <= <span class="number">5</span>    <span class="comment"># False (less or equal)</span></div>
+<p><strong>Important:</strong> <em>==</em> (double equals) checks if things are equal. <em>=</em> (single) assigns a value. Don't mix them up!</p>`,
+        playground: {
+          lang: "python",
+          starter: 'score = 85\n\nif score >= 90:\n    grade = "A"\nelif score >= 80:\n    grade = "B"\nelif score >= 70:\n    grade = "C"\nelse:\n    grade = "F"\n\nprint("Score:", score, "Grade:", grade)',
+        },
+        quiz: {
+          question: "What does == mean in Python?",
+          options: ["Assign a value", "Check if two things are equal", "Add two numbers", "Not equal"],
+          correct: 1,
+          explanation: "== checks equality (is this equal to that?). = assigns a value (store this in that variable)."
+        }
+      },
+      {
+        title: "Loops — Repeating Things",
+        content: `
+<h3>for loop</h3>
+<p>Loops let you repeat code without writing it over and over. The <strong>for</strong> loop runs code a set number of times.</p>
+<div class="code-block"><span class="keyword">for</span> i <span class="keyword">in</span> <span class="func">range</span>(<span class="number">5</span>):
+    <span class="func">print</span>(<span class="string">"Attack!"</span>, i)</div>
+<p>This prints "Attack!" 5 times, with i going from 0 to 4.</p>
+
+<h3>range() explained</h3>
+<ul>
+<li><strong>range(5)</strong> — gives you 0, 1, 2, 3, 4 (starts at 0, stops before 5)</li>
+<li><strong>range(1, 6)</strong> — gives you 1, 2, 3, 4, 5 (start at 1, stop before 6)</li>
+<li><strong>range(0, 10, 2)</strong> — gives you 0, 2, 4, 6, 8 (count by 2s)</li>
+</ul>
+
+<h3>Looping through a list</h3>
+<div class="code-block"><span class="keyword">moves</span> = [<span class="string">"Rock"</span>, <span class="string">"Paper"</span>, <span class="string">"Scissors"</span>]
+
+<span class="keyword">for</span> move <span class="keyword">in</span> moves:
+    <span class="func">print</span>(<span class="string">"You used:"</span>, move)</div>
+
+<h3>while loop</h3>
+<p>A <strong>while</strong> loop keeps going as long as a condition is true.</p>
+<div class="code-block"><span class="keyword">hp</span> = <span class="number">100</span>
+
+<span class="keyword">while</span> hp > <span class="number">0</span>:
+    <span class="func">print</span>(<span class="string">"HP:"</span>, hp)
+    hp = hp - <span class="number">20</span>
+
+<span class="func">print</span>(<span class="string">"Game Over!"</span>)</div>
+<p>Be careful with while loops — if the condition never becomes false, the loop runs forever!</p>`,
+        playground: {
+          lang: "python",
+          starter: '# Count to 10\nfor i in range(1, 11):\n    print(i)\n\nprint("---")\n\n# Loop through your games\ngames = ["RPS Legends", "Rage Platformer", "Emblem Fury"]\nfor game in games:\n    print("Playing:", game)',
+        },
+        quiz: {
+          question: "How many times does this loop run?\n\nfor i in range(3):\n    print(i)",
+          options: ["1 time", "2 times", "3 times", "4 times"],
+          correct: 2,
+          explanation: "range(3) gives 0, 1, 2 — that's 3 values, so the loop runs 3 times."
+        }
+      },
+      {
+        title: "Functions — Reusable Code",
+        content: `
+<h3>What is a function?</h3>
+<p>A <strong>function</strong> is a reusable block of code. Instead of writing the same code over and over, you put it in a function and call it whenever you need it.</p>
+<div class="code-block"><span class="keyword">def</span> <span class="func">greet</span>(name):
+    <span class="func">print</span>(<span class="string">"Hello,"</span>, name, <span class="string">"!"</span>)
+
+<span class="func">greet</span>(<span class="string">"Kyle"</span>)     <span class="comment"># Hello, Kyle !</span>
+<span class="func">greet</span>(<span class="string">"Ys"</span>)       <span class="comment"># Hello, Ys !</span></div>
+
+<h3>How it works</h3>
+<ul>
+<li><strong>def</strong> — keyword that starts a function definition</li>
+<li><strong>greet</strong> — the function's name (you pick it)</li>
+<li><strong>(name)</strong> — a parameter (input the function accepts)</li>
+<li><strong>:</strong> — ends the definition line</li>
+<li><strong>indented code</strong> — the body of the function</li>
+</ul>
+
+<h3>Returning values</h3>
+<p>Functions can also calculate something and <strong>return</strong> the result.</p>
+<div class="code-block"><span class="keyword">def</span> <span class="func">calculate_damage</span>(attack, defense):
+    damage = attack - defense
+    <span class="keyword">if</span> damage < <span class="number">0</span>:
+        damage = <span class="number">0</span>
+    <span class="keyword">return</span> damage
+
+<span class="keyword">result</span> = <span class="func">calculate_damage</span>(<span class="number">50</span>, <span class="number">30</span>)
+<span class="func">print</span>(<span class="string">"Damage dealt:"</span>, result)  <span class="comment"># 20</span></div>
+
+<h3>Why use functions?</h3>
+<ul>
+<li><strong>Don't Repeat Yourself (DRY)</strong> — write once, use many times</li>
+<li><strong>Organize</strong> — break big programs into small, manageable pieces</li>
+<li><strong>Debug easier</strong> — fix one function, fix everywhere it's used</li>
+</ul>`,
+        playground: {
+          lang: "python",
+          starter: 'def battle(player_hp, enemy_hp, player_atk, enemy_atk):\n    round_num = 1\n    while player_hp > 0 and enemy_hp > 0:\n        enemy_hp = enemy_hp - player_atk\n        player_hp = player_hp - enemy_atk\n        print("Round", round_num, "- You:", player_hp, "Enemy:", enemy_hp)\n        round_num = round_num + 1\n    if player_hp > 0:\n        print("You win!")\n    else:\n        print("You lost!")\n\nbattle(100, 80, 25, 15)',
+        },
+        quiz: {
+          question: "What does 'return' do in a function?",
+          options: ["Prints text to the screen", "Sends a value back to wherever the function was called", "Ends the program", "Starts the function over"],
+          correct: 1,
+          explanation: "return sends a value back to the code that called the function. It's different from print — print displays text, return gives a value you can use."
+        }
+      },
+      {
+        title: "Lists — Collections of Data",
+        content: `
+<h3>What is a list?</h3>
+<p>A <strong>list</strong> stores multiple values in one variable. Like an inventory in a game.</p>
+<div class="code-block"><span class="keyword">inventory</span> = [<span class="string">"Sword"</span>, <span class="string">"Shield"</span>, <span class="string">"Potion"</span>]
+<span class="func">print</span>(inventory)          <span class="comment"># ['Sword', 'Shield', 'Potion']</span>
+<span class="func">print</span>(inventory[<span class="number">0</span>])       <span class="comment"># Sword (first item)</span>
+<span class="func">print</span>(inventory[<span class="number">-1</span>])      <span class="comment"># Potion (last item)</span>
+<span class="func">print</span>(<span class="func">len</span>(inventory))     <span class="comment"># 3 (how many items)</span></div>
+
+<h3>Important: counting starts at 0</h3>
+<p>In programming, the first item is at position <strong>0</strong>, not 1. This is called <em>zero-indexing</em>.</p>
+<ul>
+<li>inventory[0] = "Sword"</li>
+<li>inventory[1] = "Shield"</li>
+<li>inventory[2] = "Potion"</li>
+</ul>
+
+<h3>Modifying lists</h3>
+<div class="code-block"><span class="keyword">inventory</span> = [<span class="string">"Sword"</span>, <span class="string">"Shield"</span>]
+
+inventory.<span class="func">append</span>(<span class="string">"Potion"</span>)      <span class="comment"># Add to end</span>
+inventory.<span class="func">remove</span>(<span class="string">"Shield"</span>)      <span class="comment"># Remove by value</span>
+inventory.<span class="func">insert</span>(<span class="number">0</span>, <span class="string">"Bow"</span>)     <span class="comment"># Insert at position</span>
+
+<span class="func">print</span>(inventory)  <span class="comment"># ['Bow', 'Sword', 'Potion']</span></div>
+
+<h3>Lists + loops = power</h3>
+<div class="code-block"><span class="keyword">scores</span> = [<span class="number">85</span>, <span class="number">92</span>, <span class="number">78</span>, <span class="number">95</span>, <span class="number">88</span>]
+<span class="keyword">total</span> = <span class="number">0</span>
+
+<span class="keyword">for</span> s <span class="keyword">in</span> scores:
+    total = total + s
+
+<span class="keyword">average</span> = total / <span class="func">len</span>(scores)
+<span class="func">print</span>(<span class="string">"Average:"</span>, average)</div>`,
+        playground: {
+          lang: "python",
+          starter: '# Build a party\nparty = ["Stone", "Blade"]\nprint("Starting party:", party)\n\nparty.append("Crystal")\nprint("Recruited Crystal:", party)\n\nparty.remove("Stone")\nprint("Stone left:", party)\n\nprint("Party size:", len(party))\nprint("Leader:", party[0])',
+        },
+        quiz: {
+          question: 'What does inventory[0] return if inventory = ["Sword", "Shield", "Potion"]?',
+          options: ["Potion", "Shield", "Sword", "Error"],
+          correct: 2,
+          explanation: "Lists start counting at 0. So [0] is the first item: \"Sword\"."
+        }
+      },
+      {
+        title: "Putting It All Together",
+        content: `
+<h3>You know enough to build things!</h3>
+<p>You've learned: <strong>print</strong>, <strong>variables</strong>, <strong>math</strong>, <strong>conditions</strong>, <strong>loops</strong>, <strong>functions</strong>, and <strong>lists</strong>. That covers the core of Python.</p>
+<p>Let's combine everything into a mini game.</p>
+
+<div class="code-block"><span class="keyword">import</span> random
+
+<span class="keyword">def</span> <span class="func">rps_game</span>():
+    moves = [<span class="string">"rock"</span>, <span class="string">"paper"</span>, <span class="string">"scissors"</span>]
+    wins = <span class="number">0</span>
+    losses = <span class="number">0</span>
+
+    <span class="keyword">for</span> round_num <span class="keyword">in</span> <span class="func">range</span>(<span class="number">1</span>, <span class="number">4</span>):
+        player = moves[round_num - <span class="number">1</span>]
+        computer = random.<span class="func">choice</span>(moves)
+        <span class="func">print</span>(<span class="string">"Round"</span>, round_num)
+        <span class="func">print</span>(<span class="string">"  You:"</span>, player, <span class="string">"vs Computer:"</span>, computer)
+
+        <span class="keyword">if</span> player == computer:
+            <span class="func">print</span>(<span class="string">"  Draw!"</span>)
+        <span class="keyword">elif</span> (player == <span class="string">"rock"</span> <span class="keyword">and</span> computer == <span class="string">"scissors"</span>) <span class="keyword">or</span> \\
+             (player == <span class="string">"paper"</span> <span class="keyword">and</span> computer == <span class="string">"rock"</span>) <span class="keyword">or</span> \\
+             (player == <span class="string">"scissors"</span> <span class="keyword">and</span> computer == <span class="string">"paper"</span>):
+            <span class="func">print</span>(<span class="string">"  You win!"</span>)
+            wins = wins + <span class="number">1</span>
+        <span class="keyword">else</span>:
+            <span class="func">print</span>(<span class="string">"  You lose!"</span>)
+            losses = losses + <span class="number">1</span>
+
+    <span class="func">print</span>(<span class="string">"\\nFinal: "</span>, wins, <span class="string">"wins,"</span>, losses, <span class="string">"losses"</span>)
+
+<span class="func">rps_game</span>()</div>
+
+<h3>What's in this code?</h3>
+<ul>
+<li><strong>import random</strong> — loads Python's random module (like a toolbox)</li>
+<li><strong>Lists</strong> — moves = ["rock", "paper", "scissors"]</li>
+<li><strong>Function</strong> — def rps_game() wraps everything</li>
+<li><strong>Loop</strong> — for round in range(1, 4) plays 3 rounds</li>
+<li><strong>Conditions</strong> — if/elif/else decides who wins</li>
+<li><strong>Variables</strong> — tracks wins and losses</li>
+</ul>
+
+<h3>What's next?</h3>
+<p>This is just the beginning. From here you can learn:</p>
+<ul>
+<li><strong>Dictionaries</strong> — like lists but with named keys</li>
+<li><strong>Classes & Objects</strong> — organize code into blueprints</li>
+<li><strong>File handling</strong> — save and load data</li>
+<li><strong>Libraries</strong> — Pygame for games, Flask for websites, and thousands more</li>
+</ul>
+<p>You've got the foundation. Everything else builds on these 8 concepts.</p>`,
+        playground: {
+          lang: "python",
+          starter: '# Your mini project: number guessing game\nimport random\n\nsecret = random.randint(1, 10)\nguesses = 3\n\nprint("Guess a number between 1 and 10!")\nprint("You have", guesses, "tries")\n\nfor attempt in range(1, guesses + 1):\n    guess = attempt * 3  # simulated guess\n    print("Attempt", attempt, "- Guessed:", guess)\n    if guess == secret:\n        print("Correct!")\n        break\n    elif guess < secret:\n        print("Too low!")\n    else:\n        print("Too high!")\nelse:\n    print("Out of tries! Number was", secret)',
+        },
+        quiz: {
+          question: "Which Python concepts did we cover in this course?",
+          options: [
+            "Only print and variables",
+            "Print, variables, math, conditions, loops, functions, and lists",
+            "Only loops and functions",
+            "Only math"
+          ],
+          correct: 1,
+          explanation: "We covered all the fundamentals: print, variables, math, conditions (if/elif/else), loops (for/while), functions (def/return), and lists. These are the building blocks of all Python programs!"
+        }
+      }
+    ]
+  },
+  javascript: {
+    title: "JavaScript",
+    icon: "\u26A1",
+    lessons: [
+      {
+        title: "What is JavaScript?",
+        content: `
+<h3>The language of the web</h3>
+<p><strong>JavaScript</strong> (JS) is the programming language that makes websites interactive. Every button you click, every animation you see, every game you play in a browser — that's JavaScript.</p>
+<p>Fun fact: <strong>all your soloforte.ai projects</strong> (RPS Legends, Rage Platformer, Emblem Fury) are built with JavaScript!</p>
+
+<h3>Your first JavaScript code</h3>
+<div class="code-block"><span class="func">console</span>.<span class="func">log</span>(<span class="string">"Hello, world!"</span>);</div>
+<p><strong>console.log()</strong> is like Python's print(). It displays text in the browser's console (a hidden developer panel).</p>
+
+<h3>JavaScript vs Python</h3>
+<div class="code-block"><span class="comment">// JavaScript</span>
+<span class="keyword">let</span> name = <span class="string">"Kyle"</span>;
+<span class="func">console</span>.<span class="func">log</span>(<span class="string">"Hello, "</span> + name);
+
+<span class="comment"># Python</span>
+<span class="comment"># name = "Kyle"</span>
+<span class="comment"># print("Hello, " + name)</span></div>
+<p>Key differences:</p>
+<ul>
+<li>JS uses <strong>let</strong> or <strong>const</strong> before variable names</li>
+<li>JS lines end with <strong>;</strong> (semicolons — optional but recommended)</li>
+<li>JS uses <strong>{ }</strong> braces instead of indentation for code blocks</li>
+</ul>`,
+        quiz: {
+          question: "What does console.log() do in JavaScript?",
+          options: ["Creates a webpage", "Displays text/values (like Python's print)", "Makes an animation", "Saves a file"],
+          correct: 1,
+          explanation: "console.log() displays output — it's JavaScript's version of Python's print()."
+        }
+      },
+      {
+        title: "Variables & Data Types",
+        content: `
+<h3>Declaring variables</h3>
+<p>In JavaScript, you use <strong>let</strong> for variables that change and <strong>const</strong> for values that stay the same.</p>
+<div class="code-block"><span class="keyword">let</span> score = <span class="number">0</span>;         <span class="comment">// can change later</span>
+<span class="keyword">const</span> MAX_HP = <span class="number">100</span>;    <span class="comment">// stays fixed</span>
+
+score = <span class="number">50</span>;              <span class="comment">// OK — let allows changes</span>
+<span class="comment">// MAX_HP = 200;        // ERROR — const can't change</span></div>
+
+<h3>Data types</h3>
+<div class="code-block"><span class="keyword">let</span> name = <span class="string">"Kyle"</span>;           <span class="comment">// String (text)</span>
+<span class="keyword">let</span> age = <span class="number">14</span>;                <span class="comment">// Number</span>
+<span class="keyword">let</span> price = <span class="number">9.99</span>;            <span class="comment">// Number (JS doesn't separate int/float)</span>
+<span class="keyword">let</span> isAlive = <span class="keyword">true</span>;         <span class="comment">// Boolean</span>
+<span class="keyword">let</span> items = [<span class="string">"Sword"</span>, <span class="string">"Shield"</span>]; <span class="comment">// Array (list)</span></div>
+
+<h3>Template literals (modern way to combine text)</h3>
+<div class="code-block"><span class="keyword">let</span> player = <span class="string">"Kyle"</span>;
+<span class="keyword">let</span> level = <span class="number">10</span>;
+<span class="func">console</span>.<span class="func">log</span>(<span class="string">\`Player: \${player}, Level: \${level}\`</span>);</div>
+<p>Use backticks (\`) instead of quotes, and <strong>\${...}</strong> to insert variables directly into text. Much cleaner than + concatenation!</p>`,
+        playground: {
+          lang: "javascript",
+          starter: 'let playerName = "Kyle";\nlet hp = 100;\nlet weapon = "Sword";\nlet isAlive = true;\n\nconsole.log(`${playerName} has ${hp} HP`);\nconsole.log(`Weapon: ${weapon}`);\nconsole.log(`Alive: ${isAlive}`);',
+        },
+        quiz: {
+          question: "What's the difference between let and const?",
+          options: ["No difference", "let is for numbers, const is for text", "let can change, const cannot", "const is faster"],
+          correct: 2,
+          explanation: "let declares a variable you can reassign later. const declares one that stays fixed — trying to change it causes an error."
+        }
+      },
+      {
+        title: "Conditions & Functions",
+        content: `
+<h3>if / else in JavaScript</h3>
+<div class="code-block"><span class="keyword">let</span> hp = <span class="number">30</span>;
+
+<span class="keyword">if</span> (hp > <span class="number">50</span>) {
+    <span class="func">console</span>.<span class="func">log</span>(<span class="string">"Healthy!"</span>);
+} <span class="keyword">else if</span> (hp > <span class="number">0</span>) {
+    <span class="func">console</span>.<span class="func">log</span>(<span class="string">"Low HP!"</span>);
+} <span class="keyword">else</span> {
+    <span class="func">console</span>.<span class="func">log</span>(<span class="string">"Game Over!"</span>);
+}</div>
+<p>Same logic as Python, but with <strong>( )</strong> around the condition and <strong>{ }</strong> around the code blocks.</p>
+
+<h3>Functions</h3>
+<div class="code-block"><span class="keyword">function</span> <span class="func">calculateDamage</span>(attack, defense) {
+    <span class="keyword">let</span> damage = attack - defense;
+    <span class="keyword">if</span> (damage < <span class="number">0</span>) damage = <span class="number">0</span>;
+    <span class="keyword">return</span> damage;
+}
+
+<span class="keyword">let</span> result = <span class="func">calculateDamage</span>(<span class="number">50</span>, <span class="number">30</span>);
+<span class="func">console</span>.<span class="func">log</span>(<span class="string">"Damage:"</span>, result); <span class="comment">// 20</span></div>
+
+<h3>Arrow functions (modern shorthand)</h3>
+<div class="code-block"><span class="comment">// Regular function</span>
+<span class="keyword">function</span> <span class="func">add</span>(a, b) { <span class="keyword">return</span> a + b; }
+
+<span class="comment">// Arrow function (same thing, shorter)</span>
+<span class="keyword">const</span> <span class="func">add</span> = (a, b) => a + b;</div>`,
+        playground: {
+          lang: "javascript",
+          starter: 'function getGrade(score) {\n    if (score >= 90) return "A";\n    if (score >= 80) return "B";\n    if (score >= 70) return "C";\n    return "F";\n}\n\nlet scores = [95, 82, 67, 91, 73];\nfor (let s of scores) {\n    console.log(`Score: ${s} -> Grade: ${getGrade(s)}`);\n}',
+        },
+        quiz: {
+          question: "In JavaScript, what goes around the condition in an if statement?",
+          options: ["Nothing", "Curly braces { }", "Parentheses ( )", "Square brackets [ ]"],
+          correct: 2,
+          explanation: "JavaScript requires parentheses around the condition: if (condition) { code }."
+        }
+      },
+      {
+        title: "Loops & Arrays",
+        content: `
+<h3>for loop</h3>
+<div class="code-block"><span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i < <span class="number">5</span>; i++) {
+    <span class="func">console</span>.<span class="func">log</span>(<span class="string">"Count:"</span>, i);
+}</div>
+<p>The classic for loop has 3 parts separated by semicolons:</p>
+<ul>
+<li><strong>let i = 0</strong> — start value</li>
+<li><strong>i < 5</strong> — keep going while this is true</li>
+<li><strong>i++</strong> — add 1 to i after each loop (shorthand for i = i + 1)</li>
+</ul>
+
+<h3>for...of (simpler way to loop through arrays)</h3>
+<div class="code-block"><span class="keyword">let</span> games = [<span class="string">"RPS Legends"</span>, <span class="string">"Rage Platformer"</span>, <span class="string">"Emblem Fury"</span>];
+
+<span class="keyword">for</span> (<span class="keyword">let</span> game <span class="keyword">of</span> games) {
+    <span class="func">console</span>.<span class="func">log</span>(<span class="string">"Playing:"</span>, game);
+}</div>
+
+<h3>Array methods</h3>
+<div class="code-block"><span class="keyword">let</span> items = [<span class="string">"Sword"</span>, <span class="string">"Shield"</span>];
+
+items.<span class="func">push</span>(<span class="string">"Potion"</span>);        <span class="comment">// Add to end</span>
+items.<span class="func">pop</span>();                  <span class="comment">// Remove last item</span>
+items.<span class="func">includes</span>(<span class="string">"Sword"</span>);    <span class="comment">// true — check if exists</span>
+<span class="func">console</span>.<span class="func">log</span>(items.<span class="keyword">length</span>);  <span class="comment">// How many items</span></div>
+
+<h3>while loop</h3>
+<div class="code-block"><span class="keyword">let</span> hp = <span class="number">100</span>;
+<span class="keyword">while</span> (hp > <span class="number">0</span>) {
+    <span class="func">console</span>.<span class="func">log</span>(<span class="string">"HP:"</span>, hp);
+    hp -= <span class="number">20</span>;  <span class="comment">// shorthand for hp = hp - 20</span>
+}
+<span class="func">console</span>.<span class="func">log</span>(<span class="string">"Game Over!"</span>);</div>`,
+        playground: {
+          lang: "javascript",
+          starter: 'let party = ["Stone", "Blade", "Crystal"];\nconsole.log("Party:", party);\n\n// Loop through and show each member\nfor (let i = 0; i < party.length; i++) {\n    console.log(`Member ${i + 1}: ${party[i]}`);\n}\n\n// Add a new member\nparty.push("Shadow");\nconsole.log("After recruiting:", party);',
+        },
+        quiz: {
+          question: "What does i++ do?",
+          options: ["Multiplies i by 2", "Adds 1 to i", "Prints i", "Creates a new variable"],
+          correct: 1,
+          explanation: "i++ is shorthand for i = i + 1. It increases i by 1."
+        }
+      },
+      {
+        title: "DOM — Controlling Webpages",
+        content: `
+<h3>What is the DOM?</h3>
+<p>The <strong>DOM</strong> (Document Object Model) is how JavaScript talks to the webpage. Every HTML element on the page is an object that JavaScript can find, read, and change.</p>
+
+<h3>Finding elements</h3>
+<div class="code-block"><span class="comment">// Find by ID</span>
+<span class="keyword">let</span> title = document.<span class="func">getElementById</span>(<span class="string">"game-title"</span>);
+
+<span class="comment">// Find by CSS selector (more flexible)</span>
+<span class="keyword">let</span> btn = document.<span class="func">querySelector</span>(<span class="string">".play-btn"</span>);
+
+<span class="comment">// Find ALL matching elements</span>
+<span class="keyword">let</span> cards = document.<span class="func">querySelectorAll</span>(<span class="string">".card"</span>);</div>
+
+<h3>Changing content and style</h3>
+<div class="code-block"><span class="comment">// Change text</span>
+title.<span class="keyword">textContent</span> = <span class="string">"Emblem Fury V7"</span>;
+
+<span class="comment">// Change HTML inside</span>
+title.<span class="keyword">innerHTML</span> = <span class="string">"&lt;strong&gt;New Title&lt;/strong&gt;"</span>;
+
+<span class="comment">// Change CSS</span>
+title.<span class="keyword">style</span>.color = <span class="string">"#00d4ff"</span>;
+title.<span class="keyword">style</span>.fontSize = <span class="string">"2rem"</span>;</div>
+
+<h3>Listening for clicks</h3>
+<div class="code-block">btn.<span class="func">addEventListener</span>(<span class="string">"click"</span>, <span class="keyword">function</span>() {
+    <span class="func">console</span>.<span class="func">log</span>(<span class="string">"Button clicked!"</span>);
+    btn.<span class="keyword">textContent</span> = <span class="string">"Clicked!"</span>;
+    btn.<span class="keyword">style</span>.background = <span class="string">"#2ecc71"</span>;
+});</div>
+<p>This is how every interactive element on your soloforte.ai projects works — buttons, clicks, keyboard input, all use event listeners.</p>
+
+<h3>This is the bridge</h3>
+<p>HTML defines <em>what's on the page</em>. CSS defines <em>how it looks</em>. JavaScript + DOM defines <em>what it does</em>. Together, they make everything you see on the web.</p>`,
+        quiz: {
+          question: "What does document.getElementById() do?",
+          options: ["Creates a new HTML element", "Finds an element on the page by its ID", "Deletes an element", "Changes the page title"],
+          correct: 1,
+          explanation: "getElementById finds an HTML element with a specific ID attribute, so JavaScript can read or change it."
+        }
+      },
+      {
+        title: "Building a Mini Project",
+        content: `
+<h3>Everything together</h3>
+<p>Here's a complete mini game using everything you've learned — variables, functions, conditions, loops, arrays, and DOM manipulation.</p>
+
+<div class="code-block"><span class="comment">// A click counter game</span>
+<span class="keyword">let</span> score = <span class="number">0</span>;
+<span class="keyword">let</span> timeLeft = <span class="number">10</span>;
+<span class="keyword">const</span> achievements = [
+    { at: <span class="number">10</span>, msg: <span class="string">"Warming up!"</span> },
+    { at: <span class="number">25</span>, msg: <span class="string">"Getting fast!"</span> },
+    { at: <span class="number">50</span>, msg: <span class="string">"Speed demon!"</span> },
+];
+
+<span class="keyword">function</span> <span class="func">handleClick</span>() {
+    score++;
+    scoreDisplay.textContent = score;
+    <span class="comment">// Check achievements</span>
+    <span class="keyword">for</span> (<span class="keyword">let</span> a <span class="keyword">of</span> achievements) {
+        <span class="keyword">if</span> (score === a.at) {
+            <span class="func">console</span>.<span class="func">log</span>(a.msg);
+        }
+    }
+}
+
+<span class="comment">// Timer countdown</span>
+<span class="keyword">function</span> <span class="func">tick</span>() {
+    timeLeft--;
+    <span class="keyword">if</span> (timeLeft <= <span class="number">0</span>) {
+        <span class="func">console</span>.<span class="func">log</span>(<span class="string">\`Game over! Score: \${score}\`</span>);
+    }
+}</div>
+
+<h3>Concepts used</h3>
+<ul>
+<li><strong>Variables</strong> — score, timeLeft</li>
+<li><strong>Const</strong> — achievements array (doesn't change)</li>
+<li><strong>Functions</strong> — handleClick(), tick()</li>
+<li><strong>Conditions</strong> — if (score === a.at)</li>
+<li><strong>Loops</strong> — for...of to check achievements</li>
+<li><strong>Arrays & Objects</strong> — achievements list with {at, msg} objects</li>
+<li><strong>DOM</strong> — textContent to update display</li>
+</ul>
+
+<h3>What's next?</h3>
+<p>From here you can learn:</p>
+<ul>
+<li><strong>Objects</strong> — group related data together (like a character with hp, attack, name)</li>
+<li><strong>Canvas</strong> — draw graphics for games (used in Emblem Fury's raycasting!)</li>
+<li><strong>async/await</strong> — fetch data from the internet</li>
+<li><strong>Frameworks</strong> — React, Vue for building complex apps</li>
+</ul>`,
+        playground: {
+          lang: "javascript",
+          starter: '// Mini RPG battle simulator\nfunction battle(player, enemy) {\n    let round = 1;\n    while (player.hp > 0 && enemy.hp > 0) {\n        enemy.hp -= player.atk;\n        if (enemy.hp > 0) player.hp -= enemy.atk;\n        console.log(`Round ${round}: You=${player.hp}HP  Enemy=${enemy.hp}HP`);\n        round++;\n    }\n    console.log(player.hp > 0 ? "Victory!" : "Defeated...");\n}\n\nbattle(\n    { name: "Kyle", hp: 100, atk: 25 },\n    { name: "Boss", hp: 80, atk: 15 }\n);',
+        },
+        quiz: {
+          question: "Which concepts from this course power the soloforte.ai games?",
+          options: [
+            "Only HTML",
+            "Variables, functions, conditions, loops, arrays, and DOM",
+            "Only CSS animations",
+            "Only console.log"
+          ],
+          correct: 1,
+          explanation: "All the games use JavaScript fundamentals: variables for game state, functions for game logic, conditions for decisions, loops for game loops, arrays for data, and DOM for rendering!"
+        }
+      }
+    ]
+  },
+  html: {
+    title: "HTML & CSS",
+    icon: "\u{1F310}",
+    lessons: [
+      {
+        title: "What is HTML?",
+        content: `
+<h3>The skeleton of every website</h3>
+<p><strong>HTML</strong> (HyperText Markup Language) defines the <em>structure</em> and <em>content</em> of every webpage. It tells the browser: "Here's a heading, here's a paragraph, here's an image, here's a button."</p>
+<p>HTML is not a programming language — it's a <em>markup</em> language. It describes content, it doesn't do calculations or make decisions.</p>
+
+<h3>Tags</h3>
+<p>HTML uses <strong>tags</strong> wrapped in angle brackets. Most tags come in pairs:</p>
+<div class="code-block"><span class="tag">&lt;h1&gt;</span>This is a heading<span class="tag">&lt;/h1&gt;</span>
+<span class="tag">&lt;p&gt;</span>This is a paragraph.<span class="tag">&lt;/p&gt;</span>
+<span class="tag">&lt;button&gt;</span>Click me<span class="tag">&lt;/button&gt;</span></div>
+<ul>
+<li><strong>&lt;h1&gt;</strong> — opening tag</li>
+<li><strong>&lt;/h1&gt;</strong> — closing tag (has a /)</li>
+<li>Everything between = the content</li>
+</ul>
+
+<h3>Basic page structure</h3>
+<div class="code-block"><span class="tag">&lt;!DOCTYPE html&gt;</span>
+<span class="tag">&lt;html&gt;</span>
+  <span class="tag">&lt;head&gt;</span>
+    <span class="tag">&lt;title&gt;</span>My Page<span class="tag">&lt;/title&gt;</span>
+  <span class="tag">&lt;/head&gt;</span>
+  <span class="tag">&lt;body&gt;</span>
+    <span class="tag">&lt;h1&gt;</span>Hello!<span class="tag">&lt;/h1&gt;</span>
+    <span class="tag">&lt;p&gt;</span>This is my website.<span class="tag">&lt;/p&gt;</span>
+  <span class="tag">&lt;/body&gt;</span>
+<span class="tag">&lt;/html&gt;</span></div>
+<ul>
+<li><strong>&lt;head&gt;</strong> — invisible settings (title, links to CSS)</li>
+<li><strong>&lt;body&gt;</strong> — everything visible on the page</li>
+</ul>`,
+        quiz: {
+          question: "What does HTML define?",
+          options: ["How a page looks (colors, fonts)", "The structure and content of a page", "The interactive behavior", "The server connection"],
+          correct: 1,
+          explanation: "HTML defines structure and content — headings, paragraphs, images, links. CSS handles appearance, and JavaScript handles behavior."
+        }
+      },
+      {
+        title: "Common HTML Tags",
+        content: `
+<h3>Headings</h3>
+<div class="code-block"><span class="tag">&lt;h1&gt;</span>Biggest heading<span class="tag">&lt;/h1&gt;</span>
+<span class="tag">&lt;h2&gt;</span>Second biggest<span class="tag">&lt;/h2&gt;</span>
+<span class="tag">&lt;h3&gt;</span>Third<span class="tag">&lt;/h3&gt;</span>
+<span class="comment">&lt;!-- h4, h5, h6 get smaller --&gt;</span></div>
+
+<h3>Text</h3>
+<div class="code-block"><span class="tag">&lt;p&gt;</span>A paragraph of text.<span class="tag">&lt;/p&gt;</span>
+<span class="tag">&lt;strong&gt;</span>Bold text<span class="tag">&lt;/strong&gt;</span>
+<span class="tag">&lt;em&gt;</span>Italic text<span class="tag">&lt;/em&gt;</span>
+<span class="tag">&lt;br&gt;</span> <span class="comment">&lt;!-- Line break (no closing tag) --&gt;</span></div>
+
+<h3>Links and images</h3>
+<div class="code-block"><span class="tag">&lt;a</span> <span class="attr">href</span>=<span class="string">"https://soloforte.ai"</span><span class="tag">&gt;</span>Visit SoloForte<span class="tag">&lt;/a&gt;</span>
+
+<span class="tag">&lt;img</span> <span class="attr">src</span>=<span class="string">"photo.jpg"</span> <span class="attr">alt</span>=<span class="string">"A photo"</span><span class="tag">&gt;</span></div>
+<p><strong>Attributes</strong> give tags extra information. <em>href</em> = where a link goes. <em>src</em> = image source. <em>alt</em> = description for screen readers.</p>
+
+<h3>Lists</h3>
+<div class="code-block"><span class="comment">&lt;!-- Bullet list --&gt;</span>
+<span class="tag">&lt;ul&gt;</span>
+  <span class="tag">&lt;li&gt;</span>RPS Legends<span class="tag">&lt;/li&gt;</span>
+  <span class="tag">&lt;li&gt;</span>Rage Platformer<span class="tag">&lt;/li&gt;</span>
+  <span class="tag">&lt;li&gt;</span>Emblem Fury<span class="tag">&lt;/li&gt;</span>
+<span class="tag">&lt;/ul&gt;</span>
+
+<span class="comment">&lt;!-- Numbered list --&gt;</span>
+<span class="tag">&lt;ol&gt;</span>
+  <span class="tag">&lt;li&gt;</span>First step<span class="tag">&lt;/li&gt;</span>
+  <span class="tag">&lt;li&gt;</span>Second step<span class="tag">&lt;/li&gt;</span>
+<span class="tag">&lt;/ol&gt;</span></div>
+
+<h3>Divs — containers</h3>
+<div class="code-block"><span class="tag">&lt;div</span> <span class="attr">class</span>=<span class="string">"card"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;h3&gt;</span>My Game<span class="tag">&lt;/h3&gt;</span>
+  <span class="tag">&lt;p&gt;</span>A cool game I made.<span class="tag">&lt;/p&gt;</span>
+<span class="tag">&lt;/div&gt;</span></div>
+<p><strong>&lt;div&gt;</strong> is a generic container. It doesn't display anything by itself — it's used to group elements together so you can style them with CSS.</p>`,
+        quiz: {
+          question: "Which tag creates a link to another page?",
+          options: ["<link>", "<a href=\"...\">", "<url>", "<goto>"],
+          correct: 1,
+          explanation: "The <a> tag (anchor) with an href attribute creates clickable links. <a href=\"url\">text</a>"
+        }
+      },
+      {
+        title: "CSS — Making Things Pretty",
+        content: `
+<h3>What is CSS?</h3>
+<p><strong>CSS</strong> (Cascading Style Sheets) controls how HTML looks — colors, sizes, fonts, spacing, layouts. HTML = structure, CSS = style.</p>
+
+<h3>Three ways to add CSS</h3>
+<div class="code-block"><span class="comment">&lt;!-- 1. Inline (on the tag itself) --&gt;</span>
+<span class="tag">&lt;h1</span> <span class="attr">style</span>=<span class="string">"color: red; font-size: 2rem;"</span><span class="tag">&gt;</span>Red Title<span class="tag">&lt;/h1&gt;</span>
+
+<span class="comment">&lt;!-- 2. Internal (in &lt;style&gt; tag) --&gt;</span>
+<span class="tag">&lt;style&gt;</span>
+  <span class="func">h1</span> {
+    <span class="attr">color</span>: <span class="string">red</span>;
+    <span class="attr">font-size</span>: <span class="string">2rem</span>;
+  }
+<span class="tag">&lt;/style&gt;</span>
+
+<span class="comment">&lt;!-- 3. External file (best practice) --&gt;</span>
+<span class="tag">&lt;link</span> <span class="attr">rel</span>=<span class="string">"stylesheet"</span> <span class="attr">href</span>=<span class="string">"style.css"</span><span class="tag">&gt;</span></div>
+
+<h3>CSS syntax</h3>
+<div class="code-block"><span class="func">selector</span> {
+    <span class="attr">property</span>: <span class="string">value</span>;
+    <span class="attr">property</span>: <span class="string">value</span>;
+}</div>
+
+<h3>Selectors</h3>
+<div class="code-block"><span class="func">h1</span> { }           <span class="comment">/* All h1 elements */</span>
+<span class="func">.card</span> { }        <span class="comment">/* Elements with class="card" */</span>
+<span class="func">#title</span> { }       <span class="comment">/* Element with id="title" */</span>
+<span class="func">button:hover</span> { } <span class="comment">/* Button when mouse hovers */</span></div>
+
+<h3>Common properties</h3>
+<div class="code-block"><span class="func">.card</span> {
+    <span class="attr">color</span>: <span class="string">#00d4ff</span>;           <span class="comment">/* Text color */</span>
+    <span class="attr">background</span>: <span class="string">#12122a</span>;      <span class="comment">/* Background color */</span>
+    <span class="attr">font-size</span>: <span class="string">1.2rem</span>;       <span class="comment">/* Text size */</span>
+    <span class="attr">padding</span>: <span class="string">20px</span>;            <span class="comment">/* Space inside */</span>
+    <span class="attr">margin</span>: <span class="string">10px</span>;             <span class="comment">/* Space outside */</span>
+    <span class="attr">border</span>: <span class="string">1px solid #333</span>;   <span class="comment">/* Border */</span>
+    <span class="attr">border-radius</span>: <span class="string">12px</span>;     <span class="comment">/* Rounded corners */</span>
+}</div>`,
+        quiz: {
+          question: "What does CSS control?",
+          options: ["Page content and text", "The visual appearance (colors, fonts, layout)", "User interactions and clicks", "Server connections"],
+          correct: 1,
+          explanation: "CSS controls how HTML looks — colors, sizes, spacing, fonts, animations, and layout."
+        }
+      },
+      {
+        title: "Layout with Flexbox",
+        content: `
+<h3>The layout problem</h3>
+<p>By default, HTML elements stack vertically. But what if you want things side by side? That's where <strong>Flexbox</strong> comes in.</p>
+
+<h3>Flexbox basics</h3>
+<div class="code-block"><span class="func">.container</span> {
+    <span class="attr">display</span>: <span class="string">flex</span>;            <span class="comment">/* Turn on flexbox */</span>
+    <span class="attr">gap</span>: <span class="string">20px</span>;                 <span class="comment">/* Space between items */</span>
+}
+
+<span class="comment">/* Items inside will now sit side by side! */</span></div>
+
+<h3>Flex direction</h3>
+<div class="code-block"><span class="func">.container</span> {
+    <span class="attr">display</span>: <span class="string">flex</span>;
+    <span class="attr">flex-direction</span>: <span class="string">row</span>;      <span class="comment">/* Horizontal (default) */</span>
+    <span class="attr">flex-direction</span>: <span class="string">column</span>;   <span class="comment">/* Vertical */</span>
+}</div>
+
+<h3>Centering (the holy grail of CSS)</h3>
+<div class="code-block"><span class="func">.centered</span> {
+    <span class="attr">display</span>: <span class="string">flex</span>;
+    <span class="attr">justify-content</span>: <span class="string">center</span>;  <span class="comment">/* Horizontal center */</span>
+    <span class="attr">align-items</span>: <span class="string">center</span>;      <span class="comment">/* Vertical center */</span>
+    <span class="attr">height</span>: <span class="string">100vh</span>;            <span class="comment">/* Full screen height */</span>
+}</div>
+
+<h3>CSS Grid (for grid layouts)</h3>
+<div class="code-block"><span class="func">.grid</span> {
+    <span class="attr">display</span>: <span class="string">grid</span>;
+    <span class="attr">grid-template-columns</span>: <span class="string">repeat(3, 1fr)</span>;  <span class="comment">/* 3 equal columns */</span>
+    <span class="attr">gap</span>: <span class="string">20px</span>;
+}</div>
+<p>Grid is what soloforte.ai's homepage uses for the project cards layout. <strong>repeat(auto-fit, minmax(280px, 1fr))</strong> makes cards responsive — they auto-wrap on smaller screens.</p>`,
+        quiz: {
+          question: "What does display: flex do?",
+          options: ["Makes text bold", "Hides the element", "Arranges child elements in a row (by default)", "Adds a border"],
+          correct: 2,
+          explanation: "display: flex turns on Flexbox layout, which by default arranges child elements horizontally in a row."
+        }
+      },
+      {
+        title: "Building a Real Page",
+        content: `
+<h3>Putting it all together</h3>
+<p>Here's a complete mini webpage combining everything — HTML structure, CSS styling, and layout:</p>
+
+<div class="code-block"><span class="tag">&lt;!DOCTYPE html&gt;</span>
+<span class="tag">&lt;html&gt;</span>
+<span class="tag">&lt;head&gt;</span>
+  <span class="tag">&lt;style&gt;</span>
+    <span class="func">body</span> {
+      <span class="attr">background</span>: <span class="string">#0a0a1a</span>;
+      <span class="attr">color</span>: <span class="string">#e0e0e0</span>;
+      <span class="attr">font-family</span>: <span class="string">sans-serif</span>;
+      <span class="attr">display</span>: <span class="string">flex</span>;
+      <span class="attr">justify-content</span>: <span class="string">center</span>;
+      <span class="attr">padding</span>: <span class="string">40px</span>;
+    }
+    <span class="func">.card</span> {
+      <span class="attr">background</span>: <span class="string">#12122a</span>;
+      <span class="attr">border</span>: <span class="string">1px solid #2a2a4a</span>;
+      <span class="attr">border-radius</span>: <span class="string">12px</span>;
+      <span class="attr">padding</span>: <span class="string">24px</span>;
+      <span class="attr">max-width</span>: <span class="string">400px</span>;
+    }
+    <span class="func">.card:hover</span> {
+      <span class="attr">border-color</span>: <span class="string">#7b68ee</span>;
+      <span class="attr">transform</span>: <span class="string">translateY(-4px)</span>;
+    }
+    <span class="func">h1</span> { <span class="attr">color</span>: <span class="string">#00d4ff</span>; }
+    <span class="func">.btn</span> {
+      <span class="attr">background</span>: <span class="string">#7b68ee</span>;
+      <span class="attr">color</span>: <span class="string">white</span>;
+      <span class="attr">border</span>: <span class="string">none</span>;
+      <span class="attr">padding</span>: <span class="string">10px 24px</span>;
+      <span class="attr">border-radius</span>: <span class="string">8px</span>;
+      <span class="attr">cursor</span>: <span class="string">pointer</span>;
+    }
+  <span class="tag">&lt;/style&gt;</span>
+<span class="tag">&lt;/head&gt;</span>
+<span class="tag">&lt;body&gt;</span>
+  <span class="tag">&lt;div</span> <span class="attr">class</span>=<span class="string">"card"</span><span class="tag">&gt;</span>
+    <span class="tag">&lt;h1&gt;</span>My First Page<span class="tag">&lt;/h1&gt;</span>
+    <span class="tag">&lt;p&gt;</span>I built this with HTML and CSS!<span class="tag">&lt;/p&gt;</span>
+    <span class="tag">&lt;button</span> <span class="attr">class</span>=<span class="string">"btn"</span><span class="tag">&gt;</span>Cool!<span class="tag">&lt;/button&gt;</span>
+  <span class="tag">&lt;/div&gt;</span>
+<span class="tag">&lt;/body&gt;</span>
+<span class="tag">&lt;/html&gt;</span></div>
+
+<h3>What you learned</h3>
+<ul>
+<li><strong>HTML tags</strong> — h1, p, div, a, img, ul/li, button</li>
+<li><strong>Attributes</strong> — class, id, href, src, style</li>
+<li><strong>CSS selectors</strong> — element, .class, #id, :hover</li>
+<li><strong>CSS properties</strong> — color, background, padding, margin, border, border-radius</li>
+<li><strong>Layout</strong> — Flexbox (display: flex) and Grid (display: grid)</li>
+</ul>
+
+<h3>What's next?</h3>
+<ul>
+<li><strong>Animations</strong> — CSS transitions and keyframes</li>
+<li><strong>Responsive design</strong> — @media queries for mobile</li>
+<li><strong>CSS variables</strong> — reusable color themes</li>
+<li><strong>JavaScript</strong> — make your page interactive (the next course!)</li>
+</ul>
+<p>Every page on soloforte.ai uses exactly these techniques. Now you know what's under the hood!</p>`,
+        quiz: {
+          question: "To build a complete interactive webpage, you need:",
+          options: [
+            "Only HTML",
+            "Only CSS",
+            "HTML for structure, CSS for style, JavaScript for behavior",
+            "Only JavaScript"
+          ],
+          correct: 2,
+          explanation: "The three pillars of the web: HTML (content/structure), CSS (appearance/style), JavaScript (interactivity/behavior). All soloforte.ai projects use all three!"
+        }
+      }
+    ]
+  }
+};
+
+// ── State ──
+let currentLang = null;
+let currentLesson = -1;
+let xp = 0;
+let completedLessons = {};
+
+// Load progress
+try {
+  const saved = localStorage.getItem('sf_learn_to_code');
+  if (saved) {
+    const data = JSON.parse(saved);
+    xp = data.xp || 0;
+    completedLessons = data.completedLessons || {};
+  }
+} catch(e) {}
+
+function saveProgress() {
+  localStorage.setItem('sf_learn_to_code', JSON.stringify({ xp, completedLessons }));
+  document.getElementById('xp-display').textContent = xp + ' XP';
+}
+
+function addXP(amount) {
+  xp += amount;
+  saveProgress();
+  showAchievement('+' + amount + ' XP', 'Keep going!');
+}
+
+function showAchievement(title, msg) {
+  const popup = document.createElement('div');
+  popup.className = 'achievement-popup';
+  popup.innerHTML = '<h4>' + title + '</h4><p>' + msg + '</p>';
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 3000);
+}
+
+// ── Navigation ──
+function selectLang(lang) {
+  currentLang = lang;
+  currentLesson = -1;
+  document.getElementById('lang-select').style.display = 'none';
+  document.getElementById('course-view').style.display = 'block';
+  document.getElementById('lesson-content').className = 'lesson-content';
+  document.getElementById('course-title').textContent = COURSES[lang].icon + ' ' + COURSES[lang].title;
+  renderLessonList();
+}
+
+function showLangSelect() {
+  currentLang = null;
+  currentLesson = -1;
+  document.getElementById('lang-select').style.display = '';
+  document.getElementById('course-view').style.display = 'none';
+  document.getElementById('lesson-content').className = 'lesson-content';
+}
+
+function renderLessonList() {
+  const course = COURSES[currentLang];
+  const list = document.getElementById('lesson-list');
+  const completed = Object.keys(completedLessons[currentLang] || {}).length;
+  const total = course.lessons.length;
+
+  document.getElementById('progress-text').textContent = completed + ' / ' + total + ' lessons';
+  document.getElementById('progress-fill').style.width = (total > 0 ? (completed / total * 100) : 0) + '%';
+
+  list.innerHTML = '';
+  course.lessons.forEach((lesson, i) => {
+    const isCompleted = completedLessons[currentLang] && completedLessons[currentLang][i];
+    const isNext = !isCompleted && (i === 0 || (completedLessons[currentLang] && completedLessons[currentLang][i-1]));
+    const isLocked = !isCompleted && !isNext && i > 0;
+
+    const item = document.createElement('div');
+    item.className = 'lesson-item' + (isCompleted ? ' completed' : '') + (isNext ? ' active' : '') + (isLocked ? ' locked' : '');
+    item.innerHTML = '<div class="lesson-num">' + (isCompleted ? '&#10003;' : (i + 1)) + '</div>' +
+      '<div class="lesson-info"><h4>' + lesson.title + '</h4>' +
+      '<p>' + (isCompleted ? 'Completed' : isLocked ? 'Complete previous lesson first' : 'Ready') + '</p></div>';
+
+    if (!isLocked) {
+      item.onclick = () => openLesson(i);
+    }
+    list.appendChild(item);
+  });
+}
+
+function openLesson(index) {
+  currentLesson = index;
+  const course = COURSES[currentLang];
+  const lesson = course.lessons[index];
+
+  document.getElementById('course-view').style.display = 'none';
+  const container = document.getElementById('lesson-content');
+  container.className = 'lesson-content active';
+
+  let html = '<button class="lesson-back" onclick="backToList()">&#8592; Back to lessons</button>';
+  html += '<h2 class="lesson-title">Lesson ' + (index + 1) + ': ' + lesson.title + '</h2>';
+  html += '<div class="lesson-body">' + lesson.content;
+
+  // Playground
+  if (lesson.playground) {
+    html += '<div class="playground">';
+    html += '<div class="playground-header"><span>Try it yourself</span><button class="run-btn" onclick="runCode(this)">&#9654; Run</button></div>';
+    html += '<textarea id="playground-code">' + escapeHtml(lesson.playground.starter) + '</textarea>';
+    html += '<div class="playground-output" id="playground-output">Click Run to see output</div>';
+    html += '</div>';
+  }
+
+  html += '</div>';
+
+  // Quiz
+  if (lesson.quiz) {
+    html += '<div class="quiz-box" id="quiz-box">';
+    html += '<h4>Quiz: ' + escapeHtml(lesson.quiz.question).replace(/\n/g, '<br>') + '</h4>';
+    lesson.quiz.options.forEach((opt, i) => {
+      html += '<button class="quiz-option" onclick="checkAnswer(' + i + ',' + lesson.quiz.correct + ')">' + escapeHtml(opt) + '</button>';
+    });
+    html += '<div class="quiz-feedback" id="quiz-feedback"></div>';
+    html += '</div>';
+  }
+
+  // Navigation
+  html += '<div class="lesson-nav">';
+  const isCompleted = completedLessons[currentLang] && completedLessons[currentLang][index];
+  if (!isCompleted && !lesson.quiz) {
+    html += '<button class="nav-btn next" onclick="completeLesson()">Complete & Continue &#8594;</button>';
+  } else if (isCompleted) {
+    if (index < course.lessons.length - 1) {
+      html += '<button class="nav-btn next" onclick="openLesson(' + (index + 1) + ')">Next Lesson &#8594;</button>';
+    } else {
+      html += '<button class="nav-btn next" onclick="backToList()">Course Complete!</button>';
+    }
+  }
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+function backToList() {
+  document.getElementById('lesson-content').className = 'lesson-content';
+  document.getElementById('course-view').style.display = 'block';
+  renderLessonList();
+}
+
+function completeLesson() {
+  if (!completedLessons[currentLang]) completedLessons[currentLang] = {};
+  if (!completedLessons[currentLang][currentLesson]) {
+    completedLessons[currentLang][currentLesson] = true;
+    addXP(20);
+  }
+  saveProgress();
+  const course = COURSES[currentLang];
+  if (currentLesson < course.lessons.length - 1) {
+    openLesson(currentLesson + 1);
+  } else {
+    addXP(50);
+    showAchievement(COURSES[currentLang].title + ' Complete!', 'You finished the entire course!');
+    backToList();
+  }
+}
+
+function checkAnswer(selected, correct) {
+  const quiz = COURSES[currentLang].lessons[currentLesson].quiz;
+  const options = document.querySelectorAll('#quiz-box .quiz-option');
+  const feedback = document.getElementById('quiz-feedback');
+
+  options.forEach((opt, i) => {
+    opt.disabled = true;
+    opt.style.pointerEvents = 'none';
+    if (i === correct) opt.className = 'quiz-option correct';
+    else if (i === selected && selected !== correct) opt.className = 'quiz-option wrong';
+  });
+
+  if (selected === correct) {
+    feedback.className = 'quiz-feedback correct show';
+    feedback.textContent = 'Correct! ' + quiz.explanation;
+    // Auto-complete the lesson
+    if (!completedLessons[currentLang]) completedLessons[currentLang] = {};
+    if (!completedLessons[currentLang][currentLesson]) {
+      completedLessons[currentLang][currentLesson] = true;
+      addXP(25);
+    }
+    saveProgress();
+    // Add next button
+    const nav = document.querySelector('.lesson-nav');
+    const course = COURSES[currentLang];
+    if (currentLesson < course.lessons.length - 1) {
+      nav.innerHTML = '<button class="nav-btn next" onclick="openLesson(' + (currentLesson + 1) + ')">Next Lesson &#8594;</button>';
+    } else {
+      addXP(50);
+      showAchievement(COURSES[currentLang].title + ' Complete!', 'You finished the entire course!');
+      nav.innerHTML = '<button class="nav-btn next" onclick="backToList()">Course Complete!</button>';
+    }
+  } else {
+    feedback.className = 'quiz-feedback wrong show';
+    feedback.textContent = 'Not quite. ' + quiz.explanation;
+    // Allow retry after 2 seconds
+    setTimeout(() => {
+      options.forEach((opt, i) => {
+        opt.style.pointerEvents = '';
+        opt.className = 'quiz-option';
+      });
+      feedback.className = 'quiz-feedback';
+    }, 2500);
+  }
+}
+
+// ── Code Playground ──
+function runCode(btn) {
+  const textarea = document.getElementById('playground-code');
+  const output = document.getElementById('playground-output');
+  const code = textarea.value;
+
+  output.className = 'playground-output';
+  let lines = [];
+
+  // Simulate Python/JS execution
+  const fakePrint = function() {
+    lines.push(Array.from(arguments).join(' '));
+  };
+
+  try {
+    // For JavaScript playgrounds, actually run the code
+    const lang = COURSES[currentLang].lessons[currentLesson].playground.lang;
+    if (lang === 'javascript') {
+      const oldLog = console.log;
+      console.log = function() { lines.push(Array.from(arguments).join(' ')); };
+      try {
+        new Function(code)();
+      } finally {
+        console.log = oldLog;
+      }
+    } else {
+      // Python simulation — parse print() statements and basic logic
+      simulatePython(code, lines);
+    }
+    output.textContent = lines.join('\n') || '(no output)';
+  } catch (e) {
+    output.className = 'playground-output error';
+    output.textContent = 'Error: ' + e.message;
+  }
+}
+
+function simulatePython(code, lines) {
+  // Simple Python interpreter for educational purposes
+  const env = {};
+  const codeLines = code.split('\n');
+  let i = 0;
+
+  function evalExpr(expr) {
+    expr = expr.trim();
+    // String literal
+    if ((expr.startsWith('"') && expr.endsWith('"')) || (expr.startsWith("'") && expr.endsWith("'"))) {
+      return expr.slice(1, -1);
+    }
+    // Number
+    if (!isNaN(expr) && expr !== '') return Number(expr);
+    // Boolean
+    if (expr === 'True') return true;
+    if (expr === 'False') return false;
+    // len()
+    let m = expr.match(/^len\((\w+)\)$/);
+    if (m) { const v = env[m[1]]; return Array.isArray(v) ? v.length : String(v).length; }
+    // str()
+    m = expr.match(/^str\((.+)\)$/);
+    if (m) return String(evalExpr(m[1]));
+    // List literal
+    if (expr.startsWith('[') && expr.endsWith(']')) {
+      const inner = expr.slice(1, -1).trim();
+      if (inner === '') return [];
+      return splitArgs(inner).map(a => evalExpr(a.trim()));
+    }
+    // Variable indexing
+    m = expr.match(/^(\w+)\[(.+)\]$/);
+    if (m) {
+      const arr = env[m[1]];
+      const idx = evalExpr(m[2]);
+      return arr[idx < 0 ? arr.length + idx : idx];
+    }
+    // random.choice
+    m = expr.match(/^random\.choice\((\w+)\)$/);
+    if (m) { const arr = env[m[1]]; return arr[Math.floor(Math.random() * arr.length)]; }
+    // random.randint
+    m = expr.match(/^random\.randint\((\d+),\s*(\d+)\)$/);
+    if (m) { const lo = Number(m[1]), hi = Number(m[2]); return Math.floor(Math.random() * (hi - lo + 1)) + lo; }
+    // Variable
+    if (env.hasOwnProperty(expr)) return env[expr];
+    // Math with operators
+    // Handle string concatenation
+    if (expr.includes('+')) {
+      const parts = splitOnOperator(expr, '+');
+      if (parts) {
+        const l = evalExpr(parts[0]), r = evalExpr(parts[1]);
+        if (typeof l === 'string' || typeof r === 'string') return String(l) + String(r);
+        return l + r;
+      }
+    }
+    // Arithmetic
+    for (const [op, fn] of [['**', (a,b)=>a**b], ['*', (a,b)=>a*b], ['/', (a,b)=>a/b], ['%', (a,b)=>a%b], ['-', (a,b)=>a-b], ['+', (a,b)=>a+b]]) {
+      const parts = splitOnOperator(expr, op);
+      if (parts) return fn(evalExpr(parts[0]), evalExpr(parts[1]));
+    }
+    return expr;
+  }
+
+  function splitOnOperator(expr, op) {
+    let depth = 0;
+    for (let j = expr.length - 1; j >= 0; j--) {
+      if (expr[j] === ')' || expr[j] === ']') depth++;
+      if (expr[j] === '(' || expr[j] === '[') depth--;
+      if (depth === 0 && expr.substring(j, j + op.length) === op && j > 0) {
+        return [expr.substring(0, j), expr.substring(j + op.length)];
+      }
+    }
+    return null;
+  }
+
+  function splitArgs(s) {
+    const args = [];
+    let depth = 0, current = '', inStr = false, strCh = '';
+    for (let c of s) {
+      if (inStr) {
+        current += c;
+        if (c === strCh) inStr = false;
+      } else if (c === '"' || c === "'") {
+        inStr = true;
+        strCh = c;
+        current += c;
+      } else if (c === '(' || c === '[') { depth++; current += c; }
+      else if (c === ')' || c === ']') { depth--; current += c; }
+      else if (c === ',' && depth === 0) { args.push(current); current = ''; }
+      else { current += c; }
+    }
+    if (current.trim()) args.push(current);
+    return args;
+  }
+
+  function evalCondition(cond) {
+    cond = cond.trim();
+    // and / or
+    const andIdx = cond.indexOf(' and ');
+    if (andIdx > 0) return evalCondition(cond.substring(0, andIdx)) && evalCondition(cond.substring(andIdx + 5));
+    const orIdx = cond.indexOf(' or ');
+    if (orIdx > 0) return evalCondition(cond.substring(0, orIdx)) || evalCondition(cond.substring(orIdx + 4));
+    // Comparisons
+    for (const [op, fn] of [['==', (a,b)=>a==b], ['!=', (a,b)=>a!=b], ['>=', (a,b)=>a>=b], ['<=', (a,b)=>a<=b], ['>', (a,b)=>a>b], ['<', (a,b)=>a<b]]) {
+      const idx = cond.indexOf(op);
+      if (idx > 0) {
+        return fn(evalExpr(cond.substring(0, idx)), evalExpr(cond.substring(idx + op.length)));
+      }
+    }
+    return !!evalExpr(cond);
+  }
+
+  function getIndent(line) {
+    return line.match(/^(\s*)/)[1].length;
+  }
+
+  function execBlock(startIdx, endIdx, baseIndent) {
+    let idx = startIdx;
+    let iterations = 0;
+    while (idx < endIdx && iterations++ < 5000) {
+      let line = codeLines[idx];
+      if (!line || line.trim() === '' || line.trim().startsWith('#') || line.trim() === 'import random') {
+        idx++;
+        continue;
+      }
+
+      const indent = getIndent(line);
+      if (indent < baseIndent) break;
+      if (indent > baseIndent) { idx++; continue; }
+
+      const trimmed = line.trim();
+
+      // print()
+      if (trimmed.startsWith('print(') && trimmed.endsWith(')')) {
+        const inner = trimmed.slice(6, -1);
+        const args = splitArgs(inner);
+        const vals = args.map(a => {
+          const v = evalExpr(a.trim());
+          return v === undefined ? 'undefined' : String(v);
+        });
+        lines.push(vals.join(' '));
+        idx++;
+        continue;
+      }
+
+      // Variable assignment
+      const assignMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/);
+      if (assignMatch && !trimmed.startsWith('if ') && !trimmed.startsWith('for ') && !trimmed.startsWith('while ') && !trimmed.startsWith('def ') && !trimmed.startsWith('elif ') && !trimmed.startsWith('else')) {
+        const name = assignMatch[1];
+        const val = assignMatch[2];
+        env[name] = evalExpr(val);
+        idx++;
+        continue;
+      }
+
+      // .append()
+      const appendMatch = trimmed.match(/^(\w+)\.append\((.+)\)$/);
+      if (appendMatch) {
+        env[appendMatch[1]].push(evalExpr(appendMatch[2]));
+        idx++;
+        continue;
+      }
+
+      // .remove()
+      const removeMatch = trimmed.match(/^(\w+)\.remove\((.+)\)$/);
+      if (removeMatch) {
+        const arr = env[removeMatch[1]];
+        const val = evalExpr(removeMatch[2]);
+        const ri = arr.indexOf(val);
+        if (ri > -1) arr.splice(ri, 1);
+        idx++;
+        continue;
+      }
+
+      // .insert()
+      const insertMatch = trimmed.match(/^(\w+)\.insert\((.+),\s*(.+)\)$/);
+      if (insertMatch) {
+        env[insertMatch[1]].splice(evalExpr(insertMatch[2]), 0, evalExpr(insertMatch[3]));
+        idx++;
+        continue;
+      }
+
+      // for loop
+      const forMatch = trimmed.match(/^for\s+(\w+)\s+in\s+range\((.+)\):$/);
+      if (forMatch) {
+        const varName = forMatch[1];
+        const rangeArgs = splitArgs(forMatch[2]).map(a => evalExpr(a.trim()));
+        let start = 0, end, step = 1;
+        if (rangeArgs.length === 1) { end = rangeArgs[0]; }
+        else if (rangeArgs.length === 2) { start = rangeArgs[0]; end = rangeArgs[1]; }
+        else { start = rangeArgs[0]; end = rangeArgs[1]; step = rangeArgs[2]; }
+
+        const bodyStart = idx + 1;
+        let bodyEnd = bodyStart;
+        while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim() === '' || getIndent(codeLines[bodyEnd]) > baseIndent)) bodyEnd++;
+
+        let broke = false;
+        for (let j = start; j < end && !broke; j += step) {
+          env[varName] = j;
+          const result = execBlock(bodyStart, bodyEnd, baseIndent + 4);
+          if (result === 'break') broke = true;
+        }
+        if (!broke) {
+          // Check for else clause after for
+          if (bodyEnd < endIdx && codeLines[bodyEnd] && codeLines[bodyEnd].trim() === 'else:') {
+            const elseStart = bodyEnd + 1;
+            let elseEnd = elseStart;
+            while (elseEnd < endIdx && codeLines[elseEnd] && (codeLines[elseEnd].trim() === '' || getIndent(codeLines[elseEnd]) > baseIndent)) elseEnd++;
+            execBlock(elseStart, elseEnd, baseIndent + 4);
+            idx = elseEnd;
+            continue;
+          }
+        }
+        idx = bodyEnd;
+        continue;
+      }
+
+      // for...in list
+      const forInMatch = trimmed.match(/^for\s+(\w+)\s+in\s+(\w+):$/);
+      if (forInMatch) {
+        const varName = forInMatch[1];
+        const arr = env[forInMatch[2]];
+        const bodyStart = idx + 1;
+        let bodyEnd = bodyStart;
+        while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim() === '' || getIndent(codeLines[bodyEnd]) > baseIndent)) bodyEnd++;
+        if (Array.isArray(arr)) {
+          for (const item of arr) {
+            env[varName] = item;
+            execBlock(bodyStart, bodyEnd, baseIndent + 4);
+          }
+        }
+        idx = bodyEnd;
+        continue;
+      }
+
+      // while loop
+      const whileMatch = trimmed.match(/^while\s+(.+):$/);
+      if (whileMatch) {
+        const cond = whileMatch[1];
+        const bodyStart = idx + 1;
+        let bodyEnd = bodyStart;
+        while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim() === '' || getIndent(codeLines[bodyEnd]) > baseIndent)) bodyEnd++;
+        let safeCount = 0;
+        while (evalCondition(cond) && safeCount++ < 200) {
+          const result = execBlock(bodyStart, bodyEnd, baseIndent + 4);
+          if (result === 'break') break;
+        }
+        idx = bodyEnd;
+        continue;
+      }
+
+      // if/elif/else
+      if (trimmed.startsWith('if ') && trimmed.endsWith(':')) {
+        const cond = trimmed.slice(3, -1);
+        const bodyStart = idx + 1;
+        let bodyEnd = bodyStart;
+        while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim() === '' || getIndent(codeLines[bodyEnd]) > baseIndent)) bodyEnd++;
+
+        if (evalCondition(cond)) {
+          execBlock(bodyStart, bodyEnd, baseIndent + 4);
+          // Skip elif/else
+          while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim().startsWith('elif ') || codeLines[bodyEnd].trim() === 'else:')) {
+            bodyEnd++;
+            while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim() === '' || getIndent(codeLines[bodyEnd]) > baseIndent)) bodyEnd++;
+          }
+        } else {
+          // Check elif/else
+          let handled = false;
+          while (bodyEnd < endIdx && !handled) {
+            const nextLine = codeLines[bodyEnd] ? codeLines[bodyEnd].trim() : '';
+            if (nextLine.startsWith('elif ') && nextLine.endsWith(':')) {
+              const elifCond = nextLine.slice(5, -1);
+              const elifStart = bodyEnd + 1;
+              bodyEnd = elifStart;
+              while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim() === '' || getIndent(codeLines[bodyEnd]) > baseIndent)) bodyEnd++;
+              if (evalCondition(elifCond)) {
+                execBlock(elifStart, bodyEnd, baseIndent + 4);
+                handled = true;
+                while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim().startsWith('elif ') || codeLines[bodyEnd].trim() === 'else:')) {
+                  bodyEnd++;
+                  while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim() === '' || getIndent(codeLines[bodyEnd]) > baseIndent)) bodyEnd++;
+                }
+              }
+            } else if (nextLine === 'else:') {
+              const elseStart = bodyEnd + 1;
+              bodyEnd = elseStart;
+              while (bodyEnd < endIdx && codeLines[bodyEnd] && (codeLines[bodyEnd].trim() === '' || getIndent(codeLines[bodyEnd]) > baseIndent)) bodyEnd++;
+              execBlock(elseStart, bodyEnd, baseIndent + 4);
+              handled = true;
+            } else {
+              break;
+            }
+          }
+        }
+        idx = bodyEnd;
+        continue;
+      }
+
+      // break
+      if (trimmed === 'break') return 'break';
+
+      // def (skip function definitions in linear execution)
+      if (trimmed.startsWith('def ')) {
+        idx++;
+        while (idx < endIdx && codeLines[idx] && (codeLines[idx].trim() === '' || getIndent(codeLines[idx]) > baseIndent)) idx++;
+        continue;
+      }
+
+      // Function call
+      const callMatch = trimmed.match(/^(\w+)\((.*)?\)$/);
+      if (callMatch) {
+        // Skip unknown function calls
+        idx++;
+        continue;
+      }
+
+      idx++;
+    }
+  }
+
+  execBlock(0, codeLines.length, 0);
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Init
+saveProgress();
+</script>
+</body>
+</html>
