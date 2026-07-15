@@ -1590,6 +1590,16 @@ function simulatePython(code, lines) {
 
   function evalExpr(expr) {
     expr = expr.trim();
+    // Strip outer parentheses
+    if (expr.startsWith('(') && expr.endsWith(')')) {
+      let depth = 0, matched = true;
+      for (let k = 0; k < expr.length; k++) {
+        if (expr[k] === '(') depth++;
+        else if (expr[k] === ')') depth--;
+        if (depth === 0 && k < expr.length - 1) { matched = false; break; }
+      }
+      if (matched) expr = expr.slice(1, -1).trim();
+    }
     // String literal
     if ((expr.startsWith('"') && expr.endsWith('"')) || (expr.startsWith("'") && expr.endsWith("'"))) {
       return expr.slice(1, -1);
