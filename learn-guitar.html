@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Learn Guitar - SoloForte AI</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0a0a1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: #0d0d25;
+      border-bottom: 1px solid #1a1a3e;
+    }
+    .top-bar a { color: #7b68ee; text-decoration: none; font-size: 0.9rem; }
+    .top-bar h1 { font-size: 1.1rem; color: #d0d0f0; }
+    .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+
+    /* Tab navigation */
+    .tab-bar {
+      display: flex;
+      gap: 0;
+      margin-bottom: 24px;
+      border-bottom: 2px solid #1a1a3e;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 12px 24px;
+      background: none;
+      border: none;
+      color: #6666aa;
+      font-size: 1rem;
+      cursor: pointer;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { color: #9999cc; }
+    .tab-btn.active { color: #00d4ff; border-bottom-color: #00d4ff; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 50px 20px 30px;
+    }
+    .hero h2 {
+      font-size: 2.2rem;
+      background: linear-gradient(90deg, #ff9a56, #ff6b6b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .hero .sub { color: #8888aa; font-size: 1rem; }
+
+    /* Lesson cards */
+    .lesson-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 30px;
+    }
+    .lesson-card {
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .lesson-card:hover { border-color: #ff9a56; transform: translateY(-2px); }
+    .lesson-card .num {
+      display: inline-block;
+      width: 28px; height: 28px;
+      line-height: 28px;
+      text-align: center;
+      background: #ff9a5622;
+      color: #ff9a56;
+      border-radius: 50%;
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .lesson-card h3 { color: #fff; font-size: 1.1rem; margin-bottom: 6px; }
+    .lesson-card p { color: #8888aa; font-size: 0.85rem; line-height: 1.5; }
+
+    /* Lesson detail */
+    .lesson-detail {
+      display: none;
+      background: #0d0d25;
+      border: 1px solid #1a1a3e;
+      border-radius: 14px;
+      padding: 30px;
+      margin-bottom: 30px;
+    }
+    .lesson-detail.show { display: block; }
+    .lesson-detail h3 {
+      color: #ff9a56;
+      font-size: 1.4rem;
+      margin-bottom: 16px;
+    }
+    .lesson-detail .section-title {
+      color: #00d4ff;
+      font-size: 1.1rem;
+      margin: 20px 0 10px;
+      padding-top: 16px;
+      border-top: 1px solid #1a1a3e;
+    }
+    .lesson-detail .section-title:first-of-type { border-top: none; padding-top: 0; }
+    .lesson-detail p, .lesson-detail li {
+      color: #c0c0d0;
+      line-height: 1.7;
+      margin-bottom: 8px;
+    }
+    .lesson-detail ul { padding-left: 20px; margin-bottom: 12px; }
+    .lesson-detail .tip {
+      background: #1a1a3e;
+      border-left: 3px solid #ff9a56;
+      padding: 12px 16px;
+      border-radius: 0 8px 8px 0;
+      margin: 12px 0;
+      font-size: 0.9rem;
+      color: #d0d0e0;
+    }
+    .back-btn {
+      background: none;
+      border: 1px solid #2a2a4a;
+      color: #7b68ee;
+      padding: 8px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+      transition: all 0.2s;
+    }
+    .back-btn:hover { border-color: #7b68ee; }
+
+    /* Chord diagram */
+    .chord-box {
+      display: inline-block;
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin: 6px;
+      text-align: center;
+      min-width: 100px;
+    }
+    .chord-box .chord-name {
+      color: #ff9a56;
+      font-weight: 700;
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+    }
+    .chord-grid-display {
+      font-family: 'Courier New', monospace;
+      font-size: 0.78rem;
+      color: #c0c0d0;
+      white-space: pre;
+      line-height: 1.3;
+    }
+
+    /* Tab display */
+    .tab-display {
+      background: #0a0a18;
+      border: 1px solid #1a1a3e;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin: 12px 0;
+      overflow-x: auto;
+    }
+    .tab-display pre {
+      font-family: 'Courier New', monospace;
+      font-size: 0.82rem;
+      color: #d0d0e0;
+      line-height: 1.5;
+      white-space: pre;
+    }
+
+    /* Song cards */
+    .song-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+    .song-card {
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .song-card:hover { border-color: #ff6b6b; transform: translateY(-2px); }
+    .song-card h3 { color: #fff; font-size: 1.05rem; margin-bottom: 4px; }
+    .song-card .artist { color: #ff9a56; font-size: 0.85rem; margin-bottom: 6px; }
+    .song-card .meta { color: #6666aa; font-size: 0.8rem; }
+    .song-card .diff {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      margin-top: 8px;
+    }
+    .diff-easy { background: #22c55e22; color: #22c55e; }
+    .diff-med { background: #f59e0b22; color: #f59e0b; }
+    .diff-hard { background: #ef444422; color: #ef4444; }
+
+    /* Song detail */
+    .song-detail {
+      display: none;
+      background: #0d0d25;
+      border: 1px solid #1a1a3e;
+      border-radius: 14px;
+      padding: 30px;
+      margin-bottom: 30px;
+    }
+    .song-detail.show { display: block; }
+    .song-detail h3 { color: #ff6b6b; font-size: 1.4rem; margin-bottom: 4px; }
+    .song-detail .artist { color: #ff9a56; font-size: 1rem; margin-bottom: 16px; }
+    .song-detail .guide-section {
+      background: #1a1a3e;
+      border-radius: 10px;
+      padding: 16px;
+      margin: 12px 0;
+    }
+    .song-detail .guide-section h4 {
+      color: #00d4ff;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+    .song-detail .guide-section p, .song-detail .guide-section li {
+      color: #b0b0c0;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    /* Search */
+    .search-wrap {
+      margin-bottom: 20px;
+    }
+    .search-input {
+      width: 100%;
+      padding: 12px 18px;
+      background: #12122a;
+      border: 1px solid #2a2a4a;
+      border-radius: 10px;
+      color: #e0e0e0;
+      font-size: 1rem;
+      outline: none;
+    }
+    .search-input::placeholder { color: #555577; }
+    .search-input:focus { border-color: #7b68ee; box-shadow: 0 0 0 3px rgba(123,104,238,0.15); }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .hero h2 { font-size: 1.6rem; }
+      .tab-btn { padding: 10px 16px; font-size: 0.9rem; }
+      .lesson-detail, .song-detail { padding: 20px; }
+      .chord-box { min-width: 85px; padding: 10px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <a href="index.html">< Back</a>
+    <h1>Learn Guitar</h1>
+    <span></span>
+  </div>
+
+  <div class="hero">
+    <h2>Learn Guitar</h2>
+    <p class="sub">From zero to playing songs - beginner-friendly lessons + tabs</p>
+  </div>
+
+  <div class="container">
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="showTab('lessons')">Lessons</button>
+      <button class="tab-btn" onclick="showTab('songs')">Song Tabs</button>
+    </div>
+
+    <!-- ==================== LESSONS TAB ==================== -->
+    <div id="tab-lessons" class="tab-content active">
+      <div id="lessons-list">
+        <div class="lesson-grid" id="lesson-grid"></div>
+      </div>
+      <div id="lesson-detail" class="lesson-detail"></div>
+    </div>
+
+    <!-- ==================== SONGS TAB ==================== -->
+    <div id="tab-songs" class="tab-content">
+      <div id="songs-list">
+        <div class="search-wrap">
+          <input class="search-input" type="text" placeholder="Search songs..." oninput="filterSongs(this.value)">
+        </div>
+        <div class="song-grid" id="song-grid"></div>
+      </div>
+      <div id="song-detail" class="song-detail"></div>
+    </div>
+  </div>
+
+<script>
+// ==================== LESSONS DATA ====================
+var lessons = [
+  {
+    id: 1,
+    title: 'Getting Started',
+    desc: 'How to hold the guitar, parts of the guitar, and tuning',
+    content: function() { return `
+      <h4 class="section-title">Parts of the Guitar</h4>
+      <ul>
+        <li><b>Headstock</b> - top of the guitar where tuning pegs are</li>
+        <li><b>Neck</b> - the long part you press strings against</li>
+        <li><b>Frets</b> - the metal strips across the neck (numbered from headstock: 1st, 2nd, 3rd...)</li>
+        <li><b>Body</b> - the big part that produces sound</li>
+        <li><b>Sound hole</b> - the hole in the body (acoustic guitars)</li>
+        <li><b>Bridge</b> - where strings attach at the bottom</li>
+      </ul>
+
+      <h4 class="section-title">How to Hold It</h4>
+      <ul>
+        <li>Sit comfortably with the guitar body resting on your right leg (if right-handed)</li>
+        <li>The neck should angle slightly upward, not parallel to the floor</li>
+        <li>Your left hand wraps around the neck - thumb behind the neck, fingers curving over to press strings</li>
+        <li>Your right hand strums or picks over the sound hole</li>
+      </ul>
+      <div class="tip">Don't grip the neck like a baseball bat. Keep your thumb centered behind the neck and use your fingertips to press strings.</div>
+
+      <h4 class="section-title">String Names</h4>
+      <p>6 strings, thickest to thinnest (top to bottom when holding):</p>
+      <ul>
+        <li><b>6th</b> - E (thickest, lowest sound)</li>
+        <li><b>5th</b> - A</li>
+        <li><b>4th</b> - D</li>
+        <li><b>3rd</b> - G</li>
+        <li><b>2nd</b> - B</li>
+        <li><b>1st</b> - e (thinnest, highest sound)</li>
+      </ul>
+      <div class="tip">Remember: <b>E</b>ddie <b>A</b>te <b>D</b>ynamite, <b>G</b>ood <b>B</b>ye <b>E</b>ddie</div>
+
+      <h4 class="section-title">Tuning</h4>
+      <p>Use a free tuner app (GuitarTuna is great). Pluck each string and turn the tuning peg until the app shows green / in tune. Standard tuning: E A D G B e.</p>
+    `; }
+  },
+  {
+    id: 2,
+    title: 'Reading Tabs',
+    desc: 'How to read guitar tablature (tabs) - the simplest way to learn songs',
+    content: function() { return `
+      <h4 class="section-title">What Are Tabs?</h4>
+      <p>Tabs (tablature) tell you exactly which string and fret to press. Way easier than reading sheet music. 6 lines = 6 strings:</p>
+      <div class="tab-display"><pre>e|----0-----1-----3-----|
+B|----1-----1-----0-----|
+G|----0-----2-----0-----|
+D|----2-----3-----0-----|
+A|----3-----3-----2-----|
+E|----x-----1-----3-----|</pre></div>
+      <ul>
+        <li>Bottom line = thickest string (low E). Top line = thinnest (high e).</li>
+        <li>Numbers = which fret to press. <b>0</b> = play the string open (no pressing). <b>x</b> = don't play that string.</li>
+        <li>Read left to right, like reading a book.</li>
+      </ul>
+
+      <h4 class="section-title">Example</h4>
+      <div class="tab-display"><pre>e|---0---2---3---|
+B|---1---3---3---|
+G|---0---2---0---|
+D|---2---0---0---|
+A|---3-------2---|
+E|-----------3---|</pre></div>
+      <p>This plays 3 chords one after another: C, then D, then G.</p>
+
+      <h4 class="section-title">Special Symbols</h4>
+      <ul>
+        <li><b>h</b> = hammer-on (e.g. 2h4 = press fret 2, then quickly tap fret 4 without picking again)</li>
+        <li><b>p</b> = pull-off (e.g. 4p2 = press fret 4, then lift off to fret 2)</li>
+        <li><b>/</b> = slide up (e.g. 5/7 = slide from fret 5 to 7)</li>
+        <li><b>\\</b> = slide down</li>
+        <li><b>~</b> = vibrato (wiggle the string for a wavering sound)</li>
+      </ul>
+      <div class="tip">Every song tab in this app uses this format. Once you can read tabs, you can play any song here.</div>
+    `; }
+  },
+  {
+    id: 3,
+    title: 'Your First Chords',
+    desc: 'Learn Em, C, G, and D - the 4 chords that play hundreds of songs',
+    content: function() { return `
+      <h4 class="section-title">The Big 4 Open Chords</h4>
+      <p>These 4 chords let you play a huge number of popular songs. Practice switching between them.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">
+        ${chordDiagram('Em', [0,2,2,0,0,0], 'Easiest chord. Just 2 fingers.')}
+        ${chordDiagram('C', ['x',3,2,0,1,0], 'Stretch your fingers wide.')}
+        ${chordDiagram('G', [3,2,0,0,0,3], 'Pinky on the 1st string, 3rd fret.')}
+        ${chordDiagram('D', ['x','x',0,2,3,2], 'Only strum the bottom 4 strings.')}
+      </div>
+
+      <h4 class="section-title">How to Read Chord Diagrams</h4>
+      <ul>
+        <li>Numbers show which fret to press on each string</li>
+        <li><b>0</b> = play the string open</li>
+        <li><b>x</b> = don't play that string</li>
+        <li>Strings are listed E A D G B e (thick to thin)</li>
+      </ul>
+
+      <h4 class="section-title">Practice Routine</h4>
+      <ol>
+        <li>Place your fingers for Em. Strum all strings slowly. Every string should ring clearly.</li>
+        <li>Switch to C. Strum. Check every string sounds clean (no buzzing).</li>
+        <li>Switch to G, then D. Same thing.</li>
+        <li>Repeat: Em → C → G → D, getting faster each time.</li>
+      </ol>
+      <div class="tip">If a string buzzes, press harder or move your finger closer to the fret (metal strip). Don't press ON the fret - press just behind it.</div>
+
+      <h4 class="section-title">More Open Chords</h4>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">
+        ${chordDiagram('Am', ['x',0,2,2,1,0], 'A minor - sad/emotional sound.')}
+        ${chordDiagram('E', [0,2,2,1,0,0], 'E major - strong, full sound.')}
+        ${chordDiagram('A', ['x',0,2,2,2,0], 'A major - bright and happy.')}
+        ${chordDiagram('Dm', ['x','x',0,2,3,1], 'D minor - dark and moody.')}
+      </div>
+    `; }
+  },
+  {
+    id: 4,
+    title: 'Strumming Patterns',
+    desc: 'Learn basic strumming patterns to make chords sound like music',
+    content: function() { return `
+      <h4 class="section-title">Down Strum vs Up Strum</h4>
+      <ul>
+        <li><b>Down strum (D)</b> - brush your pick/thumb downward across the strings (thick to thin)</li>
+        <li><b>Up strum (U)</b> - brush upward (thin to thick). Lighter, hits mainly the thinner strings.</li>
+      </ul>
+
+      <h4 class="section-title">Pattern 1: All Downs (Beginner)</h4>
+      <div class="tab-display"><pre>D   D   D   D
+1   2   3   4</pre></div>
+      <p>Just strum down on every beat. Simple but effective for slow songs. Try this with Em or G.</p>
+
+      <h4 class="section-title">Pattern 2: Down-Up (Most Common)</h4>
+      <div class="tab-display"><pre>D   D U   U D U
+1   2 &   & 4 &</pre></div>
+      <p>This is the most versatile pattern. Works for tons of pop songs. The "&" means the half-beat between counts.</p>
+
+      <h4 class="section-title">Pattern 3: Campfire Strum</h4>
+      <div class="tab-display"><pre>D   D U D U D U
+1   2 & 3 & 4 &</pre></div>
+      <p>Classic acoustic pattern. Great for sing-along songs. Steady and rhythmic.</p>
+
+      <h4 class="section-title">Pattern 4: Pop/Rock</h4>
+      <div class="tab-display"><pre>D   D U   U D U
+1   2 &   & 4 &</pre></div>
+      <p>Accent (strum harder) on beats 1 and 3. This gives it energy.</p>
+
+      <div class="tip">Start SLOW. Use a metronome app (search "metronome" on your phone) at 60 BPM. Speed up only when it feels easy. Rushing = sloppy playing.</div>
+
+      <h4 class="section-title">Muting</h4>
+      <p>Lightly rest your strumming hand palm on the strings near the bridge to get a percussive "chk" sound. Mix with strums for rhythm variety.</p>
+    `; }
+  },
+  {
+    id: 5,
+    title: 'Fingerpicking Intro',
+    desc: 'Play individual strings for a softer, more detailed sound',
+    content: function() { return `
+      <h4 class="section-title">Right Hand Position</h4>
+      <ul>
+        <li><b>Thumb (p)</b> - plays strings 6, 5, 4 (the thick bass strings)</li>
+        <li><b>Index (i)</b> - plays string 3</li>
+        <li><b>Middle (m)</b> - plays string 2</li>
+        <li><b>Ring (a)</b> - plays string 1</li>
+      </ul>
+      <p>Rest your fingers lightly on their assigned strings. Pluck upward with a slight curl.</p>
+
+      <h4 class="section-title">Pattern 1: Basic Arpeggio</h4>
+      <div class="tab-display"><pre>e|--------0--------0---|
+B|------1--------1-----|
+G|----0--------0-------|
+D|--2--------2---------|
+A|-3--------3----------|
+E|---------------------|
+  p  i  m  a  p  i  m  a</pre></div>
+      <p>This is the Am chord played one string at a time. Thumb hits the bass note, then fingers go up. This is the foundation of fingerpicking.</p>
+
+      <h4 class="section-title">Pattern 2: Travis Picking</h4>
+      <div class="tab-display"><pre>e|----0-------0--------|
+B|--------1--------1---|
+G|------0--------0-----|
+D|--2--------2---------|
+A|-----------3---------|
+E|-3-------------------|
+  p    m  i    p    m  i</pre></div>
+      <p>The bass note alternates between two strings while fingers play the melody. Used in country, folk, and ballads.</p>
+
+      <h4 class="section-title">Pattern 3: River Flows Pattern</h4>
+      <div class="tab-display"><pre>e|------0---0---0---0---|
+B|----0---0---0---0-----|
+G|--0---0---0---0-------|
+D|-2--------------------|
+A|----------------------|
+E|----------------------|</pre></div>
+      <p>Rolling arpeggio - beautiful for emotional songs. This is similar to how "River Flows in You" is played on guitar.</p>
+
+      <div class="tip">Fingerpicking takes time. Practice each pattern slowly for 5 minutes a day. In a week you'll feel the difference.</div>
+    `; }
+  },
+  {
+    id: 6,
+    title: 'Chord Progressions',
+    desc: 'Common chord sequences that appear in most popular songs',
+    content: function() { return `
+      <h4 class="section-title">The 4-Chord Song</h4>
+      <p>Hundreds of pop songs use the same 4 chords:</p>
+      <div class="tab-display"><pre>| G     | D     | Em    | C     |
+| I     | V     | vi    | IV    |</pre></div>
+      <p>Try strumming G → D → Em → C with Pattern 2 from the strumming lesson. Sounds familiar? That's because songs like "Someone Like You", "Let It Be", and "No Woman No Cry" all use this progression.</p>
+
+      <h4 class="section-title">Sad Progression</h4>
+      <div class="tab-display"><pre>| Am    | F     | C     | G     |</pre></div>
+      <p>Minor key version. Used in "Numb" (Linkin Park), "Save Tonight", and many ballads.</p>
+
+      <h4 class="section-title">Rock Progression</h4>
+      <div class="tab-display"><pre>| E     | A     | B7    | E     |</pre></div>
+      <p>Classic rock/blues feel. The B7 adds tension that resolves back to E.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:12px 0">
+        ${chordDiagram('F', [1,3,3,2,1,1], 'Barre chord - press ALL strings at fret 1 with your index.')}
+        ${chordDiagram('B7', ['x',2,1,2,0,2], 'Easier than full B. Good for beginners.')}
+      </div>
+
+      <h4 class="section-title">How to Practice</h4>
+      <ol>
+        <li>Pick a progression above</li>
+        <li>Set a metronome to 70 BPM</li>
+        <li>Strum each chord 4 times (1 bar) then switch</li>
+        <li>Loop the whole progression until switching feels smooth</li>
+        <li>Speed up by 5 BPM when it's comfortable</li>
+      </ol>
+      <div class="tip">The goal isn't speed - it's smooth chord changes. If you pause between chords, slow down until the transition is seamless.</div>
+    `; }
+  },
+  {
+    id: 7,
+    title: 'Barre Chords',
+    desc: 'The next level - moveable chord shapes that unlock every key',
+    content: function() { return `
+      <h4 class="section-title">What Are Barre Chords?</h4>
+      <p>A barre chord uses your index finger to press ALL strings at one fret (like a capo), then your other fingers form a chord shape on top. They're harder than open chords but once you learn 2 shapes, you can play ANY chord by moving up/down the neck.</p>
+
+      <h4 class="section-title">E-Shape Barre (Most Important)</h4>
+      <p>Take the open E major shape and move it up the neck with a barre:</p>
+      <div class="tab-display"><pre>Fret:  1   2   3   4   5
+e: |---1---|---|---|---|---|  <- barre (index)
+B: |---1---|---|---|---|---|  <- barre
+G: |---1---|---3---|---|---|  <- ring finger
+D: |---1---|---3---|---|---|  <- ring finger
+A: |---1---|---|---4---|---|  <- pinky
+E: |---1---|---|---|---|---|  <- barre
+
+This at fret 1 = F major
+This at fret 3 = G major
+This at fret 5 = A major</pre></div>
+
+      <h4 class="section-title">Am-Shape Barre</h4>
+      <p>Same idea but based on the Am open chord shape:</p>
+      <div class="tab-display"><pre>Fret:  1   2   3   4   5
+e: |---1---|---|---|---|---|
+B: |---1---|---|---|---4---|
+G: |---1---|---|---|---4---|
+D: |---1---|---|---|---4---|
+A: |---1---|---|---|---|---|
+E: |---x---|---|---|---|---|
+
+This at fret 1 = Bbm (B flat minor)
+This at fret 3 = Cm
+This at fret 5 = Dm</pre></div>
+
+      <div class="tip">Barre chords are the hardest thing for beginners. Your hand WILL hurt at first. Practice for 5 minutes, rest, repeat. It takes 2-4 weeks for your hand to build the strength. Everyone goes through this - don't give up.</div>
+    `; }
+  },
+  {
+    id: 8,
+    title: 'Practice Tips',
+    desc: 'How to actually improve - schedule, common mistakes, and goals',
+    content: function() { return `
+      <h4 class="section-title">Daily Practice Schedule (15-30 min)</h4>
+      <ol>
+        <li><b>Warm up (3 min)</b> - Play each open chord once, strum slowly. Stretch fingers.</li>
+        <li><b>Chord changes (5 min)</b> - Pick 2 chords, switch back and forth with a metronome. Count how many clean switches you get in 1 minute. Beat your record.</li>
+        <li><b>Strumming/fingerpicking (5 min)</b> - Practice one pattern from the lessons. Stay on one chord so you can focus on your right hand.</li>
+        <li><b>Song practice (10-15 min)</b> - Pick a song from the Song Tabs section. Play through it slowly. Don't worry about speed.</li>
+      </ol>
+
+      <h4 class="section-title">Common Mistakes</h4>
+      <ul>
+        <li><b>Pressing too far from the fret</b> - Press just behind the fret wire, not in the middle of the space. Closer = cleaner sound.</li>
+        <li><b>Flat fingers</b> - Use your fingertips, not the pads. Curl your fingers so they come down vertically on the string.</li>
+        <li><b>Death grip</b> - Squeezing the neck too hard tires your hand fast. Use minimum pressure needed for a clean sound.</li>
+        <li><b>Ignoring muted strings</b> - After placing a chord, strum each string one by one. If any sound dead/buzzy, adjust.</li>
+        <li><b>Trying to play fast too early</b> - Slow and clean beats fast and sloppy every time.</li>
+      </ul>
+
+      <h4 class="section-title">Realistic Timeline</h4>
+      <ul>
+        <li><b>Week 1-2:</b> Open chords feel awkward, fingers hurt. Normal.</li>
+        <li><b>Week 3-4:</b> Chord switches get smoother, calluses forming, less pain.</li>
+        <li><b>Month 2:</b> Can play simple songs all the way through. Strumming feels natural.</li>
+        <li><b>Month 3-4:</b> Barre chords become possible. Fingerpicking starts clicking.</li>
+        <li><b>Month 6+:</b> Can learn most pop songs from tabs. Playing feels fun, not frustrating.</li>
+      </ul>
+      <div class="tip">15 minutes every day beats 2 hours once a week. Consistency is everything.</div>
+    `; }
+  }
+];
+
+// ==================== SONGS DATA ====================
+var songs = [
+  {
+    title: 'River Flows in You',
+    artist: 'Yiruma',
+    key: 'A major',
+    difficulty: 'Medium',
+    diffClass: 'diff-med',
+    tempo: 'Slow (q = 68)',
+    strum: 'Fingerpicking - rolling arpeggio pattern',
+    capo: 'No capo',
+    chords: ['A','E','F#m','D','Bm'],
+    guide: 'Originally a piano piece. This guitar arrangement uses fingerpicking arpeggios to mimic the flowing piano right hand. Keep it gentle and let notes ring into each other.',
+    tab: `Intro/Main Theme (fingerpicking):
+e|------0---0-------0---0-------0---0-------0---0---|
+B|----2---2---2---2---2---2---2---2---2---2---2---2--|
+G|--2---2-------2---2-------2---2-------2---2-------|
+D|-2-------------0-----------4-----------2----------|
+A|---------------------------------------------------|
+E|---------------------------------------------------|
+
+Verse: A - E - F#m - D (repeat)
+Play each chord as arpeggio (thumb bass, fingers roll up)
+
+Chorus: D - A - E - F#m - D - E - A
+Strum gently or continue fingerpicking
+
+Bridge:
+e|------2---2-------0---0-------2---2---|
+B|----2---2---2---0---0---0---3---3---3-|
+G|--2---2-------1---1-------2---2-------|
+D|-0-----------2-----------0-----------|
+A|--------------------------------------|
+E|--------------------------------------|`
+  },
+  {
+    title: 'Moonlight Sonata (1st Movement)',
+    artist: 'Beethoven',
+    key: 'C#m (use Capo 4, play Am)',
+    difficulty: 'Medium',
+    diffClass: 'diff-med',
+    tempo: 'Slow (q = 56)',
+    strum: 'Fingerpicking - steady triplet pattern',
+    capo: 'Capo 4th fret',
+    chords: ['Am','E','Dm','G','C'],
+    guide: 'The famous triplet arpeggio pattern. Each group of 3 notes should be perfectly even. Keep the tempo very steady and controlled. Let the bass notes sustain while fingers play the upper pattern.',
+    tab: `Main Pattern (with capo 4):
+e|--------0---0---0---0---0---0---0---0---|
+B|------1---1---1---1---1---1---1---1-----|
+G|----2---2---2---2---2---2---2---2-------|
+D|--2-----------2-----------2------------|
+A|-0-----------0-----------0-------------|
+E|----------------------------------------|
+   Am (triplet feel: 1-trip-let 2-trip-let...)
+
+Movement to E:
+e|--------0---0---0---0---0---0---|
+B|------0---0---0---0---0---0-----|
+G|----1---1---1---1---1---1-------|
+D|--2-----------2-----------------|
+A|--------------------------------|
+E|-0-----------0------------------|
+
+Dm section:
+e|--------1---1---1---1---1---1---|
+B|------3---3---3---3---3---3-----|
+G|----2---2---2---2---2---2-------|
+D|--0-----------0-----------------|
+A|--------------------------------|
+E|--------------------------------|`
+  },
+  {
+    title: 'Fur Elise',
+    artist: 'Beethoven',
+    key: 'Am',
+    difficulty: 'Easy',
+    diffClass: 'diff-easy',
+    tempo: 'Moderate (q = 80)',
+    strum: 'Single note melody + chords',
+    capo: 'No capo',
+    chords: ['Am','E','C','G'],
+    guide: 'The iconic melody plays well as single notes on guitar. The main riff uses just the top 2 strings. Add bass chords underneath once comfortable with the melody.',
+    tab: `Main Theme:
+e|--0-1-0-1-0---0-1-0-1-0---------|
+B|----------------0-------3-1-0---|
+G|-----------------------------2-0-|
+D|---------------------------------|
+A|---------------------------------|
+E|---------------------------------|
+
+e|--0-1-0-1-0---0-1-0-1-0---------|
+B|----------------0-------3-1-0---|
+G|-----------------------------0---|
+D|---------------------------------|
+A|-0-------------------------------|
+E|---------------------------------|
+
+B Section:
+e|--0---3---5-----|--8---7---5-----|
+B|-----1---1---1--|-----1---1---1--|
+G|---2---2---2----|---0---0---0----|
+D|----------------|----------------|
+A|-3--------------|-0--------------|
+E|----------------|----------------|
+
+Full pattern: play A section twice, B section, A section again.`
+  },
+  {
+    title: 'Canon in D',
+    artist: 'Pachelbel',
+    key: 'D major',
+    difficulty: 'Medium',
+    diffClass: 'diff-med',
+    tempo: 'Moderate (q = 72)',
+    strum: 'Fingerpicking arpeggio',
+    capo: 'No capo',
+    chords: ['D','A','Bm','F#m','G','A'],
+    guide: 'The famous progression: D - A - Bm - F#m - G - D - G - A. This repeats throughout the entire piece. Start with just strumming the chords, then add the fingerpicked melody on top.',
+    tab: `Chord Progression (strum or fingerpick):
+| D     | A     | Bm    | F#m   |
+| G     | D     | G     | A     |
+
+Fingerpicked melody over chords:
+D                    A
+e|----2-------2-------|----0-------0------|
+B|------3-------3-----|------2-------2----|
+G|--2-----2-------2---|--2-----2-------2--|
+D|-0------------------|--------------------|
+A|--------------------|-0------------------|
+E|--------------------|---------------------|
+
+Bm                   F#m
+e|----2-------2-------|----2-------2------|
+B|------3-------3-----|------2-------2----|
+G|--4-----4-------4---|--2-----2-------2--|
+D|--------------------|--4-----------------|
+A|-2-------------------|--------------------|
+E|--------------------|-2------------------|
+
+G                    D
+e|----3-------3-------|----2-------2------|
+B|------3-------3-----|------3-------3----|
+G|--0-----0-------0---|--2-----2-------2--|
+D|-0------------------|-0-----------------|
+A|--------------------|--------------------|
+E|-3-------------------|--------------------|`
+  },
+  {
+    title: 'Unravel (Tokyo Ghoul OP)',
+    artist: 'TK from Ling Tosite Sigure',
+    key: 'Cm (use Capo 3, play Am)',
+    difficulty: 'Hard',
+    diffClass: 'diff-hard',
+    tempo: 'Moderate (q = 96)',
+    strum: 'Mix of fingerpicking and strumming',
+    capo: 'Capo 3rd fret',
+    chords: ['Am','F','C','G','Em','Dm'],
+    guide: 'Emotional and dynamic. The intro is gentle fingerpicking that builds to powerful strumming in the chorus. The key is the contrast between quiet verses and loud chorus. Let the quiet parts breathe.',
+    tab: `Intro (fingerpicking, capo 3):
+e|--0-------0-------0-------0-------|
+B|----1-------1-------1-------1-----|
+G|------2-------0-------2-------0---|
+D|--2-------2-------0-------0-------|
+A|-0-------0------------------------|
+E|-----------------3-------3--------|
+   Am              G
+
+Verse: Am - F - C - G (fingerpick gently)
+e|--0-------0---||--1-------1---||--0-------0---||--3-------3---|
+B|----1-------1-||----1-------1-||----1-------1-||----3-------3-|
+G|------2-------||----- 2-------||----- 0-------||----- 0-------|
+D|--2-----------||--3-----------||--2-----------||--0-----------|
+A|-0------------||--3-----------||--3-----------||-------------- |
+E|--------------||--1-----------||--------------||-3------------|
+
+Chorus (strum hard):
+| Am    | F     | C     | G     |
+| Am    | F     | C     | G     |
+| Dm    | Am    | Em    | Am    |
+
+Strumming pattern for chorus: D D U D U (aggressive, accent beat 1)`
+  },
+  {
+    title: 'Counting Stars',
+    artist: 'OneRepublic',
+    key: 'Am',
+    difficulty: 'Easy',
+    diffClass: 'diff-easy',
+    tempo: 'Moderate (q = 104)',
+    strum: 'Down-up strumming pattern',
+    capo: 'No capo',
+    chords: ['Am','C','G','F'],
+    guide: 'One of the easiest songs to play on guitar - just 4 chords looping. The rhythm is the key: keep the strumming pattern bouncy and consistent. Great first song to learn.',
+    tab: `Whole song uses: Am - C - G - F (repeat)
+
+Strumming pattern:
+D   D U   U D U
+1   2 &   & 4 &
+
+Intro (single notes):
+e|----------0---0---0---0---0---0---|
+B|--------1---1---1---1---1---1-----|
+G|------2---2---2---2---2---2-------|
+D|----2-----------------------------|
+A|--0-------------------------------|
+E|----------------------------------|
+
+Then strum:
+Am              C
+|  D  D U  U D U |  D  D U  U D U |
+G               F
+|  D  D U  U D U |  D  D U  U D U |
+
+That's it - loop the whole song. Accent the first down strum of each bar.`
+  },
+  {
+    title: 'Across the Stars',
+    artist: 'John Williams (Star Wars)',
+    key: 'Dm',
+    difficulty: 'Hard',
+    diffClass: 'diff-hard',
+    tempo: 'Slow (q = 60)',
+    strum: 'Fingerpicking - expressive and free',
+    capo: 'No capo',
+    chords: ['Dm','Am','Bb','Gm','A7','F','C'],
+    guide: 'The love theme from Star Wars Episode II. Sweeping and romantic. Play freely with rubato (slight tempo changes for expression). Let notes ring and overlap. The melody should sing above the bass notes.',
+    tab: `Main Theme (fingerpicked):
+e|------1---1-------0---0-------1---1---|
+B|----3---3---3---1---1---1---3---3---3-|
+G|--2---2-------2---2-------2---2-------|
+D|-0-----------0-----------0-----------|
+A|--------------------------------------|
+E|--------------------------------------|
+   Dm              Am              Dm
+
+e|------1---1-------3---3-------0---0---|
+B|----1---1---1---3---3---3---1---1---1-|
+G|--2---2-------3---3-------0---0-------|
+D|-3-----------0-----------2-----------|
+A|--------------------------------------|
+E|--------------------------------------|
+   Bb              Gm              A7
+
+Bridge:
+e|------1---1-------0-------1---------|
+B|----1---1---1---1---1---3---3-------|
+G|--2---2-------0-------2---2---------|
+D|-3-----------2-------0-------------|
+A|------------------------------------|
+E|------------------------------------|
+   Bb          Am       Dm`
+  },
+  {
+    title: 'Sign of the Times',
+    artist: 'Harry Styles',
+    key: 'F major (Capo 1, play E shapes)',
+    difficulty: 'Easy',
+    diffClass: 'diff-easy',
+    tempo: 'Moderate (q = 120)',
+    strum: 'Gentle strumming, builds to full strum in chorus',
+    capo: 'Capo 1st fret',
+    chords: ['E','Bm7','A','E'],
+    guide: 'Simple chord progression that repeats. The feel changes from soft verse to big chorus through strumming intensity, not chord changes. Start gentle, build up.',
+    tab: `Capo 1st fret. Shapes shown are relative to capo.
+
+Verse (gentle strum):
+| E       | Bm7     | A       | E       |
+
+Bm7 easy shape:
+e|--0--|
+B|--0--|
+G|--2--|
+D|--0--|
+A|--2--|
+E|--x--|
+
+Strumming (verse - light):
+D       D   U       U
+1       2   &       &
+
+Chorus (full strum):
+| E       | Bm7     | A       | E       |
+D   D U   U D U
+1   2 &   & 4 &
+
+The whole song is just these 3 chords. Focus on dynamics - play the verse
+quietly, let the chorus ring out loud. That contrast IS the song.`
+  },
+  {
+    title: 'Rewrite the Stars',
+    artist: 'The Greatest Showman',
+    key: 'G major',
+    difficulty: 'Medium',
+    diffClass: 'diff-med',
+    tempo: 'Moderate (q = 100)',
+    strum: 'Fingerpicking verse, strumming chorus',
+    capo: 'No capo',
+    chords: ['G','D','Em','C','Am'],
+    guide: 'Duet feel. The verse is intimate (fingerpick), the chorus is powerful (strum hard). The chord progression is common so focus on making the transitions between sections dramatic.',
+    tab: `Intro (fingerpicking):
+e|------3-------3-------0-------0-------|
+B|----0---0---0---0---0---0---0---0-----|
+G|--0---0---0---0---0---0---0---0-------|
+D|-0-----------0-----------2-----------|
+A|-----------------3-------3-----------|
+E|-3-----------3------------------------|
+   G               C
+
+Verse: G - D - Em - C (fingerpick)
+e|------3-------3---||------2-------2---||
+B|----0---0---0---0-||----3---3---3---3-||
+G|--0---0-------0---||--2---2-------2---||
+D|-0----------------||--0---------------||
+A|------------------||------------------||
+E|-3----------------||------------------||
+
+Chorus (strum full):
+| G     | D     | Em    | C     |
+| Am    | D     | G     | G     |
+
+Strumming: D D U  U D U (with energy)
+
+Bridge: Em - C - G - D
+Play softer, build back up to final chorus.`
+  },
+  {
+    title: 'Champagne Coast',
+    artist: 'Blood Cultures',
+    key: 'Eb (Capo 1, play D shapes)',
+    difficulty: 'Easy',
+    diffClass: 'diff-easy',
+    tempo: 'Moderate (q = 110)',
+    strum: 'Gentle strumming - dreamy feel',
+    capo: 'Capo 1st fret',
+    chords: ['D','A','G','Bm'],
+    guide: 'Dreamy and atmospheric. Keep the strum light and flowy. The vibe matters more than precision here. Let chords ring and don\'t rush between changes.',
+    tab: `Capo 1st fret.
+
+Whole song:
+| D       | A       | G       | Bm      |  (repeat)
+
+Strumming (dreamy, relaxed):
+D     U   D   U D   U
+1     &   2   & 3   &
+
+Or fingerpick for a softer vibe:
+D                    A
+e|----2-------2-------|----0-------0------|
+B|------3-------3-----|------2-------2----|
+G|--2-----2-------2---|--2-----2-------2--|
+D|-0------------------|--------------------|
+A|--------------------|-0------------------|
+E|--------------------|---------------------|
+
+G                    Bm
+e|----3-------3-------|----2-------2------|
+B|------3-------3-----|------3-------3----|
+G|--0-----0-------0---|--4-----4-------4--|
+D|--------------------|-4-----------------|
+A|--------------------|--2-----------------|
+E|-3-------------------|--------------------|
+
+Loop the whole thing. That's the entire song.`
+  },
+  {
+    title: 'Love Story',
+    artist: 'Indila',
+    key: 'Am',
+    difficulty: 'Medium',
+    diffClass: 'diff-med',
+    tempo: 'Moderate (q = 90)',
+    strum: 'Fingerpicking - haunting and emotional',
+    capo: 'No capo',
+    chords: ['Am','Dm','E','F','G','C'],
+    guide: 'Haunting French pop melody. The minor key gives it a dark, emotional feel. Fingerpick the verse for intimacy, strum the chorus with more intensity. Let the Am chord ring at the end of phrases.',
+    tab: `Intro (fingerpicking):
+e|------0-------0-------1-------1-------|
+B|----1---1---1---1---1---1---1---1-----|
+G|--2---2---2---2---2---2---2---2-------|
+D|-2-----------2-------3-------3--------|
+A|-0-----------0---3-----------3--------|
+E|--------------------------------------|
+   Am              Dm
+
+Verse: Am - Dm - E - Am
+e|------0-------0---||------1-------1---||
+B|----1---1---1---1-||----1---1---1---1-||
+G|--2---2-------2---||--2---2-------2---||
+D|-2----------------||--3---------------||
+A|-0----------------||--3---------------||
+E|------------------||--1---------------||
+
+E section:
+e|------0-------0---|
+B|----0---0---0---0-|
+G|--1---1-------1---|
+D|-2----------------|
+A|------------------|
+E|-0----------------|
+
+Chorus (strum):
+| Am    | F     | C     | G     |
+| Dm    | Am    | E     | Am    |
+
+Strumming: D  D U  U D U (build intensity through chorus)`
+  },
+  {
+    title: 'Detective Conan Main Theme',
+    artist: 'Katsuo Ono',
+    key: 'Am',
+    difficulty: 'Medium',
+    diffClass: 'diff-med',
+    tempo: 'Fast (q = 140)',
+    strum: 'Single note melody - fast and precise',
+    capo: 'No capo',
+    chords: ['Am','Dm','E','G','C','F'],
+    guide: 'Iconic detective theme. Mostly a single-note melody played fast on the top strings. The key is precision and keeping the tempo steady. Practice slowly first, speed up gradually. The dramatic sections use power chords.',
+    tab: `Main Theme (single note melody):
+e|--0-3-5-7--5-3-0------0-3-5-7-8-7-5-3---|
+B|------------------3-1--------------------|
+G|------------------------------------------|
+D|------------------------------------------|
+A|------------------------------------------|
+E|------------------------------------------|
+
+e|--0-3-5-7--5-3-0------0-1-0----------|
+B|------------------3-1-------3-1-0----|
+G|--------------------------------------2--|
+D|------------------------------------------|
+A|------------------------------------------|
+E|------------------------------------------|
+
+Dramatic Section (power chords):
+e|--------------------------------------|
+B|--------------------------------------|
+G|--2---2---5---5---7---7---5---5-------|
+D|--2---2---5---5---7---7---5---5-------|
+A|--0---0---3---3---5---5---3---3-------|
+E|--------------------------------------|
+   Am      C       Dm      C
+
+Bridge:
+e|--8-7-5---5-3-1---1-0-------0---------|
+B|--------------------3---3-1---3-1-0---|
+G|----------------------------------------|
+D|----------------------------------------|
+A|----------------------------------------|
+E|----------------------------------------|
+
+End on Am - let it ring.
+Practice the main melody at half speed first (q = 70), then gradually increase.`
+  }
+];
+
+// ==================== HELPER FUNCTIONS ====================
+
+function chordDiagram(name, frets, tip) {
+  // frets = [E,A,D,G,B,e] - numbers or 'x'
+  var strings = ['E','A','D','G','B','e'];
+  var lines = strings.map(function(s, i) {
+    return s + ': ' + (frets[i] === 'x' ? 'x' : frets[i]);
+  }).join('\n');
+  return '<div class="chord-box"><div class="chord-name">' + name + '</div>' +
+    '<div class="chord-grid-display">' + lines + '</div>' +
+    (tip ? '<div style="color:#6666aa;font-size:0.75rem;margin-top:6px">' + tip + '</div>' : '') +
+    '</div>';
+}
+
+// ==================== TAB NAVIGATION ====================
+
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn').forEach(function(el) { el.classList.remove('active'); });
+  document.getElementById('tab-' + tab).classList.add('active');
+  var btns = document.querySelectorAll('.tab-btn');
+  if (tab === 'lessons') btns[0].classList.add('active');
+  else btns[1].classList.add('active');
+  // Reset detail views
+  document.getElementById('lesson-detail').classList.remove('show');
+  document.getElementById('lessons-list').style.display = '';
+  document.getElementById('song-detail').classList.remove('show');
+  document.getElementById('songs-list').style.display = '';
+}
+
+// ==================== LESSONS ====================
+
+function renderLessons() {
+  var grid = document.getElementById('lesson-grid');
+  grid.innerHTML = lessons.map(function(l) {
+    return '<div class="lesson-card" onclick="openLesson(' + l.id + ')">' +
+      '<span class="num">' + l.id + '</span>' +
+      '<h3>' + l.title + '</h3>' +
+      '<p>' + l.desc + '</p></div>';
+  }).join('');
+}
+
+function openLesson(id) {
+  var lesson = lessons.find(function(l) { return l.id === id; });
+  if (!lesson) return;
+  document.getElementById('lessons-list').style.display = 'none';
+  var detail = document.getElementById('lesson-detail');
+  detail.innerHTML = '<button class="back-btn" onclick="closeLesson()">< Back to Lessons</button>' +
+    '<h3>Lesson ' + lesson.id + ': ' + lesson.title + '</h3>' +
+    lesson.content();
+  detail.classList.add('show');
+  window.scrollTo(0, 0);
+}
+
+function closeLesson() {
+  document.getElementById('lesson-detail').classList.remove('show');
+  document.getElementById('lessons-list').style.display = '';
+}
+
+// ==================== SONGS ====================
+
+function renderSongs() {
+  var grid = document.getElementById('song-grid');
+  grid.innerHTML = songs.map(function(s, i) {
+    return '<div class="song-card" onclick="openSong(' + i + ')">' +
+      '<h3>' + s.title + '</h3>' +
+      '<div class="artist">' + s.artist + '</div>' +
+      '<div class="meta">Key: ' + s.key + ' | ' + s.tempo + '</div>' +
+      '<span class="diff ' + s.diffClass + '">' + s.difficulty + '</span></div>';
+  }).join('');
+}
+
+function openSong(idx) {
+  var s = songs[idx];
+  if (!s) return;
+  document.getElementById('songs-list').style.display = 'none';
+  var detail = document.getElementById('song-detail');
+
+  var chordsHtml = s.chords.map(function(c) {
+    return '<span style="display:inline-block;background:#1a1a3e;padding:4px 14px;border-radius:8px;margin:3px;color:#ff9a56;font-weight:600">' + c + '</span>';
+  }).join('');
+
+  detail.innerHTML = '<button class="back-btn" onclick="closeSong()">< Back to Songs</button>' +
+    '<h3>' + s.title + '</h3>' +
+    '<div class="artist">' + s.artist + '</div>' +
+    '<div style="margin:12px 0"><span class="diff ' + s.diffClass + '">' + s.difficulty + '</span></div>' +
+
+    '<div class="guide-section"><h4>Setup</h4>' +
+    '<p><b>Key:</b> ' + s.key + '<br>' +
+    '<b>Capo:</b> ' + s.capo + '<br>' +
+    '<b>Tempo:</b> ' + s.tempo + '<br>' +
+    '<b>Style:</b> ' + s.strum + '</p></div>' +
+
+    '<div class="guide-section"><h4>Chords Used</h4>' +
+    '<div>' + chordsHtml + '</div></div>' +
+
+    '<div class="guide-section"><h4>Playing Guide</h4>' +
+    '<p>' + s.guide + '</p></div>' +
+
+    '<div class="guide-section"><h4>Tablature</h4>' +
+    '<div class="tab-display"><pre>' + s.tab + '</pre></div></div>';
+
+  detail.classList.add('show');
+  window.scrollTo(0, 0);
+}
+
+function closeSong() {
+  document.getElementById('song-detail').classList.remove('show');
+  document.getElementById('songs-list').style.display = '';
+}
+
+function filterSongs(query) {
+  query = query.toLowerCase().trim();
+  document.querySelectorAll('.song-card').forEach(function(card) {
+    var text = card.textContent.toLowerCase();
+    card.style.display = (!query || text.includes(query)) ? '' : 'none';
+  });
+}
+
+// ==================== INIT ====================
+renderLessons();
+renderSongs();
+</script>
+</body>
+</html>
