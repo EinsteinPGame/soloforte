@@ -424,6 +424,12 @@
   <button class="legend-toggle" onclick="toggleLegend()">Lines</button>
 </header>
 
+<div id="search-bar" style="background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;gap:8px;align-items:center">
+  <input id="search-input" type="text" placeholder="Search brand or station..." style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:8px;font-size:0.85rem;outline:none" oninput="handleSearch(this.value)">
+  <button id="search-clear" style="display:none;background:none;border:none;color:var(--text-muted);font-size:1.1rem;cursor:pointer;padding:4px 8px" onclick="clearSearch()">✕</button>
+</div>
+<div id="search-results" style="display:none;background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px 12px;max-height:260px;overflow-y:auto"></div>
+
 <div id="legend">
   <div class="legend-item"><div class="legend-dot" style="background:var(--nsl)"></div>North-South</div>
   <div class="legend-item"><div class="legend-dot" style="background:var(--ewl)"></div>East-West</div>
@@ -440,36 +446,27 @@
       <rect width="1000" height="800" fill="#0f0f1a"/>
 
       <!-- ===== TRACK LINES ===== -->
-      <g id="lines" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <g id="lines" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.85">
 
-        <!-- North-South Line (NSL) Red: Jurong East -> Woodlands -> Marina South Pier -->
-        <polyline stroke="#d42e12" stroke-width="6"
-          points="130,600 130,540 130,480 130,420 130,360 190,310 250,270 310,240 370,210 420,180 460,155 500,140 540,140 570,140 600,160 620,200 620,250 620,300 620,350 620,400 620,440 640,470 650,510 650,560 650,610 650,660"/>
+        <!-- North-South Line (NSL) Red -->
+        <path stroke="#d42e12" stroke-width="5" d="M130,600 L130,540 130,480 130,420 130,360 Q160,335 190,310 Q220,290 250,270 L310,240 370,210 420,180 460,155 500,140 540,140 570,140 Q590,140 600,160 Q610,180 616,200 L616,250 616,300 616,350 616,400 616,440 Q630,458 640,470 L648,510 648,560 648,610 648,660"/>
 
-        <!-- East-West Line (EWL) Green: Tuas -> Tampines -> Expo -->
-        <polyline stroke="#009645" stroke-width="6"
-          points="60,620 130,600 200,590 270,575 340,560 400,545 460,530 520,520 580,510 620,510 650,510 700,500 760,490 810,480 860,470 900,460 940,450"/>
+        <!-- East-West Line (EWL) Green -->
+        <path stroke="#009645" stroke-width="5" d="M60,620 L130,600 200,590 270,575 340,560 400,545 460,530 520,520 580,510 624,510 654,510 700,500 760,490 810,480 860,470 900,460 940,450"/>
 
-        <!-- Circle Line (CCL) Orange: Dhoby Ghaut -> HarbourFront -->
-        <polyline stroke="#fa9e0d" stroke-width="5"
-          points="620,300 660,280 700,270 740,275 770,290 790,320 800,360 795,400 780,430 760,455 730,470 700,480 670,490 650,510"/>
-        <!-- Upper arc of circle line -->
-        <polyline stroke="#fa9e0d" stroke-width="5"
-          points="620,300 600,280 575,265 545,258 520,260 495,268 472,282 455,300 445,325 440,355 445,385 455,410 470,430 490,448 515,460 540,468 565,472 590,472 620,470 650,460 680,455 700,480"/>
+        <!-- Circle Line (CCL) Orange -->
+        <path stroke="#fa9e0d" stroke-width="4" d="M624,300 Q645,288 660,280 L700,270 740,275 770,290 790,320 800,360 795,400 780,430 760,455 730,470 700,480 670,490 654,510"/>
+        <path stroke="#fa9e0d" stroke-width="4" d="M624,300 Q610,285 575,265 Q555,256 545,258 520,260 495,268 Q480,275 472,282 L455,300 Q448,315 445,325 L440,355 Q442,375 445,385 L455,410 Q462,422 470,430 L490,448 515,460 540,468 565,472 590,472 620,470 650,460 680,455 700,480"/>
 
-        <!-- Downtown Line (DTL) Blue: Bukit Panjang -> Expo -->
-        <polyline stroke="#005ec4" stroke-width="5"
-          points="160,310 220,330 280,345 330,355 380,365 420,380 460,395 490,410 510,430 520,448 530,465 540,468"/>
-        <polyline stroke="#005ec4" stroke-width="5"
-          points="540,468 580,460 620,445 660,430 700,420 740,415 780,415 820,420 860,428 900,435 940,445"/>
+        <!-- Downtown Line (DTL) Blue -->
+        <path stroke="#005ec4" stroke-width="4" d="M160,310 L220,330 280,345 330,355 380,365 420,380 460,395 490,410 Q502,422 510,430 L520,448 530,465 540,468"/>
+        <path stroke="#005ec4" stroke-width="4" d="M540,468 L580,460 620,445 660,430 700,420 740,415 780,415 820,420 860,428 900,435 940,445"/>
 
-        <!-- North East Line (NEL) Purple: HarbourFront -> Punggol -->
-        <polyline stroke="#9b0fac" stroke-width="5"
-          points="650,610 640,565 630,520 620,480 610,450 600,420 590,395 580,370 580,340 590,315 610,295 630,280 650,270 670,265 700,265 730,270 760,280"/>
+        <!-- North East Line (NEL) Purple -->
+        <path stroke="#9b0fac" stroke-width="4" d="M654,610 L644,565 634,520 624,480 614,450 604,420 594,395 584,370 584,340 Q586,325 594,315 Q602,302 614,295 L634,280 654,270 674,265 704,265 734,270 764,280"/>
 
-        <!-- Thomson-East Coast Line (TEL) Brown: Woodlands -> Gardens by the Bay -->
-        <polyline stroke="#9d5b25" stroke-width="5"
-          points="310,180 310,210 310,240 320,275 340,305 360,330 390,355 420,380 450,405 475,430 500,455 520,470 560,460 620,440 600,490 620,510 640,530 660,555 670,575 670,600 660,640 650,680"/>
+        <!-- Thomson-East Coast Line (TEL) Brown -->
+        <path stroke="#9d5b25" stroke-width="4" d="M310,180 L310,210 310,240 Q314,260 320,275 L340,305 360,330 390,355 420,380 450,405 475,430 500,455 520,470 Q540,465 560,460 L620,440 Q612,465 604,490 L624,510 Q632,520 640,530 L660,555 670,575 670,600 Q666,620 660,640 L650,680"/>
       </g>
 
       <!-- ===== STATIONS ===== (rendered by JS) -->
@@ -1180,6 +1177,81 @@ mapWrapper.addEventListener("touchmove", (e) => {
     applyTransform(false);
   }
 }, { passive: false });
+
+// ============================================================
+// SEARCH
+// ============================================================
+const LINE_NAMES = { nsl: "North-South", ewl: "East-West", ccl: "Circle", dtl: "Downtown", nel: "North East", tel: "Thomson-East Coast" };
+
+function handleSearch(query) {
+  const clearBtn = document.getElementById("search-clear");
+  const resultsDiv = document.getElementById("search-results");
+  query = query.trim().toLowerCase();
+  clearBtn.style.display = query ? "block" : "none";
+
+  if (!query) { resultsDiv.style.display = "none"; resultsDiv.innerHTML = ""; return; }
+
+  const results = [];
+
+  // Search brands
+  Object.keys(BRANDS).forEach(key => {
+    const brand = BRANDS[key];
+    if (brand.name.toLowerCase().includes(query) || key.includes(query)) {
+      // Find all stations with this brand
+      const stationsWithBrand = UNIQUE_STATIONS.filter(s => s.shops && s.shops.some(sh => sh.brand === key));
+      const lineSet = new Set();
+      stationsWithBrand.forEach(s => s.lines.forEach(l => lineSet.add(l)));
+      results.push({ type: "brand", key, name: brand.name, icon: brand.icon, color: brand.color, stations: stationsWithBrand, lines: Array.from(lineSet) });
+    }
+  });
+
+  // Search stations
+  UNIQUE_STATIONS.forEach(s => {
+    if (s.shops && s.shops.length > 0 && (s.name.toLowerCase().includes(query) || s.code.toLowerCase().includes(query))) {
+      results.push({ type: "station", station: s });
+    }
+  });
+
+  if (results.length === 0) {
+    resultsDiv.innerHTML = '<div style="color:var(--text-muted);font-size:0.85rem;padding:8px 0">No results found</div>';
+    resultsDiv.style.display = "block";
+    return;
+  }
+
+  let html = "";
+  results.forEach(r => {
+    if (r.type === "brand") {
+      const lineBadges = r.lines.map(l => `<span style="display:inline-block;background:${LINE_COLORS[l]}33;color:${LINE_COLORS[l]};border:1px solid ${LINE_COLORS[l]}66;padding:2px 8px;border-radius:10px;font-size:0.7rem;font-weight:600">${LINE_NAMES[l] || l}</span>`).join(" ");
+      const stationList = r.stations.map(s => `<span style="color:var(--text-muted);font-size:0.78rem;cursor:pointer;text-decoration:underline" onclick="clearSearch();openStation('${s.id}')">${s.name}</span>`).join(", ");
+      html += `<div style="padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:1.1rem">${r.icon}</span>
+          <span style="font-weight:700;color:${r.color}">${r.name}</span>
+          <span style="color:var(--text-muted);font-size:0.78rem">${r.stations.length} stations</span>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${lineBadges}</div>
+        <div style="line-height:1.8">${stationList}</div>
+      </div>`;
+    } else {
+      const s = r.station;
+      const brands = s.shops.map(sh => `<span style="font-size:0.78rem">${BRANDS[sh.brand]?.icon || "🧋"} ${BRANDS[sh.brand]?.name || sh.brand}</span>`).join(" · ");
+      html += `<div style="padding:10px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="clearSearch();openStation('${s.id}')">
+        <div style="font-weight:600;color:var(--accent)">${s.name} <span style="color:var(--text-muted);font-weight:400;font-size:0.78rem">${s.code}</span></div>
+        <div style="margin-top:4px">${brands}</div>
+      </div>`;
+    }
+  });
+
+  resultsDiv.innerHTML = html;
+  resultsDiv.style.display = "block";
+}
+
+function clearSearch() {
+  document.getElementById("search-input").value = "";
+  document.getElementById("search-clear").style.display = "none";
+  document.getElementById("search-results").style.display = "none";
+  document.getElementById("search-results").innerHTML = "";
+}
 
 // ============================================================
 // INIT
