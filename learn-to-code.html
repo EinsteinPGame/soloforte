@@ -355,10 +355,102 @@
     @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     @keyframes fadeOut { to { opacity: 0; transform: translateY(-20px); } }
 
+    /* Sandbox */
+    .sandbox-view { display: none; }
+    .sandbox-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 0;
+    }
+    .sandbox-tab {
+      padding: 10px 24px;
+      background: #0d0d25;
+      border: 1px solid #2a2a4a;
+      border-bottom: none;
+      color: #8888aa;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-radius: 8px 8px 0 0;
+    }
+    .sandbox-tab:hover { color: #d0d0f0; }
+    .sandbox-tab.active {
+      background: #12122a;
+      color: #00d4ff;
+      border-color: #7b68ee;
+    }
+    .sandbox-editor-wrap {
+      background: #0d0d25;
+      border: 1px solid #2a2a4a;
+      border-radius: 0 0 12px 12px;
+      overflow: hidden;
+    }
+    .sandbox-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 14px;
+      background: #12122a;
+      border-bottom: 1px solid #2a2a4a;
+    }
+    .sandbox-toolbar span {
+      color: #7b68ee;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .sandbox-textarea {
+      width: 100%;
+      min-height: 320px;
+      padding: 16px;
+      background: #0a0a16;
+      color: #e0e0e0;
+      border: none;
+      font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+      font-size: 0.92rem;
+      line-height: 1.7;
+      resize: vertical;
+      outline: none;
+      tab-size: 4;
+    }
+    .sandbox-output {
+      padding: 16px;
+      background: #0a0a16;
+      border-top: 1px solid #2a2a4a;
+      font-family: 'Fira Code', 'Consolas', 'Courier New', monospace;
+      font-size: 0.88rem;
+      color: #aaa;
+      min-height: 60px;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .sandbox-output.error { color: #ff6b6b; }
+    .sandbox-preview {
+      width: 100%;
+      min-height: 300px;
+      background: #fff;
+      border: none;
+      border-top: 1px solid #2a2a4a;
+    }
+    .clear-btn {
+      background: #1a1a3e;
+      color: #8888aa;
+      border: 1px solid #2a2a4a;
+      padding: 6px 14px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      margin-left: 8px;
+    }
+    .clear-btn:hover { border-color: #7b68ee; color: #d0d0f0; }
+
     @media (max-width: 600px) {
       .lang-select h2 { font-size: 1.4rem; }
       .lesson-title { font-size: 1.2rem; }
       .lesson-body { padding: 16px; }
+      .sandbox-textarea { min-height: 220px; }
+      .sandbox-tab { padding: 8px 14px; font-size: 0.8rem; }
     }
   </style>
 </head>
@@ -394,6 +486,12 @@
           <p>The building blocks of every website. HTML = structure, CSS = style. Not technically "programming" but essential.</p>
           <span class="best-for">Best for: websites</span>
         </div>
+        <div class="lang-card" onclick="openSandbox()" style="border-color:#d4a017">
+          <div class="icon">&#x1F6E0;</div>
+          <h3>Sandbox</h3>
+          <p>Blank editor. Pick a language, write anything you want. No lessons, no quizzes — just you and the code.</p>
+          <span class="best-for" style="background:#2a2a10;color:#d4a017">Free play</span>
+        </div>
       </div>
     </div>
 
@@ -410,6 +508,31 @@
 
     <!-- Lesson Content -->
     <div id="lesson-content" class="lesson-content"></div>
+
+    <!-- Sandbox -->
+    <div id="sandbox-view" class="sandbox-view">
+      <div class="course-header">
+        <button class="back-btn" onclick="closeSandbox()">< Back</button>
+        <h2 style="color:#d4a017">Sandbox</h2>
+      </div>
+      <div class="sandbox-tabs">
+        <div class="sandbox-tab active" onclick="switchSandboxLang('python')" id="stab-python">Python</div>
+        <div class="sandbox-tab" onclick="switchSandboxLang('javascript')" id="stab-javascript">JavaScript</div>
+        <div class="sandbox-tab" onclick="switchSandboxLang('htmlcss')" id="stab-htmlcss">HTML + CSS</div>
+      </div>
+      <div class="sandbox-editor-wrap">
+        <div class="sandbox-toolbar">
+          <span id="sandbox-lang-label">Python</span>
+          <div>
+            <button class="run-btn" onclick="runSandbox()">&#9654; Run</button>
+            <button class="clear-btn" onclick="clearSandbox()">Clear</button>
+          </div>
+        </div>
+        <textarea class="sandbox-textarea" id="sandbox-code" spellcheck="false" placeholder="Write your code here..."></textarea>
+        <div class="sandbox-output" id="sandbox-output" style="display:block">Click Run to see output</div>
+        <iframe class="sandbox-preview" id="sandbox-preview" style="display:none" sandbox="allow-scripts"></iframe>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -1917,6 +2040,99 @@ function simulatePython(code, lines) {
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// ── Sandbox Mode ──
+let sandboxLang = 'python';
+const sandboxStarters = {
+  python: '# Write any Python here\n\nname = "Kyle"\nprint("Hello, " + name + "!")\nprint("Welcome to the sandbox.")\n\nfor i in range(5):\n    print("Count:", i)',
+  javascript: '// Write any JavaScript here\n\nlet name = "Kyle";\nconsole.log("Hello, " + name + "!");\nconsole.log("Welcome to the sandbox.");\n\nfor (let i = 0; i < 5; i++) {\n  console.log("Count:", i);\n}',
+  htmlcss: '<!-- Write HTML and CSS here -->\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background: #1a1a2e;\n      color: #e0e0e0;\n      display: flex;\n      justify-content: center;\n      align-items: center;\n      min-height: 100vh;\n      margin: 0;\n    }\n    .card {\n      background: #16213e;\n      border: 2px solid #0f3460;\n      border-radius: 12px;\n      padding: 30px;\n      text-align: center;\n    }\n    h1 { color: #e94560; }\n  </style>\n</head>\n<body>\n  <div class="card">\n    <h1>Hello World!</h1>\n    <p>Edit this HTML and click Run to see changes.</p>\n  </div>\n</body>\n</html>'
+};
+
+function openSandbox() {
+  document.getElementById('lang-select').style.display = 'none';
+  document.getElementById('sandbox-view').style.display = 'block';
+  sandboxLang = 'python';
+  document.getElementById('sandbox-code').value = sandboxStarters.python;
+  updateSandboxTabs();
+}
+
+function closeSandbox() {
+  document.getElementById('sandbox-view').style.display = 'none';
+  document.getElementById('lang-select').style.display = 'block';
+}
+
+function switchSandboxLang(lang) {
+  sandboxLang = lang;
+  document.getElementById('sandbox-code').value = sandboxStarters[lang] || '';
+  document.getElementById('sandbox-output').textContent = 'Click Run to see output';
+  document.getElementById('sandbox-output').className = 'sandbox-output';
+  updateSandboxTabs();
+}
+
+function updateSandboxTabs() {
+  ['python', 'javascript', 'htmlcss'].forEach(l => {
+    document.getElementById('stab-' + l).className = 'sandbox-tab' + (l === sandboxLang ? ' active' : '');
+  });
+  const labels = { python: 'Python', javascript: 'JavaScript', htmlcss: 'HTML + CSS' };
+  document.getElementById('sandbox-lang-label').textContent = labels[sandboxLang];
+  const isHtml = sandboxLang === 'htmlcss';
+  document.getElementById('sandbox-output').style.display = isHtml ? 'none' : 'block';
+  document.getElementById('sandbox-preview').style.display = isHtml ? 'block' : 'none';
+}
+
+function runSandbox() {
+  const code = document.getElementById('sandbox-code').value;
+  const output = document.getElementById('sandbox-output');
+
+  if (sandboxLang === 'htmlcss') {
+    const preview = document.getElementById('sandbox-preview');
+    preview.srcdoc = code;
+    return;
+  }
+
+  output.className = 'sandbox-output';
+  let lines = [];
+
+  try {
+    if (sandboxLang === 'javascript') {
+      const oldLog = console.log;
+      console.log = function() { lines.push(Array.from(arguments).join(' ')); };
+      try {
+        new Function(code)();
+      } finally {
+        console.log = oldLog;
+      }
+    } else {
+      simulatePython(code, lines);
+    }
+    output.textContent = lines.join('\n') || '(no output)';
+  } catch (e) {
+    output.className = 'sandbox-output error';
+    output.textContent = 'Error: ' + e.message;
+  }
+}
+
+function clearSandbox() {
+  document.getElementById('sandbox-code').value = '';
+  document.getElementById('sandbox-output').textContent = 'Click Run to see output';
+  document.getElementById('sandbox-output').className = 'sandbox-output';
+  if (sandboxLang === 'htmlcss') {
+    document.getElementById('sandbox-preview').srcdoc = '';
+  }
+}
+
+// Handle Tab key in sandbox textarea
+document.addEventListener('keydown', function(e) {
+  const ta = document.getElementById('sandbox-code');
+  if (e.target === ta && e.key === 'Tab') {
+    e.preventDefault();
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    ta.value = ta.value.substring(0, start) + '    ' + ta.value.substring(end);
+    ta.selectionStart = ta.selectionEnd = start + 4;
+  }
+});
 
 // Init
 saveProgress();
