@@ -184,6 +184,10 @@ let relicText='';
 let relicTextTimer=0;
 let relicTextColor='#fff';
 let quickhackDisplay=null; // {fighter, target, progress, maxProgress, hack}
+let quickhackFlashTimer=0; // screen flash on quickhack deploy
+let quickhackFlashColor='#ff0000';
+let wallCracks=[]; // {x,y,size,life} — dramatic wall crack visuals
+let shockwaveProjectiles=[]; // gorilla directional shockwaves
 
 const ARENA={x:30,y:80,w:W-60,h:H-240};
 
@@ -430,15 +434,26 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
 }
 
 // ============================================================
-// WEAPON ATTACK SYSTEM — Each weapon has unique attack patterns
+// WEAPON ATTACK SYSTEM — Weapons only attack when they spin to face enemy
 // ============================================================
+// Check if weapon's natural spin angle is pointing at the enemy (within an arc)
+function isWeaponFacingEnemy(f,enemy){
+  const toEnemy=angle(f,enemy);
+  let diff=f.weaponAngle-toEnemy;
+  while(diff>Math.PI)diff-=Math.PI*2;
+  while(diff<-Math.PI)diff+=Math.PI*2;
+  // Arc depends on weapon type — wider for some
+  const arc=f.char.id==='pls'?0.5:f.char.id==='gorilla'?0.45:f.char.id==='monowire'?0.4:0.35;
+  return Math.abs(diff)<arc;
+}
+
 function performWeaponAttack(f,enemy){
   if(!f.alive||!enemy.alive)return;
-  if(f.captureTimer>0)return; // can't attack while captured
+  if(f.captureTimer>0)return;
   if(f.stunTimer>0||f.freezeTimer>0)return;
 
   const chaos=getChaosLevel(f);
-  f.weaponAngle=angle(f,enemy);
+  // DON'T snap weapon to enemy — use natural spin angle
   f.attackAnim=12;
 
   switch(f.char.id){
@@ -450,31 +465,30 @@ function performWeaponAttack(f,enemy){
 }
 
 function attackMantis(f,enemy,chaos){
-  // Alternating left/right slash
+  // Alternating left/right slash — uses current weapon facing
   f.attackSide*=-1;
   f.weaponExtend=1;
   f.weaponFlash=12;
   const d=dist(f,enemy);
   const effectiveRange=f.range+chaos*8;
+  const facing=isWeaponFacingEnemy(f,enemy);
 
-  if(d<effectiveRange){
+  SFX.slash();
+  if(facing&&d<effectiveRange){
     const dmg=dealDamage(f,enemy,f.atk);
-    SFX.slash();
-    // Bleed chance: 8% base, scales with chaos
     const bleedChance=0.08+chaos*0.015;
     if(Math.random()<bleedChance&&dmg>0){
       applyBleed(enemy,f.atk*0.3,45);
     }
-    // Slash visual
-    const sa=angle(f,enemy);
+    // Slash visual toward enemy
+    const sa=f.weaponAngle;
     for(let i=0;i<5;i++){
       const spread=(Math.random()-0.5)*0.8;
       spawnParticle(f.x+Math.cos(sa)*f.radius,f.y+Math.sin(sa)*f.radius,
         '#ff6644',Math.cos(sa+spread)*4,Math.sin(sa+spread)*4,12,2);
     }
   } else {
-    // Whiff — just visual
-    SFX.slash();
+    // Whiff — slash in current facing direction
     spawnSparks(f.x+Math.cos(f.weaponAngle)*f.radius*1.5,f.y+Math.sin(f.weaponAngle)*f.radius*1.5,'#ff3333',3);
   }
 }
@@ -486,33 +500,30 @@ function attackGorilla(f,enemy,chaos){
   const d=dist(f,enemy);
   const effectiveRange=f.range+chaos*5;
   const isDownslam=f.attackPhase===2;
+  const facing=isWeaponFacingEnemy(f,enemy);
 
   if(isDownslam){
     // Downslam — AoE ground crack
     SFX.punch();SFX.thunderclap();
     const aoeRadius=60+chaos*12;
     if(d<aoeRadius){
-      const dmg=dealDamage(f,enemy,f.atk*1.4);
-      // Knockback
+      dealDamage(f,enemy,f.atk*1.4);
       const ka=angle(f,enemy);
       enemy.vx+=Math.cos(ka)*6;
       enemy.vy+=Math.sin(ka)*6;
     }
-    // Ground crack visual
     spawnBurst(f.x,f.y+f.radius,'#ff8800',20,8);
     for(let i=0;i<12;i++){
       const a=Math.PI*2*i/12;
       spawnParticle(f.x,f.y,'#996600',Math.cos(a)*3,Math.sin(a)*3,25,3);
     }
-    // AoE ring
     explosions.push({x:f.x,y:f.y,radius:0,maxRadius:aoeRadius,color:'#ff8800',life:15,maxLife:15,dmg:0,owner:f,target:null,hit:true});
     shakeTimer=12;shakeAmt=8;
   } else {
-    // Left/right heavy punch
+    // Left/right heavy punch — only hits if facing enemy
     SFX.punch();
-    if(d<effectiveRange){
+    if(facing&&d<effectiveRange){
       dealDamage(f,enemy,f.atk);
-      // Knockback on punch
       const ka=angle(f,enemy);
       enemy.vx+=Math.cos(ka)*3;
       enemy.vy+=Math.sin(ka)*3;
@@ -526,19 +537,19 @@ function attackMonowire(f,enemy,chaos){
   f.weaponFlash=15;
   const d=dist(f,enemy);
   const effectiveRange=f.range+chaos*10;
+  const facing=isWeaponFacingEnemy(f,enemy);
 
   SFX.whip();
-  if(d<effectiveRange){
+  if(facing&&d<effectiveRange){
     dealDamage(f,enemy,f.atk);
-    // Capture chance: 10% base, scales with chaos
     const captureChance=0.10+chaos*0.025;
-    const captureDuration=90+chaos*15; // 1.5s base, scales up
+    const captureDuration=90+chaos*15;
     if(Math.random()<captureChance&&enemy.captureTimer<=0){
       applyCaptureWrap(enemy,captureDuration);
     }
   }
-  // Wire launch visual
-  const wa=angle(f,enemy);
+  // Wire launch visual in weapon facing direction (not toward enemy)
+  const wa=f.weaponAngle;
   for(let i=0;i<8;i++){
     const t=i/8;
     spawnParticle(
@@ -549,10 +560,10 @@ function attackMonowire(f,enemy,chaos){
 }
 
 function attackPLS(f,enemy,chaos){
-  // Fire an orb projectile
+  // Fire orb in weapon's current facing direction (not auto-aimed at enemy)
   f.weaponExtend=0.6;
   f.weaponFlash=10;
-  const a=angle(f,enemy)+(Math.random()-0.5)*0.3;
+  const a=f.weaponAngle+(Math.random()-0.5)*0.15; // slight spread from facing
   const speed=5+chaos*0.5;
   const explosionRadius=f.plsExplosionRadius+chaos*8;
 
@@ -611,9 +622,14 @@ function triggerQuickhack(qd){
   if(!qd||!qd.target.alive)return;
   const hack=qd.hack;
   const dmg=qd.fighter.atk*hack.dmgMult;
+
+  // Screen flash black/red like blackwall for ALL quickhacks
+  quickhackFlashTimer=25;
+  quickhackFlashColor=hack.color;
+  shakeTimer=15;shakeAmt=hack.id==='black_wall'?12:6;
+
   dealDamage(qd.fighter,qd.target,dmg,false);
   spawnDmgNum(qd.target.x,qd.target.y-qd.target.radius-30,hack.name,hack.color,true);
-  shakeTimer=15;shakeAmt=hack.id==='black_wall'?12:6;
 
   switch(hack.id){
     case 'overheat':
@@ -754,24 +770,33 @@ function updateRelicMantis(f,enemy,dt){
 function updateRelicGorilla(f,enemy,dt){
   f.relicShockwaveTimer-=dt;
   if(f.relicShockwaveTimer<=0&&f.relicShockwaveCount<8){
-    f.relicShockwaveTimer=45; // shockwave every 0.75s
+    f.relicShockwaveTimer=45;
     f.relicShockwaveCount++;
     SFX.thunderclap();
-    // Thunder clap shockwave hits enemy
-    const aoeRadius=80+f.relicShockwaveCount*10;
-    const d=dist(f,enemy);
-    if(d<aoeRadius&&enemy.alive){
-      dealDamage(f,enemy,f.atk*1.2,false);
-      // Knockback
-      const ka=angle(f,enemy);
-      enemy.vx+=Math.cos(ka)*4;enemy.vy+=Math.sin(ka)*4;
-    }
-    // Visual: expanding shockwave ring
-    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:aoeRadius,color:'#ffaa00',life:18,maxLife:18,dmg:0,owner:f,target:null,hit:true});
+    // Punch in weapon facing direction — launch directional shockwave (NOT homing)
+    const swAngle=f.weaponAngle;
+    const swSpeed=6;
+    const swSize=30+f.relicShockwaveCount*5;
+    shockwaveProjectiles.push({
+      x:f.x+Math.cos(swAngle)*f.radius,
+      y:f.y+Math.sin(swAngle)*f.radius,
+      vx:Math.cos(swAngle)*swSpeed,
+      vy:Math.sin(swAngle)*swSpeed,
+      owner:f,target:enemy,
+      size:swSize,dmg:f.atk*1.2,
+      life:60,maxLife:60,hit:false,
+      color:'#ffaa00',
+    });
+    // Visual: shockwave ring at punch origin
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:swSize,color:'#ffaa00',life:12,maxLife:12,dmg:0,owner:f,target:null,hit:true});
     spawnBurst(f.x,f.y,'#ff8800',12,5);
     shakeTimer=8;shakeAmt=6;
     f.weaponExtend=1;f.weaponFlash=15;
   }
+}
+
+function spawnWallCrack(x,y){
+  wallCracks.push({x,y,size:15+Math.random()*20,life:300,maxLife:300});
 }
 
 function updateRelicMonowire(f,enemy,dt){
@@ -916,10 +941,11 @@ function updateBattle(dt){
       }
     }
 
-    // Weapon attack timer (independent of collisions)
-    if(!f.specialActive||f.char.id==='gorilla'){ // gorilla can still punch during relic
-      f.attackTimer-=dt;
-      if(f.attackTimer<=0){
+    // Weapon attack — only when weapon spins to face enemy AND cooldown ready
+    if(!f.specialActive||f.char.id==='gorilla'){
+      if(f.attackTimer>0)f.attackTimer-=dt;
+      // Attack when: cooldown ready + weapon naturally faces the enemy
+      if(f.attackTimer<=0&&isWeaponFacingEnemy(f,enemy)){
         f.attackTimer=getAttackInterval(f);
         performWeaponAttack(f,enemy);
       }
@@ -1007,6 +1033,44 @@ function updateBattle(dt){
     if(e.life<=0)explosions.splice(i,1);
   }
 
+  // Update gorilla shockwave projectiles (directional, non-homing)
+  for(let i=shockwaveProjectiles.length-1;i>=0;i--){
+    const sw=shockwaveProjectiles[i];
+    sw.x+=sw.vx*dt;sw.y+=sw.vy*dt;sw.life-=dt;
+    // Visual trail
+    spawnParticle(sw.x,sw.y,sw.color,(Math.random()-0.5)*2,(Math.random()-0.5)*2,12,sw.size/8);
+    // Check hit on enemy
+    if(!sw.hit&&sw.target&&sw.target.alive&&dist(sw,sw.target)<sw.target.radius+sw.size*0.5){
+      sw.hit=true;
+      dealDamage(sw.owner,sw.target,sw.dmg,false);
+      // Push enemy to nearest wall
+      const ex=sw.target.x,ey=sw.target.y;
+      const dL=ex-ARENA.x,dR=ARENA.x+ARENA.w-ex,dT=ey-ARENA.y,dB=ARENA.y+ARENA.h-ey;
+      const minD=Math.min(dL,dR,dT,dB);
+      let wallX,wallY;
+      if(minD===dL){sw.target.vx=-8;wallX=ARENA.x;wallY=ey;}
+      else if(minD===dR){sw.target.vx=8;wallX=ARENA.x+ARENA.w;wallY=ey;}
+      else if(minD===dT){sw.target.vy=-8;wallX=ex;wallY=ARENA.y;}
+      else{sw.target.vy=8;wallX=ex;wallY=ARENA.y+ARENA.h;}
+      // Wall crack at impact point
+      spawnWallCrack(wallX,wallY);
+      spawnBurst(sw.target.x,sw.target.y,'#ffaa00',15,6);
+      shakeTimer=10;shakeAmt=8;
+      SFX.thunderclap();
+      shockwaveProjectiles.splice(i,1);continue;
+    }
+    // Check wall hit — crack on miss
+    if(sw.x<ARENA.x||sw.x>ARENA.x+ARENA.w||sw.y<ARENA.y||sw.y>ARENA.y+ARENA.h){
+      const wx=clamp(sw.x,ARENA.x,ARENA.x+ARENA.w);
+      const wy=clamp(sw.y,ARENA.y,ARENA.y+ARENA.h);
+      spawnWallCrack(wx,wy);
+      spawnBurst(wx,wy,'#ffaa00',10,4);
+      SFX.punch();
+      shockwaveProjectiles.splice(i,1);continue;
+    }
+    if(sw.life<=0){shockwaveProjectiles.splice(i,1);}
+  }
+
   // Update quickhack progress
   if(quickhackDisplay){
     quickhackDisplay.progress+=dt;
@@ -1014,6 +1078,11 @@ function updateBattle(dt){
       triggerQuickhack(quickhackDisplay);
     }
   }
+
+  // Quickhack screen flash
+  if(quickhackFlashTimer>0)quickhackFlashTimer-=dt;
+  // Wall crack decay
+  for(let i=wallCracks.length-1;i>=0;i--){wallCracks[i].life-=dt;if(wallCracks[i].life<=0)wallCracks.splice(i,1);}
 
   // Relic text timer
   if(relicTextTimer>0)relicTextTimer-=dt;
@@ -1754,7 +1823,8 @@ function drawElementPickerMobile(sx,sy,selected,prefix,cb){
 function startBattle(){
   screen='battle';battleOver=false;winner=null;battleTime=0;battleSpeed=1;
   particles=[];dmgNums=[];battleLog=[];projectiles=[];explosions=[];
-  quickhackDisplay=null;relicTextTimer=0;
+  shockwaveProjectiles=[];wallCracks=[];
+  quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
   addLog('Battle Start!');addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
@@ -1774,6 +1844,46 @@ function drawBattle(){
   for(let i=ARENA.y+40;i<ARENA.y+ARENA.h;i+=40){X.beginPath();X.moveTo(ARENA.x,i);X.lineTo(ARENA.x+ARENA.w,i);X.stroke();}
   X.strokeStyle='#1a1a4a';X.lineWidth=1;X.setLineDash([5,5]);
   X.beginPath();X.moveTo(W/2,ARENA.y);X.lineTo(W/2,ARENA.y+ARENA.h);X.stroke();X.setLineDash([]);
+
+  // Wall cracks (on arena border)
+  wallCracks.forEach(wc=>{
+    const a=Math.min(1,wc.life/wc.maxLife);
+    X.globalAlpha=a;
+    X.strokeStyle='#ffaa00';X.lineWidth=2;
+    const s=wc.size;
+    for(let i=0;i<6;i++){
+      const ca=Math.PI*2*i/6+(wc.x*0.01);
+      const len=s*(0.4+Math.random()*0.6);
+      X.beginPath();X.moveTo(wc.x,wc.y);
+      X.lineTo(wc.x+Math.cos(ca)*len,wc.y+Math.sin(ca)*len);
+      X.stroke();
+      // Branch cracks
+      if(i%2===0){
+        const bx=wc.x+Math.cos(ca)*len*0.6;
+        const by=wc.y+Math.sin(ca)*len*0.6;
+        X.beginPath();X.moveTo(bx,by);
+        X.lineTo(bx+Math.cos(ca+0.5)*len*0.4,by+Math.sin(ca+0.5)*len*0.4);
+        X.stroke();
+      }
+    }
+    // Glow at center
+    X.beginPath();X.arc(wc.x,wc.y,s*0.3,0,Math.PI*2);
+    X.fillStyle='rgba(255,170,0,'+a*0.3+')';X.fill();
+    X.globalAlpha=1;
+  });
+
+  // Gorilla shockwave projectiles (visible wave discs)
+  shockwaveProjectiles.forEach(sw=>{
+    const a=Math.max(0.3,sw.life/sw.maxLife);
+    X.globalAlpha=a;
+    X.beginPath();X.arc(sw.x,sw.y,sw.size,0,Math.PI*2);
+    X.fillStyle='rgba(255,170,0,0.2)';X.fill();
+    X.strokeStyle='#ffaa00';X.lineWidth=3;X.stroke();
+    // Inner ring
+    X.beginPath();X.arc(sw.x,sw.y,sw.size*0.5,0,Math.PI*2);
+    X.strokeStyle='rgba(255,200,50,0.5)';X.lineWidth=2;X.stroke();
+    X.globalAlpha=1;
+  });
 
   // Explosions (behind fighters)
   explosions.forEach(e=>{
@@ -1834,6 +1944,23 @@ function drawBattle(){
     X.fillStyle=relicTextColor;
     X.fillText(relicText,W/2,ARENA.y+ARENA.h/2);
     X.shadowBlur=0;X.globalAlpha=1;
+  }
+
+  // Quickhack screen flash — black/red outline like blackwall
+  if(quickhackFlashTimer>0){
+    const fl=quickhackFlashTimer/25;
+    const flashOn=Math.floor(quickhackFlashTimer*2)%2===0;
+    if(flashOn){
+      // Screen outline flash
+      X.strokeStyle=quickhackFlashColor;X.lineWidth=6;
+      X.strokeRect(ARENA.x-3,ARENA.y-3,ARENA.w+6,ARENA.h+6);
+      // Inner dark overlay
+      X.fillStyle='rgba(0,0,0,'+fl*0.4+')';
+      X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+    }
+    // Red/black alternating border
+    X.strokeStyle=flashOn?'#000000':quickhackFlashColor;X.lineWidth=4;
+    X.strokeRect(ARENA.x+2,ARENA.y+2,ARENA.w-4,ARENA.h-4);
   }
 
   X.restore();
