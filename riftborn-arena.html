@@ -639,7 +639,7 @@ const ITEM_DEFS=[
 // GAME STATE
 // ============================================================
 let GS={
-  scene:'title', // title, intro, starterPick, overworld, battle, bag, team, shop, arenaSelect, summary, champion, credits
+  scene:'title', // title, intro, starterPick, overworld, battle, bag, team, shop, arenaSelect, summary, champion, credits, champHub, champCatch
   player:{
     name:'',
     team:[],     // Array of creature instances
@@ -672,6 +672,18 @@ let GS={
   saved:false,
   explore:{mapId:'town',px:8,py:7,dir:0,walking:false,walkFrame:0,walkProgress:0,targetX:0,targetY:0,steps:0,encounterCooldown:0,msgText:'',msgTimer:0,interacting:false,battleReturn:null,prevScene:null},
   defeatedTrainers:new Set(),
+  // Champion Defense mode
+  champDef:{
+    active:false,
+    streak:0,
+    bestStreak:0,
+    challengerName:'',
+    challengerTeam:[],
+    difficulty:1,
+    healPct:0.7, // heal % between fights, decreases
+    hubMenuIdx:0,
+    catchUsed:false, // one catch phase per round
+  },
 };
 
 // ============================================================
@@ -1291,14 +1303,18 @@ function drawTitle(){
 
   // Buttons
   const btnY=H*0.75;
-  drawButton(W/2-100,btnY,200,42,'New Game',GS.menuIdx===0);
-  drawButton(W/2-100,btnY+52,200,42,'Continue',GS.menuIdx===1,'#225522');
+  drawButton(W/2-100,btnY,200,38,'New Game',GS.menuIdx===0);
+  drawButton(W/2-100,btnY+46,200,38,'Continue',GS.menuIdx===1,'#225522');
+  drawButton(W/2-100,btnY+92,200,38,'Champion Defense',GS.menuIdx===2,'#554400');
 
   if(GS.menuIdx===1&&!localStorage.getItem('riftborn_save')){
-    drawTextCenter('No save data found',W/2,btnY+100,12,'#ff4444');
+    drawTextCenter('No save data found',W/2,btnY+88,12,'#ff4444');
   }
 
-  drawTextCenter('v1.0 — 108 Riftborn, 8 Arenas',W/2,H-30,11,'#555');
+  const champBest=parseInt(localStorage.getItem('riftborn_champbest')||'0');
+  if(champBest>0)drawTextCenter(`Defense Best: ${champBest}`,W/2,btnY+135,11,'#ffd700');
+
+  drawTextCenter('v1.1 — 108 Riftborn, 8 Arenas + Champion Defense',W/2,H-30,11,'#555');
 }
 
 // ============================================================
@@ -1831,9 +1847,17 @@ function drawSummary(){
     drawTextCenter('Victory!',W/2,30,28,'#44cc44');
     if(GS.battle.xpGained>0)drawTextCenter(`+${GS.battle.xpGained} XP gained`,W/2,65,14,'#4488ff');
     if(GS.battle.caught)drawTextCenter(`Caught ${getActiveE()?.name||'a Riftborn'}!`,W/2,85,16,'#ffcc00');
+    if(GS.champDef.active&&GS.battle.isChampDef&&!GS.battle.isWild){
+      drawTextCenter(`Streak: ${GS.champDef.streak+1}`,W/2,115,18,'#ffd700');
+    }
   }else{
-    drawTextCenter('Defeat...',W/2,30,28,'#ff4444');
-    drawTextCenter('You blacked out and returned to base.',W/2,65,13,'#888');
+    if(GS.champDef.active&&GS.battle?.isChampDef){
+      drawTextCenter('Defeat...',W/2,30,28,'#ff4444');
+      drawTextCenter('Your title as Champion is lost!',W/2,65,13,'#888');
+    }else{
+      drawTextCenter('Defeat...',W/2,30,28,'#ff4444');
+      drawTextCenter('You blacked out and returned to base.',W/2,65,13,'#888');
+    }
   }
 
   drawButton(W/2-60,H-60,120,36,'Continue',true);
@@ -1924,7 +1948,7 @@ C.addEventListener('touchend',e=>{
 // Keyboard input for name entry
 const mobNameInput=document.getElementById('mob-name');
 mobNameInput.addEventListener('input',()=>{
-  if(GS.scene==='intro'&&GS.introStep>=INTRO_TEXT.length){
+  if((GS.scene==='intro'&&GS.introStep>=INTRO_TEXT.length)||GS.scene==='champNameEntry'){
     GS.player.name=mobNameInput.value.replace(/[^a-zA-Z0-9 ]/g,'').slice(0,12);
     mobNameInput.value=GS.player.name;
   }
@@ -1939,10 +1963,14 @@ function blurMobileNameInput(){
   mobNameInput.blur();
 }
 document.addEventListener('keydown',e=>{
-  if(GS.scene==='intro'&&GS.introStep>=INTRO_TEXT.length){
+  const isNameEntry=(GS.scene==='intro'&&GS.introStep>=INTRO_TEXT.length)||GS.scene==='champNameEntry';
+  if(isNameEntry){
     if(e.key==='Backspace'){GS.player.name=GS.player.name.slice(0,-1);e.preventDefault();return}
     if(e.key==='Enter'&&GS.player.name.length>=1){
-      blurMobileNameInput();GS.scene='starterPick';GS.starterHighlight=0;e.preventDefault();return;
+      blurMobileNameInput();
+      if(GS.scene==='champNameEntry'){initChampionDefense()}
+      else{GS.scene='starterPick';GS.starterHighlight=0}
+      e.preventDefault();return;
     }
     if(e.key.length===1&&GS.player.name.length<12&&/[a-zA-Z0-9 ]/.test(e.key)){
       GS.player.name+=e.key;e.preventDefault();
@@ -1956,10 +1984,14 @@ function handleInput(key){
 
   if(scene==='title'){
     if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(0,GS.menuIdx-1);
-    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(1,GS.menuIdx+1);
+    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(2,GS.menuIdx+1);
     if(key==='Enter'||key===' '){
       if(GS.menuIdx===0){GS.scene='intro';GS.introStep=0;GS.textCharIdx=0;GS.player.name=''}
       if(GS.menuIdx===1){if(!loadGame()){/* no save */}}
+      if(GS.menuIdx===2){
+        // Champion Defense — need name first
+        GS.scene='champNameEntry';GS.player.name='';GS.textCharIdx=0;
+      }
     }
   }
 
@@ -2000,17 +2032,21 @@ function handleInput(key){
   }
 
   else if(scene==='team'){
-    if(key==='Escape'||key==='Backspace'){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=2}
+    if(key==='Escape'||key==='Backspace'){
+      GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=2;
+    }
   }
 
   else if(scene==='bag'){
-    if(key==='Escape'||key==='Backspace'){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3}
+    if(key==='Escape'||key==='Backspace'){
+      GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3;
+    }
   }
 
   else if(scene==='shop'){
     if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(-1,GS.menuIdx-1);
     if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(11,GS.menuIdx+1);
-    if(key==='Escape'||key==='Backspace'){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=4}
+    if(key==='Escape'||key==='Backspace'){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=4}
     if(key==='Enter'||key===' ')handleShopBuy();
   }
 
@@ -2047,6 +2083,9 @@ function handleInput(key){
       const evolveTarget=checkTeamEvolve();
       if(evolveTarget){
         startEvolve(evolveTarget);
+      }else if(GS.champDef.active&&GS.battle?.isChampDef){
+        // Champion Defense mode — return to hub
+        champDefBattleEnd(!!GS.battle.playerWon);
       }else if(GS.explore.battleReturn){
         // Return to exploration after battle
         const br=GS.explore.battleReturn;
@@ -2070,7 +2109,9 @@ function handleInput(key){
         GS.evolving=null;
         const next=checkTeamEvolve();
         if(next)startEvolve(next);
-        else if(GS.explore.prevScene==='explore'){
+        else if(GS.champDef.active&&GS.battle?.isChampDef){
+          champDefBattleEnd(!!GS.battle.playerWon);
+        }else if(GS.explore.prevScene==='explore'){
           const br=GS.explore.battleReturn;
           if(br){GS.explore.battleReturn=null;initExplore(br.mapId,br.px,br.py)}
           else{GS.scene='explore'}
@@ -2086,6 +2127,26 @@ function handleInput(key){
       else{GS.scene='overworld';GS.menuIdx=0}
     }
   }
+
+  else if(scene==='champNameEntry'){
+    // Name entry for champion defense mode (reuse keyboard handler below)
+    if(key==='Enter'&&GS.player.name.length>=1){
+      blurMobileNameInput();initChampionDefense();
+    }
+  }
+
+  else if(scene==='champHub'){
+    handleChampHubInput(key);
+  }
+
+  else if(scene==='champDefOver'){
+    if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(0,GS.menuIdx-1);
+    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(1,GS.menuIdx+1);
+    if(key==='Enter'||key===' '){
+      if(GS.menuIdx===0){initChampionDefense()}
+      else{GS.champDef.active=false;GS.scene='title';GS.menuIdx=0}
+    }
+  }
 }
 
 function handleClick(cx,cy){
@@ -2094,8 +2155,9 @@ function handleClick(cx,cy){
 
   if(scene==='title'){
     const btnY=H*0.75;
-    if(cy>=btnY&&cy<=btnY+42){GS.menuIdx=0;handleInput('Enter')}
-    else if(cy>=btnY+52&&cy<=btnY+94){GS.menuIdx=1;handleInput('Enter')}
+    if(cy>=btnY&&cy<=btnY+38){GS.menuIdx=0;handleInput('Enter')}
+    else if(cy>=btnY+46&&cy<=btnY+84){GS.menuIdx=1;handleInput('Enter')}
+    else if(cy>=btnY+92&&cy<=btnY+130){GS.menuIdx=2;handleInput('Enter')}
   }
 
   else if(scene==='intro'){
@@ -2134,15 +2196,15 @@ function handleClick(cx,cy){
   }
 
   else if(scene==='team'){
-    if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=2}
+    if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=2}
   }
 
   else if(scene==='bag'){
-    if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3}
+    if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3}
   }
 
   else if(scene==='shop'){
-    if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=4;return}
+    if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=4;return}
     const allItems=[...SHELLS.filter(s=>s.cost>0),...ITEM_DEFS];
     let y=55;
     allItems.forEach((item,i)=>{
@@ -2170,6 +2232,18 @@ function handleClick(cx,cy){
   else if(scene==='summary'||scene==='credits'){handleInput('Enter')}
 
   else if(scene==='evolve'){handleInput('Enter')}
+
+  else if(scene==='champNameEntry'){
+    if(cy>=H*0.55&&cy<=H*0.55+40){focusMobileNameInput()}
+    else if(cy>=H*0.65&&GS.player.name.length>=1){handleInput('Enter')}
+  }
+
+  else if(scene==='champHub'){handleChampHubClick(cx,cy)}
+
+  else if(scene==='champDefOver'){
+    if(cy>=H-100&&cy<=H-60){GS.menuIdx=0;handleInput('Enter')}
+    else if(cy>=H-50&&cy<=H-10){GS.menuIdx=1;handleInput('Enter')}
+  }
 }
 
 function handleOverworldSelect(){
@@ -2530,7 +2604,10 @@ function attemptRun(){
   if(Math.random()<chance){
     battleMsg("Got away safely!");
     b.escaped=true;
-    setTimeout(()=>{GS.scene='overworld';GS.menuIdx=0},300);
+    setTimeout(()=>{
+      if(GS.champDef.active&&b.isChampDef){GS.scene='champHub';GS.champDef.hubMenuIdx=0}
+      else{GS.scene='overworld';GS.menuIdx=0}
+    },300);
   }else{
     battleMsg("Couldn't escape!");
     // Enemy gets a turn
@@ -2948,6 +3025,233 @@ function getCreatureVisuals(specId){
 }
 
 // ============================================================
+// CHAMPION DEFENSE MODE
+// ============================================================
+const CHALLENGER_NAMES=['Ash','Nova','Drake','Luna','Rex','Kai','Ivy','Sol','Nyx','Blaze',
+  'Storm','Frost','Ember','Coral','Shade','Bolt','Lyra','Zara','Finn','Ruby',
+  'Jade','Onyx','Flint','Marina','Prism','Sage','Raven','Leo','Aria','Cinder'];
+const CHALLENGER_TITLES=['Rookie','Trainer','Ace','Veteran','Elite','Master','Grandmaster','Legend'];
+
+function initChampionDefense(){
+  GS.champDef.active=true;GS.champDef.streak=0;GS.champDef.difficulty=1;
+  GS.champDef.healPct=0.7;GS.champDef.catchUsed=false;
+  GS.champDef.bestStreak=parseInt(localStorage.getItem('riftborn_champbest')||'0');
+  // Build champion team — 3 strong starters
+  GS.player.name=GS.player.name||'Champion';
+  GS.player.team=[
+    createCreature(3,50),  // Ignivolt
+    createCreature(6,48),  // Abyssurge
+    createCreature(9,48),  // Elderoot
+  ];
+  GS.player.bag={shells:[{idx:0,qty:10},{idx:1,qty:5}],items:[{idx:0,qty:5},{idx:1,qty:3}]};
+  GS.player.money=5000;
+  GS.player.badges=['Ember Badge','Tide Badge','Bloom Badge','Volt Badge','Frost Badge','Phantom Badge','Crystal Badge','Eclipse Badge'];
+  GS.player.seen=new Set([1,2,3,4,5,6,7,8,9]);GS.player.caught=new Set([3,6,9]);
+  GS.scene='champHub';GS.champDef.hubMenuIdx=0;
+  generateChallenger();
+}
+
+function generateChallenger(){
+  const cd=GS.champDef;const d=cd.difficulty;
+  cd.challengerName=pick(CHALLENGER_NAMES);
+  const titleIdx=Math.min(CHALLENGER_TITLES.length-1,Math.floor((d-1)/2));
+  cd.challengerName=CHALLENGER_TITLES[titleIdx]+' '+cd.challengerName;
+  // Build team: size scales with difficulty
+  const teamSize=Math.min(6,2+Math.floor(d/2));
+  const baseLvl=Math.min(80,42+d*4);
+  const team=[];
+  const usedIds=new Set();
+  for(let i=0;i<teamSize;i++){
+    let specId;
+    // Higher difficulty = stronger creatures (evolved forms, legendaries at high streaks)
+    if(d>=8&&i===0&&Math.random()<0.4){
+      specId=pick([106,107,108]); // legendaries
+    }else if(d>=3){
+      // Pick from evolved forms
+      const evolved=RIFTBORN_DB.filter(r=>!r.evolves&&!r.legendary&&r.stats.hp>=60&&!usedIds.has(r.id));
+      specId=evolved.length>0?pick(evolved).id:pick(RIFTBORN_DB.filter(r=>!usedIds.has(r.id))).id;
+    }else{
+      const pool=RIFTBORN_DB.filter(r=>!r.legendary&&!usedIds.has(r.id));
+      specId=pick(pool).id;
+    }
+    usedIds.add(specId);
+    const lvl=baseLvl+rand(-3,3);
+    team.push({id:specId,level:Math.max(5,lvl)});
+  }
+  cd.challengerTeam=team;
+  cd.catchUsed=false;
+}
+
+function champPartialHeal(){
+  const pct=GS.champDef.healPct;
+  GS.player.team.forEach(c=>{
+    if(c.hp<=0){c.hp=Math.floor(c.maxHp*0.3)} // revive fainted to 30%
+    else{c.hp=Math.min(c.maxHp,c.hp+Math.floor(c.maxHp*pct))}
+    c.status=null;c.statusTurns=0;c.leechSeed=false;
+    c.statStages={atk:0,def:0,spAtk:0,spDef:0,spd:0};calcStats(c);
+    c.moves.forEach(m=>{m.energy=Math.min(m.maxEnergy,m.energy+Math.floor(m.maxEnergy*pct))});
+  });
+}
+
+function drawChampNameEntry(){
+  X.fillStyle='#05051a';X.fillRect(0,0,W,H);
+  drawTextCenter('CHAMPION DEFENSE',W/2,H*0.15,24,'#ffd700');
+  drawTextCenter('Defend your title against endless challengers!',W/2,H*0.15+35,13,'#aaa');
+  drawTextCenter('Enter your name, Champion:',W/2,H*0.45,16,'#e0e0e0');
+  drawRect(W/2-100,H*0.55-10,200,36,'#1a1a3e',8);
+  X.strokeStyle='#ffd700';X.lineWidth=2;X.beginPath();X.roundRect(W/2-100,H*0.55-10,200,36,8);X.stroke();
+  drawTextCenter(GS.player.name+(Date.now()%1000<500?'|':''),W/2,H*0.55,16,'#e0e0e0');
+  if(GS.player.name.length>=1)drawButton(W/2-60,H*0.65,120,36,'START!',true,'#554400');
+}
+
+function drawChampHub(){
+  X.fillStyle='#05051a';X.fillRect(0,0,W,H);
+  const cd=GS.champDef;
+  const t=Date.now()/1000;
+
+  // Gold particles
+  X.globalAlpha=0.15;
+  for(let i=0;i<15;i++){
+    X.fillStyle='#ffd700';
+    X.beginPath();X.arc((Math.sin(t*0.3+i*1.3)*0.5+0.5)*W,(Math.cos(t*0.2+i*2.1)*0.5+0.5)*H,2+Math.sin(t+i)*1.5,0,Math.PI*2);X.fill();
+  }
+  X.globalAlpha=1;
+
+  // Title
+  drawTextCenter('CHAMPION DEFENSE',W/2,20,22,'#ffd700');
+  drawTextCenter(`Streak: ${cd.streak}`,W/2,48,16,'#e0e0e0');
+  if(cd.bestStreak>0)drawTextCenter(`Best: ${cd.bestStreak}`,W/2,68,12,'#888');
+
+  // Heal info
+  const healPctShow=Math.round(cd.healPct*100);
+  drawTextCenter(`Heal between rounds: ${healPctShow}%`,W/2,90,12,healPctShow>50?'#44cc44':healPctShow>30?'#ccaa22':'#cc3333');
+
+  // Next challenger info
+  drawRect(20,110,W-40,70,'#12122a',10);
+  X.strokeStyle='#ffd700';X.lineWidth=1;X.beginPath();X.roundRect(20,110,W-40,70,10);X.stroke();
+  drawText('Next Challenger:',30,118,12,'#aaa');
+  drawText(cd.challengerName,30,136,16,'#ff6644');
+  const cTeamSize=cd.challengerTeam.length;
+  const cLvl=cd.challengerTeam[0]?.level||50;
+  drawText(`${cTeamSize} Riftborn, ~Lv ${cLvl}`,30,158,12,'#888');
+
+  // Team preview
+  drawRect(20,195,W-40,90,'#12122a',10);
+  drawText('Your Team:',30,203,12,'#7b68ee');
+  const tp=GS.player.team;
+  tp.forEach((c,i)=>{
+    const tx=30+i*(isMobile?55:80),ty=220;
+    const spec=RB_BY_ID[c.specId];
+    if(spec)drawCreature(tx+22,ty+18,spec,c.level,false,20);
+    drawText(c.name.substring(0,6),tx,ty+42,9,c.hp>0?'#ccc':'#555');
+    drawHPBar(tx,ty+53,isMobile?48:68,5,c.hp,c.maxHp);
+    drawText(`L${c.level}`,tx,ty+60,8,'#888');
+  });
+
+  // Action buttons
+  const btnW=W-60,btnH=40,startY=300;
+  const btns=[
+    {label:'BATTLE Challenger!',color:'#553322'},
+    {label:cd.catchUsed?'Catch Phase (used)':'Catch Wild Riftborn',color:cd.catchUsed?'#222':'#223355'},
+    {label:'View Team',color:null},
+    {label:'View Bag',color:null},
+  ];
+  btns.forEach((b,i)=>{
+    const sel=cd.hubMenuIdx===i;
+    const by=startY+i*(btnH+8);
+    drawButton(30,by,btnW,btnH,b.label,sel,b.color);
+  });
+
+  drawTextCenter(`$${GS.player.money}`,W/2,H-30,12,'#ffcc00');
+}
+
+function handleChampHubInput(key){
+  const cd=GS.champDef;
+  if(key==='ArrowUp'||key==='w')cd.hubMenuIdx=Math.max(0,cd.hubMenuIdx-1);
+  if(key==='ArrowDown'||key==='s')cd.hubMenuIdx=Math.min(3,cd.hubMenuIdx+1);
+  if(key==='Enter'||key===' '){
+    if(cd.hubMenuIdx===0){
+      // Start battle against challenger
+      GS.explore.prevScene='champHub';
+      startBattle({trainer:{name:cd.challengerName,team:cd.challengerTeam,
+        greeting:`I'm ${cd.challengerName}! I challenge you for the Champion title!`,
+        defeat:"You're too strong... The Champion title is yours!"}});
+      GS.battle.isChampDef=true;
+    }else if(cd.hubMenuIdx===1&&!cd.catchUsed){
+      // Catch phase — one wild encounter on Champions Road
+      cd.catchUsed=true;
+      GS.explore.prevScene='champHub';
+      const route=ROUTES[8]; // Champions Road
+      const specId=pick(route.encounters);
+      const level=rand(route.minLvl,route.maxLvl);
+      const wild=createCreature(specId,level);wild.isWild=true;
+      GS.player.seen.add(specId);
+      startBattle({wild});
+      GS.battle.isChampDef=true;
+    }else if(cd.hubMenuIdx===2){
+      GS.explore.prevScene='champHub';GS.scene='team';GS.menuIdx=0;GS.subMenu=null;
+    }else if(cd.hubMenuIdx===3){
+      GS.explore.prevScene='champHub';GS.scene='bag';GS.subMenu=null;
+    }
+  }
+}
+
+function handleChampHubClick(cx,cy){
+  const cd=GS.champDef;
+  const btnW=W-60,btnH=40,startY=300;
+  for(let i=0;i<4;i++){
+    const by=startY+i*(btnH+8);
+    if(cx>=30&&cx<=30+btnW&&cy>=by&&cy<=by+btnH){
+      cd.hubMenuIdx=i;handleChampHubInput('Enter');return;
+    }
+  }
+}
+
+function champDefBattleEnd(won){
+  const cd=GS.champDef;
+  if(won){
+    cd.streak++;
+    if(cd.streak>cd.bestStreak){cd.bestStreak=cd.streak;localStorage.setItem('riftborn_champbest',''+cd.bestStreak)}
+    cd.difficulty++;
+    cd.healPct=Math.max(0.2,cd.healPct-0.03); // heal decreases each round
+    champPartialHeal();
+    generateChallenger();
+    GS.scene='champHub';cd.hubMenuIdx=0;
+  }else{
+    // Game over — show results
+    GS.scene='champDefOver';
+  }
+}
+
+function drawChampDefOver(){
+  X.fillStyle='#05051a';X.fillRect(0,0,W,H);
+  const cd=GS.champDef;
+  const t=Date.now()/1000;
+
+  X.globalAlpha=0.1;
+  for(let i=0;i<20;i++){
+    X.fillStyle=TYPE_COLORS[TYPES[i%18]];
+    X.beginPath();X.arc((Math.sin(t*0.3+i)*0.5+0.5)*W,(Math.cos(t*0.2+i*1.5)*0.5+0.5)*H,3,0,Math.PI*2);X.fill();
+  }
+  X.globalAlpha=1;
+
+  drawTextCenter('TITLE LOST!',W/2,60,28,'#ff4444');
+  drawTextCenter(`${cd.challengerName} defeated you...`,W/2,100,14,'#aaa');
+  drawTextCenter(`Final Streak: ${cd.streak}`,W/2,150,22,'#ffd700');
+  if(cd.streak===cd.bestStreak&&cd.streak>0)drawTextCenter('NEW BEST!',W/2,180,16,'#44cc44');
+  else if(cd.bestStreak>0)drawTextCenter(`Best: ${cd.bestStreak}`,W/2,180,14,'#888');
+
+  // Stats
+  const statY=220;
+  drawTextCenter(`Challengers Defeated: ${cd.streak}`,W/2,statY,14,'#e0e0e0');
+  drawTextCenter(`Final Difficulty: ${CHALLENGER_TITLES[Math.min(CHALLENGER_TITLES.length-1,Math.floor((cd.difficulty-1)/2))]}`,W/2,statY+25,13,'#aaa');
+  drawTextCenter(`Team Size: ${GS.player.team.length} Riftborn`,W/2,statY+50,13,'#aaa');
+
+  drawButton(W/2-80,H-100,160,40,'Try Again',GS.menuIdx===0);
+  drawButton(W/2-80,H-50,160,40,'Back to Title',GS.menuIdx===1);
+}
+
+// ============================================================
 // MAIN LOOP
 // ============================================================
 function update(){
@@ -2982,6 +3286,9 @@ function draw(){
     case 'summary':drawSummary();break;
     case 'evolve':drawEvolveScreen();break;
     case 'credits':drawCredits();break;
+    case 'champNameEntry':drawChampNameEntry();break;
+    case 'champHub':drawChampHub();break;
+    case 'champDefOver':drawChampDefOver();break;
   }
 
   requestAnimationFrame(draw);
