@@ -1,0 +1,2572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Riftborn Arena</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Consolas','Courier New',monospace;background:#0a0a1a;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center}
+canvas{display:block}
+#gc{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
+</style>
+</head>
+<body>
+<script src="auth.js"></script>
+<div id="gc"><canvas id="g"></canvas></div>
+<script>
+// ============================================================
+// RIFTBORN ARENA — Original Creature Battle Game
+// 100+ Riftborn, 18 types, 8 arenas, catching, battling
+// ============================================================
+const C=document.getElementById('g'),X=C.getContext('2d');
+const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
+const TW=isMobile?420:900,TH=isMobile?700:650;let sc=1;
+function resize(){const w=innerWidth,h=innerHeight;const dpr=window.devicePixelRatio||1;sc=Math.min(w/TW,h/TH);const cssW=TW*sc,cssH=TH*sc;C.width=TW*sc*dpr;C.height=TH*sc*dpr;C.style.width=cssW+'px';C.style.height=cssH+'px';C.style.position='absolute';C.style.left=(w-cssW)/2+'px';C.style.top=(h-cssH)/2+'px';X.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',resize);resize();
+function gmp(e){const r=C.getBoundingClientRect(),cx=(e.clientX||(e.touches&&e.touches[0]&&e.touches[0].clientX)||0)-r.left,cy=(e.clientY||(e.touches&&e.touches[0]&&e.touches[0].clientY)||0)-r.top;return{x:cx/sc,y:cy/sc}}
+const W=TW,H=TH,rand=(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pick=a=>a[Math.floor(Math.random()*a.length)],clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+
+// ============================================================
+// AUDIO
+// ============================================================
+const SFX={
+  ctx:null,
+  _init(){if(!this.ctx)try{this.ctx=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}},
+  _tone(freq,dur,type,vol,delay){
+    this._init();if(!this.ctx)return;
+    const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type=type||'sine';o.frequency.setValueAtTime(freq,this.ctx.currentTime+(delay||0));
+    g.gain.setValueAtTime(vol||0.15,this.ctx.currentTime+(delay||0));
+    g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+(delay||0)+dur);
+    o.connect(g);g.connect(this.ctx.destination);
+    o.start(this.ctx.currentTime+(delay||0));o.stop(this.ctx.currentTime+(delay||0)+dur);
+  },
+  _noise(dur,vol){
+    this._init();if(!this.ctx)return;
+    const bufSz=this.ctx.sampleRate*dur;const buf=this.ctx.createBuffer(1,bufSz,this.ctx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<bufSz;i++)d[i]=(Math.random()*2-1)*(vol||0.1);
+    const s=this.ctx.createBufferSource();const g=this.ctx.createGain();
+    s.buffer=buf;g.gain.setValueAtTime(vol||0.1,this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+dur);
+    s.connect(g);g.connect(this.ctx.destination);s.start();s.stop(this.ctx.currentTime+dur);
+  },
+  click(){this._tone(800,0.05,'square',0.06)},
+  hit(){this._tone(200,0.12,'sine',0.15);this._noise(0.08,0.1)},
+  crit(){this._tone(600,0.1,'sawtooth',0.2);this._tone(900,0.12,'square',0.18,0.05)},
+  superEff(){this._tone(500,0.08,'square',0.18);this._tone(700,0.1,'square',0.15,0.08);this._tone(1000,0.1,'square',0.12,0.16)},
+  heal(){this._tone(440,0.12,'sine',0.1);this._tone(550,0.12,'sine',0.08,0.12);this._tone(660,0.15,'sine',0.06,0.24)},
+  catch_(){this._tone(300,0.15,'triangle',0.12);this._tone(400,0.1,'triangle',0.1,0.15);this._tone(600,0.2,'triangle',0.08,0.25)},
+  fail(){this._tone(300,0.15,'sine',0.15);this._tone(200,0.2,'sine',0.12,0.15)},
+  victory(){[523,659,784,1047].forEach((f,i)=>this._tone(f,0.2,'sine',0.15,i*0.15))},
+  levelUp(){[440,554,659,880].forEach((f,i)=>this._tone(f,0.15,'triangle',0.12,i*0.1))},
+  faint(){this._tone(300,0.15,'sine',0.2);this._tone(200,0.2,'sine',0.15,0.15);this._tone(100,0.3,'sine',0.1,0.35)},
+  evolve(){[440,554,659,784,880,1047].forEach((f,i)=>this._tone(f,0.2,'sine',0.18,i*0.12))},
+};
+
+// ============================================================
+// TYPE SYSTEM — 18 types
+// ============================================================
+const TYPES=['Fire','Water','Grass','Electric','Ice','Ground','Rock','Flying',
+  'Poison','Bug','Normal','Fighting','Psychic','Ghost','Arcane','Shadow','Storm','Crystal'];
+
+const TYPE_COLORS={
+  Fire:'#ff4500',Water:'#3399ff',Grass:'#44bb44',Electric:'#ffcc00',
+  Ice:'#77ddff',Ground:'#cc8844',Rock:'#aa8855',Flying:'#88aadd',
+  Poison:'#aa44cc',Bug:'#88aa22',Normal:'#aaaaaa',Fighting:'#cc3333',
+  Psychic:'#ff66aa',Ghost:'#6644aa',Arcane:'#dd88ff',Shadow:'#333355',
+  Storm:'#55ccee',Crystal:'#88ffee'
+};
+
+// Type effectiveness: attacker -> defender. 2=super effective, 0.5=not very, 0=immune
+const TYPE_CHART={};
+TYPES.forEach(t=>{TYPE_CHART[t]={}; TYPES.forEach(d=>{TYPE_CHART[t][d]=1})});
+// Fire
+TYPE_CHART.Fire.Grass=2;TYPE_CHART.Fire.Ice=2;TYPE_CHART.Fire.Bug=2;TYPE_CHART.Fire.Crystal=2;
+TYPE_CHART.Fire.Water=0.5;TYPE_CHART.Fire.Rock=0.5;TYPE_CHART.Fire.Ground=0.5;TYPE_CHART.Fire.Fire=0.5;
+// Water
+TYPE_CHART.Water.Fire=2;TYPE_CHART.Water.Ground=2;TYPE_CHART.Water.Rock=2;
+TYPE_CHART.Water.Water=0.5;TYPE_CHART.Water.Grass=0.5;TYPE_CHART.Water.Electric=0.5;
+// Grass
+TYPE_CHART.Grass.Water=2;TYPE_CHART.Grass.Ground=2;TYPE_CHART.Grass.Rock=2;
+TYPE_CHART.Grass.Fire=0.5;TYPE_CHART.Grass.Grass=0.5;TYPE_CHART.Grass.Poison=0.5;TYPE_CHART.Grass.Flying=0.5;TYPE_CHART.Grass.Bug=0.5;
+// Electric
+TYPE_CHART.Electric.Water=2;TYPE_CHART.Electric.Flying=2;
+TYPE_CHART.Electric.Electric=0.5;TYPE_CHART.Electric.Grass=0.5;TYPE_CHART.Electric.Ground=0;
+// Ice
+TYPE_CHART.Ice.Grass=2;TYPE_CHART.Ice.Ground=2;TYPE_CHART.Ice.Flying=2;TYPE_CHART.Ice.Bug=2;
+TYPE_CHART.Ice.Fire=0.5;TYPE_CHART.Ice.Water=0.5;TYPE_CHART.Ice.Ice=0.5;
+// Ground
+TYPE_CHART.Ground.Fire=2;TYPE_CHART.Ground.Electric=2;TYPE_CHART.Ground.Poison=2;TYPE_CHART.Ground.Rock=2;
+TYPE_CHART.Ground.Grass=0.5;TYPE_CHART.Ground.Bug=0.5;TYPE_CHART.Ground.Flying=0;
+// Rock
+TYPE_CHART.Rock.Fire=2;TYPE_CHART.Rock.Ice=2;TYPE_CHART.Rock.Flying=2;TYPE_CHART.Rock.Bug=2;
+TYPE_CHART.Rock.Fighting=0.5;TYPE_CHART.Rock.Ground=0.5;
+// Flying
+TYPE_CHART.Flying.Grass=2;TYPE_CHART.Flying.Fighting=2;TYPE_CHART.Flying.Bug=2;
+TYPE_CHART.Flying.Electric=0.5;TYPE_CHART.Flying.Rock=0.5;TYPE_CHART.Flying.Ice=0.5;
+// Poison
+TYPE_CHART.Poison.Grass=2;TYPE_CHART.Poison.Bug=2;
+TYPE_CHART.Poison.Poison=0.5;TYPE_CHART.Poison.Ground=0.5;TYPE_CHART.Poison.Rock=0.5;TYPE_CHART.Poison.Ghost=0.5;
+// Bug
+TYPE_CHART.Bug.Grass=2;TYPE_CHART.Bug.Psychic=2;TYPE_CHART.Bug.Shadow=2;
+TYPE_CHART.Bug.Fire=0.5;TYPE_CHART.Bug.Fighting=0.5;TYPE_CHART.Bug.Flying=0.5;TYPE_CHART.Bug.Poison=0.5;
+// Normal
+TYPE_CHART.Normal.Ghost=0;TYPE_CHART.Normal.Rock=0.5;TYPE_CHART.Normal.Crystal=0.5;
+// Fighting
+TYPE_CHART.Fighting.Normal=2;TYPE_CHART.Fighting.Ice=2;TYPE_CHART.Fighting.Rock=2;TYPE_CHART.Fighting.Crystal=2;
+TYPE_CHART.Fighting.Poison=0.5;TYPE_CHART.Fighting.Flying=0.5;TYPE_CHART.Fighting.Psychic=0.5;TYPE_CHART.Fighting.Ghost=0;
+// Psychic
+TYPE_CHART.Psychic.Fighting=2;TYPE_CHART.Psychic.Poison=2;
+TYPE_CHART.Psychic.Psychic=0.5;TYPE_CHART.Psychic.Shadow=0;
+// Ghost
+TYPE_CHART.Ghost.Ghost=2;TYPE_CHART.Ghost.Psychic=2;
+TYPE_CHART.Ghost.Normal=0;TYPE_CHART.Ghost.Shadow=0.5;
+// Arcane
+TYPE_CHART.Arcane.Psychic=2;TYPE_CHART.Arcane.Ghost=2;TYPE_CHART.Arcane.Shadow=2;
+TYPE_CHART.Arcane.Crystal=0.5;TYPE_CHART.Arcane.Normal=0.5;
+// Shadow
+TYPE_CHART.Shadow.Psychic=2;TYPE_CHART.Shadow.Ghost=2;TYPE_CHART.Shadow.Arcane=2;
+TYPE_CHART.Shadow.Fighting=0.5;TYPE_CHART.Shadow.Crystal=0.5;
+// Storm
+TYPE_CHART.Storm.Water=2;TYPE_CHART.Storm.Flying=2;TYPE_CHART.Storm.Electric=0.5;
+TYPE_CHART.Storm.Ground=0.5;TYPE_CHART.Storm.Crystal=0.5;
+// Crystal
+TYPE_CHART.Crystal.Arcane=2;TYPE_CHART.Crystal.Shadow=2;TYPE_CHART.Crystal.Ice=2;
+TYPE_CHART.Crystal.Fire=0.5;TYPE_CHART.Crystal.Fighting=0.5;TYPE_CHART.Crystal.Ground=0.5;
+
+function getEff(atkType,defType){return TYPE_CHART[atkType]?.[defType]??1}
+
+// ============================================================
+// MOVES DATABASE
+// ============================================================
+const MOVES={
+  // Fire
+  Ember:{type:'Fire',power:40,energy:25,cat:'special',desc:'Small fireball'},
+  Blaze:{type:'Fire',power:70,energy:15,cat:'special',desc:'Intense flames'},
+  Inferno:{type:'Fire',power:100,energy:8,cat:'special',desc:'Devastating fire blast',effect:'burn',effectChance:30},
+  FlameCharge:{type:'Fire',power:50,energy:20,cat:'physical',desc:'Charges wreathed in fire',effect:'spdUp',effectChance:100},
+  // Water
+  Splash:{type:'Water',power:40,energy:25,cat:'special',desc:'Shoots water'},
+  Torrent:{type:'Water',power:70,energy:15,cat:'special',desc:'Powerful water jet'},
+  Tsunami:{type:'Water',power:100,energy:8,cat:'special',desc:'Massive wave'},
+  AquaJet:{type:'Water',power:45,energy:20,cat:'physical',desc:'Quick water tackle',priority:1},
+  // Grass
+  VineWhip:{type:'Grass',power:40,energy:25,cat:'physical',desc:'Lashes with vines'},
+  LeafStorm:{type:'Grass',power:75,energy:15,cat:'special',desc:'Whirlwind of leaves'},
+  Overgrowth:{type:'Grass',power:100,energy:8,cat:'special',desc:'Nature erupts'},
+  LeechSeed:{type:'Grass',power:0,energy:15,cat:'status',desc:'Drains HP each turn',effect:'leech',effectChance:100},
+  // Electric
+  Spark:{type:'Electric',power:40,energy:25,cat:'special',desc:'Electric jolt'},
+  Thunderbolt:{type:'Electric',power:75,energy:15,cat:'special',desc:'Powerful lightning',effect:'paralyze',effectChance:15},
+  VoltCrash:{type:'Electric',power:100,energy:8,cat:'special',desc:'Devastating thunder'},
+  // Ice
+  IceShard:{type:'Ice',power:40,energy:25,cat:'physical',desc:'Sharp ice',priority:1},
+  FrostBite:{type:'Ice',power:65,energy:15,cat:'special',desc:'Freezing blast',effect:'freeze',effectChance:10},
+  Blizzard:{type:'Ice',power:95,energy:8,cat:'special',desc:'Howling blizzard',effect:'freeze',effectChance:15},
+  // Ground
+  MudShot:{type:'Ground',power:45,energy:25,cat:'special',desc:'Shoots mud'},
+  Earthquake:{type:'Ground',power:85,energy:10,cat:'physical',desc:'Ground trembles'},
+  Fissure:{type:'Ground',power:0,energy:5,cat:'special',desc:'One-hit KO if it hits',ohko:true},
+  // Rock
+  RockThrow:{type:'Rock',power:50,energy:25,cat:'physical',desc:'Hurls a rock'},
+  Avalanche:{type:'Rock',power:80,energy:12,cat:'physical',desc:'Rock slide'},
+  // Flying
+  Gust:{type:'Flying',power:40,energy:25,cat:'special',desc:'Wind attack'},
+  AerialAce:{type:'Flying',power:60,energy:20,cat:'physical',desc:'Swift air slash',alwaysHit:true},
+  Hurricane:{type:'Flying',power:90,energy:10,cat:'special',desc:'Fierce hurricane'},
+  // Poison
+  PoisonSting:{type:'Poison',power:35,energy:25,cat:'physical',desc:'Toxic jab',effect:'poison',effectChance:30},
+  Toxify:{type:'Poison',power:65,energy:15,cat:'special',desc:'Toxic burst',effect:'poison',effectChance:40},
+  VenomDrench:{type:'Poison',power:85,energy:10,cat:'special',desc:'Toxic deluge',effect:'poison',effectChance:60},
+  // Bug
+  BugBite:{type:'Bug',power:40,energy:25,cat:'physical',desc:'Quick bite'},
+  Swarm:{type:'Bug',power:70,energy:12,cat:'physical',desc:'Bug swarm attack'},
+  // Normal
+  Tackle:{type:'Normal',power:35,energy:30,cat:'physical',desc:'Basic charge'},
+  Slam:{type:'Normal',power:60,energy:20,cat:'physical',desc:'Heavy slam'},
+  HyperBeam:{type:'Normal',power:110,energy:5,cat:'special',desc:'Devastating beam'},
+  Growl:{type:'Normal',power:0,energy:30,cat:'status',desc:'Lowers attack',effect:'atkDown',effectChance:100},
+  QuickAttack:{type:'Normal',power:40,energy:25,cat:'physical',desc:'Fast strike',priority:1},
+  // Fighting
+  KarateChop:{type:'Fighting',power:50,energy:20,cat:'physical',desc:'Focused strike',critBoost:true},
+  CloseCombat:{type:'Fighting',power:90,energy:8,cat:'physical',desc:'All-out assault'},
+  // Psychic
+  Confusion:{type:'Psychic',power:45,energy:25,cat:'special',desc:'Psychic pulse',effect:'confuse',effectChance:15},
+  Psybeam:{type:'Psychic',power:70,energy:15,cat:'special',desc:'Psychic beam',effect:'confuse',effectChance:20},
+  MindBlast:{type:'Psychic',power:95,energy:8,cat:'special',desc:'Mental annihilation'},
+  // Ghost
+  ShadowClaw:{type:'Ghost',power:50,energy:20,cat:'physical',desc:'Ghostly slash',critBoost:true},
+  PhantomPulse:{type:'Ghost',power:75,energy:12,cat:'special',desc:'Spectral energy'},
+  SoulDrain:{type:'Ghost',power:65,energy:12,cat:'special',desc:'Drains spirit',drain:0.5},
+  // Arcane
+  ArcaneBolt:{type:'Arcane',power:50,energy:20,cat:'special',desc:'Magical bolt'},
+  MysticSurge:{type:'Arcane',power:80,energy:10,cat:'special',desc:'Arcane explosion'},
+  Enchant:{type:'Arcane',power:0,energy:15,cat:'status',desc:'Boosts Sp.Atk',effect:'spAtkUp',effectChance:100},
+  // Shadow
+  DarkPulse:{type:'Shadow',power:55,energy:20,cat:'special',desc:'Dark energy wave',effect:'flinch',effectChance:20},
+  VoidStrike:{type:'Shadow',power:85,energy:10,cat:'special',desc:'Strike from the void'},
+  Nightfall:{type:'Shadow',power:100,energy:6,cat:'special',desc:'Absolute darkness'},
+  // Storm
+  Gale:{type:'Storm',power:50,energy:20,cat:'special',desc:'Fierce gale'},
+  Tempest:{type:'Storm',power:80,energy:10,cat:'special',desc:'Raging tempest'},
+  StormCall:{type:'Storm',power:0,energy:10,cat:'status',desc:'Boosts Speed',effect:'spdUp',effectChance:100},
+  // Crystal
+  ShardStrike:{type:'Crystal',power:50,energy:20,cat:'physical',desc:'Crystal shard attack'},
+  PrismBeam:{type:'Crystal',power:80,energy:10,cat:'special',desc:'Refracting beam'},
+  CrystalArmor:{type:'Crystal',power:0,energy:15,cat:'status',desc:'Boosts Defense',effect:'defUp',effectChance:100},
+  // Healing
+  Rest:{type:'Normal',power:0,energy:10,cat:'status',desc:'Heal 50% HP',effect:'heal50',effectChance:100},
+};
+
+// ============================================================
+// RIFTBORN DATABASE — 108 creatures
+// Stats: hp, atk, def, spAtk, spDef, spd (base)
+// ============================================================
+const RIFTBORN_DB=[
+  // ── STARTERS & EVOLUTIONS (9) ──
+  {id:1,name:'Cindrit',type:'Fire',stats:{hp:45,atk:52,def:40,spAtk:60,spDef:45,spd:58},
+    moves:['Ember','Tackle'],learnset:{8:'FlameCharge',15:'Blaze',25:'Inferno'},evolves:{level:16,into:2},desc:'A small ember spirit with a flickering tail flame.'},
+  {id:2,name:'Pyrox',type:'Fire',stats:{hp:65,atk:68,def:55,spAtk:80,spDef:60,spd:75},
+    moves:['Ember','FlameCharge','Blaze'],learnset:{30:'Inferno'},evolves:{level:36,into:3},desc:'Its body burns with controlled fury. Flames dance around its fists.'},
+  {id:3,name:'Ignivolt',type:'Fire',stats:{hp:85,atk:82,def:70,spAtk:105,spDef:75,spd:95},
+    moves:['Blaze','FlameCharge','Inferno','CloseCombat'],learnset:{},desc:'A blazing warrior wreathed in volcanic flame.'},
+
+  {id:4,name:'Riplet',type:'Water',stats:{hp:50,atk:45,def:50,spAtk:55,spDef:50,spd:50},
+    moves:['Splash','Tackle'],learnset:{8:'AquaJet',15:'Torrent',25:'Tsunami'},evolves:{level:16,into:5},desc:'A playful water droplet creature that bounces everywhere.'},
+  {id:5,name:'Tidalon',type:'Water',stats:{hp:70,atk:60,def:68,spAtk:75,spDef:70,spd:65},
+    moves:['Splash','AquaJet','Torrent'],learnset:{30:'Tsunami'},evolves:{level:36,into:6},desc:'Rides waves of its own creation. Its fins slice through water.'},
+  {id:6,name:'Abyssurge',type:'Water',stats:{hp:90,atk:75,def:85,spAtk:100,spDef:90,spd:78},
+    moves:['Torrent','AquaJet','Tsunami','Blizzard'],learnset:{},desc:'Commands the ocean depths. Its roar creates whirlpools.'},
+
+  {id:7,name:'Sproutling',type:'Grass',stats:{hp:50,atk:48,def:55,spAtk:55,spDef:55,spd:42},
+    moves:['VineWhip','Tackle'],learnset:{8:'LeechSeed',15:'LeafStorm',25:'Overgrowth'},evolves:{level:16,into:8},desc:'A tiny sprout with big curious eyes. Photosynthesizes happily.'},
+  {id:8,name:'Thornveil',type:'Grass',stats:{hp:70,atk:62,def:72,spAtk:75,spDef:72,spd:55},
+    moves:['VineWhip','LeechSeed','LeafStorm'],learnset:{30:'Overgrowth'},evolves:{level:36,into:9},desc:'Thorny vines protect its body. It controls plant growth around it.'},
+  {id:9,name:'Elderoot',type:'Grass',stats:{hp:90,atk:78,def:90,spAtk:100,spDef:88,spd:65},
+    moves:['LeafStorm','LeechSeed','Overgrowth','Earthquake'],learnset:{},desc:'An ancient tree spirit. Its roots span entire forests.'},
+
+  // ── FIRE LINE (6) ──
+  {id:10,name:'Scorchkit',type:'Fire',stats:{hp:40,atk:55,def:35,spAtk:50,spDef:35,spd:60},
+    moves:['Ember','QuickAttack'],learnset:{10:'FlameCharge',18:'Blaze'},evolves:{level:20,into:11},desc:'A fiery kit that leaves scorch marks wherever it walks.'},
+  {id:11,name:'Blazefang',type:'Fire',stats:{hp:65,atk:80,def:55,spAtk:70,spDef:55,spd:85},
+    moves:['Blaze','FlameCharge','QuickAttack','CloseCombat'],learnset:{},desc:'Its fangs glow white-hot. Hunts with blazing speed.'},
+  {id:12,name:'Lavamaw',type:'Fire',stats:{hp:80,atk:45,def:70,spAtk:85,spDef:60,spd:35},
+    moves:['Ember','Blaze'],learnset:{12:'MudShot',22:'Inferno'},evolves:{level:28,into:13},desc:'A lumbering lava beast that oozes magma.'},
+  {id:13,name:'Volcrath',type:'Fire',stats:{hp:100,atk:60,def:90,spAtk:105,spDef:80,spd:45},
+    moves:['Inferno','Earthquake','Blaze','MudShot'],learnset:{},desc:'Its body is a miniature volcano. Erupts when angered.'},
+
+  // ── WATER LINE (6) ──
+  {id:14,name:'Bubfish',type:'Water',stats:{hp:45,atk:40,def:45,spAtk:55,spDef:50,spd:55},
+    moves:['Splash','Tackle'],learnset:{10:'Torrent',18:'AquaJet'},evolves:{level:22,into:15},desc:'Blows bubbles that pop with surprising force.'},
+  {id:15,name:'Coralsteed',type:'Water',stats:{hp:70,atk:60,def:70,spAtk:80,spDef:75,spd:70},
+    moves:['Torrent','AquaJet','IceShard','Tsunami'],learnset:{},desc:'Gallops across the ocean surface. Coral grows on its mane.'},
+  {id:16,name:'Jellydrift',type:'Water',stats:{hp:55,atk:30,def:40,spAtk:65,spDef:60,spd:45},
+    moves:['Splash','Confusion'],learnset:{12:'Torrent',20:'Psybeam'},evolves:{level:25,into:17},desc:'A floating jellyfish with hypnotic patterns.'},
+  {id:17,name:'Abyssmind',type:'Water',stats:{hp:80,atk:45,def:65,spAtk:95,spDef:85,spd:60},
+    moves:['Torrent','Psybeam','MindBlast','Tsunami'],learnset:{},desc:'Its telepathic powers control deep-sea currents.'},
+
+  // ── GRASS LINE (6) ──
+  {id:18,name:'Mosskit',type:'Grass',stats:{hp:48,atk:50,def:48,spAtk:48,spDef:48,spd:52},
+    moves:['VineWhip','Tackle'],learnset:{10:'LeafStorm',16:'BugBite'},evolves:{level:20,into:19},desc:'A mossy critter that blends into forest floors.'},
+  {id:19,name:'Thicketfox',type:'Grass',stats:{hp:70,atk:75,def:65,spAtk:65,spDef:65,spd:78},
+    moves:['LeafStorm','BugBite','VineWhip','QuickAttack'],learnset:{},desc:'Swift forest predator wrapped in living foliage.'},
+  {id:20,name:'Cacturne',type:'Grass',stats:{hp:55,atk:60,def:55,spAtk:55,spDef:45,spd:40},
+    moves:['VineWhip','PoisonSting'],learnset:{12:'LeafStorm',20:'Toxify'},evolves:{level:24,into:21},desc:'A prickly desert plant creature. Patient and tough.'},
+  {id:21,name:'Thornwarden',type:'Grass',stats:{hp:80,atk:85,def:80,spAtk:70,spDef:65,spd:55},
+    moves:['LeafStorm','Toxify','VineWhip','Overgrowth'],learnset:{},desc:'Guardian of the desert oasis. Its thorns are venomous.'},
+
+  // ── ELECTRIC (6) ──
+  {id:22,name:'Zapplet',type:'Electric',stats:{hp:40,atk:35,def:35,spAtk:55,spDef:40,spd:65},
+    moves:['Spark','QuickAttack'],learnset:{10:'Thunderbolt',20:'VoltCrash'},evolves:{level:22,into:23},desc:'A tiny spark sprite that zaps everything it touches.'},
+  {id:23,name:'Voltarc',type:'Electric',stats:{hp:65,atk:55,def:55,spAtk:85,spDef:65,spd:90},
+    moves:['Thunderbolt','QuickAttack','VoltCrash','AerialAce'],learnset:{},desc:'Arcs of electricity crackle around its body constantly.'},
+  {id:24,name:'Staticlaw',type:'Electric',stats:{hp:50,atk:65,def:45,spAtk:50,spDef:40,spd:60},
+    moves:['Spark','KarateChop'],learnset:{12:'Thunderbolt',22:'CloseCombat'},evolves:{level:26,into:25},desc:'A nimble creature with electrified claws.'},
+  {id:25,name:'Thundermaw',type:'Electric',stats:{hp:75,atk:90,def:65,spAtk:70,spDef:60,spd:80},
+    moves:['Thunderbolt','CloseCombat','VoltCrash','KarateChop'],learnset:{},desc:'Its jaws can bite through steel, charged with lightning.'},
+
+  // ── ICE (6) ──
+  {id:26,name:'Frostpup',type:'Ice',stats:{hp:45,atk:45,def:45,spAtk:50,spDef:50,spd:50},
+    moves:['IceShard','Tackle'],learnset:{10:'FrostBite',20:'Blizzard'},evolves:{level:24,into:27},desc:'A playful ice puppy that leaves frost trails.'},
+  {id:27,name:'Glaciawolf',type:'Ice',stats:{hp:75,atk:70,def:65,spAtk:80,spDef:75,spd:75},
+    moves:['Blizzard','IceShard','FrostBite','QuickAttack'],learnset:{},desc:'A majestic ice wolf. Its howl brings snowstorms.'},
+  {id:28,name:'Sleetling',type:'Ice',stats:{hp:40,atk:35,def:50,spAtk:55,spDef:55,spd:40},
+    moves:['IceShard','Splash'],learnset:{12:'FrostBite',18:'Torrent'},evolves:{level:22,into:29},desc:'A floating ice crystal that melts and refreezes.'},
+  {id:29,name:'Hailveil',type:'Ice',stats:{hp:70,atk:50,def:75,spAtk:85,spDef:80,spd:55},
+    moves:['Blizzard','FrostBite','Torrent','CrystalArmor'],learnset:{},desc:'Shrouded in perpetual hail. Beautiful but dangerous.'},
+
+  // ── GROUND (4) ──
+  {id:30,name:'Dirtmole',type:'Ground',stats:{hp:50,atk:55,def:55,spAtk:35,spDef:40,spd:45},
+    moves:['MudShot','Tackle'],learnset:{10:'RockThrow',18:'Earthquake'},evolves:{level:24,into:31},desc:'Digs through earth at surprising speed.'},
+  {id:31,name:'Terrabore',type:'Ground',stats:{hp:80,atk:85,def:80,spAtk:50,spDef:60,spd:60},
+    moves:['Earthquake','RockThrow','MudShot','CloseCombat'],learnset:{},desc:'Its drill-like claws can tunnel through mountains.'},
+
+  // ── ROCK (4) ──
+  {id:32,name:'Pebblite',type:'Rock',stats:{hp:50,atk:55,def:65,spAtk:35,spDef:40,spd:30},
+    moves:['RockThrow','Tackle'],learnset:{12:'Avalanche',20:'Earthquake'},evolves:{level:24,into:33},desc:'A living pebble that rolls around curiously.'},
+  {id:33,name:'Bouldrock',type:'Rock',stats:{hp:85,atk:85,def:100,spAtk:45,spDef:55,spd:40},
+    moves:['Avalanche','Earthquake','RockThrow','CloseCombat'],learnset:{},desc:'An immovable fortress of stone. Ancient and patient.'},
+
+  // ── FLYING (6) ──
+  {id:34,name:'Breezling',type:'Flying',stats:{hp:40,atk:40,def:35,spAtk:50,spDef:40,spd:60},
+    moves:['Gust','QuickAttack'],learnset:{10:'AerialAce',18:'Hurricane'},evolves:{level:22,into:35},desc:'A tiny bird-like creature that rides air currents.'},
+  {id:35,name:'Skytalon',type:'Flying',stats:{hp:65,atk:70,def:55,spAtk:75,spDef:60,spd:85},
+    moves:['Hurricane','AerialAce','QuickAttack','Gust'],learnset:{},desc:'Dives from great heights. Its talons gleam in sunlight.'},
+  {id:36,name:'Cloudwisp',type:'Flying',stats:{hp:45,atk:30,def:40,spAtk:60,spDef:55,spd:55},
+    moves:['Gust','Spark'],learnset:{12:'Thunderbolt',20:'Hurricane'},evolves:{level:26,into:37},desc:'A misty creature that drifts among clouds.'},
+  {id:37,name:'Nimbusking',type:'Flying',stats:{hp:75,atk:50,def:60,spAtk:90,spDef:80,spd:78},
+    moves:['Hurricane','Thunderbolt','Gust','Tempest'],learnset:{},desc:'Rules the skies from its cloud throne.'},
+
+  // ── POISON (4) ──
+  {id:38,name:'Toxipod',type:'Poison',stats:{hp:45,atk:45,def:40,spAtk:50,spDef:45,spd:50},
+    moves:['PoisonSting','Tackle'],learnset:{10:'Toxify',18:'VenomDrench'},evolves:{level:24,into:39},desc:'Oozes mild toxins. Surprisingly friendly.'},
+  {id:39,name:'Venomrex',type:'Poison',stats:{hp:75,atk:70,def:65,spAtk:80,spDef:70,spd:75},
+    moves:['VenomDrench','Toxify','CloseCombat','DarkPulse'],learnset:{},desc:'King of venomous beasts. One bite can fell a tree.'},
+
+  // ── BUG (4) ──
+  {id:40,name:'Chitinite',type:'Bug',stats:{hp:40,atk:45,def:50,spAtk:35,spDef:40,spd:45},
+    moves:['BugBite','Tackle'],learnset:{8:'Swarm',16:'LeafStorm'},evolves:{level:18,into:41},desc:'A small armored insect. Its shell is surprisingly hard.'},
+  {id:41,name:'Mantiscythe',type:'Bug',stats:{hp:65,atk:80,def:70,spAtk:50,spDef:55,spd:75},
+    moves:['Swarm','BugBite','AerialAce','ShadowClaw'],learnset:{},desc:'Lightning-fast blade arms. A feared predator.'},
+
+  // ── NORMAL (4) ──
+  {id:42,name:'Fluffox',type:'Normal',stats:{hp:50,atk:45,def:40,spAtk:45,spDef:40,spd:55},
+    moves:['Tackle','QuickAttack'],learnset:{8:'Slam',14:'Growl'},evolves:{level:20,into:43},desc:'A fluffy fox-like creature. Incredibly common.'},
+  {id:43,name:'Lushfang',type:'Normal',stats:{hp:75,atk:72,def:60,spAtk:65,spDef:60,spd:80},
+    moves:['Slam','QuickAttack','HyperBeam','Growl'],learnset:{},desc:'Elegant and swift. Its fur shimmers in moonlight.'},
+
+  // ── FIGHTING (4) ──
+  {id:44,name:'Brawlkit',type:'Fighting',stats:{hp:50,atk:60,def:45,spAtk:35,spDef:40,spd:50},
+    moves:['KarateChop','Tackle'],learnset:{10:'CloseCombat',18:'RockThrow'},evolves:{level:24,into:45},desc:'Always looking for a sparring partner.'},
+  {id:45,name:'Ironwill',type:'Fighting',stats:{hp:80,atk:95,def:70,spAtk:50,spDef:65,spd:70},
+    moves:['CloseCombat','KarateChop','RockThrow','Earthquake'],learnset:{},desc:'Unbreakable spirit. Its punches shatter boulders.'},
+
+  // ── PSYCHIC (6) ──
+  {id:46,name:'Mindmoth',type:'Psychic',stats:{hp:42,atk:30,def:35,spAtk:55,spDef:55,spd:55},
+    moves:['Confusion','Gust'],learnset:{10:'Psybeam',20:'MindBlast'},evolves:{level:24,into:47},desc:'A luminous moth with telepathic antennae.'},
+  {id:47,name:'Psychewing',type:'Psychic',stats:{hp:68,atk:45,def:55,spAtk:90,spDef:85,spd:78},
+    moves:['MindBlast','Psybeam','Hurricane','ArcaneBolt'],learnset:{},desc:'Its wings create psychic patterns that entrance onlookers.'},
+  {id:48,name:'Orbweaver',type:'Psychic',stats:{hp:45,atk:35,def:40,spAtk:60,spDef:50,spd:48},
+    moves:['Confusion','Tackle'],learnset:{12:'Psybeam',22:'MindBlast'},evolves:{level:28,into:49},desc:'Spins invisible psychic webs to trap prey.'},
+  {id:49,name:'Cosmoloom',type:'Psychic',stats:{hp:75,atk:50,def:65,spAtk:100,spDef:80,spd:65},
+    moves:['MindBlast','Psybeam','ArcaneBolt','MysticSurge'],learnset:{},desc:'Weaves reality like fabric. Sees all possible futures.'},
+
+  // ── GHOST (6) ──
+  {id:50,name:'Glimshade',type:'Ghost',stats:{hp:40,atk:40,def:35,spAtk:55,spDef:45,spd:55},
+    moves:['ShadowClaw','Confusion'],learnset:{10:'PhantomPulse',18:'SoulDrain'},evolves:{level:24,into:51},desc:'A flickering shadow with glowing eyes.'},
+  {id:51,name:'Wraithlord',type:'Ghost',stats:{hp:65,atk:65,def:55,spAtk:90,spDef:70,spd:78},
+    moves:['PhantomPulse','SoulDrain','ShadowClaw','DarkPulse'],learnset:{},desc:'Commands lesser spirits. Its gaze chills the soul.'},
+  {id:52,name:'Hollowbell',type:'Ghost',stats:{hp:50,atk:35,def:50,spAtk:55,spDef:55,spd:40},
+    moves:['ShadowClaw','Tackle'],learnset:{12:'PhantomPulse',20:'SoulDrain'},evolves:{level:26,into:53},desc:'A haunted bell that rings at midnight.'},
+  {id:53,name:'Doomchime',type:'Ghost',stats:{hp:78,atk:55,def:75,spAtk:85,spDef:80,spd:55},
+    moves:['PhantomPulse','SoulDrain','DarkPulse','MysticSurge'],learnset:{},desc:'Its toll heralds misfortune. Ancient and ominous.'},
+
+  // ── ARCANE (6) ──
+  {id:54,name:'Glyphlet',type:'Arcane',stats:{hp:42,atk:35,def:40,spAtk:60,spDef:50,spd:48},
+    moves:['ArcaneBolt','Tackle'],learnset:{10:'Enchant',18:'MysticSurge'},evolves:{level:26,into:55},desc:'A floating glyph with mysterious powers.'},
+  {id:55,name:'Runelord',type:'Arcane',stats:{hp:70,atk:50,def:65,spAtk:95,spDef:80,spd:65},
+    moves:['MysticSurge','ArcaneBolt','Enchant','MindBlast'],learnset:{},desc:'Ancient runes orbit its body. Master of lost magic.'},
+  {id:56,name:'Sparkune',type:'Arcane',stats:{hp:38,atk:40,def:35,spAtk:55,spDef:45,spd:55},
+    moves:['ArcaneBolt','Spark'],learnset:{10:'Thunderbolt',18:'MysticSurge'},evolves:{level:24,into:57},desc:'An arcane sprite infused with electric magic.'},
+  {id:57,name:'Voltmystic',type:'Arcane',stats:{hp:65,atk:60,def:55,spAtk:88,spDef:70,spd:78},
+    moves:['MysticSurge','Thunderbolt','ArcaneBolt','VoltCrash'],learnset:{},desc:'Channels arcane energy through electric conduits.'},
+
+  // ── SHADOW (6) ──
+  {id:58,name:'Duskpaw',type:'Shadow',stats:{hp:45,atk:50,def:40,spAtk:50,spDef:40,spd:55},
+    moves:['DarkPulse','Tackle'],learnset:{10:'VoidStrike',20:'Nightfall'},evolves:{level:26,into:59},desc:'A shadow creature that stalks the twilight.'},
+  {id:59,name:'Umbrafang',type:'Shadow',stats:{hp:72,atk:78,def:60,spAtk:78,spDef:60,spd:80},
+    moves:['VoidStrike','Nightfall','DarkPulse','ShadowClaw'],learnset:{},desc:'Strikes from impossible angles. Born of pure darkness.'},
+  {id:60,name:'Shroudling',type:'Shadow',stats:{hp:40,atk:35,def:45,spAtk:55,spDef:50,spd:48},
+    moves:['DarkPulse','Confusion'],learnset:{12:'VoidStrike',22:'Nightfall'},evolves:{level:28,into:61},desc:'Wrapped in living shadow. Barely visible at night.'},
+  {id:61,name:'Eclipsar',type:'Shadow',stats:{hp:70,atk:55,def:70,spAtk:90,spDef:75,spd:65},
+    moves:['Nightfall','VoidStrike','MindBlast','DarkPulse'],learnset:{},desc:'Its presence dims the sun. A walking eclipse.'},
+
+  // ── STORM (6) ──
+  {id:62,name:'Gustling',type:'Storm',stats:{hp:42,atk:40,def:38,spAtk:55,spDef:42,spd:58},
+    moves:['Gale','Tackle'],learnset:{10:'Tempest',18:'StormCall'},evolves:{level:24,into:63},desc:'A tiny storm spirit. Loves rainy days.'},
+  {id:63,name:'Cyclonarch',type:'Storm',stats:{hp:70,atk:60,def:60,spAtk:88,spDef:65,spd:82},
+    moves:['Tempest','StormCall','Gale','Thunderbolt'],learnset:{},desc:'Commands hurricanes. The eye of every storm.'},
+  {id:64,name:'Drizzpup',type:'Storm',stats:{hp:45,atk:45,def:42,spAtk:48,spDef:45,spd:52},
+    moves:['Gale','Splash'],learnset:{10:'Torrent',18:'Tempest'},evolves:{level:22,into:65},desc:'A puppy-shaped storm cloud. Drizzles when happy.'},
+  {id:65,name:'Stormhound',type:'Storm',stats:{hp:75,atk:72,def:60,spAtk:75,spDef:62,spd:78},
+    moves:['Tempest','Torrent','Gale','VoltCrash'],learnset:{},desc:'Runs on lightning bolts. Its bark is literal thunder.'},
+
+  // ── CRYSTAL (6) ──
+  {id:66,name:'Gemkit',type:'Crystal',stats:{hp:42,atk:45,def:55,spAtk:50,spDef:55,spd:38},
+    moves:['ShardStrike','Tackle'],learnset:{10:'PrismBeam',18:'CrystalArmor'},evolves:{level:24,into:67},desc:'A crystalline kitten. Refracts light beautifully.'},
+  {id:67,name:'Prismclaw',type:'Crystal',stats:{hp:70,atk:72,def:82,spAtk:78,spDef:80,spd:55},
+    moves:['PrismBeam','ShardStrike','CrystalArmor','IceShard'],learnset:{},desc:'Its crystalline claws can cut diamonds.'},
+  {id:68,name:'Quartzmite',type:'Crystal',stats:{hp:45,atk:50,def:60,spAtk:40,spDef:50,spd:35},
+    moves:['ShardStrike','RockThrow'],learnset:{12:'PrismBeam',20:'Avalanche'},evolves:{level:26,into:69},desc:'A beetle made of living quartz.'},
+  {id:69,name:'Geolith',type:'Crystal',stats:{hp:80,atk:78,def:95,spAtk:60,spDef:75,spd:45},
+    moves:['PrismBeam','ShardStrike','Avalanche','Earthquake'],learnset:{},desc:'A towering crystal golem. Nearly indestructible.'},
+
+  // ── ADDITIONAL WILD CREATURES (39 more to reach 108) ──
+  // Fire extra
+  {id:70,name:'Ashenmite',type:'Fire',stats:{hp:38,atk:42,def:35,spAtk:48,spDef:35,spd:52},
+    moves:['Ember','Tackle'],learnset:{8:'FlameCharge'},desc:'A tiny fire ant that gathers embers.'},
+  {id:71,name:'Magmeel',type:'Fire',stats:{hp:60,atk:55,def:50,spAtk:70,spDef:55,spd:45},
+    moves:['Ember','Blaze','MudShot'],learnset:{},desc:'An eel-like creature that swims through lava.'},
+  // Water extra
+  {id:72,name:'Dewdrop',type:'Water',stats:{hp:35,atk:30,def:30,spAtk:45,spDef:40,spd:50},
+    moves:['Splash','Tackle'],learnset:{8:'AquaJet'},desc:'A tiny water spirit found near streams.'},
+  {id:73,name:'Kelpsnarl',type:'Water',stats:{hp:62,atk:58,def:60,spAtk:55,spDef:55,spd:42},
+    moves:['Splash','VineWhip','Torrent'],learnset:{},desc:'A kelp beast that lurks in shallow waters.'},
+  // Grass extra
+  {id:74,name:'Fernpuff',type:'Grass',stats:{hp:38,atk:35,def:38,spAtk:45,spDef:42,spd:48},
+    moves:['VineWhip','Tackle'],learnset:{8:'LeechSeed'},desc:'A dandelion-like puffball that floats on breezes.'},
+  {id:75,name:'Barkshell',type:'Grass',stats:{hp:65,atk:55,def:75,spAtk:50,spDef:60,spd:30},
+    moves:['VineWhip','LeafStorm','RockThrow'],learnset:{},desc:'A turtle-like creature with bark armor.'},
+  // Electric extra
+  {id:76,name:'Buzzlet',type:'Electric',stats:{hp:35,atk:38,def:30,spAtk:50,spDef:35,spd:62},
+    moves:['Spark','QuickAttack'],learnset:{},desc:'A tiny electric bee. Buzzes constantly.'},
+  {id:77,name:'Voltfin',type:'Electric',stats:{hp:55,atk:50,def:45,spAtk:65,spDef:50,spd:60},
+    moves:['Spark','Thunderbolt','AquaJet'],learnset:{},desc:'An electric fish that leaps from rivers to shock prey.'},
+  // Ice extra
+  {id:78,name:'Snowdust',type:'Ice',stats:{hp:35,atk:30,def:35,spAtk:48,spDef:45,spd:50},
+    moves:['IceShard','Tackle'],learnset:{},desc:'Made of packed snowflakes. Melts in warm places.'},
+  {id:79,name:'Glacimoth',type:'Ice',stats:{hp:55,atk:40,def:45,spAtk:70,spDef:60,spd:55},
+    moves:['FrostBite','IceShard','Gust'],learnset:{},desc:'A moth with frozen wings that sparkle like diamonds.'},
+  // Ground extra
+  {id:80,name:'Mudskip',type:'Ground',stats:{hp:42,atk:45,def:45,spAtk:35,spDef:38,spd:48},
+    moves:['MudShot','Tackle'],learnset:{},desc:'Hops around in mud puddles happily.'},
+  {id:81,name:'Sandsurge',type:'Ground',stats:{hp:65,atk:70,def:65,spAtk:45,spDef:50,spd:55},
+    moves:['Earthquake','MudShot','RockThrow'],learnset:{},desc:'Creates sandstorms by burrowing at high speed.'},
+  // Rock extra
+  {id:82,name:'Geode',type:'Rock',stats:{hp:45,atk:40,def:60,spAtk:45,spDef:50,spd:25},
+    moves:['RockThrow','Tackle'],learnset:{},desc:'Looks like an ordinary rock until it opens its eyes.'},
+  {id:83,name:'Stalagmaw',type:'Rock',stats:{hp:70,atk:75,def:85,spAtk:40,spDef:55,spd:30},
+    moves:['Avalanche','RockThrow','Earthquake'],learnset:{},desc:'A cave-dwelling beast with jaws of stone.'},
+  // Flying extra
+  {id:84,name:'Flutterfin',type:'Flying',stats:{hp:35,atk:35,def:30,spAtk:45,spDef:40,spd:60},
+    moves:['Gust','Tackle'],learnset:{},desc:'A tiny winged fish. Glides between treetops.'},
+  {id:85,name:'Razorhawk',type:'Flying',stats:{hp:60,atk:75,def:55,spAtk:55,spDef:50,spd:80},
+    moves:['AerialAce','Hurricane','QuickAttack'],learnset:{},desc:'Feathers sharp enough to cut steel.'},
+  // Poison extra
+  {id:86,name:'Slimecap',type:'Poison',stats:{hp:40,atk:38,def:40,spAtk:48,spDef:42,spd:42},
+    moves:['PoisonSting','Tackle'],learnset:{},desc:'A mushroom oozing purple slime.'},
+  {id:87,name:'Miasmar',type:'Poison',stats:{hp:65,atk:55,def:55,spAtk:72,spDef:60,spd:55},
+    moves:['Toxify','VenomDrench','PoisonSting'],learnset:{},desc:'Emits a poisonous fog. Surprisingly cuddly-looking.'},
+  // Bug extra
+  {id:88,name:'Larvabug',type:'Bug',stats:{hp:38,atk:40,def:42,spAtk:30,spDef:35,spd:40},
+    moves:['BugBite','Tackle'],learnset:{},desc:'Munches on leaves all day long.'},
+  {id:89,name:'Stingwasp',type:'Bug',stats:{hp:55,atk:72,def:50,spAtk:40,spDef:45,spd:70},
+    moves:['Swarm','BugBite','PoisonSting','AerialAce'],learnset:{},desc:'Aggressive territorial wasp. Attacks in groups.'},
+  // Normal extra
+  {id:90,name:'Woollum',type:'Normal',stats:{hp:50,atk:35,def:45,spAtk:35,spDef:45,spd:40},
+    moves:['Tackle','Growl'],learnset:{},desc:'A fluffy sheep creature. Very soft.'},
+  {id:91,name:'Raccoondit',type:'Normal',stats:{hp:48,atk:52,def:42,spAtk:42,spDef:38,spd:58},
+    moves:['QuickAttack','Tackle','Slam'],learnset:{},desc:'A mischievous raccoon that steals berries.'},
+  // Fighting extra
+  {id:92,name:'Punchito',type:'Fighting',stats:{hp:42,atk:55,def:38,spAtk:30,spDef:35,spd:52},
+    moves:['KarateChop','Tackle'],learnset:{},desc:'A tiny fighter with oversized boxing gloves.'},
+  {id:93,name:'Grapplord',type:'Fighting',stats:{hp:72,atk:88,def:65,spAtk:40,spDef:55,spd:62},
+    moves:['CloseCombat','KarateChop','Slam','Earthquake'],learnset:{},desc:'A massive wrestler. Champions of the arena.'},
+  // Psychic extra
+  {id:94,name:'Starwisp',type:'Psychic',stats:{hp:38,atk:28,def:32,spAtk:55,spDef:48,spd:52},
+    moves:['Confusion','Tackle'],learnset:{},desc:'A floating star fragment with psychic powers.'},
+  {id:95,name:'Dreamveil',type:'Psychic',stats:{hp:60,atk:40,def:50,spAtk:78,spDef:72,spd:58},
+    moves:['Psybeam','MindBlast','Confusion'],learnset:{},desc:'Exists partially in the dream realm.'},
+  // Ghost extra
+  {id:96,name:'Wispwick',type:'Ghost',stats:{hp:35,atk:35,def:30,spAtk:50,spDef:40,spd:55},
+    moves:['ShadowClaw','Ember'],learnset:{},desc:'A ghostly candle flame that whispers.'},
+  {id:97,name:'Phantorch',type:'Ghost',stats:{hp:58,atk:55,def:50,spAtk:72,spDef:60,spd:58},
+    moves:['PhantomPulse','SoulDrain','Blaze'],learnset:{},desc:'A haunted lantern that guides lost travelers astray.'},
+  // Arcane extra
+  {id:98,name:'Runelet',type:'Arcane',stats:{hp:35,atk:30,def:35,spAtk:52,spDef:45,spd:48},
+    moves:['ArcaneBolt','Tackle'],learnset:{},desc:'A tiny floating rune. Hums with ancient power.'},
+  {id:99,name:'Spellbinder',type:'Arcane',stats:{hp:62,atk:48,def:55,spAtk:82,spDef:68,spd:58},
+    moves:['MysticSurge','ArcaneBolt','Enchant'],learnset:{},desc:'Binds magic into physical form. Dangerously curious.'},
+  // Shadow extra
+  {id:100,name:'Dimpulse',type:'Shadow',stats:{hp:38,atk:42,def:35,spAtk:48,spDef:38,spd:52},
+    moves:['DarkPulse','Tackle'],learnset:{},desc:'A small shadow that mimics your movements.'},
+  {id:101,name:'Nightstalker',type:'Shadow',stats:{hp:62,atk:70,def:55,spAtk:65,spDef:50,spd:68},
+    moves:['VoidStrike','DarkPulse','ShadowClaw'],learnset:{},desc:'Silent hunter of the night. You never see it coming.'},
+  // Storm extra
+  {id:102,name:'Thundermite',type:'Storm',stats:{hp:35,atk:38,def:32,spAtk:50,spDef:38,spd:58},
+    moves:['Gale','Spark'],learnset:{},desc:'A tiny mite crackling with storm energy.'},
+  {id:103,name:'Rainlash',type:'Storm',stats:{hp:58,atk:55,def:50,spAtk:68,spDef:55,spd:62},
+    moves:['Tempest','Gale','Torrent'],learnset:{},desc:'Whips rain into cutting lashes.'},
+  // Crystal extra
+  {id:104,name:'Shardlet',type:'Crystal',stats:{hp:35,atk:38,def:48,spAtk:42,spDef:45,spd:35},
+    moves:['ShardStrike','Tackle'],learnset:{},desc:'A tiny crystal fragment that sparkles.'},
+  {id:105,name:'Opalynx',type:'Crystal',stats:{hp:58,atk:60,def:68,spAtk:65,spDef:62,spd:48},
+    moves:['PrismBeam','ShardStrike','CrystalArmor'],learnset:{},desc:'A lynx made of opal. Changes color with mood.'},
+  // Legendaries (3 - one per region)
+  {id:106,name:'Pyrovax',type:'Fire',stats:{hp:100,atk:90,def:80,spAtk:115,spDef:85,spd:100},
+    moves:['Inferno','VoltCrash','Earthquake','HyperBeam'],learnset:{},desc:'Legendary phoenix of the Rift. Said to have created fire itself.',legendary:true},
+  {id:107,name:'Aquarion',type:'Water',stats:{hp:105,atk:85,def:90,spAtk:110,spDef:95,spd:90},
+    moves:['Tsunami','Blizzard','MindBlast','HyperBeam'],learnset:{},desc:'Legendary sea dragon. Controls all water in the world.',legendary:true},
+  {id:108,name:'Terravolt',type:'Crystal',stats:{hp:95,atk:100,def:100,spAtk:100,spDef:100,spd:80},
+    moves:['PrismBeam','Earthquake','VoltCrash','HyperBeam'],learnset:{},desc:'The Crystal Titan. Said to hold the world together.',legendary:true},
+];
+
+// Build lookup
+const RB_BY_ID={};RIFTBORN_DB.forEach(r=>RB_BY_ID[r.id]=r);
+
+// ============================================================
+// ARENA LEADERS — 8 arenas + Champion (Kyle)
+// ============================================================
+const ARENAS=[
+  {name:'Ember Cavern',leader:'Flint',type:'Fire',badge:'Ember Badge',
+    team:[{id:10,level:12},{id:70,level:11},{id:12,level:14}],
+    greeting:"I'm Flint, keeper of Ember Cavern! Let's see if you can handle the heat!",
+    defeat:"Your flame burns brighter than mine..."},
+  {name:'Coral Depths',leader:'Marina',type:'Water',badge:'Tide Badge',
+    team:[{id:72,level:18},{id:14,level:19},{id:16,level:21}],
+    greeting:"Welcome to the depths! I'm Marina. My Riftborn flow like the ocean!",
+    defeat:"You've earned the Tide Badge. The current favors you."},
+  {name:'Verdant Grove',leader:'Ivy',type:'Grass',badge:'Bloom Badge',
+    team:[{id:74,level:24},{id:20,level:25},{id:18,level:26},{id:8,level:27}],
+    greeting:"I'm Ivy of the Verdant Grove. Nature will test your resolve!",
+    defeat:"You've grown strong, like the mightiest oak..."},
+  {name:'Thunder Peak',leader:'Bolt',type:'Electric',badge:'Volt Badge',
+    team:[{id:76,level:30},{id:24,level:31},{id:22,level:32},{id:23,level:33}],
+    greeting:"I'm Bolt! My Riftborn strike like lightning — blink and you'll miss it!",
+    defeat:"Shocking! You've outpaced my lightning!"},
+  {name:'Frozen Hollow',leader:'Freya',type:'Ice',badge:'Frost Badge',
+    team:[{id:78,level:35},{id:28,level:36},{id:26,level:37},{id:27,level:38}],
+    greeting:"I am Freya. In this hollow, everything freezes — including hope.",
+    defeat:"Your warmth melted even my coldest defenses."},
+  {name:'Phantom Crypt',leader:'Shade',type:'Ghost',badge:'Phantom Badge',
+    team:[{id:96,level:40},{id:52,level:41},{id:50,level:42},{id:51,level:43}],
+    greeting:"Heh heh... I'm Shade. Can you battle what you can't see?",
+    defeat:"Impossible! You've banished my shadows!"},
+  {name:'Crystal Sanctum',leader:'Prism',type:'Crystal',badge:'Crystal Badge',
+    team:[{id:104,level:45},{id:68,level:46},{id:66,level:47},{id:67,level:48}],
+    greeting:"Welcome to the Crystal Sanctum. I am Prism. Each facet reveals a new strategy.",
+    defeat:"You've shattered my crystal fortress. Well done."},
+  {name:'Shadow Spire',leader:'Nyx',type:'Shadow',badge:'Eclipse Badge',
+    team:[{id:100,level:50},{id:60,level:51},{id:58,level:52},{id:59,level:53}],
+    greeting:"I am Nyx, master of the void. Darkness consumes all who enter.",
+    defeat:"Light... within darkness? You've earned the Eclipse Badge."},
+];
+
+const CHAMPION={name:'Kyle',title:'Arena Champion',
+  team:[{id:3,level:60},{id:6,level:58},{id:9,level:58},{id:108,level:62},{id:23,level:57},{id:59,level:58}],
+  greeting:"So you've beaten all eight arenas... I'm Kyle, the Arena Champion. Show me what you've got!",
+  defeat:"Incredible... You've done it. You're the new Champion of the Rift!"};
+
+// ============================================================
+// ROUTE / WILD ENCOUNTER TABLES
+// ============================================================
+const ROUTES=[
+  {name:'Ashfield Path',minLvl:3,maxLvl:7,encounters:[70,42,74,80,88,90]},
+  {name:'Coral Shore',minLvl:7,maxLvl:12,encounters:[72,84,14,76,86,40]},
+  {name:'Thornwood',minLvl:12,maxLvl:18,encounters:[18,38,50,82,92,94]},
+  {name:'Stormridge',minLvl:18,maxLvl:24,encounters:[62,36,24,48,32,100]},
+  {name:'Frostpeak Trail',minLvl:22,maxLvl:30,encounters:[26,78,28,64,98,104]},
+  {name:'Magma Tunnels',minLvl:28,maxLvl:36,encounters:[12,30,82,96,60,68]},
+  {name:'Mystic Highlands',minLvl:34,maxLvl:42,encounters:[54,56,46,52,66,102]},
+  {name:'Void Reaches',minLvl:40,maxLvl:50,encounters:[58,60,101,97,99,103]},
+  {name:'Champions Road',minLvl:48,maxLvl:58,encounters:[11,15,19,23,27,35,39,45,49,55,63,67]},
+];
+
+// ============================================================
+// SHELL TYPES (Pokeball equivalent)
+// ============================================================
+const SHELLS=[
+  {name:'Rift Shell',catchRate:1,cost:200,desc:'Standard shell for catching Riftborn.'},
+  {name:'Great Shell',catchRate:1.5,cost:600,desc:'Better catch rate.'},
+  {name:'Ultra Shell',catchRate:2,cost:1200,desc:'High catch rate.'},
+  {name:'Master Shell',catchRate:255,cost:0,desc:'Never fails. Extremely rare.'},
+];
+
+// ============================================================
+// ITEMS
+// ============================================================
+const ITEM_DEFS=[
+  {name:'Potion',type:'heal',value:20,cost:100,desc:'Heals 20 HP.'},
+  {name:'Super Potion',type:'heal',value:50,cost:300,desc:'Heals 50 HP.'},
+  {name:'Hyper Potion',type:'heal',value:100,cost:700,desc:'Heals 100 HP.'},
+  {name:'Max Potion',type:'heal',value:9999,cost:1500,desc:'Fully heals HP.'},
+  {name:'Revive',type:'revive',value:0.5,cost:800,desc:'Revives fainted Riftborn to 50% HP.'},
+  {name:'Full Revive',type:'revive',value:1,cost:2000,desc:'Revives to full HP.'},
+  {name:'Antidote',type:'status',value:'poison',cost:100,desc:'Cures poison.'},
+  {name:'Burn Heal',type:'status',value:'burn',cost:100,desc:'Cures burn.'},
+  {name:'Full Heal',type:'status',value:'all',cost:400,desc:'Cures all status effects.'},
+];
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let GS={
+  scene:'title', // title, intro, starterPick, overworld, battle, bag, team, shop, arenaSelect, summary, champion, credits
+  player:{
+    name:'',
+    team:[],     // Array of creature instances
+    box:[],      // Storage
+    bag:{shells:[{idx:0,qty:20},{idx:1,qty:5}],items:[{idx:0,qty:5}]},
+    money:3000,
+    badges:[],
+    seen:new Set(),
+    caught:new Set(),
+  },
+  route:0,
+  arenaIdx:0,
+  battle:null,
+  textQueue:[],
+  textCurrent:'',
+  textCharIdx:0,
+  textSpeed:2,
+  textDone:false,
+  menuIdx:0,
+  subMenu:null,
+  subMenuIdx:0,
+  moveSelectIdx:0,
+  targetSelectIdx:0,
+  scrollOffset:0,
+  anim:{active:false,type:null,timer:0,data:{}},
+  particles:[],
+  introStep:0,
+  starterHighlight:0,
+  evolving:null,
+  saved:false,
+};
+
+// ============================================================
+// CREATURE INSTANCE FACTORY
+// ============================================================
+function createCreature(specId,level){
+  const spec=RB_BY_ID[specId];if(!spec)return null;
+  const c={
+    specId:specId,name:spec.name,type:spec.type,level:level,
+    xp:0,xpNeeded:level*level*3+10,
+    baseStats:{...spec.stats},
+    stats:{},
+    hp:0,maxHp:0,
+    moves:[],maxMoves:4,
+    status:null,statusTurns:0,
+    statStages:{atk:0,def:0,spAtk:0,spDef:0,spd:0},
+    leechSeed:false,
+    isWild:false,
+  };
+  // Calculate actual stats
+  calcStats(c);
+  c.hp=c.maxHp;
+  // Determine moves (base + learned by level)
+  let allMoves=[...spec.moves];
+  if(spec.learnset){
+    Object.entries(spec.learnset).forEach(([lvl,move])=>{
+      if(parseInt(lvl)<=level&&!allMoves.includes(move))allMoves.push(move);
+    });
+  }
+  // Take last 4
+  c.moves=allMoves.slice(-4).map(m=>({name:m,energy:MOVES[m]?.energy||10,maxEnergy:MOVES[m]?.energy||10}));
+  return c;
+}
+
+function calcStats(c){
+  const b=c.baseStats;const lv=c.level;
+  c.maxHp=Math.floor((2*b.hp*lv)/100)+lv+10;
+  ['atk','def','spAtk','spDef','spd'].forEach(s=>{
+    c.stats[s]=Math.floor((2*b[s]*lv)/100)+5;
+    // Apply stat stages
+    const stage=c.statStages[s];
+    if(stage>0)c.stats[s]=Math.floor(c.stats[s]*(2+stage)/2);
+    else if(stage<0)c.stats[s]=Math.floor(c.stats[s]*2/(2-stage));
+  });
+}
+
+function getXpYield(c){return Math.floor(c.level*c.baseStats.hp/5)+20}
+
+function checkEvolve(c){
+  const spec=RB_BY_ID[c.specId];
+  if(spec&&spec.evolves&&c.level>=spec.evolves.level){
+    return spec.evolves.into;
+  }
+  return null;
+}
+
+function evolveCreature(c,newId){
+  const newSpec=RB_BY_ID[newId];if(!newSpec)return;
+  const hpPct=c.hp/c.maxHp;
+  c.specId=newId;c.name=newSpec.name;c.type=newSpec.type;
+  c.baseStats={...newSpec.stats};
+  calcStats(c);
+  c.hp=Math.max(1,Math.floor(c.maxHp*hpPct));
+  // Add new moves if space
+  let allMoves=c.moves.map(m=>m.name);
+  newSpec.moves.forEach(m=>{
+    if(!allMoves.includes(m)&&c.moves.length<4){
+      c.moves.push({name:m,energy:MOVES[m]?.energy||10,maxEnergy:MOVES[m]?.energy||10});
+      allMoves.push(m);
+    }
+  });
+}
+
+// ============================================================
+// BATTLE ENGINE
+// ============================================================
+function startBattle(options){
+  // options: {wild:creature, trainer:{name,team}, arena:arenaIdx, champion:bool}
+  GS.scene='battle';
+  const b={
+    turn:0,phase:'intro', // intro, menu, moveSelect, itemSelect, shellSelect, switchSelect, execute, result, run, catch
+    playerTeam:GS.player.team,
+    playerActive:0,
+    enemyTeam:[],
+    enemyActive:0,
+    isWild:!!options.wild,
+    isTrainer:!!options.trainer,
+    isArena:options.arena!==undefined,
+    isChampion:!!options.champion,
+    trainerName:options.trainer?.name||'',
+    log:[],
+    turnActions:[],
+    catchAttempt:false,
+    caught:false,
+    escaped:false,
+    playerWon:false,
+    playerLost:false,
+    xpGained:0,
+    menuIdx:0,
+    subIdx:0,
+    scrollOff:0,
+    animTimer:0,
+    animType:null,
+    shakeP:0,shakeE:0,
+    flashP:0,flashE:0,
+    hpAnimP:0,hpAnimE:0,
+    msgQueue:[],
+    msgCurrent:'',
+    msgCharIdx:0,
+    msgDone:false,
+  };
+  if(options.wild){
+    const wc={...options.wild};wc.isWild=true;
+    b.enemyTeam=[wc];
+    b.log.push(`A wild ${wc.name} appeared!`);
+    b.msgQueue.push(`A wild ${wc.name} appeared!`);
+  }
+  if(options.trainer){
+    b.enemyTeam=options.trainer.team.map(t=>createCreature(t.id,t.level));
+    b.log.push(`${options.trainer.name} wants to battle!`);
+    b.msgQueue.push(`${options.trainer.name} wants to battle!`);
+    if(options.trainer.greeting)b.msgQueue.push(options.trainer.greeting);
+  }
+  if(options.arena!==undefined){
+    const a=ARENAS[options.arena];
+    b.enemyTeam=a.team.map(t=>createCreature(t.id,t.level));
+    b.trainerName=`${a.leader}`;
+    b.log.push(`Arena Leader ${a.leader} challenges you!`);
+    b.msgQueue.push(`Arena Leader ${a.leader} challenges you!`);
+    b.msgQueue.push(a.greeting);
+  }
+  if(options.champion){
+    b.enemyTeam=CHAMPION.team.map(t=>createCreature(t.id,t.level));
+    b.trainerName='Champion Kyle';
+    b.msgQueue.push(`Champion ${CHAMPION.name} challenges you!`);
+    b.msgQueue.push(CHAMPION.greeting);
+  }
+  // Find first alive player
+  for(let i=0;i<b.playerTeam.length;i++){
+    if(b.playerTeam[i].hp>0){b.playerActive=i;break}
+  }
+  b.hpAnimP=b.playerTeam[b.playerActive]?.hp||0;
+  b.hpAnimE=b.enemyTeam[b.enemyActive]?.hp||0;
+  GS.battle=b;
+  GS.menuIdx=0;
+}
+
+function getActiveP(){return GS.battle.playerTeam[GS.battle.playerActive]}
+function getActiveE(){return GS.battle.enemyTeam[GS.battle.enemyActive]}
+
+function battleMsg(msg){GS.battle.msgQueue.push(msg)}
+function advanceBattleMsg(){
+  const b=GS.battle;
+  if(b.msgQueue.length>0){
+    b.msgCurrent=b.msgQueue.shift();b.msgCharIdx=0;b.msgDone=false;
+    return true;
+  }
+  return false;
+}
+
+function calcDamage(attacker,defender,move){
+  const m=MOVES[move.name];if(!m||m.power===0)return 0;
+  if(m.ohko){
+    if(attacker.stats.spd>=defender.stats.spd&&Math.random()<0.3)return defender.hp;
+    return 0;
+  }
+  const lv=attacker.level;
+  const atk=m.cat==='physical'?attacker.stats.atk:attacker.stats.spAtk;
+  const def=m.cat==='physical'?defender.stats.def:defender.stats.spDef;
+  const stab=m.type===attacker.type?1.5:1;
+  const eff=getEff(m.type,defender.type);
+  const crit=(Math.random()<(m.critBoost?0.125:0.0625))?1.5:1;
+  const rng=0.85+Math.random()*0.15;
+  const dmg=Math.floor(((2*lv/5+2)*m.power*atk/def/50+2)*stab*eff*crit*rng);
+  return {dmg:Math.max(1,dmg),eff,crit:crit>1};
+}
+
+function applyMoveEffects(attacker,defender,move,result){
+  const m=MOVES[move.name];if(!m)return;
+  if(m.effect&&Math.random()*100<(m.effectChance||0)){
+    switch(m.effect){
+      case 'burn':
+        if(!defender.status){defender.status='burn';defender.statusTurns=5;battleMsg(`${defender.name} was burned!`)}break;
+      case 'poison':
+        if(!defender.status){defender.status='poison';defender.statusTurns=5;battleMsg(`${defender.name} was poisoned!`)}break;
+      case 'paralyze':
+        if(!defender.status){defender.status='paralyze';defender.statusTurns=4;battleMsg(`${defender.name} was paralyzed!`)}break;
+      case 'freeze':
+        if(!defender.status){defender.status='freeze';defender.statusTurns=3;battleMsg(`${defender.name} was frozen solid!`)}break;
+      case 'confuse':
+        if(!defender.status){defender.status='confuse';defender.statusTurns=3;battleMsg(`${defender.name} became confused!`)}break;
+      case 'flinch':
+        defender._flinched=true;break;
+      case 'atkDown':
+        if(defender.statStages.atk>-6){defender.statStages.atk--;calcStats(defender);battleMsg(`${defender.name}'s Attack fell!`)}break;
+      case 'spdUp':
+        if(attacker.statStages.spd<6){attacker.statStages.spd++;calcStats(attacker);battleMsg(`${attacker.name}'s Speed rose!`)}break;
+      case 'spAtkUp':
+        if(attacker.statStages.spAtk<6){attacker.statStages.spAtk++;calcStats(attacker);battleMsg(`${attacker.name}'s Sp.Atk rose!`)}break;
+      case 'defUp':
+        if(attacker.statStages.def<6){attacker.statStages.def++;calcStats(attacker);battleMsg(`${attacker.name}'s Defense rose!`)}break;
+      case 'leech':
+        if(!defender.leechSeed){defender.leechSeed=true;battleMsg(`${defender.name} was seeded!`)}break;
+      case 'heal50':
+        const heal=Math.floor(attacker.maxHp*0.5);attacker.hp=Math.min(attacker.maxHp,attacker.hp+heal);
+        battleMsg(`${attacker.name} restored health!`);break;
+    }
+  }
+  if(m.drain&&result.dmg>0){
+    const drained=Math.floor(result.dmg*m.drain);
+    attacker.hp=Math.min(attacker.maxHp,attacker.hp+drained);
+    battleMsg(`${attacker.name} drained energy!`);
+  }
+}
+
+function executeMove(user,target,move,isPlayer){
+  const b=GS.battle;const m=MOVES[move.name];if(!m)return;
+
+  // Check status
+  if(user.status==='freeze'){
+    if(Math.random()<0.3){user.status=null;battleMsg(`${user.name} thawed out!`)}
+    else{battleMsg(`${user.name} is frozen solid!`);return}
+  }
+  if(user.status==='paralyze'&&Math.random()<0.25){
+    battleMsg(`${user.name} is paralyzed! It can't move!`);return;
+  }
+  if(user._flinched){user._flinched=false;battleMsg(`${user.name} flinched!`);return}
+  if(user.status==='confuse'){
+    if(user.statusTurns<=0){user.status=null;battleMsg(`${user.name} snapped out of confusion!`)}
+    else{
+      user.statusTurns--;
+      if(Math.random()<0.33){
+        const selfDmg=Math.floor(user.maxHp*0.1);
+        user.hp=Math.max(0,user.hp-selfDmg);
+        battleMsg(`${user.name} hurt itself in confusion!`);
+        if(isPlayer)b.shakeP=10;else b.shakeE=10;
+        return;
+      }
+    }
+  }
+
+  // Energy check
+  if(move.energy<=0){battleMsg(`${user.name} has no energy for ${move.name}!`);return}
+  move.energy--;
+
+  battleMsg(`${user.name} used ${move.name}!`);
+
+  if(m.cat==='status'){
+    applyMoveEffects(user,target,move,{dmg:0});
+    return;
+  }
+
+  const result=calcDamage(user,target,move);
+  if(typeof result==='number'){
+    if(result===0){battleMsg('But it missed!');return}
+    target.hp=Math.max(0,target.hp-result);
+    return;
+  }
+
+  if(result.eff===0){battleMsg("It had no effect...");return}
+  target.hp=Math.max(0,target.hp-result.dmg);
+
+  if(isPlayer){b.shakeE=8;b.flashE=8;SFX.hit()}
+  else{b.shakeP=8;b.flashP=8;SFX.hit()}
+
+  if(result.crit){battleMsg('A critical hit!');SFX.crit()}
+  if(result.eff>=2){battleMsg("It's super effective!");SFX.superEff()}
+  else if(result.eff<=0.5)battleMsg("It's not very effective...");
+
+  applyMoveEffects(user,target,move,result);
+}
+
+function endOfTurnEffects(creature){
+  if(!creature||creature.hp<=0)return;
+  if(creature.status==='burn'){
+    const dmg=Math.max(1,Math.floor(creature.maxHp/16));
+    creature.hp=Math.max(0,creature.hp-dmg);
+    battleMsg(`${creature.name} was hurt by its burn!`);
+  }
+  if(creature.status==='poison'){
+    const dmg=Math.max(1,Math.floor(creature.maxHp/8));
+    creature.hp=Math.max(0,creature.hp-dmg);
+    battleMsg(`${creature.name} was hurt by poison!`);
+  }
+  if(creature.leechSeed&&creature.hp>0){
+    const dmg=Math.max(1,Math.floor(creature.maxHp/12));
+    creature.hp=Math.max(0,creature.hp-dmg);
+    battleMsg(`Leech Seed saps ${creature.name}!`);
+  }
+  // Reduce status turns
+  if(creature.statusTurns>0)creature.statusTurns--;
+  if(creature.statusTurns<=0&&creature.status&&creature.status!=='confuse')creature.status=null;
+}
+
+function attemptCatch(creature,shellIdx){
+  const shell=SHELLS[shellIdx];
+  const hpFactor=(3*creature.maxHp-2*creature.hp)/(3*creature.maxHp);
+  const statusBonus=creature.status?1.5:1;
+  const lvlFactor=Math.max(0.5,1-creature.level/100);
+  const chance=Math.min(0.95,hpFactor*shell.catchRate*statusBonus*lvlFactor*0.5);
+  return Math.random()<chance;
+}
+
+function aiChooseMove(creature){
+  const validMoves=creature.moves.filter(m=>m.energy>0);
+  if(validMoves.length===0)return null;
+  // Prefer super effective moves vs player active
+  const target=getActiveP();
+  let best=null,bestScore=-1;
+  validMoves.forEach(m=>{
+    const md=MOVES[m.name];if(!md)return;
+    let score=md.power||30;
+    score*=getEff(md.type,target.type);
+    if(md.type===creature.type)score*=1.3;
+    score+=Math.random()*20;
+    if(score>bestScore){bestScore=score;best=m}
+  });
+  return best||pick(validMoves);
+}
+
+// ============================================================
+// SAVE / LOAD
+// ============================================================
+function saveGame(){
+  const data={
+    player:{
+      ...GS.player,
+      seen:Array.from(GS.player.seen),
+      caught:Array.from(GS.player.caught),
+    },
+    route:GS.route,arenaIdx:GS.arenaIdx,
+  };
+  localStorage.setItem('riftborn_save',JSON.stringify(data));
+  GS.saved=true;
+}
+
+function loadGame(){
+  const raw=localStorage.getItem('riftborn_save');
+  if(!raw)return false;
+  try{
+    const data=JSON.parse(raw);
+    GS.player={...data.player,seen:new Set(data.player.seen),caught:new Set(data.player.caught)};
+    // Restore creature methods
+    GS.player.team.forEach(c=>{calcStats(c)});
+    GS.player.box.forEach(c=>{calcStats(c)});
+    GS.route=data.route||0;
+    GS.arenaIdx=data.arenaIdx||0;
+    GS.scene='overworld';
+    return true;
+  }catch(e){return false}
+}
+
+// ============================================================
+// DRAWING HELPERS
+// ============================================================
+function drawRect(x,y,w,h,color,radius){
+  X.fillStyle=color;
+  if(radius){
+    X.beginPath();X.roundRect(x,y,w,h,radius);X.fill();
+  }else{
+    X.fillRect(x,y,w,h);
+  }
+}
+
+function drawText(text,x,y,size,color,align,maxW){
+  X.fillStyle=color||'#e0e0e0';X.font=`${size||14}px Consolas, monospace`;
+  X.textAlign=align||'left';X.textBaseline='top';
+  if(maxW)X.fillText(text,x,y,maxW);
+  else X.fillText(text,x,y);
+}
+
+function drawTextCenter(text,x,y,size,color){drawText(text,x,y,size,color,'center')}
+
+function drawButton(x,y,w,h,label,selected,color){
+  const bg=selected?(color||'#3344aa'):'#1a1a3e';
+  const border=selected?'#7b68ee':'#2a2a4a';
+  X.fillStyle=bg;X.beginPath();X.roundRect(x,y,w,h,8);X.fill();
+  X.strokeStyle=border;X.lineWidth=selected?2:1;X.stroke();
+  drawTextCenter(label,x+w/2,y+h/2-7,14,'#e0e0e0');
+}
+
+function drawHPBar(x,y,w,h,current,max,animated){
+  const pct=Math.max(0,Math.min(1,(animated!==undefined?animated:current)/max));
+  X.fillStyle='#1a1a1a';X.beginPath();X.roundRect(x,y,w,h,4);X.fill();
+  const color=pct>0.5?'#44cc44':pct>0.25?'#ccaa22':'#cc3333';
+  if(pct>0){X.fillStyle=color;X.beginPath();X.roundRect(x,y,w*pct,h,4);X.fill()}
+  X.strokeStyle='#444';X.lineWidth=1;X.beginPath();X.roundRect(x,y,w,h,4);X.stroke();
+}
+
+function drawEnergyBar(x,y,w,h,current,max){
+  const pct=Math.max(0,current/max);
+  X.fillStyle='#1a1a1a';X.beginPath();X.roundRect(x,y,w,h,3);X.fill();
+  if(pct>0){X.fillStyle='#5577cc';X.beginPath();X.roundRect(x,y,w*pct,h,3);X.fill()}
+}
+
+function drawTypeTag(x,y,type){
+  const color=TYPE_COLORS[type]||'#888';
+  X.fillStyle=color+'44';X.beginPath();X.roundRect(x,y,60,18,4);X.fill();
+  X.strokeStyle=color;X.lineWidth=1;X.stroke();
+  drawTextCenter(type,x+30,y+3,11,color);
+}
+
+// ============================================================
+// CREATURE DRAWING — Canvas sprites
+// ============================================================
+function drawCreature(cx,cy,spec,level,flip,size){
+  const s=size||60;
+  const tc=TYPE_COLORS[spec.type]||'#888';
+  X.save();
+  if(flip){X.translate(cx,cy);X.scale(-1,1);X.translate(-cx,-cy)}
+
+  // Body shape based on type
+  const t=spec.type;
+  X.fillStyle=tc;
+
+  if(t==='Fire'||t==='Shadow'){
+    // Angular/fierce body
+    X.beginPath();
+    X.moveTo(cx,cy-s*0.6);X.lineTo(cx+s*0.4,cy-s*0.1);X.lineTo(cx+s*0.35,cy+s*0.4);
+    X.lineTo(cx-s*0.35,cy+s*0.4);X.lineTo(cx-s*0.4,cy-s*0.1);X.closePath();X.fill();
+    // Flame/shadow wisps
+    X.globalAlpha=0.6;
+    for(let i=0;i<3;i++){
+      const wx=cx-s*0.2+i*s*0.2,wy=cy-s*0.5-Math.sin(Date.now()/200+i)*s*0.15;
+      X.beginPath();X.arc(wx,wy,s*0.1,0,Math.PI*2);X.fill();
+    }
+    X.globalAlpha=1;
+  }else if(t==='Water'||t==='Storm'||t==='Ice'){
+    // Round/flowing body
+    X.beginPath();X.ellipse(cx,cy,s*0.4,s*0.45,0,0,Math.PI*2);X.fill();
+    // Fin/crest
+    X.beginPath();X.moveTo(cx-s*0.1,cy-s*0.45);X.lineTo(cx+s*0.15,cy-s*0.7);
+    X.lineTo(cx+s*0.25,cy-s*0.35);X.closePath();X.fill();
+    // Tail
+    X.beginPath();X.moveTo(cx-s*0.35,cy+s*0.1);X.quadraticCurveTo(cx-s*0.6,cy-s*0.1,cx-s*0.55,cy+s*0.3);X.lineTo(cx-s*0.3,cy+s*0.2);X.closePath();X.fill();
+  }else if(t==='Grass'||t==='Bug'){
+    // Organic/round body
+    X.beginPath();X.ellipse(cx,cy+s*0.05,s*0.38,s*0.4,0,0,Math.PI*2);X.fill();
+    // Leaf/antenna
+    X.beginPath();X.moveTo(cx,cy-s*0.4);X.quadraticCurveTo(cx+s*0.3,cy-s*0.8,cx+s*0.15,cy-s*0.55);X.closePath();X.fill();
+    X.beginPath();X.moveTo(cx,cy-s*0.4);X.quadraticCurveTo(cx-s*0.3,cy-s*0.75,cx-s*0.1,cy-s*0.5);X.closePath();X.fill();
+  }else if(t==='Electric'||t==='Arcane'){
+    // Spiky/energetic body
+    X.beginPath();
+    const pts=6;
+    for(let i=0;i<pts;i++){
+      const a=i/pts*Math.PI*2-Math.PI/2;
+      const r=(i%2===0)?s*0.45:s*0.3;
+      const px=cx+Math.cos(a)*r,py=cy+Math.sin(a)*r;
+      if(i===0)X.moveTo(px,py);else X.lineTo(px,py);
+    }
+    X.closePath();X.fill();
+    // Sparks
+    X.globalAlpha=0.7;
+    for(let i=0;i<4;i++){
+      const sa=Math.random()*Math.PI*2;
+      const sr=s*0.5+Math.random()*s*0.15;
+      X.fillRect(cx+Math.cos(sa)*sr-2,cy+Math.sin(sa)*sr-2,4,4);
+    }
+    X.globalAlpha=1;
+  }else if(t==='Rock'||t==='Ground'||t==='Crystal'){
+    // Blocky/angular body
+    X.beginPath();
+    X.moveTo(cx-s*0.35,cy+s*0.4);X.lineTo(cx-s*0.4,cy-s*0.1);
+    X.lineTo(cx-s*0.15,cy-s*0.5);X.lineTo(cx+s*0.2,cy-s*0.45);
+    X.lineTo(cx+s*0.4,cy-s*0.05);X.lineTo(cx+s*0.35,cy+s*0.4);X.closePath();X.fill();
+    if(t==='Crystal'){
+      X.globalAlpha=0.4;X.fillStyle='#ffffff';
+      X.beginPath();X.moveTo(cx-s*0.1,cy-s*0.45);X.lineTo(cx+s*0.05,cy-s*0.7);
+      X.lineTo(cx+s*0.15,cy-s*0.4);X.closePath();X.fill();
+      X.globalAlpha=1;X.fillStyle=tc;
+    }
+  }else if(t==='Flying'){
+    // Light body with wings
+    X.beginPath();X.ellipse(cx,cy,s*0.25,s*0.3,0,0,Math.PI*2);X.fill();
+    // Wings
+    X.beginPath();X.moveTo(cx-s*0.2,cy-s*0.1);
+    X.quadraticCurveTo(cx-s*0.6,cy-s*0.5,cx-s*0.5,cy+s*0.1);X.closePath();X.fill();
+    X.beginPath();X.moveTo(cx+s*0.2,cy-s*0.1);
+    X.quadraticCurveTo(cx+s*0.6,cy-s*0.5,cx+s*0.5,cy+s*0.1);X.closePath();X.fill();
+  }else if(t==='Poison'){
+    // Slimy blob
+    X.beginPath();X.ellipse(cx,cy+s*0.1,s*0.4,s*0.35,0,0,Math.PI*2);X.fill();
+    // Drips
+    X.globalAlpha=0.6;
+    X.beginPath();X.ellipse(cx-s*0.15,cy+s*0.45,s*0.08,s*0.12,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(cx+s*0.2,cy+s*0.42,s*0.06,s*0.1,0,0,Math.PI*2);X.fill();
+    X.globalAlpha=1;
+  }else if(t==='Fighting'){
+    // Muscular body
+    X.beginPath();X.ellipse(cx,cy,s*0.3,s*0.4,0,0,Math.PI*2);X.fill();
+    // Arms
+    X.fillStyle=tc;X.lineWidth=s*0.12;X.strokeStyle=tc;
+    X.beginPath();X.moveTo(cx-s*0.3,cy-s*0.1);X.lineTo(cx-s*0.55,cy-s*0.3);X.stroke();
+    X.beginPath();X.arc(cx-s*0.55,cy-s*0.3,s*0.1,0,Math.PI*2);X.fill();
+    X.beginPath();X.moveTo(cx+s*0.3,cy-s*0.1);X.lineTo(cx+s*0.55,cy-s*0.3);X.stroke();
+    X.beginPath();X.arc(cx+s*0.55,cy-s*0.3,s*0.1,0,Math.PI*2);X.fill();
+  }else if(t==='Psychic'){
+    // Ethereal body
+    X.globalAlpha=0.8;
+    X.beginPath();X.ellipse(cx,cy,s*0.35,s*0.4,0,0,Math.PI*2);X.fill();
+    X.globalAlpha=0.3;
+    X.beginPath();X.ellipse(cx,cy,s*0.5,s*0.55,0,0,Math.PI*2);X.fill();
+    X.globalAlpha=1;
+  }else if(t==='Ghost'){
+    // Ghost shape
+    X.globalAlpha=0.7;
+    X.beginPath();X.ellipse(cx,cy-s*0.1,s*0.35,s*0.3,0,Math.PI,0);X.fill();
+    X.fillRect(cx-s*0.35,cy-s*0.1,s*0.7,s*0.4);
+    // Wavy bottom
+    for(let i=0;i<4;i++){
+      const bx=cx-s*0.35+i*s*0.233;
+      X.beginPath();X.arc(bx+s*0.116,cy+s*0.3,s*0.116,0,Math.PI);X.fill();
+    }
+    X.globalAlpha=1;
+  }else{
+    // Normal — simple round body
+    X.beginPath();X.ellipse(cx,cy,s*0.35,s*0.4,0,0,Math.PI*2);X.fill();
+    // Ears
+    X.beginPath();X.ellipse(cx-s*0.2,cy-s*0.45,s*0.1,s*0.15,-.3,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(cx+s*0.2,cy-s*0.45,s*0.1,s*0.15,.3,0,Math.PI*2);X.fill();
+  }
+
+  // Eyes (all types)
+  X.fillStyle='#fff';
+  X.beginPath();X.ellipse(cx-s*0.12,cy-s*0.12,s*0.08,s*0.1,0,0,Math.PI*2);X.fill();
+  X.beginPath();X.ellipse(cx+s*0.12,cy-s*0.12,s*0.08,s*0.1,0,0,Math.PI*2);X.fill();
+  X.fillStyle='#111';
+  X.beginPath();X.arc(cx-s*0.1,cy-s*0.1,s*0.05,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(cx+s*0.14,cy-s*0.1,s*0.05,0,Math.PI*2);X.fill();
+  // Eye shine
+  X.fillStyle='#fff';
+  X.beginPath();X.arc(cx-s*0.08,cy-s*0.13,s*0.02,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(cx+s*0.16,cy-s*0.13,s*0.02,0,Math.PI*2);X.fill();
+
+  // Mouth
+  X.strokeStyle='#333';X.lineWidth=1.5;
+  X.beginPath();X.arc(cx+s*0.02,cy+s*0.08,s*0.08,0.1,Math.PI-0.1);X.stroke();
+
+  // Legendary glow
+  if(spec.legendary){
+    X.globalAlpha=0.15+Math.sin(Date.now()/300)*0.1;
+    X.fillStyle='#ffd700';
+    X.beginPath();X.arc(cx,cy,s*0.7,0,Math.PI*2);X.fill();
+    X.globalAlpha=1;
+  }
+
+  X.restore();
+}
+
+// ============================================================
+// SCENE: TITLE
+// ============================================================
+function drawTitle(){
+  // Background
+  X.fillStyle='#05051a';X.fillRect(0,0,W,H);
+
+  // Animated bg particles
+  const t=Date.now()/1000;
+  X.globalAlpha=0.15;
+  for(let i=0;i<20;i++){
+    const px=(Math.sin(t*0.3+i*1.7)*0.5+0.5)*W;
+    const py=(Math.cos(t*0.2+i*2.3)*0.5+0.5)*H;
+    X.fillStyle=TYPE_COLORS[TYPES[i%18]];
+    X.beginPath();X.arc(px,py,3+Math.sin(t+i)*2,0,Math.PI*2);X.fill();
+  }
+  X.globalAlpha=1;
+
+  // Title
+  X.fillStyle='#7b68ee';X.font='bold 48px Consolas, monospace';X.textAlign='center';
+  X.fillText('RIFTBORN',W/2,H*0.2);
+  X.fillStyle='#00d4ff';X.font='bold 36px Consolas, monospace';
+  X.fillText('ARENA',W/2,H*0.2+55);
+
+  // Subtitle
+  drawTextCenter('Catch. Battle. Conquer.',W/2,H*0.2+110,16,'#888');
+
+  // Starter creatures preview
+  const specs=[RB_BY_ID[1],RB_BY_ID[4],RB_BY_ID[7]];
+  specs.forEach((sp,i)=>{
+    const sx=W/2-120+i*120;
+    drawCreature(sx,H*0.55,sp,5,false,45);
+    drawTextCenter(sp.name,sx,H*0.55+50,12,TYPE_COLORS[sp.type]);
+  });
+
+  // Buttons
+  const btnY=H*0.75;
+  drawButton(W/2-100,btnY,200,42,'New Game',GS.menuIdx===0);
+  drawButton(W/2-100,btnY+52,200,42,'Continue',GS.menuIdx===1,'#225522');
+
+  if(GS.menuIdx===1&&!localStorage.getItem('riftborn_save')){
+    drawTextCenter('No save data found',W/2,btnY+100,12,'#ff4444');
+  }
+
+  drawTextCenter('v1.0 — 108 Riftborn, 8 Arenas',W/2,H-30,11,'#555');
+}
+
+// ============================================================
+// SCENE: INTRO (Professor)
+// ============================================================
+const INTRO_TEXT=[
+  "Welcome to the world of Riftborn!",
+  "I'm Professor Alder, a researcher of these extraordinary creatures.",
+  "Riftborn are beings born from dimensional rifts — each one unique.",
+  "There are 18 different types of Riftborn, from Fire to Crystal.",
+  "As a Catcher, you'll explore, battle, and catch Riftborn across the land.",
+  "Your goal? Defeat all 8 Arena Leaders and become the Champion!",
+  "But first, let's get you started. What's your name, Catcher?",
+];
+
+function drawIntro(){
+  X.fillStyle='#0a0a2a';X.fillRect(0,0,W,H);
+
+  // Professor silhouette
+  const px=W/2,py=H*0.3;
+  X.fillStyle='#2a2a5a';
+  X.beginPath();X.ellipse(px,py+20,40,50,0,0,Math.PI*2);X.fill(); // body
+  X.beginPath();X.arc(px,py-40,25,0,Math.PI*2);X.fill(); // head
+  // Lab coat
+  X.fillStyle='#4a4a8a';
+  X.beginPath();X.moveTo(px-35,py-10);X.lineTo(px-45,py+70);X.lineTo(px+45,py+70);X.lineTo(px+35,py-10);X.closePath();X.fill();
+  // Glasses
+  X.strokeStyle='#7b68ee';X.lineWidth=2;
+  X.beginPath();X.arc(px-10,py-42,8,0,Math.PI*2);X.stroke();
+  X.beginPath();X.arc(px+10,py-42,8,0,Math.PI*2);X.stroke();
+  X.beginPath();X.moveTo(px-2,py-42);X.lineTo(px+2,py-42);X.stroke();
+
+  drawTextCenter('Prof. Alder',px,py+80,14,'#7b68ee');
+
+  // Text box
+  drawRect(30,H*0.6,W-60,120,'#12122a',12);
+  X.strokeStyle='#2a2a4a';X.lineWidth=2;X.beginPath();X.roundRect(30,H*0.6,W-60,120,12);X.stroke();
+
+  if(GS.introStep<INTRO_TEXT.length){
+    // Show text with typewriter
+    const fullText=INTRO_TEXT[GS.introStep];
+    if(GS.textCharIdx<fullText.length){GS.textCharIdx+=GS.textSpeed;GS.textDone=false}
+    else GS.textDone=true;
+    const shown=fullText.substring(0,Math.floor(GS.textCharIdx));
+    // Word wrap
+    wrapText(shown,50,H*0.6+15,W-100,18,14,'#e0e0e0');
+    if(GS.textDone)drawTextCenter('[ Tap to continue ]',W/2,H*0.6+95,12,'#7b68ee');
+  }else{
+    // Name input
+    drawTextCenter('Enter your name:',W/2,H*0.6+15,14,'#e0e0e0');
+    drawRect(W/2-100,H*0.6+40,200,36,'#1a1a3e',8);
+    X.strokeStyle='#7b68ee';X.lineWidth=2;X.beginPath();X.roundRect(W/2-100,H*0.6+40,200,36,8);X.stroke();
+    drawTextCenter(GS.player.name+(Date.now()%1000<500?'|':''),W/2,H*0.6+50,16,'#e0e0e0');
+    drawButton(W/2-60,H*0.6+85,120,30,'Confirm',true);
+  }
+}
+
+function wrapText(text,x,y,maxW,lineH,size,color){
+  X.fillStyle=color||'#e0e0e0';X.font=`${size||14}px Consolas, monospace`;X.textAlign='left';
+  const words=text.split(' ');let line='';let ly=y;
+  words.forEach(word=>{
+    const test=line+word+' ';
+    if(X.measureText(test).width>maxW&&line!==''){
+      X.fillText(line.trim(),x,ly);ly+=lineH;line=word+' ';
+    }else{line=test}
+  });
+  if(line.trim())X.fillText(line.trim(),x,ly);
+}
+
+// ============================================================
+// SCENE: STARTER PICK
+// ============================================================
+function drawStarterPick(){
+  X.fillStyle='#0a0a2a';X.fillRect(0,0,W,H);
+  drawTextCenter('Choose your first Riftborn!',W/2,30,20,'#e0e0e0');
+
+  const starters=[
+    {id:1,spec:RB_BY_ID[1]},
+    {id:4,spec:RB_BY_ID[4]},
+    {id:7,spec:RB_BY_ID[7]},
+  ];
+
+  const cardW=isMobile?120:200,cardH=isMobile?280:340;
+  const gap=isMobile?10:30;
+  const startX=W/2-(cardW*1.5+gap);
+
+  starters.forEach((st,i)=>{
+    const cx=startX+i*(cardW+gap)+cardW/2;
+    const cy=isMobile?200:210;
+    const sel=GS.starterHighlight===i;
+
+    // Card bg
+    drawRect(cx-cardW/2,70,cardW,cardH,sel?'#1a1a4a':'#12122a',12);
+    X.strokeStyle=sel?TYPE_COLORS[st.spec.type]:'#2a2a4a';X.lineWidth=sel?3:1;
+    X.beginPath();X.roundRect(cx-cardW/2,70,cardW,cardH,12);X.stroke();
+
+    // Creature
+    drawCreature(cx,cy-20,st.spec,5,false,isMobile?40:55);
+
+    // Info
+    drawTextCenter(st.spec.name,cx,cy+40,16,TYPE_COLORS[st.spec.type]);
+    drawTypeTag(cx-30,cy+60,st.spec.type);
+
+    if(!isMobile){
+      // Stats preview
+      const sy=cy+90;
+      drawText(`HP: ${st.spec.stats.hp}`,cx-40,sy,11,'#aaa');
+      drawText(`ATK: ${st.spec.stats.atk}`,cx-40,sy+14,11,'#aaa');
+      drawText(`DEF: ${st.spec.stats.def}`,cx-40,sy+28,11,'#aaa');
+      drawText(`SP.A: ${st.spec.stats.spAtk}`,cx-40,sy+42,11,'#aaa');
+      drawText(`SPD: ${st.spec.stats.spd}`,cx-40,sy+56,11,'#aaa');
+    }
+
+    // Desc
+    const descY=isMobile?cy+85:cy+160;
+    wrapText(st.spec.desc,cx-cardW/2+10,descY,cardW-20,14,11,'#888');
+  });
+
+  drawButton(W/2-80,H-60,160,40,'Choose!',true,TYPE_COLORS[starters[GS.starterHighlight].spec.type]+'88');
+}
+
+// ============================================================
+// SCENE: OVERWORLD
+// ============================================================
+function drawOverworld(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+
+  // Header
+  drawRect(0,0,W,50,'#12122a');
+  drawText(`${GS.player.name}`,15,8,16,'#e0e0e0');
+  drawText(`$${GS.player.money}`,15,28,12,'#ffcc00');
+  drawText(`Badges: ${GS.player.badges.length}/8`,W/2-40,8,12,'#aaa');
+  drawText(`Caught: ${GS.player.caught.size}/108`,W/2-40,24,12,'#aaa');
+
+  // Team preview (top right)
+  const tp=GS.player.team;
+  for(let i=0;i<tp.length;i++){
+    const tx=W-30-i*28;
+    X.fillStyle=tp[i].hp>0?TYPE_COLORS[tp[i].type]:'#333';
+    X.beginPath();X.arc(tx,25,10,0,Math.PI*2);X.fill();
+    if(tp[i].hp<=0){X.strokeStyle='#ff3333';X.lineWidth=2;X.beginPath();X.moveTo(tx-6,tx-6);X.lineTo(tx+6,tx+6);X.stroke()}
+  }
+
+  // Main menu buttons
+  const btnW=isMobile?W-40:300,btnH=44;
+  const startY=70;
+  const items=[
+    {label:`Explore: ${ROUTES[GS.route].name}`,sub:`Lv ${ROUTES[GS.route].minLvl}-${ROUTES[GS.route].maxLvl}`},
+    {label:'Arena Challenge',sub:GS.arenaIdx<8?ARENAS[GS.arenaIdx].name:'Champion!'},
+    {label:'Team',sub:`${tp.length} Riftborn`},
+    {label:'Bag',sub:'Items & Shells'},
+    {label:'Shop',sub:'Buy supplies'},
+    {label:'Routes',sub:'Change location'},
+    {label:'Save Game',sub:''},
+  ];
+
+  items.forEach((item,i)=>{
+    const bx=W/2-btnW/2,by=startY+i*(btnH+8);
+    const sel=GS.menuIdx===i;
+    drawRect(bx,by,btnW,btnH,sel?'#1a1a4a':'#12122a',8);
+    X.strokeStyle=sel?'#7b68ee':'#2a2a4a';X.lineWidth=sel?2:1;
+    X.beginPath();X.roundRect(bx,by,btnW,btnH,8);X.stroke();
+    drawText(item.label,bx+15,by+8,14,sel?'#e0e0e0':'#aaa');
+    if(item.sub)drawText(item.sub,bx+15,by+25,11,'#666');
+  });
+
+  // Team display at bottom
+  const teamY=H-110;
+  drawRect(10,teamY,W-20,100,'#12122a',10);
+  drawText('Team:',20,teamY+8,12,'#7b68ee');
+  tp.forEach((c,i)=>{
+    const tx=20+i*(isMobile?55:90),ty=teamY+25;
+    const spec=RB_BY_ID[c.specId];
+    if(spec)drawCreature(tx+25,ty+20,spec,c.level,false,22);
+    drawText(c.name,tx+2,ty+45,9,c.hp>0?'#ccc':'#555');
+    drawHPBar(tx+2,ty+56,isMobile?48:75,6,c.hp,c.maxHp);
+    drawText(`L${c.level}`,tx+2,ty+64,9,'#888');
+  });
+}
+
+// ============================================================
+// SCENE: BATTLE
+// ============================================================
+function drawBattle(){
+  const b=GS.battle;if(!b)return;
+  const p=getActiveP(),e=getActiveE();
+
+  // Background
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+
+  // Battle arena bg
+  X.fillStyle='#0d0d2d';X.fillRect(0,0,W,H*0.55);
+
+  // Ground platforms
+  X.fillStyle='#1a1a3e';
+  X.beginPath();X.ellipse(W*0.25,H*0.48,isMobile?80:120,25,0,0,Math.PI*2);X.fill(); // player
+  X.beginPath();X.ellipse(W*0.72,H*0.3,isMobile?70:100,20,0,0,Math.PI*2);X.fill(); // enemy
+
+  // Draw enemy
+  if(e&&e.hp>0){
+    const ex=W*0.72+(b.shakeE>0?(Math.random()-0.5)*b.shakeE:0);
+    const ey=H*0.22;
+    if(b.flashE>0&&b.flashE%4<2){X.globalAlpha=0.3}
+    const eSpec=RB_BY_ID[e.specId];
+    if(eSpec)drawCreature(ex,ey,eSpec,e.level,true,isMobile?45:55);
+    X.globalAlpha=1;
+
+    // Enemy HP plate
+    const epx=isMobile?10:W*0.45,epy=10;
+    drawRect(epx,epy,isMobile?W-20:W*0.5,55,'#12122a',8);
+    X.strokeStyle='#2a2a4a';X.lineWidth=1;X.beginPath();X.roundRect(epx,epy,isMobile?W-20:W*0.5,55,8);X.stroke();
+    drawText(e.name,epx+10,epy+5,14,'#e0e0e0');
+    drawText(`Lv${e.level}`,epx+(isMobile?W-80:W*0.5-55),epy+5,12,'#aaa');
+    drawTypeTag(epx+(isMobile?W-140:W*0.5-120),epy+5,e.type);
+    drawHPBar(epx+10,epy+25,isMobile?W-45:W*0.5-25,10,e.hp,e.maxHp,b.hpAnimE);
+    drawText(`${Math.max(0,Math.ceil(b.hpAnimE))}/${e.maxHp}`,epx+10,epy+38,11,'#aaa');
+    if(e.status){
+      const sc=e.status.toUpperCase().substring(0,3);
+      X.fillStyle=e.status==='burn'?'#ff4400':e.status==='poison'?'#aa44cc':e.status==='paralyze'?'#ffcc00':e.status==='freeze'?'#77ddff':'#ff66aa';
+      X.beginPath();X.roundRect(epx+(isMobile?W-70:W*0.5-60),epy+38,35,14,3);X.fill();
+      drawTextCenter(sc,epx+(isMobile?W-52:W*0.5-42),epy+40,10,'#fff');
+    }
+  }
+
+  // Draw player creature
+  if(p&&p.hp>0){
+    const ppx=W*0.25+(b.shakeP>0?(Math.random()-0.5)*b.shakeP:0);
+    const ppy=H*0.4;
+    if(b.flashP>0&&b.flashP%4<2){X.globalAlpha=0.3}
+    const pSpec=RB_BY_ID[p.specId];
+    if(pSpec)drawCreature(ppx,ppy,pSpec,p.level,false,isMobile?50:65);
+    X.globalAlpha=1;
+  }
+
+  // Player HP plate
+  if(p){
+    const ppx=isMobile?10:10,ppy=H*0.55+5;
+    drawRect(ppx,ppy,isMobile?W-20:W*0.5,60,'#12122a',8);
+    X.strokeStyle='#2a2a4a';X.lineWidth=1;X.beginPath();X.roundRect(ppx,ppy,isMobile?W-20:W*0.5,60,8);X.stroke();
+    drawText(p.name,ppx+10,ppy+5,14,'#e0e0e0');
+    drawText(`Lv${p.level}`,ppx+(isMobile?W-80:W*0.5-55),ppy+5,12,'#aaa');
+    drawTypeTag(ppx+(isMobile?W-140:W*0.5-120),ppy+5,p.type);
+    drawHPBar(ppx+10,ppy+25,isMobile?W-45:W*0.5-25,10,p.hp,p.maxHp,b.hpAnimP);
+    drawText(`${Math.max(0,Math.ceil(b.hpAnimP))}/${p.maxHp}`,ppx+10,ppy+38,11,'#aaa');
+    // XP bar
+    drawText(`XP`,ppx+10,ppy+48,9,'#666');
+    const xpW=isMobile?W-80:W*0.5-60;
+    X.fillStyle='#1a1a1a';X.beginPath();X.roundRect(ppx+30,ppy+48,xpW,6,3);X.fill();
+    const xpPct=Math.min(1,p.xp/p.xpNeeded);
+    if(xpPct>0){X.fillStyle='#4488ff';X.beginPath();X.roundRect(ppx+30,ppy+48,xpW*xpPct,6,3);X.fill()}
+    if(p.status){
+      const sc=p.status.toUpperCase().substring(0,3);
+      X.fillStyle=p.status==='burn'?'#ff4400':p.status==='poison'?'#aa44cc':p.status==='paralyze'?'#ffcc00':p.status==='freeze'?'#77ddff':'#ff66aa';
+      X.beginPath();X.roundRect(ppx+(isMobile?W-70:W*0.5-60),ppy+38,35,14,3);X.fill();
+      drawTextCenter(sc,ppx+(isMobile?W-52:W*0.5-42),ppy+40,10,'#fff');
+    }
+  }
+
+  // Bottom area — menus/messages
+  const botY=H*0.55+70;
+  drawRect(0,botY,W,H-botY,'#12122a');
+  X.strokeStyle='#2a2a4a';X.lineWidth=1;X.beginPath();X.moveTo(0,botY);X.lineTo(W,botY);X.stroke();
+
+  // Message display
+  if(b.msgCurrent||b.msgQueue.length>0){
+    if(!b.msgCurrent&&b.msgQueue.length>0)advanceBattleMsg();
+    if(b.msgCurrent){
+      if(b.msgCharIdx<b.msgCurrent.length){b.msgCharIdx+=2;b.msgDone=false}
+      else b.msgDone=true;
+      const shown=b.msgCurrent.substring(0,Math.floor(b.msgCharIdx));
+      wrapText(shown,20,botY+10,W-40,18,14,'#e0e0e0');
+      if(b.msgDone)drawText('[ Tap ]',W-80,botY+10,11,'#7b68ee');
+    }
+    return; // Don't show menu while messages are displaying
+  }
+
+  // Check win/loss
+  if(b.playerWon||b.playerLost||b.caught||b.escaped){
+    return; // Handled in update
+  }
+
+  // Battle menu
+  if(b.phase==='menu'){
+    const menuItems=b.isWild?['Fight','Shell','Bag','Run']:['Fight','Bag','Switch','---'];
+    const cols=2,rows=2;
+    const bw=(W-30)/cols-5,bh=38;
+    menuItems.forEach((mi,i)=>{
+      if(mi==='---')return;
+      const col=i%cols,row=Math.floor(i/cols);
+      const bx=15+col*(bw+10),by=botY+10+row*(bh+6);
+      drawButton(bx,by,bw,bh,mi,b.menuIdx===i);
+    });
+  }
+
+  // Move select
+  if(b.phase==='moveSelect'&&p){
+    p.moves.forEach((m,i)=>{
+      const mv=MOVES[m.name];
+      const bx=15,by=botY+10+i*36,bw=W-30,bh=32;
+      const sel=b.subIdx===i;
+      drawRect(bx,by,bw,bh,sel?'#1a1a4a':'#12122a',6);
+      X.strokeStyle=sel?TYPE_COLORS[mv?.type||'Normal']:'#2a2a4a';X.lineWidth=sel?2:1;
+      X.beginPath();X.roundRect(bx,by,bw,bh,6);X.stroke();
+      drawText(m.name,bx+10,by+5,13,TYPE_COLORS[mv?.type||'Normal']);
+      drawText(`${mv?.cat||'???'}`,bx+150,by+5,11,'#888');
+      drawText(`Pow:${mv?.power||'-'}`,bx+220,by+5,11,'#aaa');
+      drawEnergyBar(bx+10,by+22,80,6,m.energy,m.maxEnergy);
+      drawText(`${m.energy}/${m.maxEnergy}`,bx+95,by+19,9,'#5577cc');
+      if(sel)drawText('Back: tap bottom',W-140,botY+H*0.35,10,'#555');
+    });
+  }
+
+  // Item/Shell select
+  if(b.phase==='itemSelect'||b.phase==='shellSelect'){
+    const list=b.phase==='shellSelect'?
+      GS.player.bag.shells.map(s=>({name:SHELLS[s.idx].name,qty:s.qty,idx:s.idx})):
+      GS.player.bag.items.map(s=>({name:ITEM_DEFS[s.idx].name,qty:s.qty,idx:s.idx}));
+    if(list.length===0){
+      drawTextCenter('Nothing here!',W/2,botY+30,14,'#888');
+      drawButton(W/2-60,botY+60,120,32,'Back',true);
+    }else{
+      list.forEach((item,i)=>{
+        const by=botY+10+i*32,bw=W-30;
+        const sel=b.subIdx===i;
+        drawRect(15,by,bw,28,sel?'#1a1a4a':'#12122a',6);
+        X.strokeStyle=sel?'#7b68ee':'#2a2a4a';X.lineWidth=sel?2:1;
+        X.beginPath();X.roundRect(15,by,bw,28,6);X.stroke();
+        drawText(`${item.name} x${item.qty}`,25,by+7,13,sel?'#e0e0e0':'#aaa');
+      });
+      drawButton(W/2-60,botY+10+list.length*32+5,120,28,'Back',b.subIdx===list.length);
+    }
+  }
+
+  // Switch select
+  if(b.phase==='switchSelect'){
+    const team=b.playerTeam;
+    team.forEach((c,i)=>{
+      if(i===b.playerActive)return;
+      const by=botY+10+(i>b.playerActive?i-1:i)*32,bw=W-30;
+      const sel=b.subIdx===(i>b.playerActive?i-1:i);
+      const alive=c.hp>0;
+      drawRect(15,by,bw,28,sel?'#1a1a4a':'#12122a',6);
+      X.strokeStyle=sel?(alive?'#7b68ee':'#ff4444'):'#2a2a4a';X.lineWidth=sel?2:1;
+      X.beginPath();X.roundRect(15,by,bw,28,6);X.stroke();
+      drawText(`${c.name} Lv${c.level}`,25,by+3,12,alive?'#e0e0e0':'#555');
+      drawHPBar(25,by+18,100,6,c.hp,c.maxHp);
+      drawText(`${c.hp}/${c.maxHp}`,130,by+15,9,'#888');
+    });
+    const backIdx=team.length-1;
+    drawButton(W/2-60,botY+10+backIdx*32,120,28,'Back',b.subIdx===backIdx);
+  }
+
+  // Animate HP
+  if(b.hpAnimP!==undefined){
+    const target=p?p.hp:0;
+    if(Math.abs(b.hpAnimP-target)>0.5)b.hpAnimP+=(target-b.hpAnimP)*0.15;
+    else b.hpAnimP=target;
+  }
+  if(b.hpAnimE!==undefined){
+    const target=e?e.hp:0;
+    if(Math.abs(b.hpAnimE-target)>0.5)b.hpAnimE+=(target-b.hpAnimE)*0.15;
+    else b.hpAnimE=target;
+  }
+  if(b.shakeP>0)b.shakeP-=0.5;
+  if(b.shakeE>0)b.shakeE-=0.5;
+  if(b.flashP>0)b.flashP--;
+  if(b.flashE>0)b.flashE--;
+}
+
+// ============================================================
+// SCENE: TEAM VIEW
+// ============================================================
+function drawTeamView(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  drawText('Your Team',15,15,20,'#7b68ee');
+  drawButton(W-80,10,65,28,'Back',GS.subMenu==='back');
+
+  const team=GS.player.team;
+  team.forEach((c,i)=>{
+    const cy=55+i*95;const sel=GS.menuIdx===i;
+    drawRect(10,cy,W-20,88,sel?'#1a1a4a':'#12122a',8);
+    X.strokeStyle=sel?TYPE_COLORS[c.type]:'#2a2a4a';X.lineWidth=sel?2:1;
+    X.beginPath();X.roundRect(10,cy,W-20,88,8);X.stroke();
+
+    const spec=RB_BY_ID[c.specId];
+    if(spec)drawCreature(55,cy+35,spec,c.level,false,28);
+
+    drawText(c.name,90,cy+5,14,TYPE_COLORS[c.type]);
+    drawText(`Lv ${c.level}`,90,cy+22,12,'#aaa');
+    drawTypeTag(160,cy+5,c.type);
+    drawHPBar(90,cy+40,W-130,8,c.hp,c.maxHp);
+    drawText(`${c.hp}/${c.maxHp}`,90,cy+52,10,'#aaa');
+
+    // Moves
+    const mx=90;
+    c.moves.forEach((m,mi)=>{
+      const mv=MOVES[m.name];
+      drawText(`${m.name}`,mx+mi*(isMobile?70:95),cy+66,10,TYPE_COLORS[mv?.type||'Normal']);
+    });
+  });
+
+  if(GS.player.box.length>0){
+    drawText(`Box: ${GS.player.box.length} Riftborn stored`,15,H-30,11,'#666');
+  }
+}
+
+// ============================================================
+// SCENE: BAG VIEW
+// ============================================================
+function drawBagView(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  drawText('Bag',15,15,20,'#7b68ee');
+  drawButton(W-80,10,65,28,'Back',GS.subMenu==='back');
+
+  let y=55;
+  drawText('Shells:',15,y,14,'#00d4ff');y+=22;
+  GS.player.bag.shells.forEach((s,i)=>{
+    const shell=SHELLS[s.idx];
+    drawText(`${shell.name} x${s.qty}`,30,y,13,'#e0e0e0');
+    drawText(shell.desc,30,y+16,10,'#888');
+    y+=35;
+  });
+
+  y+=10;drawText('Items:',15,y,14,'#44cc44');y+=22;
+  GS.player.bag.items.forEach((it,i)=>{
+    const item=ITEM_DEFS[it.idx];
+    drawText(`${item.name} x${it.qty}`,30,y,13,'#e0e0e0');
+    drawText(item.desc,30,y+16,10,'#888');
+    y+=35;
+  });
+}
+
+// ============================================================
+// SCENE: SHOP
+// ============================================================
+function drawShop(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  drawText('Rift Shop',15,15,20,'#7b68ee');
+  drawText(`Money: $${GS.player.money}`,W-160,18,14,'#ffcc00');
+  drawButton(W-80,10,65,28,'Back',GS.menuIdx===-1);
+
+  const allItems=[
+    ...SHELLS.filter(s=>s.cost>0).map(s=>({...s,itype:'shell'})),
+    ...ITEM_DEFS.map(it=>({...it,itype:'item'})),
+  ];
+
+  let y=55;
+  allItems.forEach((item,i)=>{
+    const sel=GS.menuIdx===i;
+    drawRect(10,y,W-20,40,sel?'#1a1a4a':'#12122a',6);
+    X.strokeStyle=sel?'#7b68ee':'#2a2a4a';X.lineWidth=sel?2:1;
+    X.beginPath();X.roundRect(10,y,W-20,40,6);X.stroke();
+    drawText(item.name,20,y+5,13,sel?'#e0e0e0':'#aaa');
+    drawText(item.desc,20,y+22,10,'#666');
+    drawText(`$${item.cost}`,W-80,y+12,13,GS.player.money>=item.cost?'#ffcc00':'#ff4444');
+    y+=46;
+  });
+}
+
+// ============================================================
+// SCENE: ROUTE SELECT
+// ============================================================
+function drawRouteSelect(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  drawText('Choose Route',15,15,20,'#7b68ee');
+  drawButton(W-80,10,65,28,'Back',GS.menuIdx===-1);
+
+  ROUTES.forEach((r,i)=>{
+    const y=55+i*42;
+    const sel=GS.menuIdx===i;
+    const unlocked=i<=GS.player.badges.length+1; // Unlock based on badges
+    drawRect(10,y,W-20,36,sel?'#1a1a4a':'#12122a',6);
+    X.strokeStyle=sel?(unlocked?'#7b68ee':'#ff4444'):'#2a2a4a';X.lineWidth=sel?2:1;
+    X.beginPath();X.roundRect(10,y,W-20,36,6);X.stroke();
+    drawText(unlocked?r.name:'???',20,y+4,13,unlocked?(sel?'#e0e0e0':'#aaa'):'#444');
+    drawText(unlocked?`Lv ${r.minLvl}-${r.maxLvl}`:'Locked',20,y+20,10,unlocked?'#888':'#555');
+    if(i===GS.route)drawText('(current)',W-100,y+10,10,'#7b68ee');
+  });
+}
+
+// ============================================================
+// SCENE: ARENA SELECT
+// ============================================================
+function drawArenaSelect(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  drawText('Arena Challenge',15,15,20,'#7b68ee');
+  drawButton(W-80,10,65,28,'Back',GS.menuIdx===-1);
+
+  if(GS.arenaIdx>=8){
+    // Champion battle available
+    drawRect(10,55,W-20,80,'#1a1a4a',10);
+    X.strokeStyle='#ffd700';X.lineWidth=2;X.beginPath();X.roundRect(10,55,W-20,80,10);X.stroke();
+    drawText('Champion Kyle',20,65,16,'#ffd700');
+    drawText('The final challenge! Defeat Kyle to become Champion.',20,85,11,'#aaa');
+    drawButton(W/2-60,100,120,28,'Challenge!',true,'#554400');
+  }
+
+  // Badge display
+  let y=GS.arenaIdx>=8?150:55;
+  drawText('Badges:',15,y,14,'#aaa');y+=25;
+  ARENAS.forEach((a,i)=>{
+    const earned=GS.player.badges.includes(a.badge);
+    const next=i===GS.arenaIdx&&GS.arenaIdx<8;
+    drawRect(10,y,W-20,36,next?'#1a1a4a':'#12122a',6);
+    X.strokeStyle=next?'#7b68ee':(earned?TYPE_COLORS[a.type]:'#2a2a4a');X.lineWidth=next?2:1;
+    X.beginPath();X.roundRect(10,y,W-20,36,6);X.stroke();
+
+    // Badge icon
+    X.fillStyle=earned?TYPE_COLORS[a.type]:'#333';
+    X.beginPath();X.arc(30,y+18,10,0,Math.PI*2);X.fill();
+    if(earned){X.fillStyle='#fff';X.font='bold 10px Consolas';X.textAlign='center';X.fillText('✓',30,y+14)}
+
+    drawText(`${a.name} — ${a.leader}`,48,y+4,12,earned?TYPE_COLORS[a.type]:'#888');
+    drawText(a.badge,48,y+20,10,earned?'#ccc':'#555');
+
+    if(next){
+      drawButton(W-90,y+4,75,28,'Battle!',GS.menuIdx===i);
+    }
+    y+=42;
+  });
+}
+
+// ============================================================
+// SCENE: SUMMARY (after battle)
+// ============================================================
+function drawSummary(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+
+  if(GS.battle?.playerWon){
+    drawTextCenter('Victory!',W/2,30,28,'#44cc44');
+    if(GS.battle.xpGained>0)drawTextCenter(`+${GS.battle.xpGained} XP gained`,W/2,65,14,'#4488ff');
+    if(GS.battle.caught)drawTextCenter(`Caught ${getActiveE()?.name||'a Riftborn'}!`,W/2,85,16,'#ffcc00');
+  }else{
+    drawTextCenter('Defeat...',W/2,30,28,'#ff4444');
+    drawTextCenter('You blacked out and returned to base.',W/2,65,13,'#888');
+  }
+
+  drawButton(W/2-60,H-60,120,36,'Continue',true);
+}
+
+// ============================================================
+// SCENE: CREDITS
+// ============================================================
+function drawCredits(){
+  X.fillStyle='#05051a';X.fillRect(0,0,W,H);
+
+  const t=Date.now()/1000;
+  X.globalAlpha=0.1;
+  for(let i=0;i<30;i++){
+    X.fillStyle=TYPE_COLORS[TYPES[i%18]];
+    X.beginPath();X.arc((Math.sin(t*0.2+i*1.1)*0.5+0.5)*W,(Math.cos(t*0.15+i*1.7)*0.5+0.5)*H,2+Math.sin(t+i)*2,0,Math.PI*2);X.fill();
+  }
+  X.globalAlpha=1;
+
+  drawTextCenter('Congratulations!',W/2,60,28,'#ffd700');
+  drawTextCenter(`${GS.player.name}`,W/2,100,22,'#7b68ee');
+  drawTextCenter('You are the new Champion of the Rift!',W/2,135,16,'#e0e0e0');
+
+  drawTextCenter('Badges Earned: 8/8',W/2,180,14,'#aaa');
+  drawTextCenter(`Riftborn Caught: ${GS.player.caught.size}/108`,W/2,200,14,'#aaa');
+
+  drawTextCenter('The adventure continues...',W/2,250,14,'#888');
+  drawTextCenter('Keep exploring, catch them all!',W/2,270,14,'#888');
+
+  drawButton(W/2-60,H-60,120,36,'Continue',true);
+}
+
+// ============================================================
+// EVOLVE SCREEN
+// ============================================================
+function drawEvolveScreen(){
+  X.fillStyle='#05051a';X.fillRect(0,0,W,H);
+  const ev=GS.evolving;if(!ev)return;
+
+  const t=Date.now()/1000;
+  // Glow
+  X.globalAlpha=0.3+Math.sin(t*4)*0.2;
+  X.fillStyle='#fff';
+  X.beginPath();X.arc(W/2,H*0.35,60+Math.sin(t*3)*20,0,Math.PI*2);X.fill();
+  X.globalAlpha=1;
+
+  drawTextCenter('What? Your Riftborn is evolving!',W/2,50,18,'#ffcc00');
+
+  const oldSpec=RB_BY_ID[ev.oldId],newSpec=RB_BY_ID[ev.newId];
+  if(ev.timer<60){
+    // Show old
+    if(oldSpec){
+      const pulse=1+Math.sin(t*6)*0.15;
+      drawCreature(W/2,H*0.35,oldSpec,ev.level,false,55*pulse);
+    }
+    drawTextCenter(oldSpec?.name||'',W/2,H*0.35+70,16,'#e0e0e0');
+  }else{
+    // Show new
+    if(newSpec)drawCreature(W/2,H*0.35,newSpec,ev.level,false,60);
+    drawTextCenter(newSpec?.name||'',W/2,H*0.35+70,16,TYPE_COLORS[newSpec?.type||'Normal']);
+    drawTextCenter(`${oldSpec?.name} evolved into ${newSpec?.name}!`,W/2,H*0.6,16,'#44cc44');
+    drawButton(W/2-60,H-60,120,36,'OK!',true);
+  }
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+let keys={};
+document.addEventListener('keydown',e=>{
+  keys[e.key]=true;
+  handleInput(e.key);
+  e.preventDefault();
+});
+document.addEventListener('keyup',e=>{keys[e.key]=false});
+
+// Touch/Click
+C.addEventListener('click',e=>{
+  const p=gmp(e);handleClick(p.x,p.y);
+});
+C.addEventListener('touchend',e=>{
+  e.preventDefault();
+  if(e.changedTouches.length>0){
+    const p=gmp(e.changedTouches[0]);handleClick(p.x,p.y);
+  }
+});
+
+// Keyboard input for name entry
+document.addEventListener('keydown',e=>{
+  if(GS.scene==='intro'&&GS.introStep>=INTRO_TEXT.length){
+    if(e.key==='Backspace'){GS.player.name=GS.player.name.slice(0,-1);e.preventDefault();return}
+    if(e.key==='Enter'&&GS.player.name.length>=1){
+      GS.scene='starterPick';GS.starterHighlight=0;e.preventDefault();return;
+    }
+    if(e.key.length===1&&GS.player.name.length<12&&/[a-zA-Z0-9 ]/.test(e.key)){
+      GS.player.name+=e.key;e.preventDefault();
+    }
+  }
+},true);
+
+function handleInput(key){
+  SFX.click();
+  const scene=GS.scene;
+
+  if(scene==='title'){
+    if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(0,GS.menuIdx-1);
+    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(1,GS.menuIdx+1);
+    if(key==='Enter'||key===' '){
+      if(GS.menuIdx===0){GS.scene='intro';GS.introStep=0;GS.textCharIdx=0;GS.player.name=''}
+      if(GS.menuIdx===1){if(loadGame())GS.scene='overworld';else{/* no save */}}
+    }
+  }
+
+  else if(scene==='intro'){
+    if(key==='Enter'||key===' '){
+      if(GS.introStep<INTRO_TEXT.length){
+        if(GS.textDone){GS.introStep++;GS.textCharIdx=0;GS.textDone=false}
+        else{GS.textCharIdx=999} // Skip typewriter
+      }
+    }
+  }
+
+  else if(scene==='starterPick'){
+    if(key==='ArrowLeft'||key==='a')GS.starterHighlight=Math.max(0,GS.starterHighlight-1);
+    if(key==='ArrowRight'||key==='d')GS.starterHighlight=Math.min(2,GS.starterHighlight+1);
+    if(key==='Enter'||key===' '){
+      const starterIds=[1,4,7];
+      const starter=createCreature(starterIds[GS.starterHighlight],5);
+      GS.player.team.push(starter);
+      GS.player.caught.add(starter.specId);GS.player.seen.add(starter.specId);
+      GS.scene='overworld';GS.menuIdx=0;
+      saveGame();
+    }
+  }
+
+  else if(scene==='overworld'){
+    if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(0,GS.menuIdx-1);
+    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(6,GS.menuIdx+1);
+    if(key==='Enter'||key===' ')handleOverworldSelect();
+  }
+
+  else if(scene==='battle'){
+    handleBattleInput(key);
+  }
+
+  else if(scene==='team'){
+    if(key==='Escape'||key==='Backspace'){GS.scene='overworld';GS.menuIdx=2}
+  }
+
+  else if(scene==='bag'){
+    if(key==='Escape'||key==='Backspace'){GS.scene='overworld';GS.menuIdx=3}
+  }
+
+  else if(scene==='shop'){
+    if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(-1,GS.menuIdx-1);
+    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(11,GS.menuIdx+1);
+    if(key==='Escape'||key==='Backspace'){GS.scene='overworld';GS.menuIdx=4}
+    if(key==='Enter'||key===' ')handleShopBuy();
+  }
+
+  else if(scene==='routeSelect'){
+    if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(-1,GS.menuIdx-1);
+    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(ROUTES.length-1,GS.menuIdx+1);
+    if(key==='Escape'||key==='Backspace'){GS.scene='overworld';GS.menuIdx=5}
+    if(key==='Enter'||key===' '){
+      if(GS.menuIdx===-1){GS.scene='overworld';GS.menuIdx=5}
+      else{
+        const unlocked=GS.menuIdx<=GS.player.badges.length+1;
+        if(unlocked){GS.route=GS.menuIdx;GS.scene='overworld';GS.menuIdx=0}
+      }
+    }
+  }
+
+  else if(scene==='arenaSelect'){
+    if(key==='Escape'||key==='Backspace'){GS.scene='overworld';GS.menuIdx=1}
+    if(key==='Enter'||key===' '){
+      if(GS.menuIdx===-1){GS.scene='overworld';GS.menuIdx=1}
+      else if(GS.arenaIdx>=8){
+        // Champion battle
+        startBattle({champion:true});
+      }else if(GS.menuIdx===GS.arenaIdx){
+        startBattle({arena:GS.arenaIdx});
+      }
+    }
+  }
+
+  else if(scene==='summary'){
+    if(key==='Enter'||key===' '){
+      // Check for evolution
+      const evolveTarget=checkTeamEvolve();
+      if(evolveTarget){
+        startEvolve(evolveTarget);
+      }else{
+        GS.scene='overworld';GS.menuIdx=0;saveGame();
+      }
+    }
+  }
+
+  else if(scene==='evolve'){
+    if(key==='Enter'||key===' '){
+      if(GS.evolving&&GS.evolving.timer>=60){
+        GS.evolving=null;
+        // Check for more evolutions
+        const next=checkTeamEvolve();
+        if(next)startEvolve(next);
+        else{GS.scene='overworld';GS.menuIdx=0;saveGame()}
+      }
+    }
+  }
+
+  else if(scene==='credits'){
+    if(key==='Enter'||key===' '){GS.scene='overworld';GS.menuIdx=0}
+  }
+}
+
+function handleClick(cx,cy){
+  SFX.click();
+  const scene=GS.scene;
+
+  if(scene==='title'){
+    const btnY=H*0.75;
+    if(cy>=btnY&&cy<=btnY+42){GS.menuIdx=0;handleInput('Enter')}
+    else if(cy>=btnY+52&&cy<=btnY+94){GS.menuIdx=1;handleInput('Enter')}
+  }
+
+  else if(scene==='intro'){handleInput('Enter')}
+
+  else if(scene==='starterPick'){
+    const cardW=isMobile?120:200,gap=isMobile?10:30;
+    const startX=W/2-(cardW*1.5+gap);
+    for(let i=0;i<3;i++){
+      const left=startX+i*(cardW+gap);
+      if(cx>=left&&cx<=left+cardW&&cy>=70&&cy<=400){GS.starterHighlight=i;return}
+    }
+    if(cy>=H-60){handleInput('Enter')}
+  }
+
+  else if(scene==='overworld'){
+    const btnH=44,startY=70;
+    for(let i=0;i<7;i++){
+      const by=startY+i*(btnH+8);
+      if(cy>=by&&cy<=by+btnH){GS.menuIdx=i;handleOverworldSelect();return}
+    }
+  }
+
+  else if(scene==='battle'){
+    handleBattleClick(cx,cy);
+  }
+
+  else if(scene==='team'){
+    if(cx>=W-80&&cy<=38){GS.scene='overworld';GS.menuIdx=2}
+  }
+
+  else if(scene==='bag'){
+    if(cx>=W-80&&cy<=38){GS.scene='overworld';GS.menuIdx=3}
+  }
+
+  else if(scene==='shop'){
+    if(cx>=W-80&&cy<=38){GS.scene='overworld';GS.menuIdx=4;return}
+    const allItems=[...SHELLS.filter(s=>s.cost>0),...ITEM_DEFS];
+    let y=55;
+    allItems.forEach((item,i)=>{
+      if(cy>=y&&cy<=y+40){GS.menuIdx=i;handleShopBuy();return}
+      y+=46;
+    });
+  }
+
+  else if(scene==='routeSelect'){
+    if(cx>=W-80&&cy<=38){GS.scene='overworld';GS.menuIdx=5;return}
+    ROUTES.forEach((r,i)=>{
+      const y=55+i*42;
+      if(cy>=y&&cy<=y+36){GS.menuIdx=i;handleInput('Enter')}
+    });
+  }
+
+  else if(scene==='arenaSelect'){
+    if(cx>=W-80&&cy<=38){GS.scene='overworld';GS.menuIdx=1;return}
+    if(GS.arenaIdx>=8&&cy>=100&&cy<=128){handleInput('Enter');return}
+    ARENAS.forEach((a,i)=>{
+      if(i===GS.arenaIdx){GS.menuIdx=i;handleInput('Enter')}
+    });
+  }
+
+  else if(scene==='summary'||scene==='credits'){handleInput('Enter')}
+
+  else if(scene==='evolve'){handleInput('Enter')}
+}
+
+function handleOverworldSelect(){
+  switch(GS.menuIdx){
+    case 0: // Explore
+      triggerWildEncounter();break;
+    case 1: // Arena
+      GS.scene='arenaSelect';GS.menuIdx=GS.arenaIdx;break;
+    case 2: // Team
+      GS.scene='team';GS.menuIdx=0;GS.subMenu=null;break;
+    case 3: // Bag
+      GS.scene='bag';GS.subMenu=null;break;
+    case 4: // Shop
+      GS.scene='shop';GS.menuIdx=0;break;
+    case 5: // Routes
+      GS.scene='routeSelect';GS.menuIdx=GS.route;break;
+    case 6: // Save
+      saveGame();break;
+  }
+}
+
+function triggerWildEncounter(){
+  const route=ROUTES[GS.route];
+  const specId=pick(route.encounters);
+  const level=rand(route.minLvl,route.maxLvl);
+  const wild=createCreature(specId,level);
+  wild.isWild=true;
+  GS.player.seen.add(specId);
+  startBattle({wild});
+}
+
+function handleBattleInput(key){
+  const b=GS.battle;if(!b)return;
+
+  // If messages pending, advance
+  if(b.msgCurrent&&!b.msgDone){b.msgCharIdx=999;return}
+  if(b.msgCurrent&&b.msgDone){
+    if(!advanceBattleMsg()){
+      b.msgCurrent='';
+      // Check if battle ended
+      checkBattleEnd();
+    }
+    return;
+  }
+
+  if(b.phase==='menu'){
+    if(key==='ArrowUp'||key==='w')b.menuIdx=Math.max(0,b.menuIdx-1);
+    if(key==='ArrowDown'||key==='s')b.menuIdx=Math.min(3,b.menuIdx+1);
+    if(key==='ArrowLeft'||key==='a')b.menuIdx=Math.max(0,b.menuIdx-1);
+    if(key==='ArrowRight'||key==='d')b.menuIdx=Math.min(3,b.menuIdx+1);
+    if(key==='Enter'||key===' '){
+      if(b.menuIdx===0){b.phase='moveSelect';b.subIdx=0}
+      else if(b.menuIdx===1){
+        if(b.isWild){b.phase='shellSelect';b.subIdx=0}
+        else{b.phase='itemSelect';b.subIdx=0}
+      }
+      else if(b.menuIdx===2){
+        if(b.isWild){b.phase='itemSelect';b.subIdx=0}
+        else{b.phase='switchSelect';b.subIdx=0}
+      }
+      else if(b.menuIdx===3){
+        if(b.isWild){attemptRun()}
+      }
+    }
+  }
+
+  else if(b.phase==='moveSelect'){
+    const p=getActiveP();
+    if(key==='ArrowUp'||key==='w')b.subIdx=Math.max(0,b.subIdx-1);
+    if(key==='ArrowDown'||key==='s')b.subIdx=Math.min((p?.moves.length||1)-1,b.subIdx+1);
+    if(key==='Escape'||key==='Backspace'){b.phase='menu';b.menuIdx=0}
+    if(key==='Enter'||key===' '){
+      if(p&&p.moves[b.subIdx]){
+        executeTurn(b.subIdx);
+      }
+    }
+  }
+
+  else if(b.phase==='shellSelect'){
+    const shells=GS.player.bag.shells;
+    if(key==='ArrowUp'||key==='w')b.subIdx=Math.max(0,b.subIdx-1);
+    if(key==='ArrowDown'||key==='s')b.subIdx=Math.min(shells.length,b.subIdx+1);
+    if(key==='Escape'||key==='Backspace'){b.phase='menu';b.menuIdx=1}
+    if(key==='Enter'||key===' '){
+      if(b.subIdx<shells.length&&shells[b.subIdx].qty>0){
+        useShell(b.subIdx);
+      }else{b.phase='menu';b.menuIdx=1}
+    }
+  }
+
+  else if(b.phase==='itemSelect'){
+    const items=GS.player.bag.items;
+    if(key==='ArrowUp'||key==='w')b.subIdx=Math.max(0,b.subIdx-1);
+    if(key==='ArrowDown'||key==='s')b.subIdx=Math.min(items.length,b.subIdx+1);
+    if(key==='Escape'||key==='Backspace'){b.phase='menu';b.menuIdx=2}
+    if(key==='Enter'||key===' '){
+      if(b.subIdx<items.length&&items[b.subIdx].qty>0){
+        useItem(b.subIdx);
+      }else{b.phase='menu';b.menuIdx=2}
+    }
+  }
+
+  else if(b.phase==='switchSelect'){
+    const team=b.playerTeam.filter((_,i)=>i!==b.playerActive);
+    if(key==='ArrowUp'||key==='w')b.subIdx=Math.max(0,b.subIdx-1);
+    if(key==='ArrowDown'||key==='s')b.subIdx=Math.min(team.length,b.subIdx+1);
+    if(key==='Escape'||key==='Backspace'){b.phase='menu';b.menuIdx=0}
+    if(key==='Enter'||key===' '){
+      if(b.subIdx<team.length){
+        // Find actual index
+        let realIdx=-1,count=0;
+        for(let i=0;i<b.playerTeam.length;i++){
+          if(i===b.playerActive)continue;
+          if(count===b.subIdx){realIdx=i;break}
+          count++;
+        }
+        if(realIdx>=0&&b.playerTeam[realIdx].hp>0){
+          switchCreature(realIdx);
+        }
+      }else{b.phase='menu';b.menuIdx=0}
+    }
+  }
+}
+
+function handleBattleClick(cx,cy){
+  const b=GS.battle;if(!b)return;
+  const botY=H*0.55+70;
+
+  // Message advance
+  if(b.msgCurrent){handleBattleInput('Enter');return}
+
+  if(b.phase==='menu'){
+    const bw=(W-30)/2-5,bh=38;
+    for(let i=0;i<4;i++){
+      const col=i%2,row=Math.floor(i/2);
+      const bx=15+col*(bw+10),by=botY+10+row*(bh+6);
+      if(cx>=bx&&cx<=bx+bw&&cy>=by&&cy<=by+bh){
+        b.menuIdx=i;handleBattleInput('Enter');return;
+      }
+    }
+  }
+
+  else if(b.phase==='moveSelect'){
+    const p=getActiveP();if(!p)return;
+    p.moves.forEach((m,i)=>{
+      const by=botY+10+i*36;
+      if(cy>=by&&cy<=by+32){b.subIdx=i;handleBattleInput('Enter');return}
+    });
+    // Back area
+    if(cy>botY+10+p.moves.length*36){handleBattleInput('Escape')}
+  }
+
+  else if(b.phase==='shellSelect'||b.phase==='itemSelect'){
+    const list=b.phase==='shellSelect'?GS.player.bag.shells:GS.player.bag.items;
+    list.forEach((item,i)=>{
+      const by=botY+10+i*32;
+      if(cy>=by&&cy<=by+28){b.subIdx=i;handleBattleInput('Enter');return}
+    });
+    // Back button area
+    if(cy>=botY+10+list.length*32){b.subIdx=list.length;handleBattleInput('Enter')}
+  }
+
+  else if(b.phase==='switchSelect'){
+    const team=b.playerTeam.filter((_,i)=>i!==b.playerActive);
+    team.forEach((c,i)=>{
+      const by=botY+10+i*32;
+      if(cy>=by&&cy<=by+28){b.subIdx=i;handleBattleInput('Enter');return}
+    });
+    if(cy>=botY+10+team.length*32){handleBattleInput('Escape')}
+  }
+}
+
+function executeTurn(moveIdx){
+  const b=GS.battle;
+  const p=getActiveP(),e=getActiveE();
+  if(!p||!e)return;
+
+  const pMove=p.moves[moveIdx];
+  const eMove=aiChooseMove(e);
+
+  // Determine order (speed + priority)
+  const pPriority=MOVES[pMove.name]?.priority||0;
+  const ePriority=eMove?MOVES[eMove.name]?.priority||0:0;
+  let playerFirst=pPriority>ePriority||(pPriority===ePriority&&p.stats.spd>=e.stats.spd);
+  if(p.status==='paralyze')playerFirst=playerFirst&&Math.random()>0.5;
+
+  b.phase='execute';
+
+  if(playerFirst){
+    executeMove(p,e,pMove,true);
+    if(e.hp>0&&eMove)executeMove(e,p,eMove,false);
+  }else{
+    if(eMove)executeMove(e,p,eMove,false);
+    if(p.hp>0)executeMove(p,e,pMove,true);
+  }
+
+  // End of turn effects
+  if(p.hp>0)endOfTurnEffects(p);
+  if(e.hp>0)endOfTurnEffects(e);
+
+  b.turn++;
+
+  // Reset stat stages on HP anim targets
+  b.hpAnimP=b.hpAnimP;b.hpAnimE=b.hpAnimE;
+
+  checkBattleEnd();
+}
+
+function checkBattleEnd(){
+  const b=GS.battle;if(!b)return;
+  const p=getActiveP(),e=getActiveE();
+
+  // Enemy fainted
+  if(e&&e.hp<=0){
+    // Check if more enemies
+    const nextE=b.enemyTeam.findIndex((c,i)=>i>b.enemyActive&&c.hp>0);
+    if(nextE>=0){
+      battleMsg(`${e.name} fainted!`);SFX.faint();
+      // Award XP
+      const xp=getXpYield(e);
+      if(p)awardXP(p,xp);
+      b.enemyActive=nextE;
+      const ne=getActiveE();
+      battleMsg(`${b.trainerName} sent out ${ne.name}!`);
+      b.hpAnimE=ne.hp;
+      b.phase='menu';b.menuIdx=0;
+      return;
+    }
+    // Player won
+    battleMsg(`${e.name} fainted!`);SFX.faint();
+    const xp=getXpYield(e);
+    if(p){awardXP(p,xp);b.xpGained=xp}
+
+    b.playerWon=true;
+
+    if(b.isArena&&GS.arenaIdx<8){
+      const arena=ARENAS[GS.arenaIdx];
+      battleMsg(arena.defeat);
+      battleMsg(`You earned the ${arena.badge}!`);
+      GS.player.badges.push(arena.badge);
+      GS.player.money+=2000*(GS.arenaIdx+1);
+      battleMsg(`Received $${2000*(GS.arenaIdx+1)}!`);
+      GS.arenaIdx++;
+    }
+    if(b.isChampion){
+      battleMsg(CHAMPION.defeat);
+      SFX.victory();
+    }
+    if(b.caught){
+      battleMsg(`Gotcha! ${e.name} was caught!`);SFX.catch_();
+    }
+
+    // Transition to summary after messages clear
+    setTimeout(()=>{
+      if(b.isChampion){GS.scene='credits'}
+      else{GS.scene='summary'}
+      b.phase='done';
+    },500);
+    return;
+  }
+
+  // Player creature fainted
+  if(p&&p.hp<=0){
+    battleMsg(`${p.name} fainted!`);SFX.faint();
+    // Find next alive
+    const nextP=b.playerTeam.findIndex(c=>c.hp>0);
+    if(nextP>=0){
+      // Force switch
+      b.playerActive=nextP;
+      const np=getActiveP();
+      battleMsg(`Go, ${np.name}!`);
+      b.hpAnimP=np.hp;
+      b.phase='menu';b.menuIdx=0;
+      return;
+    }
+    // Player lost
+    b.playerLost=true;
+    battleMsg("All your Riftborn fainted!");
+    // Heal team and return to overworld
+    setTimeout(()=>{
+      GS.player.team.forEach(c=>{c.hp=c.maxHp;c.status=null;c.statusTurns=0;c.leechSeed=false;
+        c.statStages={atk:0,def:0,spAtk:0,spDef:0,spd:0};calcStats(c);
+        c.moves.forEach(m=>{m.energy=m.maxEnergy})});
+      GS.player.money=Math.max(0,GS.player.money-500);
+      GS.scene='summary';
+    },500);
+    return;
+  }
+
+  // Continue battle
+  if(b.phase==='execute')b.phase='menu';
+  b.menuIdx=0;
+}
+
+function awardXP(creature,xp){
+  creature.xp+=xp;
+  while(creature.xp>=creature.xpNeeded){
+    creature.xp-=creature.xpNeeded;
+    creature.level++;
+    creature.xpNeeded=creature.level*creature.level*3+10;
+    const oldHpPct=creature.hp/creature.maxHp;
+    calcStats(creature);
+    creature.hp=Math.min(creature.maxHp,Math.max(creature.hp,Math.floor(creature.maxHp*oldHpPct)));
+    battleMsg(`${creature.name} grew to level ${creature.level}!`);
+    SFX.levelUp();
+
+    // Check for new moves
+    const spec=RB_BY_ID[creature.specId];
+    if(spec&&spec.learnset&&spec.learnset[creature.level]){
+      const newMove=spec.learnset[creature.level];
+      if(!creature.moves.find(m=>m.name===newMove)){
+        if(creature.moves.length<4){
+          creature.moves.push({name:newMove,energy:MOVES[newMove]?.energy||10,maxEnergy:MOVES[newMove]?.energy||10});
+          battleMsg(`${creature.name} learned ${newMove}!`);
+        }else{
+          // Replace weakest move
+          let weakest=0,weakPow=999;
+          creature.moves.forEach((m,i)=>{
+            const pow=MOVES[m.name]?.power||0;
+            if(pow<weakPow){weakPow=pow;weakest=i}
+          });
+          const old=creature.moves[weakest].name;
+          creature.moves[weakest]={name:newMove,energy:MOVES[newMove]?.energy||10,maxEnergy:MOVES[newMove]?.energy||10};
+          battleMsg(`${creature.name} forgot ${old} and learned ${newMove}!`);
+        }
+      }
+    }
+  }
+}
+
+function checkTeamEvolve(){
+  for(let i=0;i<GS.player.team.length;i++){
+    const c=GS.player.team[i];
+    const evo=checkEvolve(c);
+    if(evo)return{creature:c,idx:i,newId:evo};
+  }
+  return null;
+}
+
+function startEvolve(ev){
+  GS.scene='evolve';
+  GS.evolving={
+    creature:ev.creature,
+    oldId:ev.creature.specId,
+    newId:ev.newId,
+    level:ev.creature.level,
+    timer:0,
+    idx:ev.idx,
+  };
+  SFX.evolve();
+}
+
+function attemptRun(){
+  const b=GS.battle;
+  if(!b.isWild){battleMsg("Can't run from a trainer battle!");return}
+  const p=getActiveP(),e=getActiveE();
+  const chance=Math.min(0.9,(p?.stats.spd||50)/((e?.stats.spd||50)+30));
+  if(Math.random()<chance){
+    battleMsg("Got away safely!");
+    b.escaped=true;
+    setTimeout(()=>{GS.scene='overworld';GS.menuIdx=0},300);
+  }else{
+    battleMsg("Couldn't escape!");
+    // Enemy gets a turn
+    const eMove=aiChooseMove(e);
+    if(eMove)executeMove(e,p,eMove,false);
+    if(p.hp>0)endOfTurnEffects(p);
+    if(e.hp>0)endOfTurnEffects(e);
+    checkBattleEnd();
+  }
+}
+
+function useShell(bagIdx){
+  const b=GS.battle;
+  const shell=GS.player.bag.shells[bagIdx];
+  if(!shell||shell.qty<=0)return;
+  const e=getActiveE();
+  if(!e||!b.isWild){battleMsg("Can't use that here!");b.phase='menu';return}
+  shell.qty--;
+  battleMsg(`Used ${SHELLS[shell.idx].name}!`);
+  SFX.catch_();
+
+  if(attemptCatch(e,shell.idx)){
+    b.caught=true;
+    GS.player.caught.add(e.specId);
+    // Add to team or box
+    const caught=createCreature(e.specId,e.level);
+    caught.hp=e.hp;caught.status=e.status;
+    if(GS.player.team.length<6)GS.player.team.push(caught);
+    else GS.player.box.push(caught);
+    battleMsg(`${e.name} was caught!`);
+    e.hp=0;
+    b.playerWon=true;
+    setTimeout(()=>{GS.scene='summary'},500);
+  }else{
+    battleMsg("Oh no! It broke free!");
+    SFX.fail();
+    // Enemy turn
+    const eMove=aiChooseMove(e);
+    if(eMove)executeMove(e,getActiveP(),eMove,false);
+    endOfTurnEffects(getActiveP());
+    endOfTurnEffects(e);
+    checkBattleEnd();
+  }
+}
+
+function useItem(bagIdx){
+  const b=GS.battle;
+  const item=GS.player.bag.items[bagIdx];
+  if(!item||item.qty<=0)return;
+  const def=ITEM_DEFS[item.idx];
+  const p=getActiveP();if(!p){b.phase='menu';return}
+
+  if(def.type==='heal'){
+    if(p.hp>=p.maxHp){battleMsg(`${p.name} is already at full HP!`);b.phase='menu';return}
+    item.qty--;
+    const heal=Math.min(def.value,p.maxHp-p.hp);
+    p.hp+=heal;
+    battleMsg(`${p.name} recovered ${heal} HP!`);SFX.heal();
+  }else if(def.type==='revive'){
+    // Find fainted
+    const fainted=b.playerTeam.find(c=>c.hp<=0);
+    if(!fainted){battleMsg("No fainted Riftborn!");b.phase='menu';return}
+    item.qty--;
+    fainted.hp=Math.floor(fainted.maxHp*def.value);
+    fainted.status=null;
+    battleMsg(`${fainted.name} was revived!`);SFX.heal();
+  }else if(def.type==='status'){
+    if(!p.status){battleMsg(`${p.name} has no status problems!`);b.phase='menu';return}
+    if(def.value!=='all'&&p.status!==def.value){battleMsg("It won't have any effect!");b.phase='menu';return}
+    item.qty--;
+    p.status=null;p.statusTurns=0;
+    battleMsg(`${p.name} was cured!`);SFX.heal();
+  }
+
+  // Remove empty items
+  GS.player.bag.items=GS.player.bag.items.filter(i=>i.qty>0);
+
+  // Enemy turn
+  const e=getActiveE();
+  const eMove=aiChooseMove(e);
+  if(eMove)executeMove(e,p,eMove,false);
+  endOfTurnEffects(p);
+  if(e)endOfTurnEffects(e);
+  checkBattleEnd();
+}
+
+function switchCreature(newIdx){
+  const b=GS.battle;
+  const old=getActiveP();
+  b.playerActive=newIdx;
+  const np=getActiveP();
+  battleMsg(`Come back, ${old.name}!`);
+  battleMsg(`Go, ${np.name}!`);
+  b.hpAnimP=np.hp;
+
+  // Enemy gets a free turn
+  const e=getActiveE();
+  const eMove=aiChooseMove(e);
+  if(eMove)executeMove(e,np,eMove,false);
+  endOfTurnEffects(np);
+  if(e)endOfTurnEffects(e);
+  checkBattleEnd();
+}
+
+function handleShopBuy(){
+  const allItems=[
+    ...SHELLS.filter(s=>s.cost>0).map((s,i)=>({...s,shopType:'shell',origIdx:i})),
+    ...ITEM_DEFS.map((it,i)=>({...it,shopType:'item',origIdx:i})),
+  ];
+  if(GS.menuIdx<0||GS.menuIdx>=allItems.length)return;
+  const item=allItems[GS.menuIdx];
+  if(GS.player.money<item.cost)return;
+
+  GS.player.money-=item.cost;
+
+  if(item.shopType==='shell'){
+    const existing=GS.player.bag.shells.find(s=>s.idx===item.origIdx);
+    if(existing)existing.qty++;
+    else GS.player.bag.shells.push({idx:item.origIdx,qty:1});
+  }else{
+    const existing=GS.player.bag.items.find(s=>s.idx===item.origIdx);
+    if(existing)existing.qty++;
+    else GS.player.bag.items.push({idx:item.origIdx,qty:1});
+  }
+  SFX.click();
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+function update(){
+  // Evolve timer
+  if(GS.scene==='evolve'&&GS.evolving){
+    GS.evolving.timer++;
+    if(GS.evolving.timer===60){
+      // Actually evolve
+      evolveCreature(GS.evolving.creature,GS.evolving.newId);
+      GS.player.caught.add(GS.evolving.newId);
+      GS.player.seen.add(GS.evolving.newId);
+    }
+  }
+}
+
+function draw(){
+  update();
+
+  switch(GS.scene){
+    case 'title':drawTitle();break;
+    case 'intro':drawIntro();break;
+    case 'starterPick':drawStarterPick();break;
+    case 'overworld':drawOverworld();break;
+    case 'battle':drawBattle();break;
+    case 'team':drawTeamView();break;
+    case 'bag':drawBagView();break;
+    case 'shop':drawShop();break;
+    case 'routeSelect':drawRouteSelect();break;
+    case 'arenaSelect':drawArenaSelect();break;
+    case 'summary':drawSummary();break;
+    case 'evolve':drawEvolveScreen();break;
+    case 'credits':drawCredits();break;
+  }
+
+  requestAnimationFrame(draw);
+}
+
+// Start
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>
