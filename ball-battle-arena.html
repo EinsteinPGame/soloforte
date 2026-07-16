@@ -1241,61 +1241,75 @@ function drawWeapon(f){
 }
 
 function drawMantisBlades(r,ext,flash,f){
-  const bladeLen=15+ext*38;
+  const bladeLen=18+ext*42;
 
-  // Forearm housing
-  X.fillStyle='#3a3a3a';
-  X.fillRect(r-6,-8,22,16);
-  X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(r-6,-8,22,16);
-  X.strokeStyle='#4a4a4a';X.lineWidth=0.8;
-  for(let i=0;i<3;i++){const hx=r-2+i*6;X.beginPath();X.moveTo(hx,-8);X.lineTo(hx,8);X.stroke();}
-  X.fillStyle='#2a2a2a';X.fillRect(r,-6,16,12);
-  X.fillStyle='#1a1a1a';
-  X.fillRect(r+14,-7,4,5);X.fillRect(r+14,2,4,5);
+  // Mechanical forearm housing — dark chrome with panel lines
+  const hx=r-4, hw=20, hh=14;
+  X.fillStyle='#2a2a2e';
+  X.fillRect(hx,-hh/2,hw,hh);
+  // Panel segments
+  X.strokeStyle='#444';X.lineWidth=0.8;
+  for(let i=0;i<4;i++){X.beginPath();X.moveTo(hx+4+i*4,-hh/2);X.lineTo(hx+4+i*4,hh/2);X.stroke();}
+  // Housing edge highlight
+  const hg=X.createLinearGradient(hx,-hh/2,hx,hh/2);
+  hg.addColorStop(0,'#555');hg.addColorStop(0.5,'#3a3a3e');hg.addColorStop(1,'#222');
+  X.fillStyle=hg;X.fillRect(hx+2,-hh/2+1,hw-4,hh-2);
+  // Blade ejection ports — two dark slots
+  X.fillStyle='#111';
+  X.fillRect(hx+hw-3,-hh/2+1,3,5);
+  X.fillRect(hx+hw-3,hh/2-6,3,5);
+  // Gold accent strips on housing
+  X.fillStyle='#c8a830';
+  X.fillRect(hx+1,-hh/2,1.5,hh);
+  X.fillRect(hx+hw-1.5,-hh/2,1.5,hh);
 
-  // Twin blades
+  // Twin curved blades — Cyberpunk 2077 style
   const bx=r+16;
   [-1,1].forEach(dir=>{
-    const by=dir*5;
+    const by=dir*4;
+    // Blade shape: long, curved, tapering — like the reference
     X.beginPath();
-    X.moveTo(bx,by-1.5*dir);
-    X.lineTo(bx+bladeLen*0.2,by-2.5*dir);
-    X.lineTo(bx+bladeLen*0.5,by-2*dir);
-    X.lineTo(bx+bladeLen*0.85,by-1*dir);
-    X.lineTo(bx+bladeLen,by);
-    X.lineTo(bx+bladeLen*0.85,by+1.5*dir);
-    X.lineTo(bx+bladeLen*0.5,by+2.5*dir);
-    X.lineTo(bx+bladeLen*0.2,by+2*dir);
-    X.lineTo(bx,by+1.5*dir);
+    // Spine (outer edge — curved)
+    X.moveTo(bx-2,by);
+    X.quadraticCurveTo(bx+bladeLen*0.3,by-4.5*dir,bx+bladeLen*0.7,by-2.5*dir);
+    X.quadraticCurveTo(bx+bladeLen*0.9,by-1.5*dir,bx+bladeLen,by-0.3*dir);
+    // Tip
+    X.lineTo(bx+bladeLen+2,by+0.2*dir);
+    // Belly (inner edge — slight curve back)
+    X.quadraticCurveTo(bx+bladeLen*0.85,by+1.8*dir,bx+bladeLen*0.5,by+2.2*dir);
+    X.quadraticCurveTo(bx+bladeLen*0.2,by+2*dir,bx-2,by+1.5*dir);
     X.closePath();
-    const bg=X.createLinearGradient(bx,0,bx+bladeLen,0);
-    bg.addColorStop(0,'#777');bg.addColorStop(0.3,'#ccc');bg.addColorStop(0.5,'#eee');bg.addColorStop(0.7,'#bbb');bg.addColorStop(1,'#999');
+
+    // Chrome/gold gradient fill
+    const bg=X.createLinearGradient(bx,by-5*dir,bx+bladeLen,by);
+    bg.addColorStop(0,'#b8a830');bg.addColorStop(0.15,'#d4c860');bg.addColorStop(0.3,'#f0e880');
+    bg.addColorStop(0.5,'#e8d860');bg.addColorStop(0.7,'#c8b040');bg.addColorStop(1,'#a89020');
     X.fillStyle=bg;X.fill();
-    X.strokeStyle='#555';X.lineWidth=0.5;X.stroke();
+    // Dark edge outline
+    X.strokeStyle='#6a5a20';X.lineWidth=0.8;X.stroke();
 
-    // Cutting edge glow
-    X.strokeStyle=flash?'rgba(255,120,40,1)':'rgba(255,50,30,0.5)';
-    X.lineWidth=flash?2.5:1.2;
+    // Bright edge highlight along spine
+    X.strokeStyle='rgba(255,248,200,0.6)';X.lineWidth=0.5;
     X.beginPath();
-    X.moveTo(bx+2,by-2*dir);
-    X.quadraticCurveTo(bx+bladeLen*0.5,by-2.5*dir,bx+bladeLen,by);
+    X.moveTo(bx,by-0.5*dir);
+    X.quadraticCurveTo(bx+bladeLen*0.3,by-4*dir,bx+bladeLen*0.7,by-2.2*dir);
+    X.quadraticCurveTo(bx+bladeLen*0.9,by-1.2*dir,bx+bladeLen,by-0.2*dir);
     X.stroke();
 
-    // Serrated teeth
-    X.strokeStyle='rgba(180,180,180,0.6)';X.lineWidth=0.6;
+    // Cutting edge glow (inner edge)
+    X.strokeStyle=flash?'rgba(255,120,40,1)':'rgba(255,80,30,0.4)';
+    X.lineWidth=flash?2:1;
     X.beginPath();
-    for(let t=0;t<bladeLen*0.7;t+=3){
-      const px=bx+bladeLen*0.1+t;
-      const py=by+(t%6<3?2.2:0.8)*dir;
-      if(t===0)X.moveTo(px,py);else X.lineTo(px,py);
-    }
+    X.moveTo(bx,by+1.5*dir);
+    X.quadraticCurveTo(bx+bladeLen*0.5,by+2.2*dir,bx+bladeLen,by+0.2*dir);
     X.stroke();
 
-    // Segment joints
-    X.strokeStyle='#666';X.lineWidth=1.2;
-    [0.3,0.6].forEach(p=>{
-      X.beginPath();X.moveTo(bx+bladeLen*p,by-2.5*dir);X.lineTo(bx+bladeLen*p,by+2.5*dir);X.stroke();
-    });
+    // Center ridge line
+    X.strokeStyle='rgba(180,160,60,0.5)';X.lineWidth=0.4;
+    X.beginPath();
+    X.moveTo(bx+5,by+0.5*dir);
+    X.quadraticCurveTo(bx+bladeLen*0.4,by-1*dir,bx+bladeLen*0.8,by-0.5*dir);
+    X.stroke();
   });
 
   // Slash trail on attack
@@ -1308,88 +1322,97 @@ function drawMantisBlades(r,ext,flash,f){
   }
 
   if(flash){
-    X.beginPath();X.arc(bx+bladeLen,-4,4,0,Math.PI*2);X.fillStyle='rgba(255,200,100,0.8)';X.fill();
-    X.beginPath();X.arc(bx+bladeLen,4,4,0,Math.PI*2);X.fillStyle='rgba(255,200,100,0.8)';X.fill();
+    X.beginPath();X.arc(bx+bladeLen,-3,4,0,Math.PI*2);X.fillStyle='rgba(255,200,100,0.8)';X.fill();
+    X.beginPath();X.arc(bx+bladeLen,3,4,0,Math.PI*2);X.fillStyle='rgba(255,200,100,0.8)';X.fill();
   }
 }
 
 function drawGorillaArms(r,ext,flash,f){
-  const armLen=10+ext*25;
+  const armLen=12+ext*28;
   const isDownslam=f.attackPhase===2&&f.attackAnim>0;
 
-  [-1,1].forEach(dir=>{
-    const offY=dir*13;
-    X.save();X.translate(r-6,offY);
+  // Single massive fist — Cyberpunk Gorilla Arms style (front-facing)
+  X.save();X.translate(r-4,0);
 
-    // Shoulder joint
-    X.beginPath();X.arc(0,0,6,0,Math.PI*2);
-    X.fillStyle='#6a5500';X.fill();
-    X.strokeStyle='#554400';X.lineWidth=1.5;X.stroke();
-    X.beginPath();X.arc(0,0,3,0,Math.PI*2);
-    X.strokeStyle='#887700';X.lineWidth=0.8;X.stroke();
+  // Forearm — dark metallic with panel lines
+  const armW=16;
+  const fg=X.createLinearGradient(0,-armW/2,0,armW/2);
+  fg.addColorStop(0,'#1a1a22');fg.addColorStop(0.3,'#2a2a35');fg.addColorStop(0.7,'#2a2a35');fg.addColorStop(1,'#1a1a22');
+  X.fillStyle=fg;
+  X.fillRect(0,-armW/2,armLen*0.45,armW);
+  X.strokeStyle='#3a3a44';X.lineWidth=0.8;
+  X.strokeRect(0,-armW/2,armLen*0.45,armW);
+  // Panel seams
+  X.strokeStyle='#333';X.lineWidth=0.5;
+  for(let i=1;i<3;i++){X.beginPath();X.moveTo(armLen*0.45*i/3,-armW/2);X.lineTo(armLen*0.45*i/3,armW/2);X.stroke();}
+  // Red accent lines on forearm
+  X.fillStyle='rgba(255,40,40,0.6)';
+  X.fillRect(2,-armW/2,armLen*0.4,1.5);
+  X.fillRect(2,armW/2-1.5,armLen*0.4,1.5);
 
-    // Forearm
-    const armW=14;
-    X.fillStyle='#bb7700';
-    X.fillRect(4,-armW/2,armLen*0.55,armW);
-    X.strokeStyle='#996600';X.lineWidth=1;
-    X.strokeRect(4,-armW/2,armLen*0.55,armW);
+  // MASSIVE FIST — chunky, armored, bulky
+  const fistX=armLen*0.4;
+  const fistW=armLen*0.7;
+  const fistH=24;
+  // Fist base — dark chrome
+  drawRoundRect(fistX,-fistH/2,fistW,fistH,5);
+  const fistG=X.createLinearGradient(fistX,-fistH/2,fistX,fistH/2);
+  fistG.addColorStop(0,'#1e1e28');fistG.addColorStop(0.3,'#2e2e3a');fistG.addColorStop(0.5,'#353545');fistG.addColorStop(0.7,'#2e2e3a');fistG.addColorStop(1,'#1e1e28');
+  X.fillStyle=fistG;X.fill();
+  X.strokeStyle='#444';X.lineWidth=1.2;X.stroke();
 
-    // Armor plates
-    X.fillStyle='#cc8800';
-    for(let p=0;p<3;p++){
-      const px=6+p*(armLen*0.55/3);
-      const pw=armLen*0.55/3-2;
-      X.fillRect(px,-armW/2+1,pw,armW-2);
-      X.strokeStyle='#aa6600';X.lineWidth=0.5;
-      X.strokeRect(px,-armW/2+1,pw,armW-2);
-    }
+  // Thick mechanical fingers — 4 chunky segments
+  for(let k=0;k<4;k++){
+    const ky=(-fistH/2+3)+k*(fistH-6)/3;
+    const kx=fistX+fistW-4;
+    const kw=8+ext*4;
+    drawRoundRect(kx,ky-2.5,kw,5,2);
+    X.fillStyle='#252530';X.fill();
+    X.strokeStyle='#3a3a44';X.lineWidth=0.6;X.stroke();
+  }
 
-    // Hydraulic pistons
-    X.strokeStyle='#aaa';X.lineWidth=2;
-    X.beginPath();X.moveTo(5,-armW/2+2);X.lineTo(4+armLen*0.5,-armW/2+2);X.stroke();
-    X.beginPath();X.moveTo(5,armW/2-2);X.lineTo(4+armLen*0.5,armW/2-2);X.stroke();
-    X.fillStyle='#888';
-    X.fillRect(4+armLen*0.15,-armW/2+1,armLen*0.12,3);
-    X.fillRect(4+armLen*0.15,armW/2-4,armLen*0.12,3);
-
-    // FIST
-    const fistX=4+armLen*0.55;
-    const fistW=armLen*0.55;
-    const fistH=18;
-    drawRoundRect(fistX,-fistH/2,fistW,fistH,4);
-    X.fillStyle='#dd8800';X.fill();
-    X.strokeStyle='#aa6600';X.lineWidth=1.5;X.stroke();
-
-    // Knuckle plates
-    X.fillStyle='#cc7700';
-    for(let k=0;k<3;k++){
-      const kx=fistX+fistW*0.12+k*(fistW*0.28);
-      const kw=fistW*0.22;
-      X.fillRect(kx,-fistH/2+2,kw,fistH-4);
-      X.strokeStyle='#995500';X.lineWidth=0.6;
-      X.strokeRect(kx,-fistH/2+2,kw,fistH-4);
-    }
-
-    X.strokeStyle='#775500';X.lineWidth=1.2;
-    X.beginPath();X.moveTo(fistX+fistW*0.05,-fistH/2+3);X.lineTo(fistX+fistW*0.05,fistH/2-3);X.stroke();
-
-    // Impact shockwave
+  // Red/chrome knuckle reinforcement caps — glowing red accents
+  for(let k=0;k<4;k++){
+    const ky=(-fistH/2+3)+k*(fistH-6)/3;
+    const kx=fistX+fistW*0.55;
+    const kw=fistW*0.3;
+    // Chrome cap
+    drawRoundRect(kx,ky-3,kw,6,2);
+    const kg=X.createLinearGradient(kx,ky-3,kx,ky+3);
+    kg.addColorStop(0,'#555');kg.addColorStop(0.5,'#888');kg.addColorStop(1,'#444');
+    X.fillStyle=kg;X.fill();
+    X.strokeStyle='#666';X.lineWidth=0.5;X.stroke();
+    // Red glowing insert
+    X.fillStyle=flash?'rgba(255,60,60,1)':'rgba(255,40,40,0.7)';
+    X.fillRect(kx+2,ky-1.5,kw-4,3);
+    // Red glow
     if(flash){
-      X.beginPath();X.arc(fistX+fistW,0,10,0,Math.PI*2);
-      X.fillStyle='rgba(255,200,0,0.5)';X.fill();
-      X.beginPath();X.arc(fistX+fistW,0,5,0,Math.PI*2);
-      X.fillStyle='rgba(255,255,255,0.7)';X.fill();
+      X.shadowColor='#ff3030';X.shadowBlur=6;
+      X.fillStyle='rgba(255,80,80,0.8)';X.fillRect(kx+2,ky-1.5,kw-4,3);
+      X.shadowBlur=0;
     }
+  }
 
-    X.restore();
-  });
+  // Wrist joint ring
+  X.strokeStyle='#555';X.lineWidth=2;
+  X.beginPath();X.arc(0,0,armW/2+1,0,Math.PI*2);X.stroke();
+  X.strokeStyle=flash?'rgba(255,50,50,0.8)':'rgba(255,40,40,0.3)';X.lineWidth=1;
+  X.beginPath();X.arc(0,0,armW/2-1,0,Math.PI*2);X.stroke();
+
+  // Impact shockwave
+  if(flash){
+    X.beginPath();X.arc(fistX+fistW+4,0,12,0,Math.PI*2);
+    X.fillStyle='rgba(255,60,40,0.4)';X.fill();
+    X.beginPath();X.arc(fistX+fistW+4,0,5,0,Math.PI*2);
+    X.fillStyle='rgba(255,255,255,0.7)';X.fill();
+  }
+
+  X.restore();
 
   // Downslam ground crack visual
   if(isDownslam){
-    X.save();
-    X.translate(0,r+10);
-    X.strokeStyle='#ff8800';X.lineWidth=2;
+    X.save();X.translate(0,r+10);
+    X.strokeStyle='#ff4030';X.lineWidth=2;
     for(let i=0;i<8;i++){
       const a=Math.PI*2*i/8;
       const len=15+Math.random()*20;
@@ -1400,52 +1423,75 @@ function drawGorillaArms(r,ext,flash,f){
 }
 
 function drawMonowire(r,ext,flash,f){
-  const wireLen=18+ext*50;
+  const wireLen=18+ext*55;
   const isSpinning=f.relicWhipSpinTimer>0;
 
-  // Wrist housing
-  X.fillStyle='#1a4466';
-  X.beginPath();X.arc(r,0,7,0,Math.PI*2);X.fill();
-  X.strokeStyle='#2a6688';X.lineWidth=1.5;X.stroke();
-  X.beginPath();X.arc(r,0,4,0,Math.PI*2);
-  X.strokeStyle='#44aacc';X.lineWidth=1;X.stroke();
-  X.beginPath();X.arc(r+3,-4,1.5,0,Math.PI*2);
-  X.fillStyle=ext>0.1?'#00ffff':'#004455';X.fill();
-  X.fillStyle='#334455';
-  X.beginPath();X.arc(r-4,3,1,0,Math.PI*2);X.fill();
-  X.beginPath();X.arc(r+4,3,1,0,Math.PI*2);X.fill();
+  // Minimal wrist housing — small rectangular slot (Cyberpunk style)
+  // Dark forearm plate
+  X.fillStyle='#2a2a30';
+  X.fillRect(r-3,-5,10,10);
+  X.strokeStyle='#3a3a44';X.lineWidth=0.8;
+  X.strokeRect(r-3,-5,10,10);
+  // Wire ejection slot — thin rectangle
+  X.fillStyle='#111';
+  X.fillRect(r+5,-2,4,4);
+  X.strokeStyle='#444';X.lineWidth=0.5;
+  X.strokeRect(r+5,-2,4,4);
+  // Small status LED
+  X.beginPath();X.arc(r+1,-3,1,0,Math.PI*2);
+  X.fillStyle=ext>0.1?'#ff8800':'#553300';X.fill();
 
-  X.strokeStyle='#336688';X.lineWidth=0.8;
-  X.beginPath();X.moveTo(r+5,0);X.lineTo(r+9,0);X.stroke();
-
-  // WIRE
+  // WIRE — bright orange/gold, thin, glowing (like reference)
   const t=battleTime*0.08;
-  const waveAmp=flash?0.5:(3.5-ext*2.5);
+  const waveAmp=flash?0.3:(2.5-ext*2);
 
   if(isSpinning){
-    // BB-8 whip spin — draw two extended wires spinning
     const spinLen=70;
-    X.shadowColor='#00ddff';X.shadowBlur=10;
+    X.shadowColor='#ff8800';X.shadowBlur=12;
     for(let w=0;w<2;w++){
       const wa=f.rotation*3+w*Math.PI;
-      X.strokeStyle='rgba(0,255,255,0.7)';X.lineWidth=3;
+      // Outer glow
+      X.strokeStyle='rgba(255,160,40,0.3)';X.lineWidth=6;
       X.beginPath();X.moveTo(0,0);
-      for(let i=1;i<=12;i++){
-        const px=Math.cos(wa)*spinLen*i/12;
-        const py=Math.sin(wa)*spinLen*i/12;
-        X.lineTo(px,py);
-      }
-      X.stroke();
-      // Tip
-      const tipX=Math.cos(wa)*spinLen,tipY=Math.sin(wa)*spinLen;
-      X.beginPath();X.arc(tipX,tipY,4,0,Math.PI*2);X.fillStyle='#00ffff';X.fill();
+      X.lineTo(Math.cos(wa)*spinLen,Math.sin(wa)*spinLen);X.stroke();
+      // Core wire
+      X.strokeStyle='rgba(255,180,50,0.9)';X.lineWidth=2;
+      X.beginPath();X.moveTo(0,0);
+      X.lineTo(Math.cos(wa)*spinLen,Math.sin(wa)*spinLen);X.stroke();
+      // Bright center
+      X.strokeStyle='rgba(255,230,150,0.7)';X.lineWidth=0.8;
+      X.beginPath();X.moveTo(0,0);
+      X.lineTo(Math.cos(wa)*spinLen,Math.sin(wa)*spinLen);X.stroke();
     }
     X.shadowBlur=0;
   } else {
-    // Normal wire
-    X.strokeStyle=flash?'rgba(0,255,255,0.8)':'rgba(0,220,255,0.4)';
-    X.lineWidth=flash?4:2.5;
-    X.shadowColor='#00ddff';X.shadowBlur=flash?12:6;
+    // Normal wire — thin, bright orange/gold, luminous
+    // Outer glow
+    X.strokeStyle=flash?'rgba(255,180,50,0.5)':'rgba(255,140,30,0.2)';
+    X.lineWidth=flash?8:5;
+    X.shadowColor='#ff8800';X.shadowBlur=flash?15:8;
+    X.beginPath();X.moveTo(r+8,0);
+    for(let i=1;i<=24;i++){
+      const px=r+8+(wireLen-8)*i/24;
+      const py=Math.sin(i*0.18+t)*waveAmp*(1-i/28);
+      X.lineTo(px,py);
+    }
+    X.stroke();
+
+    // Main wire — bright orange
+    X.strokeStyle=flash?'rgba(255,200,60,1)':'rgba(255,160,40,0.7)';
+    X.lineWidth=flash?2.5:1.8;
+    X.beginPath();X.moveTo(r+8,0);
+    for(let i=1;i<=24;i++){
+      const px=r+8+(wireLen-8)*i/24;
+      const py=Math.sin(i*0.18+t)*waveAmp*(1-i/28);
+      X.lineTo(px,py);
+    }
+    X.stroke();
+
+    // Hot white center
+    X.strokeStyle=flash?'#ffffff':'rgba(255,230,180,0.5)';
+    X.lineWidth=flash?1:0.6;
     X.beginPath();X.moveTo(r+8,0);
     for(let i=1;i<=24;i++){
       const px=r+8+(wireLen-8)*i/24;
@@ -1455,129 +1501,111 @@ function drawMonowire(r,ext,flash,f){
     X.stroke();
     X.shadowBlur=0;
 
-    X.strokeStyle=flash?'#ffffff':'#00eeff';
-    X.lineWidth=flash?1.8:1;
-    X.beginPath();X.moveTo(r+8,0);
-    for(let i=1;i<=24;i++){
-      const px=r+8+(wireLen-8)*i/24;
-      const py=Math.sin(i*0.18+t)*waveAmp*(1-i/28);
-      X.lineTo(px,py);
-    }
-    X.stroke();
-
-    // Ghost wire
-    X.strokeStyle='rgba(0,180,255,0.25)';X.lineWidth=0.6;
-    X.beginPath();X.moveTo(r+8,1.5);
-    for(let i=1;i<=18;i++){
-      const px=r+8+(wireLen-8)*i/18;
-      const py=1.5+Math.sin(i*0.22+t+1.2)*waveAmp*0.5;
-      X.lineTo(px,py);
-    }
-    X.stroke();
-
-    // Weighted cutting tip
+    // Wire tip — small bright point (no diamond, just glow)
     const tipX=r+wireLen;
-    const ts=flash?6:4;
-    X.save();X.translate(tipX,0);X.rotate(Math.PI/4+f.rotation*2);
-    X.fillStyle=flash?'#ffffff':'#00ffff';
-    X.fillRect(-ts,-ts,ts*2,ts*2);
-    X.strokeStyle='#008899';X.lineWidth=1;
-    X.strokeRect(-ts,-ts,ts*2,ts*2);
-    X.restore();
-    X.beginPath();X.arc(tipX,0,ts+2,0,Math.PI*2);
-    X.fillStyle=flash?'rgba(0,255,255,0.5)':'rgba(0,255,255,0.15)';X.fill();
+    X.beginPath();X.arc(tipX,0,flash?4:2.5,0,Math.PI*2);
+    X.fillStyle=flash?'#ffffff':'#ffcc44';X.fill();
+    X.beginPath();X.arc(tipX,0,flash?8:5,0,Math.PI*2);
+    X.fillStyle=flash?'rgba(255,180,50,0.4)':'rgba(255,140,30,0.15)';X.fill();
 
     if(flash){
-      for(let i=0;i<4;i++){
+      for(let i=0;i<3;i++){
         const cx=r+10+Math.random()*(wireLen-15);
-        const cy=(Math.random()-0.5)*12;
-        X.strokeStyle='#aaffff';X.lineWidth=0.6;
+        const cy=(Math.random()-0.5)*8;
+        X.strokeStyle='#ffdd88';X.lineWidth=0.6;
         X.beginPath();X.moveTo(cx,cy);
-        X.lineTo(cx+rand(-8,8),cy+rand(-8,8));X.stroke();
+        X.lineTo(cx+rand(-6,6),cy+rand(-6,6));X.stroke();
       }
     }
   }
 }
 
 function drawPLS(r,ext,flash,f){
-  const launcherExt=4+ext*6;
+  const launcherExt=4+ext*8;
 
-  // Mounting bracket
-  X.fillStyle='#2a3a2a';
-  X.fillRect(r-6,-12,8,24);
-  X.strokeStyle='#4a5a4a';X.lineWidth=1;
-  X.strokeRect(r-6,-12,8,24);
-  X.fillStyle='#555';
-  X.beginPath();X.arc(r-2,-8,1.5,0,Math.PI*2);X.fill();
-  X.beginPath();X.arc(r-2,8,1.5,0,Math.PI*2);X.fill();
+  // Forearm base plate — dark metallic, flush mount
+  X.fillStyle='#2a2a30';
+  X.fillRect(r-6,-7,14,14);
+  X.strokeStyle='#3a3a44';X.lineWidth=0.6;
+  X.strokeRect(r-6,-7,14,14);
+  // Panel seams on forearm
+  X.strokeStyle='#333';X.lineWidth=0.4;
+  X.beginPath();X.moveTo(r-3,-7);X.lineTo(r-3,7);X.stroke();
+  X.beginPath();X.moveTo(r+4,-7);X.lineTo(r+4,7);X.stroke();
 
-  // Launcher body
-  const bx=r;
-  const bw=18+launcherExt;
-  const bh=26;
-  drawRoundRect(bx,-bh/2,bw,bh,3);
-  X.fillStyle='#2a5a2a';X.fill();
-  X.strokeStyle='#44884a';X.lineWidth=1.5;X.stroke();
+  // Cylindrical barrel cannon — mounted flush on top of forearm
+  const bx=r+4;
+  const bLen=20+launcherExt;
+  const barrelR=5;
+  // Barrel body — dark metallic cylinder
+  const bg=X.createLinearGradient(bx,-barrelR,bx,barrelR);
+  bg.addColorStop(0,'#1a1a22');bg.addColorStop(0.2,'#333340');bg.addColorStop(0.5,'#3a3a48');
+  bg.addColorStop(0.8,'#2a2a35');bg.addColorStop(1,'#1a1a22');
+  X.fillStyle=bg;
+  drawRoundRect(bx,-barrelR,bLen,barrelR*2,2);
+  X.fill();
+  X.strokeStyle='#444';X.lineWidth=1;X.stroke();
 
-  // Warning stripe
-  X.fillStyle='#ccaa00';
-  X.fillRect(bx+2,-bh/2,bw-4,3);
-  X.strokeStyle='#2a5a2a';X.lineWidth=1;
-  for(let i=0;i<bw-4;i+=4){X.beginPath();X.moveTo(bx+2+i,-bh/2);X.lineTo(bx+2+i+2,-bh/2+3);X.stroke();}
-
-  // 4 missile tubes
-  const tubeR=4;
-  [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([row,col])=>{
-    const tx=bx+bw-6;
-    const ty=col*5.5;
-    X.beginPath();X.arc(tx,ty,tubeR,0,Math.PI*2);
-    X.fillStyle='#1a3a1a';X.fill();
-    X.strokeStyle='#336633';X.lineWidth=1;X.stroke();
-    X.beginPath();X.arc(tx,ty,tubeR+1,0,Math.PI*2);
-    X.strokeStyle='#44884a';X.lineWidth=0.5;X.stroke();
-    X.beginPath();X.arc(tx,ty,2,0,Math.PI*2);
-    X.fillStyle='#0a1a0a';X.fill();
-    if(flash&&col===row){
-      X.beginPath();X.arc(tx+3,ty,5,0,Math.PI*2);
-      X.fillStyle='rgba(255,255,100,0.7)';X.fill();
-    }
-  });
-
-  X.fillStyle='#1a4a1a';
-  X.fillRect(bx+4,-10,bw-12,8);
-  X.fillRect(bx+4,2,bw-12,8);
-  X.strokeStyle='#2a5a2a';X.lineWidth=0.5;
-  X.strokeRect(bx+4,-10,bw-12,8);
-  X.strokeRect(bx+4,2,bw-12,8);
-
-  // Targeting optic
-  X.strokeStyle='#55cc55';X.lineWidth=1;
-  X.beginPath();X.moveTo(bx+bw*0.25,-bh/2-2);X.lineTo(bx+bw*0.25,-bh/2-7);X.lineTo(bx+bw*0.45,-bh/2-7);X.stroke();
-  X.beginPath();X.arc(bx+bw*0.45,-bh/2-7,2,0,Math.PI*2);
-  X.fillStyle=flash?'#aaffaa':'#55ff55';X.fill();
-
-  // Ammo indicator
-  for(let i=0;i<4;i++){
-    X.beginPath();X.arc(bx+6+i*5,bh/2+2,1.5,0,Math.PI*2);
-    X.fillStyle=i<3?'#44ff44':'#ff4444';X.fill();
+  // Red LED accent strips along barrel
+  X.fillStyle=flash?'rgba(255,50,50,1)':'rgba(255,30,30,0.6)';
+  X.fillRect(bx+3,-barrelR,bLen-6,1.2);
+  X.fillRect(bx+3,barrelR-1.2,bLen-6,1.2);
+  if(flash){
+    X.shadowColor='#ff3030';X.shadowBlur=6;
+    X.fillRect(bx+3,-barrelR,bLen-6,1.2);
+    X.fillRect(bx+3,barrelR-1.2,bLen-6,1.2);
+    X.shadowBlur=0;
   }
 
-  X.strokeStyle='#3a6a3a';X.lineWidth=0.5;
-  X.beginPath();X.moveTo(bx+bw*0.2,-bh/2+4);X.lineTo(bx+bw*0.2,bh/2-4);X.stroke();
-  X.beginPath();X.moveTo(bx+bw*0.65,-bh/2+4);X.lineTo(bx+bw*0.65,bh/2-4);X.stroke();
+  // Barrel segments / panel lines
+  X.strokeStyle='#2a2a35';X.lineWidth=0.8;
+  [0.25,0.5,0.75].forEach(p=>{
+    X.beginPath();X.moveTo(bx+bLen*p,-barrelR);X.lineTo(bx+bLen*p,barrelR);X.stroke();
+  });
+
+  // Rectangular breach/loading mechanism (rear section)
+  X.fillStyle='#222230';
+  X.fillRect(bx+2,-barrelR-3,bLen*0.3,3);
+  X.strokeStyle='#3a3a44';X.lineWidth=0.5;
+  X.strokeRect(bx+2,-barrelR-3,bLen*0.3,3);
+  // Breach red indicator
+  X.fillStyle=flash?'#ff4444':'#882222';
+  X.fillRect(bx+4,-barrelR-2,3,1.5);
+
+  // Muzzle — dark opening at barrel end
+  const muzzX=bx+bLen;
+  X.beginPath();X.arc(muzzX,0,barrelR-1,0,Math.PI*2);
+  X.fillStyle='#0a0a10';X.fill();
+  X.strokeStyle='#444';X.lineWidth=1;X.stroke();
+  // Inner bore
+  X.beginPath();X.arc(muzzX,0,barrelR-3,0,Math.PI*2);
+  X.fillStyle='#050508';X.fill();
+
+  // Muzzle flash on attack
+  if(flash){
+    X.beginPath();X.arc(muzzX+3,0,8,0,Math.PI*2);
+    X.fillStyle='rgba(255,200,80,0.6)';X.fill();
+    X.beginPath();X.arc(muzzX+3,0,4,0,Math.PI*2);
+    X.fillStyle='rgba(255,255,200,0.8)';X.fill();
+  }
+
+  // Small targeting optic on top
+  X.strokeStyle='#55cc55';X.lineWidth=0.8;
+  X.beginPath();X.moveTo(bx+bLen*0.6,-barrelR-3);X.lineTo(bx+bLen*0.6,-barrelR-6);X.lineTo(bx+bLen*0.75,-barrelR-6);X.stroke();
+  X.beginPath();X.arc(bx+bLen*0.75,-barrelR-6,1.5,0,Math.PI*2);
+  X.fillStyle=flash?'#aaffaa':'#55ff55';X.fill();
 
   // PLS Relic — targeting reticle on enemy
   if(f&&f.specialActive&&f.relicLockTarget&&f.relicChargeTimer>0){
     X.save();
-    X.rotate(-f.weaponAngle); // undo parent rotation
+    X.rotate(-f.weaponAngle);
     const t=f.relicLockTarget;
     const tx=t.x-f.x,ty=t.y-f.y;
     const pulse=Math.sin(battleTime*0.3)*3;
-    X.strokeStyle='#33ff33';X.lineWidth=2;
+    X.strokeStyle='#ff3333';X.lineWidth=2;
     X.setLineDash([4,4]);
     X.beginPath();X.arc(tx,ty,t.radius+10+pulse,0,Math.PI*2);X.stroke();
     X.setLineDash([]);
-    // Crosshair
     X.beginPath();X.moveTo(tx-15,ty);X.lineTo(tx+15,ty);X.stroke();
     X.beginPath();X.moveTo(tx,ty-15);X.lineTo(tx,ty+15);X.stroke();
     X.restore();
@@ -1592,38 +1620,63 @@ function drawMiniWeapon(cx,cy,charId,size){
   const s=size/30;X.scale(s,s);
   switch(charId){
     case 'mantis':
-      X.strokeStyle='#ccc';X.lineWidth=2;
-      X.beginPath();X.moveTo(-8,-6);X.quadraticCurveTo(5,-10,15,-3);X.stroke();
-      X.beginPath();X.moveTo(-8,6);X.quadraticCurveTo(5,10,15,3);X.stroke();
-      X.strokeStyle='rgba(255,50,30,0.6)';X.lineWidth=1;
-      X.beginPath();X.moveTo(-5,-5);X.quadraticCurveTo(5,-9,14,-3);X.stroke();
-      X.beginPath();X.moveTo(-5,5);X.quadraticCurveTo(5,9,14,3);X.stroke();
-      X.fillStyle='#3a3a3a';X.fillRect(-12,-4,8,8);
+      // Twin curved gold blades from dark housing
+      X.fillStyle='#2a2a2e';X.fillRect(-13,-4,8,8);
+      X.strokeStyle='#444';X.lineWidth=0.5;X.strokeRect(-13,-4,8,8);
+      // Gold accent
+      X.fillStyle='#c8a830';X.fillRect(-13,-4,1.5,8);
+      [-1,1].forEach(dir=>{
+        const by=dir*3;
+        X.beginPath();X.moveTo(-5,by);
+        X.quadraticCurveTo(5,by-5*dir,15,by-0.5*dir);
+        X.lineTo(15,by+0.5*dir);
+        X.quadraticCurveTo(5,by+2*dir,-5,by+1*dir);
+        X.closePath();
+        const bg=X.createLinearGradient(-5,0,15,0);
+        bg.addColorStop(0,'#b8a830');bg.addColorStop(0.4,'#e8d860');bg.addColorStop(1,'#a89020');
+        X.fillStyle=bg;X.fill();
+        X.strokeStyle='#6a5a20';X.lineWidth=0.5;X.stroke();
+      });
       break;
     case 'gorilla':
-      X.fillStyle='#dd8800';drawRoundRect(-10,-10,20,20,4);X.fill();
-      X.strokeStyle='#aa6600';X.lineWidth=1.5;X.stroke();
-      X.fillStyle='#cc7700';
-      for(let k=0;k<3;k++){X.fillRect(-7+k*5,-7,4,14);}
-      X.strokeStyle='#aaa';X.lineWidth=1;
-      X.beginPath();X.moveTo(-9,-8);X.lineTo(9,-8);X.stroke();
-      X.beginPath();X.moveTo(-9,8);X.lineTo(9,8);X.stroke();
+      // Dark chunky fist with red knuckle caps
+      drawRoundRect(-10,-10,20,20,4);
+      X.fillStyle='#2a2a35';X.fill();
+      X.strokeStyle='#444';X.lineWidth=1;X.stroke();
+      for(let k=0;k<3;k++){
+        const ky=-7+k*5;
+        X.fillStyle='#555';X.fillRect(0,ky,6,4);
+        X.fillStyle='rgba(255,40,40,0.7)';X.fillRect(1,ky+1,4,2);
+      }
+      X.strokeStyle='rgba(255,40,40,0.4)';X.lineWidth=0.8;
+      X.beginPath();X.moveTo(-9,-9);X.lineTo(9,-9);X.stroke();
+      X.beginPath();X.moveTo(-9,9);X.lineTo(9,9);X.stroke();
       break;
     case 'monowire':
-      X.strokeStyle='#00eeff';X.lineWidth=1.5;
-      X.shadowColor='#00ddff';X.shadowBlur=4;
-      X.beginPath();X.moveTo(-10,0);X.quadraticCurveTo(0,-8,14,0);X.stroke();
+      // Orange/gold glowing wire from small dark housing
+      X.fillStyle='#2a2a30';X.fillRect(-12,-3,6,6);
+      X.shadowColor='#ff8800';X.shadowBlur=4;
+      X.strokeStyle='#ff9930';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(-6,0);X.quadraticCurveTo(2,-6,14,0);X.stroke();
+      X.strokeStyle='rgba(255,230,150,0.5)';X.lineWidth=0.6;
+      X.beginPath();X.moveTo(-6,0);X.quadraticCurveTo(2,-6,14,0);X.stroke();
       X.shadowBlur=0;
-      X.fillStyle='#1a4466';X.beginPath();X.arc(-10,0,4,0,Math.PI*2);X.fill();
-      X.fillStyle='#00ffff';X.save();X.translate(14,0);X.rotate(Math.PI/4);X.fillRect(-3,-3,6,6);X.restore();
+      X.beginPath();X.arc(14,0,2.5,0,Math.PI*2);X.fillStyle='#ffcc44';X.fill();
       break;
     case 'pls':
-      X.fillStyle='#2a5a2a';drawRoundRect(-12,-8,24,16,2);X.fill();
-      X.strokeStyle='#44884a';X.lineWidth=1;X.stroke();
-      [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([r,c])=>{
-        X.beginPath();X.arc(8,c*4,2.5,0,Math.PI*2);X.fillStyle='#0a1a0a';X.fill();X.strokeStyle='#336633';X.lineWidth=0.5;X.stroke();
-      });
-      X.fillStyle='#ccaa00';X.fillRect(-10,-8,20,2);
+      // Dark cylindrical barrel with red accents
+      const plsG=X.createLinearGradient(-12,-5,-12,5);
+      plsG.addColorStop(0,'#1a1a22');plsG.addColorStop(0.5,'#333340');plsG.addColorStop(1,'#1a1a22');
+      drawRoundRect(-12,-5,24,10,2);X.fillStyle=plsG;X.fill();
+      X.strokeStyle='#444';X.lineWidth=0.8;X.stroke();
+      // Red accent strips
+      X.fillStyle='rgba(255,30,30,0.6)';
+      X.fillRect(-10,-5,20,1);X.fillRect(-10,4,20,1);
+      // Muzzle
+      X.beginPath();X.arc(12,0,3.5,0,Math.PI*2);X.fillStyle='#0a0a10';X.fill();
+      X.strokeStyle='#444';X.lineWidth=0.5;X.stroke();
+      // Targeting optic
+      X.beginPath();X.arc(2,-7,1.2,0,Math.PI*2);X.fillStyle='#55ff55';X.fill();
       break;
   }
   X.restore();
