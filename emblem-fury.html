@@ -93,6 +93,10 @@ canvas{display:block;position:relative;z-index:1}
     <button onclick="setDifficulty('nightmare')" id="diff-nightmare" style="padding:7px 14px;border:2px solid #cc44ff;background:#1a0028;color:#cc44ff;border-radius:6px;cursor:pointer;font-size:0.85rem">NIGHTMARE</button>
   </div>
   <p id="diff-desc" style="color:#888;font-size:0.82rem;margin-bottom:12px">Current: Medium</p>
+  <div style="display:flex;gap:12px;justify-content:center;margin-bottom:14px;flex-wrap:wrap">
+    <button onclick="startStoryMode()" style="padding:12px 32px;font-size:1.1rem;border:2px solid #ff4444;color:#ff4444;background:rgba(255,40,40,0.15);border-radius:8px;cursor:pointer;font-weight:bold;letter-spacing:1px;animation:uGlow 2s infinite">STORY MODE</button>
+  </div>
+  <h2 style="color:#666;font-size:0.85rem;margin-bottom:6px">— or play Roguelike —</h2>
   <h2 style="color:#aaa;font-size:1.1rem;margin-bottom:6px">Choose Your Hero (14 characters)</h2>
   <div class="char-select" id="char-select-container"></div>
 </div>
@@ -548,22 +552,23 @@ let mouseDown=false,mouseRight=false,mouseDx=0,mouseDy=0,pointerLocked=false;
 
 document.addEventListener('keydown',e=>{
   keys[e.key.toLowerCase()]=true;
-  if((e.key==='Tab'||e.key.toLowerCase()==='i')&&(gameState==='playing'||gameState==='inventory')){e.preventDefault();toggleInventory();}
-  if(e.key.toLowerCase()==='q'&&gameState==='playing')useSkill();
-  if(e.key.toLowerCase()==='e'&&gameState==='playing')useUltimate();
-  if(e.key==='Escape'&&gameState==='playing')togglePause();
-  if(e.key==='p'&&gameState==='playing')togglePause();
-  if(e.key>='1'&&e.key<='9'&&gameState==='playing'){const idx=parseInt(e.key)-1;if(idx<player.weapons.length){player.weaponIndex=idx;player.reloading=false;}}
+  const isPlaying=gameState==='playing'||gameState==='storyPlaying';
+  if((e.key==='Tab'||e.key.toLowerCase()==='i')&&(isPlaying||gameState==='inventory')){e.preventDefault();toggleInventory();}
+  if(e.key.toLowerCase()==='q'&&isPlaying)useSkill();
+  if(e.key.toLowerCase()==='e'&&isPlaying)useUltimate();
+  if(e.key==='Escape'&&isPlaying)togglePause();
+  if(e.key==='p'&&isPlaying)togglePause();
+  if(e.key>='1'&&e.key<='9'&&isPlaying){const idx=parseInt(e.key)-1;if(idx<player.weapons.length){player.weaponIndex=idx;player.reloading=false;}}
   // Shift = armor ability
-  if(e.key==='Shift'&&gameState==='playing')useArmorAbility();
+  if(e.key==='Shift'&&isPlaying)useArmorAbility();
 });
 document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false;});
 document.addEventListener('mousemove',e=>{
-  if(pointerLocked&&gameState==='playing'){mouseDx+=e.movementX;mouseDy+=e.movementY;}
+  if(pointerLocked&&(gameState==='playing'||gameState==='storyPlaying')){mouseDx+=e.movementX;mouseDy+=e.movementY;}
 });
 document.addEventListener('mousedown',e=>{
-  if(e.button===0&&gameState==='playing'){mouseDown=true;if(!pointerLocked&&!isTouchDevice)C.requestPointerLock();}
-  if(e.button===2&&gameState==='playing'){mouseRight=true;handleRightClick(true);}
+  if(e.button===0&&(gameState==='playing'||gameState==='storyPlaying')){mouseDown=true;if(!pointerLocked&&!isTouchDevice)C.requestPointerLock();}
+  if(e.button===2&&(gameState==='playing'||gameState==='storyPlaying')){mouseRight=true;handleRightClick(true);}
 });
 document.addEventListener('mouseup',e=>{
   if(e.button===0)mouseDown=false;
@@ -582,7 +587,7 @@ function handleRightClick(down){
 
 let pauseBGMState=false; // paused declared above
 function togglePause(){
-  if(gameState!=='playing'&&!paused)return;
+  if(gameState!=='playing'&&gameState!=='storyPlaying'&&!paused)return;
   if(paused){
     // Unpause with countdown
     document.exitPointerLock&&document.exitPointerLock();
@@ -602,7 +607,7 @@ function startUnpauseCountdown(){
     count--;
     if(count<=0){
       clearInterval(tick);el.style.display='none';unpausing=false;
-      paused=false;gameState='playing';
+      paused=false;gameState=storyActive?'storyPlaying':'playing';
       if(!isTouchDevice)C.requestPointerLock();
       startBGM(!!activeBoss);
     }else{el.textContent=count;}
@@ -3181,6 +3186,939 @@ function showCharacterSelect(){
 
 // Difficulty setter from HTML buttons
 function setDifficulty(d){selectedDifficulty=d;diffSettings=DIFF_SETTINGS[d.toLowerCase()]||DIFF_SETTINGS.medium;showCharacterSelect();}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── STORY MODE ───────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+const STORY_LEVELS=[
+  {name:'First Contact',type:'fps',
+   story:'Aliens have landed in the city. The sky burns red. You are the last line of defense.\nClear the landing zone!',
+   enemies:[{type:0,count:4},{type:1,count:3},{type:6,count:3}],
+   boss:0, objective:'kill_all',
+   map:'city', nextWeapon:1},
+  {name:'Highway Chase',type:'motorcycle',
+   story:'Enemy dropships swarm the highway. Mount up and ride!\nDodge obstacles and shoot down alien craft.',
+   obstacles:30, length:60000, boss:null, nextWeapon:2},
+  {name:'Underground Lab',type:'fps',
+   story:'Intel says there\'s a weapon cache beneath the old research lab.\nTight corridors. Watch your corners.',
+   enemies:[{type:2,count:4},{type:3,count:3},{type:7,count:3}],
+   boss:1, objective:'kill_all',
+   map:'lab', nextWeapon:3},
+  {name:'Skyline Assault',type:'fps',
+   story:'The aliens have taken the rooftops. Snipers everywhere.\nFight your way up. The city depends on you.',
+   enemies:[{type:3,count:5},{type:15,count:3},{type:10,count:3}],
+   boss:3, objective:'kill_all',
+   map:'rooftop', nextWeapon:5},
+  {name:'Alien Hive',type:'fps',
+   story:'You\'ve found their nest. Organic walls pulse with alien life.\nSwarm incoming — hold your ground!',
+   enemies:[{type:6,count:8},{type:12,count:5},{type:17,count:3},{type:24,count:2}],
+   boss:4, objective:'kill_all',
+   map:'hive', nextWeapon:7},
+  {name:'Mech Chase',type:'motorcycle',
+   story:'A massive alien mech is rampaging through the factory district.\nChase it down before it reaches the reactor!',
+   obstacles:40, length:70000, boss:null, nextWeapon:8},
+  {name:'The Citadel',type:'fps',
+   story:'The alien fortress looms ahead. Heavy resistance expected.\nBreach the walls. No retreat.',
+   enemies:[{type:13,count:3},{type:11,count:4},{type:20,count:3},{type:22,count:3}],
+   boss:5, objective:'kill_all',
+   map:'citadel', nextWeapon:10},
+  {name:'Void Rift',type:'fps',
+   story:'A portal to the alien dimension has ripped open.\nReality bends. Strange creatures pour through.',
+   enemies:[{type:22,count:5},{type:14,count:4},{type:20,count:3},{type:21,count:2}],
+   boss:8, objective:'kill_all',
+   map:'void', nextWeapon:13},
+  {name:'Final Approach',type:'motorcycle',
+   story:'The mothership hangs in the sky. One last ride to the beam-up point.\nEvade everything — this is it.',
+   obstacles:50, length:80000, boss:null, nextWeapon:15},
+  {name:'Mothership Core',type:'fps',
+   story:'You\'re inside. The core pulses with energy.\nDestroy it and save humanity. This ends NOW.',
+   enemies:[{type:22,count:5},{type:20,count:4},{type:14,count:4},{type:13,count:3},{type:24,count:3}],
+   boss:9, objective:'kill_all',
+   map:'mothership', nextWeapon:null},
+];
+
+// Story state
+let storyActive=false, storyLevel=0, storyState='cutscene';
+let storyEnemiesLeft=0, storyBossSpawned=false, storyBossDefeated=false;
+let storyKills=0, storyTotalTime=0;
+let storySliding=false, storySlideTimer=0;
+// Motorcycle state
+let motoX=0.5, motoLane=1, motoObstacles=[], motoTimer=0, motoLength=0;
+let motoHP=100, motoScore=0, motoShootTimer=0;
+// Cutscene state
+let cutsceneText='', cutsceneCharIdx=0, cutsceneTimer=0, cutsceneDone=false;
+
+// Story-specific map generators
+function generateStoryMap(mapType){
+  const m=[];
+  for(let r=0;r<MAP_H;r++){
+    const row=[];
+    for(let c=0;c<MAP_W;c++){row.push((r===0||r===MAP_H-1||c===0||c===MAP_W-1)?1:0);}
+    m.push(row);
+  }
+  switch(mapType){
+    case 'city':
+      // Buildings as wall clusters
+      [[3,3],[3,4],[4,3],[7,7],[7,8],[8,7],[8,8],[3,18],[3,19],[4,18],
+       [14,3],[15,3],[14,4],[18,14],[18,15],[19,14],[19,15],
+       [10,10],[10,11],[11,10],[11,11],[6,15],[15,8]].forEach(([r,c])=>{if(r>0&&r<MAP_H-1&&c>0&&c<MAP_W-1)m[r][c]=1;});
+      break;
+    case 'lab':
+      // Tight corridors
+      for(let r=4;r<20;r++){m[r][4]=1;m[r][19]=1;}
+      for(let c=4;c<20;c++){m[4][c]=1;m[11][c]=1;m[19][c]=1;}
+      // Doorways
+      m[4][8]=0;m[4][15]=0;m[11][6]=0;m[11][12]=0;m[11][17]=0;m[19][10]=0;m[19][14]=0;
+      m[8][4]=0;m[15][4]=0;m[8][19]=0;m[15][19]=0;
+      break;
+    case 'rooftop':
+      // Open with scattered cover
+      [[4,6],[4,18],[8,3],[8,12],[8,20],[12,7],[12,16],
+       [16,4],[16,11],[16,19],[20,8],[20,15]].forEach(([r,c])=>{if(r>0&&r<MAP_H-1&&c>0&&c<MAP_W-1)m[r][c]=1;});
+      break;
+    case 'hive':
+      // Organic winding paths
+      [[2,5],[2,6],[3,5],[5,10],[5,11],[6,10],[6,11],[3,16],[3,17],[4,17],
+       [9,3],[10,3],[9,4],[10,4],[9,19],[10,19],[10,20],
+       [14,7],[14,8],[15,7],[15,8],[14,15],[14,16],[15,16],
+       [19,5],[20,5],[19,6],[19,18],[20,18],[20,17]].forEach(([r,c])=>{if(r>0&&r<MAP_H-1&&c>0&&c<MAP_W-1)m[r][c]=1;});
+      break;
+    case 'citadel':
+      // Fortress with rooms
+      for(let c=3;c<21;c++){m[3][c]=1;m[10][c]=1;m[17][c]=1;}
+      for(let r=3;r<18;r++){m[r][3]=1;m[r][12]=1;m[r][20]=1;}
+      // Doors
+      m[3][7]=0;m[3][16]=0;m[10][5]=0;m[10][9]=0;m[10][15]=0;m[10][18]=0;
+      m[17][7]=0;m[17][16]=0;m[7][3]=0;m[14][3]=0;m[7][12]=0;m[14][12]=0;m[7][20]=0;m[14][20]=0;
+      break;
+    case 'void':
+      // Floating platforms (random pillars)
+      for(let i=0;i<18;i++){
+        const r=2+Math.floor(Math.random()*(MAP_H-4));
+        const c=2+Math.floor(Math.random()*(MAP_W-4));
+        m[r][c]=1;
+      }
+      break;
+    case 'mothership':
+      // Central core with radiating corridors
+      for(let r=9;r<15;r++)for(let c=9;c<15;c++)m[r][c]=1;
+      // Open the center
+      for(let r=10;r<14;r++)for(let c=10;c<14;c++)m[r][c]=0;
+      // Radial corridors
+      for(let i=1;i<9;i++){m[12][i]=0;m[12][MAP_W-1-i]=0;m[i][12]=0;m[MAP_H-1-i][12]=0;}
+      // Pillars in outer ring
+      [[4,4],[4,19],[19,4],[19,19],[4,12],[19,12],[12,4],[12,19]].forEach(([r,c])=>{if(r>0&&r<MAP_H-1&&c>0&&c<MAP_W-1)m[r][c]=1;});
+      break;
+  }
+  return m;
+}
+
+function startStoryMode(){
+  // Show character select, but wire it to start story after selection
+  const titleScreen=document.getElementById('title-screen');
+  const container=document.getElementById('char-select-container');
+  if(!container)return;
+  container.innerHTML='';
+  // Update title to say Story Mode
+  const titleH1=titleScreen.querySelector('h1');
+  if(titleH1)titleH1.textContent='STORY MODE';
+  const titleH2=titleScreen.querySelector('h2');
+  if(titleH2)titleH2.textContent='Choose Your Hero for the Campaign';
+  // Hide difficulty and roguelike label
+  const diffDiv=titleScreen.querySelector('[style*="display:flex;gap:8px"]');
+  if(diffDiv)diffDiv.style.display='none';
+  const diffDesc=document.getElementById('diff-desc');
+  if(diffDesc)diffDesc.style.display='none';
+  const rogueLabel=titleScreen.querySelectorAll('h2');
+  rogueLabel.forEach(h=>{if(h.textContent.includes('Roguelike'))h.style.display='none';if(h.textContent.includes('Choose Your Hero'))h.textContent='Choose Your Hero';});
+  // Hide the story mode button itself
+  const storyBtnDiv=titleScreen.querySelector('[style*="display:flex;gap:12px"]');
+  if(storyBtnDiv)storyBtnDiv.style.display='none';
+
+  CHARACTERS.forEach(ch=>{
+    const card=document.createElement('div');card.className='char-card';
+    card.style.borderColor=ch.color;
+    card.innerHTML=`<h3 style="color:${ch.color}">${ch.name}</h3><p>HP: ${ch.hp} | SPD: ${ch.speed}</p><p>[Q] ${ch.skill}</p><p>[E] ${ch.ult}</p>${ch.desc?`<p style="margin-top:4px;color:#777">${ch.desc}</p>`:''}`;
+    card.addEventListener('click',()=>{
+      selectedChar=ch;
+      player.maxHp=ch.hp;player.speed=ch.speed;player.critChance=ch.critChance||0.05;
+      window._diffMult=1;
+      titleScreen.style.display='none';
+      storyActive=true;
+      storyLevel=0;
+      storyKills=0;
+      storyTotalTime=0;
+      initGame();
+      startStoryCutscene();
+    });
+    container.appendChild(card);
+  });
+}
+
+function startStoryCutscene(){
+  const lvl=STORY_LEVELS[storyLevel];
+  storyState='cutscene';
+  gameState='storyCutscene';
+  cutsceneText=`LEVEL ${storyLevel+1}: ${lvl.name.toUpperCase()}\n\n${lvl.story}`;
+  cutsceneCharIdx=0;
+  cutsceneTimer=0;
+  cutsceneDone=false;
+  document.exitPointerLock&&document.exitPointerLock();
+}
+
+function startStoryLevel(){
+  const lvl=STORY_LEVELS[storyLevel];
+  if(lvl.type==='motorcycle'){
+    startMotorcycleLevel();
+    return;
+  }
+  // FPS level
+  storyState='playing';
+  gameState='storyPlaying';
+  storyBossSpawned=false;
+  storyBossDefeated=false;
+
+  // Generate level map
+  const newMap=generateStoryMap(lvl.map);
+  for(let r=0;r<MAP_H;r++)for(let c=0;c<MAP_W;c++)WORLD_MAP[r][c]=newMap[r][c];
+
+  // Reset player position to a clear spot
+  player.x=MAP_W/2;player.y=MAP_H/2;player.angle=0;
+  // Make sure spawn is clear
+  for(let r=Math.floor(player.y)-1;r<=Math.floor(player.y)+1;r++)
+    for(let c=Math.floor(player.x)-1;c<=Math.floor(player.x)+1;c++)
+      if(r>0&&r<MAP_H-1&&c>0&&c<MAP_W-1)WORLD_MAP[r][c]=0;
+
+  enemies.length=0;projectiles.length=0;particles.length=0;pickups.length=0;
+
+  // Spawn story enemies
+  storyEnemiesLeft=0;
+  lvl.enemies.forEach(eg=>{
+    for(let i=0;i<eg.count;i++){
+      const ET=ENEMY_TYPES[Math.min(eg.type,ENEMY_TYPES.length-1)];
+      const angle=Math.random()*Math.PI*2;
+      const dist=5+Math.random()*6;
+      const scaling=1+storyLevel*0.3;
+      const ex=player.x+Math.cos(angle)*dist;
+      const ey=player.y+Math.sin(angle)*dist;
+      // Clamp to map bounds
+      const cx=Math.max(1.5,Math.min(MAP_W-1.5,ex));
+      const cy=Math.max(1.5,Math.min(MAP_H-1.5,ey));
+      enemies.push({
+        x:cx,y:cy,
+        typeName:ET.name,isBoss:false,
+        hp:ET.hp*scaling*(diffSettings.enemyHpMult||1),
+        maxHp:ET.hp*scaling*(diffSettings.enemyHpMult||1),
+        damage:ET.damage*scaling*(diffSettings.enemyDmgMult||1),
+        speed:ET.speed,
+        attackCd:ET.attackCd||1200,attackTimer:0,
+        ranged:ET.ranged||false,rangedCd:ET.rangedCd||2000,rangedTimer:0,
+        radius:0.35,dead:false,hitFlash:0,
+        burns:ET.burns,freezeOnHit:ET.freezeOnHit,poisonOnHit:ET.poisonOnHit,
+        storyEnemy:true,
+      });
+      storyEnemiesLeft++;
+    }
+  });
+
+  canvas.requestPointerLock&&canvas.requestPointerLock();
+  announceAbility(`LEVEL ${storyLevel+1}: ${STORY_LEVELS[storyLevel].name.toUpperCase()}`,'#ff4444');
+}
+
+function storyEnemyKilled(){
+  storyEnemiesLeft--;
+  storyKills++;
+  if(storyEnemiesLeft<=0&&!storyBossSpawned){
+    // Spawn boss
+    const lvl=STORY_LEVELS[storyLevel];
+    if(lvl.boss!=null){
+      storyBossSpawned=true;
+      const BD=BOSSES[Math.min(lvl.boss,BOSSES.length-1)];
+      const scaling=1+storyLevel*0.4;
+      const angle=Math.random()*Math.PI*2;
+      enemies.push({
+        x:player.x+Math.cos(angle)*8,y:player.y+Math.sin(angle)*8,
+        typeName:BD.name,isBoss:true,name:BD.name,
+        hp:BD.hp*scaling*(diffSettings.bossHpMult||1),
+        maxHp:BD.hp*scaling*(diffSettings.bossHpMult||1),
+        damage:BD.damage*scaling,speed:BD.speed,
+        attackCd:1000,attackTimer:0,
+        ranged:true,rangedCd:BD.rangedCd||3000,rangedTimer:0,
+        radius:0.5,dead:false,hitFlash:0,
+        bossAbils:BD.bossAbils||[],
+        storyBoss:true,
+      });
+      announceAbility(`BOSS: ${BD.name}`,'#ff0000');
+      playSound('bossSpawn');
+    } else {
+      storyLevelComplete();
+    }
+  }
+}
+
+function storyBossKilled(){
+  storyBossDefeated=true;
+  storyKills++;
+  playSound('bossDeath');
+  storyLevelComplete();
+}
+
+function storyLevelComplete(){
+  gameState='storyLevelComplete';
+  storyState='levelComplete';
+  document.exitPointerLock&&document.exitPointerLock();
+  announceAbility('LEVEL COMPLETE!','#3ddc84');
+  playSound('levelUp');
+
+  // Give reward weapon
+  const lvl=STORY_LEVELS[storyLevel];
+  if(lvl.nextWeapon!=null&&lvl.nextWeapon<WEAPON_TYPES.length){
+    const wt=WEAPON_TYPES[lvl.nextWeapon];
+    player.weapons.push({...wt,kills:0,ammo:wt.ammo});
+    announceAbility(`Got: ${wt.name}!`,'#ffd700');
+  }
+
+  // Heal player between levels
+  player.hp=Math.min(player.maxHp,player.hp+player.maxHp*0.4);
+}
+
+function advanceStoryLevel(){
+  storyLevel++;
+  if(storyLevel>=STORY_LEVELS.length){
+    storyVictory();
+    return;
+  }
+  startStoryCutscene();
+}
+
+function storyVictory(){
+  gameState='storyVictory';
+  storyState='victory';
+  storyActive=false;
+  document.exitPointerLock&&document.exitPointerLock();
+}
+
+// ── MOTORCYCLE LEVELS ──
+function startMotorcycleLevel(){
+  storyState='motorcycle';
+  gameState='storyMotorcycle';
+  motoX=0.5;
+  motoLane=1;
+  motoObstacles=[];
+  motoTimer=0;
+  motoHP=100;
+  motoScore=0;
+  motoShootTimer=0;
+  motoLength=STORY_LEVELS[storyLevel].length||60000;
+  announceAbility(`LEVEL ${storyLevel+1}: ${STORY_LEVELS[storyLevel].name.toUpperCase()}`,'#ff4444');
+}
+
+function updateMotorcycle(dt){
+  motoTimer+=dt;
+  storyTotalTime+=dt;
+
+  // Player controls: A/D or left/right to dodge
+  const motoSpeed=0.002;
+  if(keys['a']||keys['arrowleft'])motoX=Math.max(0.1,motoX-motoSpeed*dt);
+  if(keys['d']||keys['arrowright'])motoX=Math.min(0.9,motoX+motoSpeed*dt);
+
+  // Auto-shoot
+  motoShootTimer+=dt;
+  if(motoShootTimer>400){
+    motoShootTimer=0;
+    playSound('shoot',{pitch:1200});
+    // Remove closest obstacle
+    let closest=null,closestI=-1,closestDist=Infinity;
+    motoObstacles.forEach((ob,i)=>{
+      if(ob.y>0.1&&ob.y<0.5){
+        const dist=Math.abs(ob.x-motoX)+ob.y;
+        if(dist<closestDist){closestDist=dist;closest=ob;closestI=i;}
+      }
+    });
+    if(closest&&closestDist<0.4){
+      motoObstacles.splice(closestI,1);
+      motoScore+=10;
+      playSound('enemyDeath');
+    }
+  }
+
+  // Spawn obstacles
+  const spawnRate=Math.max(300,800-motoTimer/200);
+  if(Math.random()<dt/spawnRate){
+    motoObstacles.push({x:0.1+Math.random()*0.8, y:-0.05, speed:0.0003+Math.random()*0.0002, type:Math.random()<0.3?'alien':'debris'});
+  }
+
+  // Update obstacles
+  for(let i=motoObstacles.length-1;i>=0;i--){
+    const ob=motoObstacles[i];
+    ob.y+=ob.speed*dt;
+    // Collision
+    if(ob.y>0.85&&ob.y<0.95&&Math.abs(ob.x-motoX)<0.08){
+      motoHP-=ob.type==='alien'?15:10;
+      motoObstacles.splice(i,1);
+      playSound('playerHurt');
+      if(motoHP<=0){
+        // Death in motorcycle = game over
+        storyState='playing';
+        gameState='storyPlaying';
+        triggerStoryDeath();
+        return;
+      }
+      continue;
+    }
+    if(ob.y>1.1)motoObstacles.splice(i,1);
+  }
+
+  // Level complete
+  if(motoTimer>=motoLength){
+    storyLevelComplete();
+  }
+}
+
+function renderMotorcycle(){
+  const ctx2=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx2.clearRect(0,0,W,H);
+
+  // Road background
+  const roadGrad=ctx2.createLinearGradient(0,0,0,H);
+  roadGrad.addColorStop(0,'#1a1a2e');
+  roadGrad.addColorStop(0.3,'#16213e');
+  roadGrad.addColorStop(1,'#0f3460');
+  ctx2.fillStyle=roadGrad;
+  ctx2.fillRect(0,0,W,H);
+
+  // Road lanes
+  const roadL=W*0.1, roadR=W*0.9, roadW=roadR-roadL;
+  ctx2.strokeStyle='#333';ctx2.lineWidth=2;
+  ctx2.setLineDash([20,15]);
+  for(let i=1;i<4;i++){
+    const lx=roadL+roadW*(i/4);
+    ctx2.beginPath();ctx2.moveTo(lx,0);ctx2.lineTo(lx,H);ctx2.stroke();
+  }
+  ctx2.setLineDash([]);
+  ctx2.strokeStyle='#ff0';ctx2.lineWidth=3;
+  ctx2.beginPath();ctx2.moveTo(roadL,0);ctx2.lineTo(roadL,H);ctx2.stroke();
+  ctx2.beginPath();ctx2.moveTo(roadR,0);ctx2.lineTo(roadR,H);ctx2.stroke();
+
+  // Speed lines
+  const time=Date.now();
+  ctx2.strokeStyle='rgba(255,255,255,0.1)';ctx2.lineWidth=1;
+  for(let i=0;i<8;i++){
+    const lx=roadL+Math.random()*roadW;
+    const ly=(time*0.3+i*137)%H;
+    ctx2.beginPath();ctx2.moveTo(lx,ly);ctx2.lineTo(lx,ly+30);ctx2.stroke();
+  }
+
+  // Obstacles
+  motoObstacles.forEach(ob=>{
+    const sx=roadL+ob.x*roadW;
+    const sy=ob.y*H;
+    const sz=15+ob.y*25;
+    if(ob.type==='alien'){
+      ctx2.fillStyle='#a0f';
+      ctx2.beginPath();
+      ctx2.moveTo(sx,sy-sz);ctx2.lineTo(sx-sz*0.7,sy+sz*0.3);
+      ctx2.lineTo(sx+sz*0.7,sy+sz*0.3);ctx2.closePath();ctx2.fill();
+      ctx2.fillStyle='#f0f';ctx2.fillRect(sx-3,sy-sz*0.3,6,6);
+    } else {
+      ctx2.fillStyle='#864';
+      ctx2.fillRect(sx-sz*0.4,sy-sz*0.3,sz*0.8,sz*0.6);
+      ctx2.fillStyle='#a86';
+      ctx2.fillRect(sx-sz*0.3,sy-sz*0.2,sz*0.6,sz*0.4);
+    }
+  });
+
+  // Player motorcycle
+  const px=roadL+motoX*roadW;
+  const py=H*0.88;
+  // Bike body
+  ctx2.fillStyle=selectedChar?.color||'#4488ff';
+  ctx2.beginPath();
+  ctx2.moveTo(px,py-30);ctx2.lineTo(px-18,py+10);
+  ctx2.lineTo(px-12,py+18);ctx2.lineTo(px+12,py+18);
+  ctx2.lineTo(px+18,py+10);ctx2.closePath();ctx2.fill();
+  // Wheels
+  ctx2.fillStyle='#333';
+  ctx2.beginPath();ctx2.arc(px-10,py+20,8,0,Math.PI*2);ctx2.fill();
+  ctx2.beginPath();ctx2.arc(px+10,py+20,8,0,Math.PI*2);ctx2.fill();
+  // Exhaust glow
+  ctx2.fillStyle='rgba(255,100,0,0.6)';
+  ctx2.beginPath();ctx2.arc(px,py+22,5+Math.sin(time/50)*2,0,Math.PI*2);ctx2.fill();
+  // Muzzle flash
+  if(motoShootTimer<100){
+    ctx2.fillStyle='rgba(255,255,0,0.7)';
+    ctx2.beginPath();ctx2.arc(px,py-35,4,0,Math.PI*2);ctx2.fill();
+  }
+
+  // HUD
+  ctx2.fillStyle='rgba(0,0,0,0.6)';ctx2.fillRect(10,10,200,50);
+  ctx2.fillStyle='#fff';ctx2.font='bold 13px monospace';ctx2.textAlign='left';
+  ctx2.fillText(`LEVEL ${storyLevel+1}: ${STORY_LEVELS[storyLevel].name}`,16,28);
+  // HP bar
+  const hpPct=motoHP/100;
+  ctx2.fillStyle='#333';ctx2.fillRect(16,35,180,12);
+  ctx2.fillStyle=hpPct>0.5?'#0f0':hpPct>0.25?'#fa0':'#f00';
+  ctx2.fillRect(16,35,180*hpPct,12);
+  ctx2.fillStyle='#fff';ctx2.font='10px monospace';
+  ctx2.fillText(`HP ${motoHP}/100`,20,45);
+  // Progress bar
+  const prog=Math.min(1,motoTimer/motoLength);
+  ctx2.fillStyle='rgba(0,0,0,0.6)';ctx2.fillRect(W-220,10,210,20);
+  ctx2.fillStyle='#4af';ctx2.fillRect(W-218,12,206*prog,16);
+  ctx2.fillStyle='#fff';ctx2.font='bold 11px monospace';ctx2.textAlign='right';
+  ctx2.fillText(`${Math.floor(prog*100)}%`,W-14,26);
+  ctx2.textAlign='left';
+}
+
+// ── SLIDE MECHANIC ──
+function updateSlide(dt){
+  if(keys['control']&&!storySliding&&gameState==='storyPlaying'){
+    storySliding=true;
+    storySlideTimer=400;
+    player.speed*=1.8;
+  }
+  if(storySliding){
+    storySlideTimer-=dt;
+    // Trail particles
+    if(Math.random()<0.3){
+      particles.push({
+        x:player.x-Math.cos(player.angle)*0.3,
+        y:player.y-Math.sin(player.angle)*0.3,
+        vx:(Math.random()-0.5)*0.001,vy:(Math.random()-0.5)*0.001,
+        life:500,maxLife:500,color:selectedChar?.color||'#4af',
+        size:3,alpha:0.8,
+      });
+    }
+    if(storySlideTimer<=0){
+      storySliding=false;
+      player.speed=getBaseSpeed();
+    }
+  }
+}
+
+// ── STORY GAME LOOP INTEGRATION ──
+function updateStoryPlaying(dt){
+  storyTotalTime+=dt;
+  gameTime+=dt;
+  updatePlayer(dt);
+  updateSlide(dt);
+  updateEnemies(dt);
+  updateProjectiles(dt);
+  updateParticles(dt);
+  updateDamageNumbers(dt);
+  updatePickups(dt);
+  updatePassiveRegen(dt);
+  applyEmblemPassives(dt);
+
+  // Check if all enemies dead (including boss)
+  const aliveEnemies=enemies.filter(e=>!e.dead);
+  if(storyBossSpawned&&aliveEnemies.length===0&&!storyBossDefeated){
+    storyBossKilled();
+  }
+
+  try{renderScene();}catch(err){}
+  drawWeaponView();
+  const ctx2=canvas.getContext('2d');
+  renderParticles(ctx2);
+  renderDamageNumbers(ctx2);
+  drawStoryHUD();
+
+  // Ultimate visual overlays
+  if(player.hawkFlyTimer>0){
+    ctx2.save();ctx2.globalAlpha=0.25;ctx2.fillStyle='#08f';
+    ctx2.fillRect(0,0,canvas.width,canvas.height);ctx2.restore();
+  }
+  if(player.ultVisualTimer>0){
+    ctx2.save();ctx2.globalAlpha=0.2;ctx2.fillStyle='#f00';
+    ctx2.fillRect(0,0,canvas.width,canvas.height);ctx2.restore();
+  }
+
+  // Slide visual
+  if(storySliding){
+    ctx2.save();ctx2.globalAlpha=0.15;ctx2.fillStyle='#0ff';
+    ctx2.fillRect(0,canvas.height*0.7,canvas.width,canvas.height*0.3);ctx2.restore();
+  }
+}
+
+function drawStoryHUD(){
+  const ctx2=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx2.save();
+
+  // Level name + objective
+  const lvl=STORY_LEVELS[storyLevel];
+  ctx2.fillStyle='rgba(0,0,0,0.5)';ctx2.fillRect(W/2-150,4,300,24);
+  ctx2.fillStyle='#ff4444';ctx2.font='bold 13px monospace';ctx2.textAlign='center';
+  ctx2.fillText(`LEVEL ${storyLevel+1}: ${lvl.name.toUpperCase()}`,W/2,20);
+
+  // Enemies remaining
+  const alive=enemies.filter(e=>!e.dead);
+  const enemyText=storyBossSpawned?
+    (alive.some(e=>e.storyBoss)?`BOSS: ${alive.find(e=>e.storyBoss)?.name||'???'} — ${Math.ceil(alive.find(e=>e.storyBoss)?.hp||0)} HP`:'BOSS DEFEATED!'):
+    `Enemies: ${alive.length}`;
+  ctx2.fillStyle='#fff';ctx2.font='bold 11px monospace';
+  ctx2.fillText(enemyText,W/2,42);
+
+  // HP bar (reuse standard)
+  const hpPct=player.hp/player.maxHp;
+  ctx2.fillStyle='rgba(0,0,0,0.6)';ctx2.fillRect(10,H-44,200,18);
+  ctx2.fillStyle=hpPct>0.5?'#0f0':hpPct>0.25?'#fa0':'#f00';
+  ctx2.fillRect(10,H-44,200*hpPct,18);
+  ctx2.strokeStyle='#fff';ctx2.lineWidth=1;ctx2.strokeRect(10,H-44,200,18);
+  ctx2.fillStyle='#fff';ctx2.font='bold 11px monospace';ctx2.textAlign='left';
+  ctx2.fillText(`HP ${Math.ceil(player.hp)}/${player.maxHp}`,14,H-30);
+
+  // Weapon info
+  const w=getWeapon();
+  if(w){
+    ctx2.fillText(`${w.name} [T${w.tier||1}]`,10,H-52);
+    if(w.ammo!==Infinity)ctx2.fillText(`AMMO: ${w.ammo}`,10,H-66);
+  }
+
+  // Skill/Ult cooldowns
+  const skillCd=player.skillCooldown>0?`${Math.ceil(player.skillCooldown/1000)}s`:'READY';
+  const ultCd=player.ultCooldown>0?`${Math.ceil(player.ultCooldown/1000)}s`:'READY';
+  ctx2.fillText(`[Q] Skill: ${skillCd}  [E] Ult: ${ultCd}  [Ctrl] Slide`,10,22);
+
+  // Crosshair
+  const cx=W/2,cy=H/2;
+  ctx2.strokeStyle='rgba(255,255,255,0.7)';ctx2.lineWidth=1.5;
+  ctx2.beginPath();ctx2.moveTo(cx-10,cy);ctx2.lineTo(cx-4,cy);ctx2.stroke();
+  ctx2.beginPath();ctx2.moveTo(cx+4,cy);ctx2.lineTo(cx+10,cy);ctx2.stroke();
+  ctx2.beginPath();ctx2.moveTo(cx,cy-10);ctx2.lineTo(cx,cy-4);ctx2.stroke();
+  ctx2.beginPath();ctx2.moveTo(cx,cy+4);ctx2.lineTo(cx,cy+10);ctx2.stroke();
+
+  ctx2.restore();
+}
+
+function renderStoryCutscene(){
+  const ctx2=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx2.clearRect(0,0,W,H);
+
+  // Dark background with stars
+  ctx2.fillStyle='#0a0a1a';ctx2.fillRect(0,0,W,H);
+  const time=Date.now();
+  for(let i=0;i<40;i++){
+    const sx=(Math.sin(i*73.1)*0.5+0.5)*W;
+    const sy=(Math.cos(i*47.7)*0.5+0.5)*H;
+    ctx2.fillStyle=`rgba(255,255,255,${0.3+0.2*Math.sin(time/1000+i)})`;
+    ctx2.fillRect(sx,sy,2,2);
+  }
+
+  // Typewriter text
+  cutsceneTimer+=16;
+  if(cutsceneCharIdx<cutsceneText.length&&cutsceneTimer>30){
+    cutsceneCharIdx++;cutsceneTimer=0;
+  }
+  if(cutsceneCharIdx>=cutsceneText.length)cutsceneDone=true;
+
+  const displayText=cutsceneText.substring(0,cutsceneCharIdx);
+  const lines=displayText.split('\n');
+  const startY=H*0.3;
+  lines.forEach((line,i)=>{
+    ctx2.fillStyle=i===0?'#ff4444':'#ccc';
+    ctx2.font=i===0?'bold 1.8rem monospace':'1rem monospace';
+    ctx2.textAlign='center';
+    ctx2.fillText(line,W/2,startY+i*36);
+  });
+
+  // Continue prompt
+  if(cutsceneDone){
+    ctx2.fillStyle=`rgba(255,255,255,${0.5+0.5*Math.sin(time/300)})`;
+    ctx2.font='bold 1rem monospace';
+    ctx2.fillText('[ CLICK or SPACE to continue ]',W/2,H*0.75);
+  } else {
+    ctx2.fillStyle='rgba(255,255,255,0.4)';
+    ctx2.font='0.8rem monospace';
+    ctx2.fillText('[ CLICK to skip ]',W/2,H*0.75);
+  }
+
+  // Level progress dots
+  ctx2.textAlign='center';
+  for(let i=0;i<STORY_LEVELS.length;i++){
+    const dx=W/2+(i-STORY_LEVELS.length/2+0.5)*24;
+    ctx2.fillStyle=i<storyLevel?'#3ddc84':i===storyLevel?'#ff4444':'#333';
+    ctx2.beginPath();ctx2.arc(dx,H*0.88,6,0,Math.PI*2);ctx2.fill();
+  }
+}
+
+function renderStoryLevelComplete(){
+  const ctx2=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  // Dim the scene
+  try{renderScene();}catch(e){}
+  ctx2.fillStyle='rgba(0,0,0,0.75)';ctx2.fillRect(0,0,W,H);
+
+  ctx2.fillStyle='#3ddc84';ctx2.font='bold 2.5rem monospace';ctx2.textAlign='center';
+  ctx2.fillText('LEVEL COMPLETE!',W/2,H*0.3);
+
+  ctx2.fillStyle='#fff';ctx2.font='1.2rem monospace';
+  ctx2.fillText(`Level ${storyLevel+1}: ${STORY_LEVELS[storyLevel].name}`,W/2,H*0.4);
+
+  const lvl=STORY_LEVELS[storyLevel];
+  if(lvl.nextWeapon!=null&&lvl.nextWeapon<WEAPON_TYPES.length){
+    ctx2.fillStyle='#ffd700';ctx2.font='bold 1rem monospace';
+    ctx2.fillText(`NEW WEAPON: ${WEAPON_TYPES[lvl.nextWeapon].name}`,W/2,H*0.5);
+  }
+
+  ctx2.fillStyle='#aaa';ctx2.font='0.9rem monospace';
+  ctx2.fillText(`Kills: ${storyKills} | HP: ${Math.ceil(player.hp)}/${player.maxHp}`,W/2,H*0.58);
+
+  ctx2.fillStyle=`rgba(255,255,255,${0.5+0.5*Math.sin(Date.now()/300)})`;
+  ctx2.font='bold 1rem monospace';
+  ctx2.fillText('[ CLICK or SPACE to continue ]',W/2,H*0.72);
+}
+
+function renderStoryVictory(){
+  const ctx2=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx2.fillStyle='#0a0a1a';ctx2.fillRect(0,0,W,H);
+
+  // Celebration particles
+  const time=Date.now();
+  for(let i=0;i<50;i++){
+    const px=(Math.sin(time/1000+i*1.3)*0.4+0.5)*W;
+    const py=(Math.cos(time/800+i*0.7)*0.4+0.5)*H;
+    ctx2.fillStyle=['#ff4444','#ffd700','#3ddc84','#4488ff','#aa44ff'][i%5];
+    ctx2.globalAlpha=0.5+0.3*Math.sin(time/500+i);
+    ctx2.beginPath();ctx2.arc(px,py,3+Math.sin(time/200+i)*2,0,Math.PI*2);ctx2.fill();
+  }
+  ctx2.globalAlpha=1;
+
+  ctx2.fillStyle='#ffd700';ctx2.font='bold 3rem monospace';ctx2.textAlign='center';
+  ctx2.fillText('CAMPAIGN COMPLETE!',W/2,H*0.25);
+
+  ctx2.fillStyle='#fff';ctx2.font='1.3rem monospace';
+  ctx2.fillText('You saved humanity from the alien invasion.',W/2,H*0.38);
+
+  ctx2.fillStyle='#3ddc84';ctx2.font='1rem monospace';
+  ctx2.fillText(`Hero: ${selectedChar?.name||'Unknown'}`,W/2,H*0.48);
+  ctx2.fillText(`Total Kills: ${storyKills}`,W/2,H*0.54);
+  ctx2.fillText(`Time: ${Math.floor(storyTotalTime/60000)}m ${Math.floor((storyTotalTime%60000)/1000)}s`,W/2,H*0.60);
+
+  ctx2.fillStyle=`rgba(255,255,255,${0.5+0.5*Math.sin(time/300)})`;
+  ctx2.font='bold 1rem monospace';
+  ctx2.fillText('[ CLICK to return to menu ]',W/2,H*0.75);
+}
+
+function triggerStoryDeath(){
+  gameState='storyDeath';
+  storyState='death';
+  document.exitPointerLock&&document.exitPointerLock();
+  playSound('playerHurt');
+}
+
+function renderStoryDeath(){
+  const ctx2=canvas.getContext('2d');
+  const W=canvas.width,H=canvas.height;
+  ctx2.fillStyle='#0a0000';ctx2.fillRect(0,0,W,H);
+
+  ctx2.fillStyle='#ff0000';ctx2.font='bold 3rem monospace';ctx2.textAlign='center';
+  ctx2.fillText('YOU DIED',W/2,H*0.3);
+
+  ctx2.fillStyle='#aaa';ctx2.font='1rem monospace';
+  ctx2.fillText(`Fell at Level ${storyLevel+1}: ${STORY_LEVELS[storyLevel].name}`,W/2,H*0.42);
+  ctx2.fillText(`Total Kills: ${storyKills}`,W/2,H*0.50);
+
+  ctx2.fillStyle='#ff4444';ctx2.font='bold 1rem monospace';
+  const alpha=0.5+0.5*Math.sin(Date.now()/300);
+  ctx2.fillStyle=`rgba(255,68,68,${alpha})`;
+  ctx2.fillText('[ CLICK to retry level ]',W/2,H*0.64);
+  ctx2.fillStyle=`rgba(170,170,170,${alpha})`;
+  ctx2.font='0.85rem monospace';
+  ctx2.fillText('[ ESC to return to menu ]',W/2,H*0.72);
+}
+
+// ── STORY MODE INPUT HANDLERS ──
+function handleStoryClick(){
+  if(gameState==='storyCutscene'){
+    if(cutsceneDone){
+      startStoryLevel();
+    } else {
+      cutsceneCharIdx=cutsceneText.length;
+      cutsceneDone=true;
+    }
+  } else if(gameState==='storyLevelComplete'){
+    advanceStoryLevel();
+  } else if(gameState==='storyVictory'){
+    location.reload();
+  } else if(gameState==='storyDeath'){
+    // Retry current level
+    player.hp=player.maxHp;
+    initGame();
+    // Keep weapons earned so far
+    startStoryCutscene();
+  } else if(gameState==='storyPlaying'){
+    canvas.requestPointerLock&&canvas.requestPointerLock();
+  }
+}
+
+function handleStoryKey(e){
+  if(e.key===' '||e.key==='Enter'){
+    if(gameState==='storyCutscene'||gameState==='storyLevelComplete'){
+      handleStoryClick();
+    }
+  }
+  if(e.key==='Escape'&&gameState==='storyDeath'){
+    location.reload();
+  }
+  // Pause in story playing
+  if((e.key==='Escape'||e.key==='p')&&gameState==='storyPlaying'){
+    togglePause();
+  }
+}
+
+// Hook into existing event listeners
+document.addEventListener('keydown',e=>{
+  if(storyActive)handleStoryKey(e);
+});
+canvas.addEventListener('click',()=>{
+  if(storyActive)handleStoryClick();
+});
+
+// ── PATCH: Override enemy death to track story kills ──
+const _origTriggerDeath=triggerDeath;
+const origTriggerDeath=function(){
+  if(storyActive&&gameState==='storyPlaying'){
+    triggerStoryDeath();
+    return;
+  }
+  _origTriggerDeath();
+};
+triggerDeath=origTriggerDeath;
+
+// ── PATCH: Hook into gameLoop for story states ──
+const _origGameLoop=gameLoop;
+function gameLoop(ts){
+  const dt=Math.min(ts-lastTime,50);lastTime=ts;
+  const ctx2=canvas.getContext('2d');
+  ctx2.clearRect(0,0,canvas.width,canvas.height);
+
+  if(storyActive){
+    if(gameState==='storyCutscene'){
+      renderStoryCutscene();
+    } else if(gameState==='storyPlaying'){
+      updateStoryPlaying(dt);
+    } else if(gameState==='storyMotorcycle'){
+      updateMotorcycle(dt);
+      renderMotorcycle();
+    } else if(gameState==='storyLevelComplete'){
+      renderStoryLevelComplete();
+    } else if(gameState==='storyVictory'){
+      renderStoryVictory();
+    } else if(gameState==='storyDeath'){
+      renderStoryDeath();
+    } else if(gameState==='paused'){
+      try{renderScene();}catch(e){}
+      ctx2.fillStyle='rgba(0,0,0,0.55)';ctx2.fillRect(0,0,canvas.width,canvas.height);
+      ctx2.fillStyle='#fff';ctx2.font='bold 2.5rem monospace';ctx2.textAlign='center';
+      ctx2.fillText('PAUSED',canvas.width/2,canvas.height/2-20);
+      ctx2.font='1rem monospace';ctx2.fillText('[P] or [Esc] to resume',canvas.width/2,canvas.height/2+30);
+    } else {
+      // Fall through to normal game loop for emblem/boss reward screens in story
+      if(gameState==='playing'){
+        gameTime+=dt;
+        updatePlayer(dt);updateSlide(dt);updateEnemies(dt);updateProjectiles(dt);
+        updateParticles(dt);updateDamageNumbers(dt);updatePickups(dt);
+        updatePassiveRegen(dt);applyEmblemPassives(dt);
+        try{renderScene();}catch(e){}
+        drawWeaponView();renderParticles(ctx2);renderDamageNumbers(ctx2);drawStoryHUD();
+      } else if(gameState==='emblemSelect'||gameState==='bossReward'){
+        try{renderScene();}catch(e){}
+        ctx2.fillStyle='rgba(0,0,0,0.7)';ctx2.fillRect(0,0,canvas.width,canvas.height);
+      }
+    }
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+
+  // Normal roguelike game loop
+  if(gameState==='playing'){
+    gameTime+=dt;
+    updatePlayer(dt);
+    updateEnemies(dt);
+    updateProjectiles(dt);
+    updateParticles(dt);
+    updateDamageNumbers(dt);
+    updatePickups(dt);
+    updatePassiveRegen(dt);
+    applyEmblemPassives(dt);
+    updateSpawning(dt);
+    try{renderScene();}catch(err){}
+    drawWeaponView();
+    renderParticles(ctx2);
+    renderDamageNumbers(ctx2);
+    drawHUD();
+    if(player.hawkFlyTimer>0){
+      ctx2.save();ctx2.globalAlpha=0.25;ctx2.fillStyle='#08f';
+      ctx2.fillRect(0,0,canvas.width,canvas.height);ctx2.restore();
+    }
+    if(player.ultVisualTimer>0){
+      ctx2.save();ctx2.globalAlpha=0.2;ctx2.fillStyle='#f00';
+      ctx2.fillRect(0,0,canvas.width,canvas.height);ctx2.restore();
+    }
+    if(bossCountdown>0&&bossCountdown<10000){
+      ctx2.save();ctx2.fillStyle='#f00';ctx2.font='bold 2rem monospace';ctx2.textAlign='center';
+      ctx2.fillText(`BOSS IN ${Math.ceil(bossCountdown/1000)}...`,canvas.width/2,80);
+      ctx2.restore();
+    }
+    if(player.killStreakActive){
+      ctx2.save();ctx2.fillStyle='#fa0';ctx2.font='bold 1rem monospace';ctx2.textAlign='center';
+      ctx2.globalAlpha=0.9+0.1*Math.sin(Date.now()/100);
+      ctx2.fillText('KILL STREAK!',canvas.width/2,canvas.height-60);
+      ctx2.restore();
+    }
+  } else if(gameState==='paused'){
+    renderScene();
+    ctx2.save();ctx2.fillStyle='rgba(0,0,0,0.55)';ctx2.fillRect(0,0,canvas.width,canvas.height);
+    ctx2.fillStyle='#fff';ctx2.font='bold 2.5rem monospace';ctx2.textAlign='center';
+    ctx2.fillText('PAUSED',canvas.width/2,canvas.height/2-20);
+    ctx2.font='1rem monospace';ctx2.fillText('[P] or [Esc] to resume',canvas.width/2,canvas.height/2+30);
+    ctx2.font='0.9rem monospace';ctx2.fillText('[I] Inventory  [Q] Skill  [E] Ult  [Shift] Armor',canvas.width/2,canvas.height/2+60);
+    ctx2.restore();
+  } else if(gameState==='emblemSelect'||gameState==='bossReward'){
+    renderScene();
+    ctx2.save();ctx2.fillStyle='rgba(0,0,0,0.7)';ctx2.fillRect(0,0,canvas.width,canvas.height);ctx2.restore();
+  } else if(gameState==='inventory'){
+    renderScene();
+    ctx2.save();ctx2.fillStyle='rgba(0,0,0,0.75)';ctx2.fillRect(0,0,canvas.width,canvas.height);ctx2.restore();
+  } else if(gameState==='gameOver'){
+    ctx2.fillStyle='#000';ctx2.fillRect(0,0,canvas.width,canvas.height);
+    ctx2.fillStyle='#f00';ctx2.font='bold 3rem monospace';ctx2.textAlign='center';
+    ctx2.fillText('YOU DIED',canvas.width/2,canvas.height/2-60);
+    ctx2.fillStyle='#fff';ctx2.font='1.2rem monospace';
+    ctx2.fillText(`Score: ${score} | Kills: ${player.kills} | Wave: ${currentWave}`,canvas.width/2,canvas.height/2);
+    ctx2.font='0.9rem monospace';
+    ctx2.fillText('Click to restart',canvas.width/2,canvas.height/2+50);
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ── PATCH: Hook killEnemy for story tracking ──
+const _origKillEnemy=killEnemy;
+killEnemy=function(e){
+  const wasStoryBoss=storyActive&&e.storyBoss;
+  const wasStoryEnemy=storyActive&&e.storyEnemy;
+  // For story bosses, skip the roguelike boss reward screen
+  if(wasStoryBoss){
+    e.dead=true;player.kills++;score+=500;
+    spawnParticles(e.x,e.y,15,'#ffd700');
+    const w=getWeapon();if(w){w.kills=(w.kills||0)+1;checkWeaponTierUpgrade(w);}
+    pickups.push({x:e.x,y:e.y,type:'healthOrb',healAmt:50,life:15000});
+    storyBossKilled();
+    return;
+  }
+  _origKillEnemy(e);
+  if(wasStoryEnemy)storyEnemyKilled();
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── END STORY MODE ───────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
 
 // ── FINAL INIT ────────────────────────────────────────────────────────────────
 window.addEventListener('load',()=>{
