@@ -187,6 +187,20 @@
       line-height: 1.5;
       white-space: pre;
     }
+    .note-names { color: #ff9a56; opacity: 0.7; font-size: 0.75rem; }
+    .note-toggle {
+      display: inline-block;
+      padding: 6px 16px;
+      background: #1a1a3e;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      color: #8888aa;
+      font-size: 0.85rem;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: all 0.2s;
+    }
+    .note-toggle.active { background: #ff9a5622; border-color: #ff9a56; color: #ff9a56; }
 
     /* Song cards */
     .song-grid {
@@ -1138,6 +1152,72 @@ function closeLesson() {
   document.getElementById('lessons-list').style.display = '';
 }
 
+// ==================== NOTE NAMES ====================
+
+var noteNamesOn = false;
+var currentSongIdx = -1;
+var STRING_BASE = {'e':4,'B':11,'G':7,'D':2,'A':9,'E':4};
+var NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function fretToNote(str, fret) {
+  var base = STRING_BASE[str];
+  if (base === undefined) return '';
+  return NOTE_NAMES[(base + fret) % 12];
+}
+
+function addNoteNames(tabText) {
+  var lines = tabText.split('\n');
+  var result = [];
+  for (var li = 0; li < lines.length; li++) {
+    var line = lines[li];
+    result.push(escHtml(line));
+    var m = line.match(/^([eBADGE])\|(.+)$/);
+    if (!m) continue;
+    var str = m[1], content = m[2], base = STRING_BASE[str];
+    if (base === undefined) continue;
+    var noteChars = [];
+    for (var c = 0; c < content.length; c++) noteChars.push(' ');
+    var i = 0;
+    while (i < content.length) {
+      if (/\d/.test(content[i])) {
+        var numStr = '', startI = i;
+        while (i < content.length && /\d/.test(content[i])) { numStr += content[i]; i++; }
+        var note = fretToNote(str, parseInt(numStr));
+        for (var j = 0; j < note.length && startI + j < noteChars.length; j++) {
+          noteChars[startI + j] = note[j];
+        }
+      } else { i++; }
+    }
+    var noteLine = '  ' + noteChars.join('');
+    if (noteLine.trim()) {
+      result.push('<span class="note-names">' + noteLine.replace(/\s+$/, '') + '</span>');
+    }
+  }
+  return result.join('\n');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function toggleNoteNames() {
+  noteNamesOn = !noteNamesOn;
+  var btn = document.getElementById('note-toggle-btn');
+  if (btn) btn.className = 'note-toggle' + (noteNamesOn ? ' active' : '');
+  renderSongTab();
+}
+
+function renderSongTab() {
+  var el = document.getElementById('song-tab-pre');
+  if (!el || currentSongIdx < 0) return;
+  var s = songs[currentSongIdx];
+  if (noteNamesOn) {
+    el.innerHTML = addNoteNames(s.tab);
+  } else {
+    el.textContent = s.tab;
+  }
+}
+
 // ==================== SONGS ====================
 
 function renderSongs() {
@@ -1179,9 +1259,12 @@ function openSong(idx) {
     '<p>' + s.guide + '</p></div>' +
 
     '<div class="guide-section"><h4>Tablature</h4>' +
-    '<div class="tab-display"><pre>' + s.tab + '</pre></div></div>';
+    '<button id="note-toggle-btn" class="note-toggle' + (noteNamesOn ? ' active' : '') + '" onclick="toggleNoteNames()">Note Names</button>' +
+    '<div class="tab-display"><pre id="song-tab-pre"></pre></div></div>';
 
+  currentSongIdx = idx;
   detail.classList.add('show');
+  renderSongTab();
   window.scrollTo(0, 0);
 }
 
