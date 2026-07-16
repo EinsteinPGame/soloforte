@@ -14,6 +14,7 @@ canvas{display:block}
 <body>
 <script src="auth.js"></script>
 <div id="gc"><canvas id="g"></canvas></div>
+<input id="mob-name" type="text" maxlength="12" autocomplete="off" style="position:fixed;top:-100px;left:0;opacity:0;font-size:16px">
 <script>
 // ============================================================
 // RIFTBORN ARENA — Original Creature Battle Game
@@ -1841,11 +1842,27 @@ C.addEventListener('touchend',e=>{
 });
 
 // Keyboard input for name entry
+const mobNameInput=document.getElementById('mob-name');
+mobNameInput.addEventListener('input',()=>{
+  if(GS.scene==='intro'&&GS.introStep>=INTRO_TEXT.length){
+    GS.player.name=mobNameInput.value.replace(/[^a-zA-Z0-9 ]/g,'').slice(0,12);
+    mobNameInput.value=GS.player.name;
+  }
+});
+function focusMobileNameInput(){
+  mobNameInput.value=GS.player.name;
+  mobNameInput.style.top='40%';mobNameInput.style.opacity='0.01';
+  mobNameInput.focus();
+}
+function blurMobileNameInput(){
+  mobNameInput.style.top='-100px';mobNameInput.style.opacity='0';
+  mobNameInput.blur();
+}
 document.addEventListener('keydown',e=>{
   if(GS.scene==='intro'&&GS.introStep>=INTRO_TEXT.length){
     if(e.key==='Backspace'){GS.player.name=GS.player.name.slice(0,-1);e.preventDefault();return}
     if(e.key==='Enter'&&GS.player.name.length>=1){
-      GS.scene='starterPick';GS.starterHighlight=0;e.preventDefault();return;
+      blurMobileNameInput();GS.scene='starterPick';GS.starterHighlight=0;e.preventDefault();return;
     }
     if(e.key.length===1&&GS.player.name.length<12&&/[a-zA-Z0-9 ]/.test(e.key)){
       GS.player.name+=e.key;e.preventDefault();
@@ -1978,7 +1995,14 @@ function handleClick(cx,cy){
     else if(cy>=btnY+52&&cy<=btnY+94){GS.menuIdx=1;handleInput('Enter')}
   }
 
-  else if(scene==='intro'){handleInput('Enter')}
+  else if(scene==='intro'){
+    if(GS.introStep>=INTRO_TEXT.length){
+      // Name entry screen — check Confirm button or focus input
+      if(cy>=H*0.6+85&&cy<=H*0.6+115&&cx>=W/2-60&&cx<=W/2+60&&GS.player.name.length>=1){
+        blurMobileNameInput();GS.scene='starterPick';GS.starterHighlight=0;
+      }else{focusMobileNameInput()}
+    }else{handleInput('Enter')}
+  }
 
   else if(scene==='starterPick'){
     const cardW=isMobile?120:200,gap=isMobile?10:30;
