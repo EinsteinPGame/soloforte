@@ -122,7 +122,7 @@ const CHARS=[
   },
   {
     id:'pls',name:'PLS',color:'#33cc33',
-    desc:'Staff launcher. AoE explosions.',
+    desc:'Projectile launcher. AoE explosions.',
     playstyle:'AoE & Zoning',
     stats:{hp:360,atk:16,speed:3.2,range:180,def:6,crit:12},
     baseAtkInterval:90,
@@ -2166,87 +2166,77 @@ function drawMonowire(r,ext,flash,f){
 }
 
 function drawPLS(r,ext,flash,f){
-  const staffLen=60; // proportional staff length
+  const launcherLen=50; // proportional to arena
 
-  // === GRIP HOUSING — where staff connects to arm ===
+  // Forearm base plate — dark metallic
   X.fillStyle='#2a2a30';
-  X.fillRect(r-6,-7,14,14);
+  X.fillRect(r-8,-10,16,20);
   X.strokeStyle='#3a3a44';X.lineWidth=1;
-  X.strokeRect(r-6,-7,14,14);
-  // Grip detail
+  X.strokeRect(r-8,-10,16,20);
   X.strokeStyle='#333';X.lineWidth=0.5;
-  X.beginPath();X.moveTo(r,-7);X.lineTo(r,7);X.stroke();
+  X.beginPath();X.moveTo(r-2,-10);X.lineTo(r-2,10);X.stroke();
+  X.beginPath();X.moveTo(r+4,-10);X.lineTo(r+4,10);X.stroke();
+  // Mounting bolts
+  X.fillStyle='#555';
+  X.beginPath();X.arc(r-4,-7,1.5,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(r-4,7,1.5,0,Math.PI*2);X.fill();
 
-  // === STAFF BODY — long cylindrical bo staff ===
-  const sx=r+6;
-  const staffR=4.5; // thinner than barrel, like a staff
-  // Staff shaft — dark wood/metal gradient
-  const sg=X.createLinearGradient(sx,-staffR,sx,staffR);
-  sg.addColorStop(0,'#2a1a0a');sg.addColorStop(0.2,'#4a3520');sg.addColorStop(0.4,'#5a4530');
-  sg.addColorStop(0.6,'#4a3520');sg.addColorStop(0.8,'#3a2515');sg.addColorStop(1,'#2a1a0a');
-  X.fillStyle=sg;
-  drawRoundRect(sx,-staffR,staffLen*0.7,staffR*2,2);
+  // Barrel cannon — proportional, dark metallic
+  const bx=r+6;
+  const bLen=launcherLen;
+  const barrelR=8;
+  const bg=X.createLinearGradient(bx,-barrelR,bx,barrelR);
+  bg.addColorStop(0,'#151518');bg.addColorStop(0.15,'#2a2a35');bg.addColorStop(0.4,'#333340');
+  bg.addColorStop(0.6,'#3a3a48');bg.addColorStop(0.85,'#2a2a35');bg.addColorStop(1,'#151518');
+  X.fillStyle=bg;
+  drawRoundRect(bx,-barrelR,bLen,barrelR*2,3);
   X.fill();
-  X.strokeStyle='#5a4530';X.lineWidth=0.8;X.stroke();
+  X.strokeStyle='#444';X.lineWidth=1.2;X.stroke();
 
-  // Wrapped grip sections — cloth/leather wrapping
-  for(let w=0;w<3;w++){
-    const wx=sx+8+w*14;
-    X.fillStyle='#1a1a28';
-    X.fillRect(wx,-staffR-0.5,6,staffR*2+1);
-    X.strokeStyle='#2a2a3a';X.lineWidth=0.5;
-    // Diagonal wrap lines
-    for(let d=0;d<3;d++){
-      X.beginPath();X.moveTo(wx+d*2,-staffR);X.lineTo(wx+d*2+3,staffR);X.stroke();
-    }
-  }
+  // Green LED accent strips (green instead of red — energy weapon)
+  X.fillStyle=flash?'rgba(50,255,50,1)':'rgba(30,200,30,0.6)';
+  X.fillRect(bx+3,-barrelR,bLen-6,2);
+  X.fillRect(bx+3,barrelR-2,bLen-6,2);
+  if(flash){X.shadowColor='#33ff33';X.shadowBlur=8;X.fillRect(bx+3,-barrelR,bLen-6,2);X.fillRect(bx+3,barrelR-2,bLen-6,2);X.shadowBlur=0;}
 
-  // Green energy channel running along staff
-  X.strokeStyle=flash?'rgba(80,255,80,0.9)':'rgba(50,200,50,0.4)';
-  X.lineWidth=flash?2:1;
-  X.beginPath();X.moveTo(sx+2,0);X.lineTo(sx+staffLen*0.7,0);X.stroke();
-  if(flash){X.shadowColor='#33ff33';X.shadowBlur=6;X.beginPath();X.moveTo(sx+2,0);X.lineTo(sx+staffLen*0.7,0);X.stroke();X.shadowBlur=0;}
+  // Barrel segments
+  X.strokeStyle='#2a2a35';X.lineWidth=1;
+  [0.25,0.5,0.75].forEach(p=>{X.beginPath();X.moveTo(bx+bLen*p,-barrelR);X.lineTo(bx+bLen*p,barrelR);X.stroke();});
 
-  // === CRYSTAL/GEM HEAD — glowing energy focus at tip ===
-  const tipX=sx+staffLen*0.7;
-  // Metal claw/prong setting holding the crystal — 3 prongs
-  X.strokeStyle='#555';X.lineWidth=2;
-  for(let p=0;p<3;p++){
-    const pa=-Math.PI/3+p*Math.PI/3;
-    X.beginPath();
-    X.moveTo(tipX,Math.sin(pa)*staffR);
-    X.quadraticCurveTo(tipX+12,Math.sin(pa)*8,tipX+18,Math.sin(pa)*3);
-    X.stroke();
-  }
-  // Crystal body — glowing green gem
-  const crystalR=flash?10:7;
-  const cg=X.createRadialGradient(tipX+16,-2,1,tipX+18,0,crystalR);
-  cg.addColorStop(0,'#ffffff');cg.addColorStop(0.2,'#aaffaa');cg.addColorStop(0.5,'#33ff33');cg.addColorStop(0.8,'#22aa22');cg.addColorStop(1,'#115511');
-  X.beginPath();X.arc(tipX+18,0,crystalR,0,Math.PI*2);
-  X.fillStyle=cg;X.fill();
-  X.strokeStyle='#44cc44';X.lineWidth=1.5;X.stroke();
-  // Crystal glow aura
-  X.shadowColor='#33ff33';X.shadowBlur=flash?20:8;
-  X.beginPath();X.arc(tipX+18,0,crystalR+3,0,Math.PI*2);
-  X.fillStyle=flash?'rgba(50,255,50,0.4)':'rgba(50,255,50,0.15)';X.fill();
-  X.shadowBlur=0;
-  // Energy flash on attack
+  // Top breach mechanism
+  X.fillStyle='#1e1e28';
+  X.fillRect(bx+3,-barrelR-4,bLen*0.3,4);
+  X.strokeStyle='#3a3a44';X.lineWidth=0.8;X.strokeRect(bx+3,-barrelR-4,bLen*0.3,4);
+  X.fillStyle=flash?'#44ff44':'#228822';X.fillRect(bx+5,-barrelR-3,4,2);
+  // Bottom rail
+  X.fillStyle='#1e1e28';X.fillRect(bx+bLen*0.2,barrelR,bLen*0.35,3);
+
+  // Muzzle — dark barrel opening with energy glow
+  const muzzX=bx+bLen;
+  X.beginPath();X.arc(muzzX,0,barrelR-1,0,Math.PI*2);
+  X.fillStyle='#0a0a10';X.fill();
+  X.strokeStyle='#444';X.lineWidth=1.2;X.stroke();
+  X.beginPath();X.arc(muzzX,0,barrelR-4,0,Math.PI*2);
+  X.fillStyle=flash?'rgba(50,255,50,0.3)':'#050508';X.fill();
+  // Rifling
+  X.strokeStyle='#222';X.lineWidth=0.5;
+  for(let i=0;i<6;i++){const a=Math.PI*2*i/6;X.beginPath();X.moveTo(muzzX+Math.cos(a)*2,Math.sin(a)*2);X.lineTo(muzzX+Math.cos(a)*(barrelR-2),Math.sin(a)*(barrelR-2));X.stroke();}
+
+  // Muzzle flash — BIG green energy burst
   if(flash){
-    X.beginPath();X.arc(tipX+18,0,crystalR+10,0,Math.PI*2);
-    X.fillStyle='rgba(150,255,150,0.3)';X.fill();
-    // Energy burst lines
-    for(let i=0;i<6;i++){
-      const ea=Math.PI*2*i/6+battleTime*0.1;
-      X.strokeStyle='rgba(50,255,50,0.5)';X.lineWidth=1.5;
-      X.beginPath();X.moveTo(tipX+18+Math.cos(ea)*crystalR,Math.sin(ea)*crystalR);
-      X.lineTo(tipX+18+Math.cos(ea)*(crystalR+12),Math.sin(ea)*(crystalR+12));X.stroke();
-    }
+    X.shadowColor='#33ff33';X.shadowBlur=15;
+    X.beginPath();X.arc(muzzX+5,0,16,0,Math.PI*2);
+    X.fillStyle='rgba(100,255,100,0.5)';X.fill();
+    X.beginPath();X.arc(muzzX+5,0,8,0,Math.PI*2);
+    X.fillStyle='rgba(200,255,200,0.8)';X.fill();
+    X.shadowBlur=0;
   }
 
-  // Runes/markings on staff shaft
-  X.fillStyle=flash?'rgba(50,255,50,0.6)':'rgba(50,200,50,0.2)';
-  X.font='bold 6px Consolas,monospace';
-  X.fillText('|||',sx+staffLen*0.25,-staffR-3);
+  // Targeting optic on top
+  X.strokeStyle='#55cc55';X.lineWidth=1;
+  X.beginPath();X.moveTo(bx+bLen*0.55,-barrelR-4);X.lineTo(bx+bLen*0.55,-barrelR-8);X.lineTo(bx+bLen*0.7,-barrelR-8);X.stroke();
+  X.beginPath();X.arc(bx+bLen*0.7,-barrelR-8,2,0,Math.PI*2);
+  X.fillStyle=flash?'#aaffaa':'#55ff55';X.fill();
 
   // PLS Relic — BIG targeting reticle on enemy (visible during charge AND rapid fire)
   if(f&&f.specialActive&&f.relicLockTarget){
@@ -2445,24 +2435,23 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.arc(20,0,3,0,Math.PI*2);X.fillStyle='#ffcc44';X.fill();
       break;
     case 'pls':
-      // Staff grip
-      X.fillStyle='#2a2a30';X.fillRect(-14,-3,8,6);
-      // Staff shaft — wooden/metal
-      const plsG=X.createLinearGradient(-6,-3,-6,3);
-      plsG.addColorStop(0,'#3a2515');plsG.addColorStop(0.5,'#5a4530');plsG.addColorStop(1,'#3a2515');
-      X.fillStyle=plsG;X.fillRect(-6,-3,22,6);
-      X.strokeStyle='#5a4530';X.lineWidth=0.6;X.strokeRect(-6,-3,22,6);
-      // Green energy line
-      X.strokeStyle='rgba(50,200,50,0.5)';X.lineWidth=0.8;
-      X.beginPath();X.moveTo(-4,0);X.lineTo(14,0);X.stroke();
-      // Crystal tip — glowing green gem
-      X.shadowColor='#33ff33';X.shadowBlur=5;
-      X.beginPath();X.arc(20,0,5,0,Math.PI*2);
-      const cg=X.createRadialGradient(19,-1,1,20,0,5);
-      cg.addColorStop(0,'#ffffff');cg.addColorStop(0.3,'#aaffaa');cg.addColorStop(0.7,'#33ff33');cg.addColorStop(1,'#115511');
-      X.fillStyle=cg;X.fill();
-      X.strokeStyle='#44cc44';X.lineWidth=0.8;X.stroke();
-      X.shadowBlur=0;
+      // Forearm plate
+      X.fillStyle='#2a2a30';X.fillRect(-14,-5,8,10);
+      // Barrel cannon
+      const plsG=X.createLinearGradient(-6,-6,-6,6);
+      plsG.addColorStop(0,'#151518');plsG.addColorStop(0.5,'#333340');plsG.addColorStop(1,'#151518');
+      drawRoundRect(-6,-6,24,12,2);X.fillStyle=plsG;X.fill();
+      X.strokeStyle='#444';X.lineWidth=1;X.stroke();
+      // Green accent strips
+      X.fillStyle='rgba(30,200,30,0.7)';
+      X.fillRect(-4,-6,20,1.5);X.fillRect(-4,4.5,20,1.5);
+      // Muzzle
+      X.beginPath();X.arc(18,0,4.5,0,Math.PI*2);X.fillStyle='#0a0a10';X.fill();
+      X.strokeStyle='#444';X.lineWidth=0.8;X.stroke();
+      // Breach on top
+      X.fillStyle='#1e1e28';X.fillRect(-4,-9,8,3);
+      // Targeting optic
+      X.beginPath();X.arc(4,-10,1.5,0,Math.PI*2);X.fillStyle='#55ff55';X.fill();
       break;
     case 'sandy':
       // Fists + blue glow
