@@ -130,9 +130,9 @@ const CHARS=[
   },
   {
     id:'sandy',name:'Sandevistan',color:'#4488ff',
-    desc:'Unarmed speedster. Speed = Damage.',
+    desc:'Unarmed speedster. Body collision = Damage.',
     playstyle:'Speed & Dodge',
-    stats:{hp:320,atk:12,speed:7.0,range:55,def:3,crit:14},
+    stats:{hp:380,atk:15,speed:7.5,range:55,def:4,crit:16},
     baseAtkInterval:18,
     specialName:'Sandevistan Activated',
   },
@@ -463,7 +463,21 @@ function checkBallCollision(f1,f2){
   shakeTimer=8;shakeAmt=5;
   SFX.clash();
 
-  // No body collision damage — only weapons deal damage
+  // Sandevistan deals body collision damage (speed-based)
+  [f1,f2].forEach(sandy=>{
+    if(sandy.char.id!=='sandy')return;
+    const enemy=sandy===f1?f2:f1;
+    const spd=Math.hypot(sandy.vx,sandy.vy);
+    const spdDmg=sandy.atk*(0.4+spd*0.25);
+    dealDamage(sandy,enemy,spdDmg);
+    SFX.punch();
+    spawnBurst(mx,my,'#4488ff',12,5);
+    shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
+    // Sandy bounces away after body hit
+    const ka=angle(enemy,sandy);
+    sandy.vx=Math.cos(ka)*7;sandy.vy=Math.sin(ka)*7;
+  });
+  // Non-sandy body collision: no damage
 }
 
 // ============================================================
@@ -1055,11 +1069,16 @@ function relicSandy(f,enemy){
   f.speed=f.baseSpeed*1.5;
   const spd=Math.hypot(f.vx,f.vy);
   if(spd>0){f.vx=f.vx/spd*f.speed*2;f.vy=f.vy/spd*f.speed*2;}
-  // Big blue activation burst
-  spawnBurst(f.x,f.y,'#4488ff',30,8);
-  spawnBurst(f.x,f.y,'#88bbff',20,6);
-  spawnBurst(f.x,f.y,'#ffffff',10,4);
-  shakeTimer=20;shakeAmt=10;
+  // MASSIVE blue activation burst — very obvious
+  spawnBurst(f.x,f.y,'#4488ff',50,12);
+  spawnBurst(f.x,f.y,'#88bbff',35,9);
+  spawnBurst(f.x,f.y,'#aaccff',25,7);
+  spawnBurst(f.x,f.y,'#ffffff',15,5);
+  // Blue shockwave rings
+  for(let r=0;r<3;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*30,color:'#4488ff',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  shakeTimer=25;shakeAmt=14;
 }
 
 // ============================================================
@@ -1771,7 +1790,7 @@ function drawBall(f){
   X.fillStyle='#fff';
   X.fillText(Math.ceil(f.hp),f.x,f.y);
 
-  // Draw weapon
+  // Draw weapon (drawWeapon dispatches to drawSandy for Sandy's special effect)
   drawWeapon(f);
 
   // Bleed icon
@@ -1791,14 +1810,38 @@ function drawBall(f){
   X.strokeStyle='#333';X.lineWidth=0.5;X.strokeRect(spX,spY,spW,spH);
   if(spR>=1){X.font='bold 7px Consolas,monospace';X.fillStyle='#ffcc00';X.textAlign='center';X.fillText('RELIC',f.x,spY+spH+8);}
 
-  // Scaling indicator (replaces chaos label)
+  // Character-specific scaling stats (Earclak style)
   const chaos=getChaosLevel(f);
-  if(chaos>0.5){
-    X.font='bold 7px Consolas,monospace';X.fillStyle=chaos>4?'#ff4444':chaos>2?'#ffaa00':'#888';
-    X.textAlign='center';
-    const atkScale=Math.round((1+chaos*0.08)*100);
-    const spdScale=Math.round(100/(1+chaos*0.5)*10)/10;
-    X.fillText('ATK:'+atkScale+'% SPD:'+spdScale+'f',f.x,spY+spH+(spR>=1?17:8));
+  const statY=spY+spH+(spR>=1?17:8);
+  X.font='bold 7px Consolas,monospace';X.textAlign='center';
+  X.fillStyle=chaos>4?'#ff4444':chaos>2?'#ffaa00':'#aaa';
+  switch(f.char.id){
+    case 'mantis':{
+      const spdVal=(f.baseSpeed*(1+chaos*0.1)).toFixed(1);
+      const bleedPct=Math.round((0.10+chaos*0.02)*100);
+      X.fillText('Spd:'+spdVal+' Bleed:'+bleedPct+'%',f.x,statY);
+      break;}
+    case 'gorilla':{
+      const atkMult=Math.round((1+chaos*0.15)*100);
+      const aoeR=Math.round(75+chaos*15);
+      X.fillText('ATK:'+atkMult+'% AoE:'+aoeR,f.x,statY);
+      break;}
+    case 'monowire':{
+      const capPct=Math.round((0.30+chaos*0.04)*100);
+      const hackPct=Math.round(40);
+      X.fillText('Cap:'+capPct+'% Hack:'+hackPct+'%',f.x,statY);
+      break;}
+    case 'pls':{
+      const expR=Math.round(f.plsExplosionRadius+chaos*10);
+      const dmgMult=Math.round((1+chaos*0.12)*100);
+      X.fillText('Exp:'+expR+' DMG:'+dmgMult+'%',f.x,statY);
+      break;}
+    case 'sandy':{
+      const minSpd=(f.baseSpeed*0.6).toFixed(1);
+      const maxSpd=(f.baseSpeed*(1+chaos*0.15)).toFixed(1);
+      const dodgePct=Math.round((f.dodgeChance+f.sandyDodgeBoost)*100);
+      X.fillText('Spd:'+minSpd+'-'+maxSpd+' Dodge:'+dodgePct+'%',f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -1952,11 +1995,7 @@ function drawMantisBlades(r,ext,flash,f){
     X.beginPath();X.arc(0,0,r+bladeLen*0.4,-0.35*slashDir,0.35*slashDir);X.stroke();
   }
 
-  // Tip flash
-  if(flash){
-    X.beginPath();X.arc(bx+bladeLen+1,0,6,0,Math.PI*2);
-    X.fillStyle='rgba(255,200,150,0.7)';X.fill();
-  }
+  // No tip orb — slash trail is enough
 }
 
 function drawGorillaArms(r,ext,flash,f){
@@ -2284,86 +2323,39 @@ function drawPLS(r,ext,flash,f){
 }
 
 function drawSandy(r,ext,flash,f){
-  // Sandevistan — fists + spine/vertebrae implant on ball (like David Martinez)
+  // Sandevistan — NO weapon, no spine. Just the ball. Deals body collision damage.
 
-  // === SPINE IMPLANT on ball surface (drawn before fists so fists layer on top) ===
-  X.save();X.rotate(-f.weaponAngle); // counter-rotate so spine stays oriented on ball
-  // Vertebrae chain running down the ball (vertical spine)
-  const spineSegs=7;
-  const spineStartY=-r*0.7;
-  const segH=r*1.4/spineSegs;
-  for(let i=0;i<spineSegs;i++){
-    const sy=spineStartY+i*segH;
-    const segW=8-Math.abs(i-3)*0.8; // wider in middle
-    // Vertebra body — dark chrome
-    const vg=X.createLinearGradient(-segW/2,sy,segW/2,sy);
-    vg.addColorStop(0,'#2a2a3a');vg.addColorStop(0.3,'#4a4a5a');vg.addColorStop(0.5,'#5a5a6a');vg.addColorStop(0.7,'#4a4a5a');vg.addColorStop(1,'#2a2a3a');
-    drawRoundRect(-segW/2,sy,segW,segH*0.7,1.5);
-    X.fillStyle=vg;X.fill();
-    X.strokeStyle='#3a3a4a';X.lineWidth=0.6;X.stroke();
-    // Blue LED node at center of each vertebra
-    const ledGlow=f.sandyActive?(0.8+Math.sin(battleTime*0.2+i*0.5)*0.2):0.3;
-    X.beginPath();X.arc(0,sy+segH*0.35,2,0,Math.PI*2);
-    X.fillStyle=`rgba(68,136,255,${ledGlow})`;X.fill();
-    if(f.sandyActive||flash){X.shadowColor='#4488ff';X.shadowBlur=4;X.fill();X.shadowBlur=0;}
-    // Lateral connectors (wing-like extensions from each vertebra)
-    if(i>0&&i<spineSegs-1){
-      X.strokeStyle=f.sandyActive?'rgba(68,136,255,0.5)':'rgba(80,90,110,0.4)';X.lineWidth=1;
-      X.beginPath();X.moveTo(-segW/2,sy+segH*0.3);X.lineTo(-segW/2-4,sy+segH*0.2);X.stroke();
-      X.beginPath();X.moveTo(segW/2,sy+segH*0.3);X.lineTo(segW/2+4,sy+segH*0.2);X.stroke();
-    }
-  }
-  // Central spinal cord line
-  X.strokeStyle=f.sandyActive?'rgba(68,136,255,0.6)':'rgba(100,110,130,0.3)';
-  X.lineWidth=1.5;
-  X.beginPath();X.moveTo(0,spineStartY);X.lineTo(0,spineStartY+spineSegs*segH);X.stroke();
-  if(f.sandyActive){X.shadowColor='#4488ff';X.shadowBlur=6;X.stroke();X.shadowBlur=0;}
-  X.restore();
-
-  // === FISTS ===
-  const fistR=10;
-  X.save();X.translate(r-5,0);
-  // Right fist
-  X.beginPath();X.arc(12,-3,fistR,0,Math.PI*2);
-  const fg=X.createRadialGradient(11,-4,2,12,-3,fistR);
-  fg.addColorStop(0,'#556');fg.addColorStop(0.5,'#334');fg.addColorStop(1,'#223');
-  X.fillStyle=fg;X.fill();
-  X.strokeStyle=flash?'#88bbff':'#445';X.lineWidth=1.5;X.stroke();
-  // Left fist (slightly behind)
-  X.beginPath();X.arc(8,5,fistR*0.85,0,Math.PI*2);
-  X.fillStyle='#2a2a35';X.fill();
-  X.strokeStyle=flash?'#88bbff':'#3a3a44';X.lineWidth=1.2;X.stroke();
-  // Knuckle ridges
-  for(let k=0;k<3;k++){
-    X.fillStyle=flash?'rgba(68,136,255,0.8)':'rgba(100,120,150,0.6)';
-    X.fillRect(15+k*3,-6+k*1,2.5,5);
-  }
-  X.restore();
-
-  // Impact flash
-  if(flash){
-    X.beginPath();X.arc(r+18,0,14,0,Math.PI*2);
-    X.fillStyle='rgba(68,136,255,0.5)';X.fill();
-    X.beginPath();X.arc(r+18,0,6,0,Math.PI*2);
-    X.fillStyle='rgba(200,220,255,0.7)';X.fill();
-  }
-
-  // Sandevistan active — blue energy field + pulsing rings
+  // Sandevistan active — BIG obvious blue energy field
   if(f&&f.sandyActive){
     X.save();X.rotate(-f.weaponAngle);
-    // Outer pulsing ring
-    const pulse=Math.sin(battleTime*0.15)*5;
-    X.beginPath();X.arc(0,0,f.radius+14+pulse,0,Math.PI*2);
-    X.strokeStyle='rgba(68,136,255,0.7)';X.lineWidth=3;X.stroke();
-    // Inner energy field
-    X.beginPath();X.arc(0,0,f.radius+6,0,Math.PI*2);
-    X.strokeStyle='rgba(136,187,255,0.4)';X.lineWidth=8;X.stroke();
-    // Speed lines radiating outward
-    for(let i=0;i<8;i++){
-      const sa=battleTime*0.15+i*Math.PI/4;
-      X.strokeStyle='rgba(68,136,255,0.3)';X.lineWidth=2;
-      X.beginPath();X.moveTo(Math.cos(sa)*(f.radius+8),Math.sin(sa)*(f.radius+8));
-      X.lineTo(Math.cos(sa)*(f.radius+20+pulse),Math.sin(sa)*(f.radius+20+pulse));X.stroke();
+    // Massive blue aura fill
+    const pulse=Math.sin(battleTime*0.12)*8;
+    X.beginPath();X.arc(0,0,f.radius+20+pulse,0,Math.PI*2);
+    const ag=X.createRadialGradient(0,0,f.radius,0,0,f.radius+20+pulse);
+    ag.addColorStop(0,'rgba(68,136,255,0.5)');ag.addColorStop(0.5,'rgba(68,136,255,0.2)');ag.addColorStop(1,'rgba(68,136,255,0)');
+    X.fillStyle=ag;X.fill();
+    // Bright blue outer ring
+    X.beginPath();X.arc(0,0,f.radius+16+pulse,0,Math.PI*2);
+    X.shadowColor='#4488ff';X.shadowBlur=20;
+    X.strokeStyle='rgba(68,136,255,0.9)';X.lineWidth=4;X.stroke();
+    // Inner bright ring
+    X.beginPath();X.arc(0,0,f.radius+4,0,Math.PI*2);
+    X.strokeStyle='rgba(136,200,255,0.6)';X.lineWidth=6;X.stroke();
+    X.shadowBlur=0;
+    // 12 speed lines radiating outward — very visible
+    for(let i=0;i<12;i++){
+      const sa=battleTime*0.18+i*Math.PI/6;
+      const lineLen=15+pulse+Math.sin(battleTime*0.3+i)*5;
+      X.strokeStyle='rgba(100,180,255,0.6)';X.lineWidth=2.5;
+      X.beginPath();X.moveTo(Math.cos(sa)*(f.radius+6),Math.sin(sa)*(f.radius+6));
+      X.lineTo(Math.cos(sa)*(f.radius+6+lineLen),Math.sin(sa)*(f.radius+6+lineLen));X.stroke();
+    }
+    // Blue particles around ball
+    if(battleTime%2<1){
+      for(let i=0;i<3;i++){
+        const a=Math.random()*Math.PI*2;
+        spawnParticle(f.x+Math.cos(a)*(f.radius+5),f.y+Math.sin(a)*(f.radius+5),'#6699ff',Math.cos(a)*2,Math.sin(a)*2,12,3);
+      }
     }
     X.restore();
   }
@@ -2454,15 +2446,15 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.arc(4,-10,1.5,0,Math.PI*2);X.fillStyle='#55ff55';X.fill();
       break;
     case 'sandy':
-      // Fists + blue glow
-      X.beginPath();X.arc(8,-3,7,0,Math.PI*2);X.fillStyle='#334';X.fill();X.strokeStyle='#556';X.lineWidth=0.8;X.stroke();
-      X.beginPath();X.arc(5,4,6,0,Math.PI*2);X.fillStyle='#2a2a35';X.fill();X.strokeStyle='#445';X.lineWidth=0.7;X.stroke();
-      // Blue accent
-      X.fillStyle='rgba(68,136,255,0.5)';X.fillRect(4,-5,6,2);X.fillRect(4,3,5,2);
-      // Spine line (Sandevistan implant hint)
-      X.strokeStyle='#4488ff';X.lineWidth=1;
-      X.beginPath();X.moveTo(-10,0);X.lineTo(-2,0);X.stroke();
-      X.beginPath();X.arc(-10,0,1.5,0,Math.PI*2);X.fillStyle='#88bbff';X.fill();
+      // No weapon — just blue speed aura
+      X.shadowColor='#4488ff';X.shadowBlur=8;
+      X.beginPath();X.arc(0,0,12,0,Math.PI*2);
+      X.strokeStyle='rgba(68,136,255,0.6)';X.lineWidth=2;X.stroke();
+      X.beginPath();X.arc(0,0,8,0,Math.PI*2);
+      X.strokeStyle='rgba(136,200,255,0.4)';X.lineWidth=3;X.stroke();
+      X.shadowBlur=0;
+      // Speed lines
+      for(let i=0;i<4;i++){const a=Math.PI*2*i/4;X.strokeStyle='rgba(68,136,255,0.4)';X.lineWidth=1.5;X.beginPath();X.moveTo(Math.cos(a)*10,Math.sin(a)*10);X.lineTo(Math.cos(a)*18,Math.sin(a)*18);X.stroke();}
       break;
   }
   X.restore();
@@ -3115,12 +3107,19 @@ function drawFighterInfo(f,px,py,maxW,align){
     else{X.fillStyle='#555';X.fillText('No Element',ex,ey);}
   }
 
-  // Scaling stats
+  // Character-specific scaling stats (Earclak style)
   const chaos=getChaosLevel(f);
   X.font='10px Consolas,monospace';X.textAlign=isL?'left':'right';
   X.fillStyle=chaos>4?'#ff4444':chaos>2?'#ffaa00':chaos>0.5?'#888':'#444';
-  const atkPct=Math.round((1+chaos*0.08)*100);
-  X.fillText('ATK:'+atkPct+'% | Hits:'+f.totalHits,px+(isL?5:maxW-5),py+42);
+  let statLine='';
+  switch(f.char.id){
+    case 'mantis':statLine='Spd:'+(f.baseSpeed*(1+chaos*0.1)).toFixed(1)+' Bleed:'+Math.round((0.10+chaos*0.02)*100)+'%';break;
+    case 'gorilla':statLine='ATK:'+Math.round((1+chaos*0.15)*100)+'% AoE:'+Math.round(75+chaos*15);break;
+    case 'monowire':statLine='Cap:'+Math.round((0.30+chaos*0.04)*100)+'% Hack:40%';break;
+    case 'pls':statLine='Exp:'+Math.round(f.plsExplosionRadius+chaos*10)+' DMG:'+Math.round((1+chaos*0.12)*100)+'%';break;
+    case 'sandy':statLine='Spd:'+(f.baseSpeed*0.6).toFixed(1)+'-'+(f.baseSpeed*(1+chaos*0.15)).toFixed(1)+' Dodge:'+Math.round((f.dodgeChance+f.sandyDodgeBoost)*100)+'%';break;
+  }
+  X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
   // Relic status
   X.font='9px Consolas,monospace';X.fillStyle=f.specialActive?'#ffcc00':'#7b68ee';
