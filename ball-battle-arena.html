@@ -19,7 +19,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v5.1 — 16 Element Combos + Bug Fixes
+// BALL BATTLE ARENA v5.4 — No Body Damage, Bigger Arena, Weapon Parry, PLS Fix
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -192,7 +192,7 @@ let fireZones=[]; // {x,y,radius,life,maxLife,owner,dmg} — PLS fire lingering 
 let vulnZones=[]; // {x,y,radius,life,maxLife,owner} — PLS ice vulnerability zones
 let poisonBubbles=[]; // {x,y,life,maxLife,target} — gorilla poison bubbles on enemy
 
-const ARENA={x:30,y:80,w:W-60,h:H-240};
+const ARENA={x:15,y:65,w:W-30,h:H-200};
 
 // ============================================================
 // BUTTONS / UI
@@ -405,9 +405,28 @@ function checkBallCollision(f1,f2){
   shakeTimer=8;shakeAmt=5;
   SFX.clash();
 
-  // Contact damage (small — main damage comes from weapon attacks)
-  dealDamage(f1,f2,f1.atk*0.3,false);
-  if(f2.alive)dealDamage(f2,f1,f2.atk*0.3,false);
+  // No body collision damage — only weapons deal damage
+  // Weapon parry check: if both weapons are roughly facing each other, trigger a clash
+  const w1Tip={x:f1.x+Math.cos(f1.weaponAngle)*f1.range*0.6,y:f1.y+Math.sin(f1.weaponAngle)*f1.range*0.6};
+  const w2Tip={x:f2.x+Math.cos(f2.weaponAngle)*f2.range*0.6,y:f2.y+Math.sin(f2.weaponAngle)*f2.range*0.6};
+  if(dist(w1Tip,w2Tip)<50){
+    // Weapon clash / parry!
+    const cx=(w1Tip.x+w2Tip.x)/2,cy=(w1Tip.y+w2Tip.y)/2;
+    spawnBurst(cx,cy,'#ffffff',15,6);
+    spawnBurst(cx,cy,'#ffcc00',10,4);
+    spawnSparks(cx,cy,'#ffaa00',8);
+    shakeTimer=12;shakeAmt=7;
+    SFX.clash();
+    // Both get knocked back slightly
+    const ka=angle(f2,f1);
+    f1.vx+=Math.cos(ka)*4;f1.vy+=Math.sin(ka)*4;
+    f2.vx-=Math.cos(ka)*4;f2.vy-=Math.sin(ka)*4;
+    // Small special bar gain from parry
+    f1.specialBar=Math.min(f1.specialMax,f1.specialBar+5);
+    f2.specialBar=Math.min(f2.specialMax,f2.specialBar+5);
+    addLog('WEAPON CLASH!');
+    spawnDmgNum(cx,cy-15,'PARRY!','#ffcc00',true);
+  }
 }
 
 // ============================================================
@@ -888,13 +907,16 @@ function relicMonowire(f,enemy){
 }
 
 function relicPLS(f,enemy){
-  // PLS Relic: smart lock → charge → 10 rapid homing shots
+  // PLS Relic: smart lock → brief charge → 10 rapid homing shots in ~1-2 sec
   f.specialTimer=120;
   f.relicLockTarget=enemy;
-  f.relicChargeTimer=Math.max(18,getAttackInterval(f)); // charge = current fire rate
+  f.relicChargeTimer=30; // brief charge-up (~0.5 sec)
   f.relicHomingShots=10;
-  // Targeting reticle visual starts
-  spawnBurst(f.x,f.y,'#33cc33',15,5);
+  // Targeting reticle visual starts — big lock-on announcement
+  spawnBurst(f.x,f.y,'#33cc33',20,6);
+  spawnBurst(enemy.x,enemy.y,'#ff3333',15,5);
+  addLog((f.side===0?'P1':'P2')+' PLS LOCK ON!');
+  SFX.relicActivate();
 }
 
 // ============================================================
@@ -1010,36 +1032,53 @@ function updateRelicMonowire(f,enemy,dt){
 
 function updateRelicPLS(f,enemy,dt){
   if(f.relicChargeTimer>0){
-    // Charging phase — show targeting reticle on enemy
+    // Charging phase — big visible targeting reticle on enemy
     f.relicChargeTimer-=dt;
     f.weaponAngle=angle(f,enemy);
-    // Swirling particles toward ball during charge
-    const a=battleTime*0.15;
-    const cx=f.x+Math.cos(a)*40;
-    const cy=f.y+Math.sin(a)*40;
-    spawnParticle(cx,cy,'#33ff33',(f.x-cx)*0.1,(f.y-cy)*0.1,15,2);
+    // Lock-on lines from PLS to enemy
+    if(battleTime%3<1){
+      const a=angle(f,enemy);
+      spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#ff3333',
+        Math.cos(a)*5,Math.sin(a)*5,20,3);
+    }
+    // Swirling charge particles around PLS ball
+    for(let i=0;i<2;i++){
+      const a=battleTime*0.2+i*Math.PI;
+      const cx=f.x+Math.cos(a)*35;
+      const cy=f.y+Math.sin(a)*35;
+      spawnParticle(cx,cy,'#33ff33',(f.x-cx)*0.15,(f.y-cy)*0.15,12,2);
+    }
+    // Red pulsing brackets on enemy
+    if(battleTime%4<1){
+      spawnParticle(enemy.x-enemy.radius-10,enemy.y,'#ff3333',0,0,10,3);
+      spawnParticle(enemy.x+enemy.radius+10,enemy.y,'#ff3333',0,0,10,3);
+      spawnParticle(enemy.x,enemy.y-enemy.radius-10,'#ff3333',0,0,10,3);
+      spawnParticle(enemy.x,enemy.y+enemy.radius+10,'#ff3333',0,0,10,3);
+    }
     if(f.relicChargeTimer<=0){
       // Start rapid fire
       SFX.special();
+      addLog((f.side===0?'P1':'P2')+' PLS RAPID FIRE!');
     }
     return;
   }
-  // Rapid-fire homing shots
-  if(f.relicHomingShots>0&&battleTime%6<1){
+  // Rapid-fire homing shots — all 10 in ~1-2 seconds (fire every 3 frames instead of 6)
+  if(f.relicHomingShots>0&&battleTime%3<1){
     f.relicHomingShots--;
-    const a=angle(f,enemy)+(Math.random()-0.5)*0.4;
+    const a=angle(f,enemy)+(Math.random()-0.5)*0.3;
     projectiles.push({
       x:f.x+Math.cos(a)*f.radius,
       y:f.y+Math.sin(a)*f.radius,
-      vx:Math.cos(a)*6,vy:Math.sin(a)*6,
+      vx:Math.cos(a)*8,vy:Math.sin(a)*8,
       owner:f,target:enemy,
-      color:'#66ff66',life:120,radius:4,
+      color:'#66ff66',life:120,radius:8,
       dmg:f.atk*0.6,
-      explosive:true,explosionRadius:20+getChaosLevel(f)*3,
-      homing:true,homingStrength:0.15,
+      explosive:true,explosionRadius:25+getChaosLevel(f)*4,
+      homing:true,homingStrength:0.25,
     });
     SFX.missile();
     f.weaponFlash=6;f.weaponExtend=0.5;
+    shakeTimer=3;shakeAmt=2;
     if(f.relicHomingShots<=0){
       f.specialTimer=0;f.specialActive=false;
     }
@@ -1954,19 +1993,47 @@ function drawPLS(r,ext,flash,f){
   X.beginPath();X.arc(bx+bLen*0.7,-barrelR-10,2,0,Math.PI*2);
   X.fillStyle=flash?'#aaffaa':'#55ff55';X.fill();
 
-  // PLS Relic — targeting reticle on enemy
-  if(f&&f.specialActive&&f.relicLockTarget&&f.relicChargeTimer>0){
+  // PLS Relic — BIG targeting reticle on enemy (visible during charge AND rapid fire)
+  if(f&&f.specialActive&&f.relicLockTarget){
     X.save();
     X.rotate(-f.weaponAngle);
     const t=f.relicLockTarget;
     const tx=t.x-f.x,ty=t.y-f.y;
-    const pulse=Math.sin(battleTime*0.3)*3;
-    X.strokeStyle='#ff3333';X.lineWidth=2;
-    X.setLineDash([4,4]);
-    X.beginPath();X.arc(tx,ty,t.radius+10+pulse,0,Math.PI*2);X.stroke();
+    const pulse=Math.sin(battleTime*0.2)*6;
+    const reticleR=t.radius+20+pulse;
+    // Outer spinning ring
+    X.strokeStyle='#ff3333';X.lineWidth=3;X.globalAlpha=0.9;
+    X.setLineDash([8,6]);
+    X.lineDashOffset=battleTime*2;
+    X.beginPath();X.arc(tx,ty,reticleR,0,Math.PI*2);X.stroke();
     X.setLineDash([]);
-    X.beginPath();X.moveTo(tx-15,ty);X.lineTo(tx+15,ty);X.stroke();
-    X.beginPath();X.moveTo(tx,ty-15);X.lineTo(tx,ty+15);X.stroke();
+    // Inner solid ring
+    X.strokeStyle='#ff6666';X.lineWidth=2;
+    X.beginPath();X.arc(tx,ty,reticleR-8,0,Math.PI*2);X.stroke();
+    // Crosshair lines — big
+    X.strokeStyle='#ff3333';X.lineWidth=2.5;
+    const cLen=25;
+    X.beginPath();X.moveTo(tx-cLen,ty);X.lineTo(tx-8,ty);X.stroke();
+    X.beginPath();X.moveTo(tx+8,ty);X.lineTo(tx+cLen,ty);X.stroke();
+    X.beginPath();X.moveTo(tx,ty-cLen);X.lineTo(tx,ty-8);X.stroke();
+    X.beginPath();X.moveTo(tx,ty+8);X.lineTo(tx,ty+cLen);X.stroke();
+    // Corner brackets
+    const bLen=12;
+    X.strokeStyle='#ff4444';X.lineWidth=2;
+    // Top-left
+    X.beginPath();X.moveTo(tx-reticleR,ty-reticleR+bLen);X.lineTo(tx-reticleR,ty-reticleR);X.lineTo(tx-reticleR+bLen,ty-reticleR);X.stroke();
+    // Top-right
+    X.beginPath();X.moveTo(tx+reticleR-bLen,ty-reticleR);X.lineTo(tx+reticleR,ty-reticleR);X.lineTo(tx+reticleR,ty-reticleR+bLen);X.stroke();
+    // Bottom-left
+    X.beginPath();X.moveTo(tx-reticleR,ty+reticleR-bLen);X.lineTo(tx-reticleR,ty+reticleR);X.lineTo(tx-reticleR+bLen,ty+reticleR);X.stroke();
+    // Bottom-right
+    X.beginPath();X.moveTo(tx+reticleR-bLen,ty+reticleR);X.lineTo(tx+reticleR,ty+reticleR);X.lineTo(tx+reticleR,ty+reticleR-bLen);X.stroke();
+    // "LOCKED" text during charge
+    if(f.relicChargeTimer>0){
+      X.fillStyle='#ff3333';X.font='bold 10px Consolas';X.textAlign='center';
+      X.fillText('LOCKED',tx,ty-reticleR-8);
+    }
+    X.globalAlpha=1;
     X.restore();
   }
 }
