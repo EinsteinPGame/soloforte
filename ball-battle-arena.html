@@ -93,7 +93,7 @@ const CHARS=[
     id:'mantis',name:'Mantis Blades',color:'#ff3333',
     desc:'Twin arm blades. Fast attacker.',
     playstyle:'Speed & Bleed',
-    stats:{hp:600,atk:14,speed:4.5,range:65,def:4,crit:15},
+    stats:{hp:600,atk:14,speed:4.5,range:100,def:4,crit:15},
     baseAtkInterval:36, // frames between attacks
     specialName:'MB Relic Activated',
   },
@@ -101,7 +101,7 @@ const CHARS=[
     id:'gorilla',name:'Gorilla Arms',color:'#ff8800',
     desc:'Heavy fists. Strength tank.',
     playstyle:'Power & AoE',
-    stats:{hp:750,atk:22,speed:2.8,range:60,def:9,crit:8},
+    stats:{hp:750,atk:22,speed:2.8,range:90,def:9,crit:8},
     baseAtkInterval:55,
     specialName:'GA Relic Activated',
   },
@@ -109,7 +109,7 @@ const CHARS=[
     id:'monowire',name:'Monowire',color:'#00ddff',
     desc:'Whip weapon. Capture specialist.',
     playstyle:'Control & Hack',
-    stats:{hp:550,atk:12,speed:3.5,range:120,def:5,crit:20},
+    stats:{hp:550,atk:12,speed:3.5,range:150,def:5,crit:20},
     baseAtkInterval:65,
     specialName:'MW Relic Activated',
   },
@@ -360,7 +360,8 @@ function updatePhysics(f,dt){
 
   f.rotation+=f.spinSpeed*dt;
   f.weaponAngle+=f.spinSpeed*dt;
-  if(f.weaponExtend>0)f.weaponExtend=Math.max(0,f.weaponExtend-0.04*dt);
+  // Weapons always at full length — no mysterious extending/retracting
+  f.weaponExtend=1;
   if(f.weaponFlash>0)f.weaponFlash-=dt;
   if(f.attackAnim>0)f.attackAnim-=dt;
 }
@@ -458,8 +459,8 @@ function isWeaponFacingEnemy(f,enemy){
   let diff=f.weaponAngle-toEnemy;
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
-  // Arc depends on weapon type — wider for some
-  const arc=f.char.id==='pls'?0.5:f.char.id==='gorilla'?0.45:f.char.id==='monowire'?0.4:0.35;
+  // Arc depends on weapon type — wider arcs so attacks connect more often
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -566,7 +567,7 @@ function attackMonowire(f,enemy,chaos){
   SFX.whip();
   if(facing&&d<effectiveRange){
     dealDamage(f,enemy,f.atk);
-    let captureChance=0.20+chaos*0.03;
+    let captureChance=0.30+chaos*0.04;
     const captureDuration=90+chaos*15;
     // Monowire+cryo: slowed enemies are easier to capture
     if(f.elementActive&&f.elem.id==='cryo'&&enemy.slowTimer>0)captureChance+=0.20;
@@ -848,10 +849,10 @@ function useSpecial(f,enemy){
 
 function relicMantis(f,enemy){
   // MB Relic: pull back blades → homing dash → high bleed chance — DRAMATIC
-  f.specialTimer=90;
+  f.specialTimer=120;
   f.relicDashing=false;
   f.relicDashTarget=enemy;
-  f.relicDashTimer=30; // 30 frames charge, then dash
+  f.relicDashTimer=50; // 50 frames charge (longer charge-up), then dash
 
   // Dramatic pull-back — big reverse + blade glow burst
   f.vx*=-0.8;f.vy*=-0.8;
@@ -991,7 +992,7 @@ function updateRelicMonowire(f,enemy,dt){
       dealDamage(f,enemy,f.atk*0.6,true);
       SFX.whip();
       // Capture chance converts to quickhack chance during relic
-      if(Math.random()<0.25&&!quickhackDisplay&&enemy.alive){
+      if(Math.random()<0.40&&!quickhackDisplay&&enemy.alive){
         applyQuickhack(f,enemy);
       }
       // Higher parry — deflect incoming projectiles
@@ -1523,97 +1524,139 @@ function drawWeapon(f){
 }
 
 function drawMantisBlades(r,ext,flash,f){
-  const bladeLen=35+ext*70;
+  const bladeLen=80; // always full length, no mysterious extending
+  const extLen=25; // visible extension arm always shown
 
-  // Mechanical forearm housing — dark chrome with panel lines, wide
-  const hx=r-8, hw=30, hh=22;
+  // === FOREARM HOUSING — dark chrome rectangular housing on the arm ===
+  const hx=r-10, hw=28, hh=18;
   const hg=X.createLinearGradient(hx,-hh/2,hx,hh/2);
-  hg.addColorStop(0,'#444');hg.addColorStop(0.3,'#2a2a2e');hg.addColorStop(0.7,'#2a2a2e');hg.addColorStop(1,'#444');
-  X.fillStyle=hg;
-  X.fillRect(hx,-hh/2,hw,hh);
-  X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(hx,-hh/2,hw,hh);
-  // Panel segments
-  X.strokeStyle='#3a3a3e';X.lineWidth=0.8;
-  for(let i=0;i<5;i++){X.beginPath();X.moveTo(hx+5+i*5,-hh/2);X.lineTo(hx+5+i*5,hh/2);X.stroke();}
-  // Inner dark plate
-  X.fillStyle='#1a1a1e';X.fillRect(hx+3,-hh/2+2,hw-6,hh-4);
-  // Blade ejection ports
-  X.fillStyle='#0a0a0e';
-  X.fillRect(hx+hw-4,-hh/2+2,4,8);
-  X.fillRect(hx+hw-4,hh/2-10,4,8);
-  // Gold accent strips
-  X.fillStyle='#c8a830';
-  X.fillRect(hx+1,-hh/2,2,hh);
-  X.fillRect(hx+hw-3,-hh/2,2,hh);
-  // Mechanical detail dots
-  X.fillStyle='#666';
-  X.beginPath();X.arc(hx+6,-hh/2+4,1.5,0,Math.PI*2);X.fill();
-  X.beginPath();X.arc(hx+6,hh/2-4,1.5,0,Math.PI*2);X.fill();
+  hg.addColorStop(0,'#3a3a40');hg.addColorStop(0.3,'#252530');hg.addColorStop(0.7,'#252530');hg.addColorStop(1,'#3a3a40');
+  X.fillStyle=hg;X.fillRect(hx,-hh/2,hw,hh);
+  X.strokeStyle='#4a4a50';X.lineWidth=1;X.strokeRect(hx,-hh/2,hw,hh);
+  // Panel seams
+  X.strokeStyle='#333';X.lineWidth=0.6;
+  for(let i=1;i<4;i++){X.beginPath();X.moveTo(hx+hw*i/4,-hh/2);X.lineTo(hx+hw*i/4,hh/2);X.stroke();}
+  // Red LED strip on housing
+  X.fillStyle=flash?'#ff4444':'#cc2222';
+  X.fillRect(hx+2,-hh/2,hw-4,1.5);
+  X.fillRect(hx+2,hh/2-1.5,hw-4,1.5);
+  if(flash){X.shadowColor='#ff2020';X.shadowBlur=6;X.fillRect(hx+2,-hh/2,hw-4,1.5);X.fillRect(hx+2,hh/2-1.5,hw-4,1.5);X.shadowBlur=0;}
+  // Ejection slots
+  X.fillStyle='#0a0a0e';X.fillRect(hx+hw-3,-hh/2+2,3,5);X.fillRect(hx+hw-3,hh/2-7,3,5);
 
-  // Twin curved blades — long, sweeping, tapered like Cyberpunk 2077
-  const bx=r+22;
+  // === EXTENSION MECHANISM — twin rails/pistons from housing to blade ===
+  const ex0=hx+hw; // where extension starts
   [-1,1].forEach(dir=>{
-    const by=dir*6;
-    X.beginPath();
-    // Spine (outer edge) — big sweeping curve
-    X.moveTo(bx-4,by);
-    X.bezierCurveTo(bx+bladeLen*0.15,by-8*dir,bx+bladeLen*0.4,by-7*dir,bx+bladeLen*0.65,by-4*dir);
-    X.quadraticCurveTo(bx+bladeLen*0.85,by-2*dir,bx+bladeLen,by-0.5*dir);
-    // Sharp tip
-    X.lineTo(bx+bladeLen+3,by+0.3*dir);
-    // Belly (inner edge)
-    X.quadraticCurveTo(bx+bladeLen*0.8,by+3*dir,bx+bladeLen*0.5,by+3.5*dir);
-    X.quadraticCurveTo(bx+bladeLen*0.2,by+3*dir,bx-4,by+2*dir);
-    X.closePath();
-
-    // Chrome/gold gradient — wider blade
-    const bg=X.createLinearGradient(bx,by-8*dir,bx+bladeLen,by);
-    bg.addColorStop(0,'#b8a830');bg.addColorStop(0.1,'#d4c860');bg.addColorStop(0.25,'#f0e880');
-    bg.addColorStop(0.45,'#f8f0a0');bg.addColorStop(0.6,'#e8d860');bg.addColorStop(0.8,'#c8b040');bg.addColorStop(1,'#a89020');
-    X.fillStyle=bg;X.fill();
-    X.strokeStyle='#6a5a20';X.lineWidth=1;X.stroke();
-
-    // Bright highlight along spine
-    X.strokeStyle='rgba(255,250,210,0.7)';X.lineWidth=0.8;
-    X.beginPath();
-    X.moveTo(bx,by-1*dir);
-    X.bezierCurveTo(bx+bladeLen*0.15,by-7.5*dir,bx+bladeLen*0.4,by-6.5*dir,bx+bladeLen*0.65,by-3.5*dir);
-    X.quadraticCurveTo(bx+bladeLen*0.85,by-1.5*dir,bx+bladeLen,by-0.3*dir);
-    X.stroke();
-
-    // Cutting edge glow (inner edge)
-    X.strokeStyle=flash?'rgba(255,120,40,1)':'rgba(255,80,30,0.35)';
-    X.lineWidth=flash?3:1.5;
-    X.beginPath();
-    X.moveTo(bx,by+2*dir);
-    X.quadraticCurveTo(bx+bladeLen*0.5,by+3.5*dir,bx+bladeLen,by+0.3*dir);
-    X.stroke();
-
-    // Center ridge / blood groove
-    X.strokeStyle='rgba(160,140,50,0.4)';X.lineWidth=0.6;
-    X.beginPath();
-    X.moveTo(bx+8,by+0.5*dir);
-    X.quadraticCurveTo(bx+bladeLen*0.4,by-2*dir,bx+bladeLen*0.85,by-0.8*dir);
-    X.stroke();
+    const ry=dir*5; // rail Y offset
+    // Outer rail — dark metallic track
+    X.fillStyle='#1e1e25';
+    X.fillRect(ex0,ry-2.5,extLen,5);
+    X.strokeStyle='#3a3a44';X.lineWidth=0.8;
+    X.strokeRect(ex0,ry-2.5,extLen,5);
+    // Piston rod sliding inside — chrome, extends with weapon
+    const pistonExt=extLen*(0.3+ext*0.7);
+    const pg=X.createLinearGradient(ex0,ry-1.5,ex0,ry+1.5);
+    pg.addColorStop(0,'#888');pg.addColorStop(0.5,'#bbb');pg.addColorStop(1,'#777');
+    X.fillStyle=pg;
+    X.fillRect(ex0+2,ry-1.5,pistonExt,3);
+    // Piston joint ring
+    X.fillStyle='#555';X.fillRect(ex0+pistonExt-2,ry-3,4,6);
+    X.strokeStyle='#666';X.lineWidth=0.5;X.strokeRect(ex0+pistonExt-2,ry-3,4,6);
   });
+  // Center spine connecting rails
+  X.fillStyle='#1a1a22';X.fillRect(ex0+extLen*0.3,-1.5,extLen*0.4,3);
+
+  // === BLADE — single wide blade, side-profile, metallic silver/chrome ===
+  const bx=ex0+extLen; // blade starts where extension ends
+  // Blade back (straight-ish top edge)
+  X.beginPath();
+  X.moveTo(bx,-7);
+  // Spine — slight upward curve then taper to sharp point
+  X.lineTo(bx+bladeLen*0.15,-8);
+  X.quadraticCurveTo(bx+bladeLen*0.4,-9,bx+bladeLen*0.6,-7);
+  X.quadraticCurveTo(bx+bladeLen*0.85,-4,bx+bladeLen,-0.5);
+  // Sharp tip
+  X.lineTo(bx+bladeLen+2,0);
+  // Belly — curved cutting edge (bottom)
+  X.quadraticCurveTo(bx+bladeLen*0.85,4,bx+bladeLen*0.6,6);
+  X.quadraticCurveTo(bx+bladeLen*0.35,7,bx+bladeLen*0.1,5);
+  X.lineTo(bx,4);
+  X.closePath();
+
+  // Metallic chrome/silver gradient — NOT gold
+  const bg=X.createLinearGradient(bx,-9,bx+bladeLen,0);
+  bg.addColorStop(0,'#667');bg.addColorStop(0.1,'#99a');bg.addColorStop(0.3,'#ccd');
+  bg.addColorStop(0.5,'#eef');bg.addColorStop(0.65,'#bbc');bg.addColorStop(0.85,'#889');bg.addColorStop(1,'#556');
+  X.fillStyle=bg;X.fill();
+  X.strokeStyle='#445';X.lineWidth=1;X.stroke();
+
+  // Highlight along spine
+  X.strokeStyle='rgba(220,230,255,0.6)';X.lineWidth=0.8;
+  X.beginPath();X.moveTo(bx+2,-6.5);
+  X.quadraticCurveTo(bx+bladeLen*0.4,-8.5,bx+bladeLen*0.7,-5);
+  X.quadraticCurveTo(bx+bladeLen*0.9,-2,bx+bladeLen,-0.3);
+  X.stroke();
+
+  // Cutting edge glow — red/orange on inner edge
+  X.strokeStyle=flash?'rgba(255,80,40,0.9)':'rgba(255,50,30,0.3)';
+  X.lineWidth=flash?2.5:1.2;
+  X.beginPath();X.moveTo(bx+3,4);
+  X.quadraticCurveTo(bx+bladeLen*0.35,7,bx+bladeLen*0.7,4);
+  X.quadraticCurveTo(bx+bladeLen*0.9,2,bx+bladeLen+1,0);
+  X.stroke();
+  if(flash){X.shadowColor='#ff4020';X.shadowBlur=8;X.stroke();X.shadowBlur=0;}
+
+  // Blood groove / fuller — dark line along blade center
+  X.strokeStyle='rgba(60,65,80,0.5)';X.lineWidth=0.7;
+  X.beginPath();X.moveTo(bx+10,-1);
+  X.quadraticCurveTo(bx+bladeLen*0.4,-2,bx+bladeLen*0.8,-1);
+  X.stroke();
+
+  // === SECOND BLADE (lower, slightly offset) — twin mantis blades ===
+  X.save();X.scale(1,-1); // mirror vertically
+  // Same blade shape mirrored
+  X.beginPath();
+  X.moveTo(bx,-7);
+  X.lineTo(bx+bladeLen*0.15,-8);
+  X.quadraticCurveTo(bx+bladeLen*0.4,-9,bx+bladeLen*0.6,-7);
+  X.quadraticCurveTo(bx+bladeLen*0.85,-4,bx+bladeLen,-0.5);
+  X.lineTo(bx+bladeLen+2,0);
+  X.quadraticCurveTo(bx+bladeLen*0.85,4,bx+bladeLen*0.6,6);
+  X.quadraticCurveTo(bx+bladeLen*0.35,7,bx+bladeLen*0.1,5);
+  X.lineTo(bx,4);X.closePath();
+  // Slightly darker second blade
+  const bg2=X.createLinearGradient(bx,-9,bx+bladeLen,0);
+  bg2.addColorStop(0,'#556');bg2.addColorStop(0.1,'#889');bg2.addColorStop(0.3,'#aab');
+  bg2.addColorStop(0.5,'#ccd');bg2.addColorStop(0.65,'#99a');bg2.addColorStop(0.85,'#778');bg2.addColorStop(1,'#445');
+  X.fillStyle=bg2;X.fill();
+  X.strokeStyle='#445';X.lineWidth=1;X.stroke();
+  // Cutting edge glow mirrored
+  X.strokeStyle=flash?'rgba(255,80,40,0.9)':'rgba(255,50,30,0.3)';
+  X.lineWidth=flash?2.5:1.2;
+  X.beginPath();X.moveTo(bx+3,4);
+  X.quadraticCurveTo(bx+bladeLen*0.35,7,bx+bladeLen*0.7,4);
+  X.quadraticCurveTo(bx+bladeLen*0.9,2,bx+bladeLen+1,0);
+  X.stroke();
+  X.restore();
 
   // Slash trail on attack
   if(flash&&f.attackAnim>0){
     const slashDir=f.attackSide;
-    X.strokeStyle='rgba(255,100,50,0.5)';X.lineWidth=5;
-    X.beginPath();X.arc(0,0,r+bladeLen*0.7,-0.6*slashDir,0.6*slashDir);X.stroke();
-    X.strokeStyle='rgba(255,200,100,0.3)';X.lineWidth=10;
-    X.beginPath();X.arc(0,0,r+bladeLen*0.5,-0.4*slashDir,0.4*slashDir);X.stroke();
+    X.strokeStyle='rgba(255,80,40,0.5)';X.lineWidth=5;
+    X.beginPath();X.arc(0,0,r+bladeLen*0.6,-0.5*slashDir,0.5*slashDir);X.stroke();
+    X.strokeStyle='rgba(255,180,100,0.25)';X.lineWidth=10;
+    X.beginPath();X.arc(0,0,r+bladeLen*0.4,-0.35*slashDir,0.35*slashDir);X.stroke();
   }
 
+  // Tip flash
   if(flash){
-    X.beginPath();X.arc(bx+bladeLen,-5,5,0,Math.PI*2);X.fillStyle='rgba(255,200,100,0.8)';X.fill();
-    X.beginPath();X.arc(bx+bladeLen,5,5,0,Math.PI*2);X.fillStyle='rgba(255,200,100,0.8)';X.fill();
+    X.beginPath();X.arc(bx+bladeLen+1,0,6,0,Math.PI*2);
+    X.fillStyle='rgba(255,200,150,0.7)';X.fill();
   }
 }
 
 function drawGorillaArms(r,ext,flash,f){
-  const armLen=25+ext*50;
+  const armLen=65; // always full length
   const isDownslam=f.attackPhase===2&&f.attackAnim>0;
 
   // Single MASSIVE fist — Cyberpunk Gorilla Arms
@@ -1718,7 +1761,7 @@ function drawGorillaArms(r,ext,flash,f){
 }
 
 function drawMonowire(r,ext,flash,f){
-  const wireLen=40+ext*90;
+  const wireLen=110; // always full length
   const isSpinning=f.relicWhipSpinTimer>0;
 
   // Wrist housing — small rectangular slot on forearm plate
@@ -1819,7 +1862,7 @@ function drawMonowire(r,ext,flash,f){
 }
 
 function drawPLS(r,ext,flash,f){
-  const launcherExt=8+ext*16;
+  const launcherExt=20; // always full length
 
   // Forearm base plate — dark metallic, wide
   X.fillStyle='#2a2a30';
@@ -1936,21 +1979,24 @@ function drawMiniWeapon(cx,cy,charId,size){
   switch(charId){
     case 'mantis':
       // Dark housing
-      X.fillStyle='#2a2a2e';X.fillRect(-14,-6,10,12);
-      X.strokeStyle='#444';X.lineWidth=0.8;X.strokeRect(-14,-6,10,12);
-      X.fillStyle='#c8a830';X.fillRect(-14,-6,2,12);
-      // Twin curved gold blades — long, sweeping
+      X.fillStyle='#252530';X.fillRect(-14,-5,10,10);
+      X.strokeStyle='#3a3a44';X.lineWidth=0.6;X.strokeRect(-14,-5,10,10);
+      X.fillStyle='#cc2222';X.fillRect(-13,-5,8,1);X.fillRect(-13,4,8,1);
+      // Extension rails
+      X.fillStyle='#1e1e25';X.fillRect(-4,-3,6,2.5);X.fillRect(-4,0.5,6,2.5);
+      X.fillStyle='#999';X.fillRect(-3,-2.5,4,1.5);X.fillRect(-3,1,4,1.5);
+      // Twin chrome blades — side profile
       [-1,1].forEach(dir=>{
-        const by=dir*4;
-        X.beginPath();X.moveTo(-4,by);
-        X.bezierCurveTo(4,by-8*dir,14,by-6*dir,22,by-1*dir);
-        X.lineTo(22,by+0.5*dir);
-        X.quadraticCurveTo(10,by+3*dir,-4,by+2*dir);
+        const by=dir*3;
+        X.beginPath();X.moveTo(2,by-3*dir);
+        X.quadraticCurveTo(12,by-4*dir,20,by-0.5*dir);
+        X.lineTo(22,by);
+        X.quadraticCurveTo(14,by+3*dir,4,by+2*dir);
         X.closePath();
-        const bg=X.createLinearGradient(-4,0,22,0);
-        bg.addColorStop(0,'#b8a830');bg.addColorStop(0.3,'#f0e880');bg.addColorStop(1,'#a89020');
+        const bg=X.createLinearGradient(2,0,22,0);
+        bg.addColorStop(0,'#889');bg.addColorStop(0.4,'#ccd');bg.addColorStop(1,'#667');
         X.fillStyle=bg;X.fill();
-        X.strokeStyle='#6a5a20';X.lineWidth=0.5;X.stroke();
+        X.strokeStyle='#445';X.lineWidth=0.5;X.stroke();
       });
       break;
     case 'gorilla':
@@ -2179,26 +2225,122 @@ function drawSelectMobile(){
   buttons.forEach(b=>{if(b.id.startsWith('p1m')||b.id.startsWith('p2m'))return;drawBtn(b);});
 }
 
+function drawElementIcon(cx,cy,elemId,size){
+  const s=size;
+  switch(elemId){
+    case 'fire':
+      // Flame icon
+      X.beginPath();X.moveTo(cx,cy-s);
+      X.quadraticCurveTo(cx+s*0.6,cy-s*0.3,cx+s*0.5,cy+s*0.2);
+      X.quadraticCurveTo(cx+s*0.3,cy-s*0.1,cx+s*0.2,cy+s*0.5);
+      X.quadraticCurveTo(cx+s*0.1,cy+s*0.8,cx,cy+s);
+      X.quadraticCurveTo(cx-s*0.1,cy+s*0.8,cx-s*0.2,cy+s*0.5);
+      X.quadraticCurveTo(cx-s*0.3,cy-s*0.1,cx-s*0.5,cy+s*0.2);
+      X.quadraticCurveTo(cx-s*0.6,cy-s*0.3,cx,cy-s);
+      X.closePath();
+      const fg=X.createLinearGradient(cx,cy-s,cx,cy+s);
+      fg.addColorStop(0,'#ff4400');fg.addColorStop(0.4,'#ff6600');fg.addColorStop(1,'#ffaa00');
+      X.fillStyle=fg;X.fill();
+      // Inner flame
+      X.beginPath();X.moveTo(cx,cy-s*0.4);
+      X.quadraticCurveTo(cx+s*0.2,cy+s*0.1,cx,cy+s*0.6);
+      X.quadraticCurveTo(cx-s*0.2,cy+s*0.1,cx,cy-s*0.4);
+      X.fillStyle='#ffdd44';X.fill();
+      break;
+    case 'electric':
+      // Lightning bolt
+      X.beginPath();
+      X.moveTo(cx+s*0.1,cy-s);X.lineTo(cx-s*0.4,cy+s*0.1);X.lineTo(cx,cy);
+      X.lineTo(cx-s*0.1,cy+s);X.lineTo(cx+s*0.4,cy-s*0.1);X.lineTo(cx,cy);
+      X.closePath();
+      X.fillStyle='#ffcc00';X.fill();
+      X.strokeStyle='#ff9900';X.lineWidth=1;X.stroke();
+      // Inner bright
+      X.fillStyle='#ffffaa';X.fillRect(cx-1,cy-s*0.3,2,s*0.6);
+      break;
+    case 'toxic':
+      // Poison droplet / skull-ish
+      X.beginPath();X.arc(cx,cy-s*0.2,s*0.55,0,Math.PI*2);
+      X.fillStyle='#aa44cc';X.fill();
+      X.strokeStyle='#cc66ee';X.lineWidth=1;X.stroke();
+      // Drip
+      X.beginPath();X.moveTo(cx-s*0.15,cy+s*0.3);
+      X.quadraticCurveTo(cx,cy+s*1.1,cx+s*0.15,cy+s*0.3);
+      X.fillStyle='#aa44cc';X.fill();
+      // Skull eyes
+      X.fillStyle='#1a0a2a';
+      X.beginPath();X.arc(cx-s*0.2,cy-s*0.25,s*0.12,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(cx+s*0.2,cy-s*0.25,s*0.12,0,Math.PI*2);X.fill();
+      break;
+    case 'cryo':
+      // Snowflake / ice crystal
+      X.strokeStyle='#77ddff';X.lineWidth=1.5;
+      for(let i=0;i<6;i++){
+        const a=Math.PI*2*i/6;
+        X.beginPath();X.moveTo(cx,cy);
+        X.lineTo(cx+Math.cos(a)*s,cy+Math.sin(a)*s);X.stroke();
+        // Branch tips
+        const bx2=cx+Math.cos(a)*s*0.65,by2=cy+Math.sin(a)*s*0.65;
+        X.beginPath();X.moveTo(bx2,by2);
+        X.lineTo(bx2+Math.cos(a+0.5)*s*0.3,by2+Math.sin(a+0.5)*s*0.3);X.stroke();
+        X.beginPath();X.moveTo(bx2,by2);
+        X.lineTo(bx2+Math.cos(a-0.5)*s*0.3,by2+Math.sin(a-0.5)*s*0.3);X.stroke();
+      }
+      // Center dot
+      X.beginPath();X.arc(cx,cy,s*0.15,0,Math.PI*2);X.fillStyle='#aaeeff';X.fill();
+      break;
+  }
+}
 function drawElementPicker(sx,sy,selected,prefix,cb){
   ELEMENTS.forEach((el,i)=>{
     const ex=sx+i*52,isSel=selected===i;
-    drawRoundRect(ex,sy,48,40,4);X.fillStyle=isSel?el.color+'33':'#0a0a2a';X.fill();
-    X.strokeStyle=isSel?el.color:el.color+'44';X.lineWidth=isSel?2.5:1;X.stroke();
-    X.font='bold 10px Consolas,monospace';X.textAlign='center';X.fillStyle=el.color;X.fillText(el.name,ex+24,sy+16);
-    if(el.symbol){X.font='bold 14px Consolas,monospace';X.fillText(el.symbol,ex+24,sy+33);}
-    else{X.font='9px Consolas,monospace';X.fillStyle='#666';X.fillText('---',ex+24,sy+33);}
-    addBtn(prefix+i,ex,sy,48,40,'','transparent',()=>cb(i));
+    // Background with element color tint
+    drawRoundRect(ex,sy,48,45,5);
+    if(isSel){
+      X.fillStyle=el.color+'44';X.fill();
+      X.shadowColor=el.color;X.shadowBlur=8;
+      X.strokeStyle=el.color;X.lineWidth=2.5;X.stroke();
+      X.shadowBlur=0;
+    } else {
+      X.fillStyle='#0d0d22';X.fill();
+      X.strokeStyle=el.color+'55';X.lineWidth=1;X.stroke();
+    }
+    // Element icon or "NONE"
+    if(el.id==='none'){
+      X.font='bold 14px Consolas,monospace';X.textAlign='center';X.fillStyle='#555';
+      X.fillText('--',ex+24,sy+22);
+    } else {
+      drawElementIcon(ex+24,sy+18,el.id,10);
+    }
+    // Name below
+    X.font='bold 9px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=isSel?'#fff':el.color;X.fillText(el.name,ex+24,sy+40);
+    addBtn(prefix+i,ex,sy,48,45,'','transparent',()=>cb(i));
   });
 }
 function drawElementPickerMobile(sx,sy,selected,prefix,cb){
   const bw=37,gap=3;
   ELEMENTS.forEach((el,i)=>{
     const ex=sx+i*(bw+gap),isSel=selected===i;
-    drawRoundRect(ex,sy,bw,30,3);X.fillStyle=isSel?el.color+'33':'#0a0a2a';X.fill();
-    X.strokeStyle=isSel?el.color:el.color+'44';X.lineWidth=isSel?2:1;X.stroke();
-    X.font='bold 8px Consolas,monospace';X.textAlign='center';X.fillStyle=el.color;
-    X.fillText(el.symbol||'--',ex+bw/2,sy+13);X.font='7px Consolas,monospace';X.fillText(el.name.slice(0,4),ex+bw/2,sy+24);
-    addBtn(prefix+i,ex,sy,bw,30,'','transparent',()=>cb(i));
+    drawRoundRect(ex,sy,bw,35,3);
+    if(isSel){
+      X.fillStyle=el.color+'44';X.fill();
+      X.shadowColor=el.color;X.shadowBlur=6;
+      X.strokeStyle=el.color;X.lineWidth=2;X.stroke();
+      X.shadowBlur=0;
+    } else {
+      X.fillStyle='#0d0d22';X.fill();
+      X.strokeStyle=el.color+'44';X.lineWidth=1;X.stroke();
+    }
+    if(el.id==='none'){
+      X.font='bold 10px Consolas,monospace';X.textAlign='center';X.fillStyle='#555';
+      X.fillText('--',ex+bw/2,sy+15);
+    } else {
+      drawElementIcon(ex+bw/2,sy+13,el.id,7);
+    }
+    X.font='bold 7px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=isSel?'#fff':el.color;X.fillText(el.name.slice(0,4),ex+bw/2,sy+30);
+    addBtn(prefix+i,ex,sy,bw,35,'','transparent',()=>cb(i));
   });
 }
 
