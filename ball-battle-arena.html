@@ -19,7 +19,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v5.4 — No Body Damage, Bigger Arena, Weapon Parry, PLS Fix
+// BALL BATTLE ARENA v6.0 — Sandevistan + Visual Overhaul + Combat Fixes
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -121,6 +121,14 @@ const CHARS=[
     baseAtkInterval:120, // 2 seconds
     specialName:'PLS Relic Activated',
   },
+  {
+    id:'sandy',name:'Sandevistan',color:'#4488ff',
+    desc:'Unarmed speedster. Speed = Damage.',
+    playstyle:'Speed & Dodge',
+    stats:{hp:450,atk:8,speed:6.5,range:60,def:3,crit:12},
+    baseAtkInterval:22,
+    specialName:'Sandevistan Activated',
+  },
 ];
 
 // ============================================================
@@ -151,6 +159,10 @@ const COMBO_EFFECTS={
   'pls_electric':'Double wall explosion',
   'pls_toxic':'Direct hit slows enemy',
   'pls_cryo':'Vulnerability zone on impact',
+  'sandy_fire':'Fire trail behind movement',
+  'sandy_electric':'Rotating orbs hit nearby enemies',
+  'sandy_toxic':'Wall bounce = poison orb scatter',
+  'sandy_cryo':'Faster speed = more enemy slow',
 };
 
 // ============================================================
@@ -191,6 +203,9 @@ let shockwaveProjectiles=[]; // gorilla directional shockwaves
 let fireZones=[]; // {x,y,radius,life,maxLife,owner,dmg} — PLS fire lingering zones
 let vulnZones=[]; // {x,y,radius,life,maxLife,owner} — PLS ice vulnerability zones
 let poisonBubbles=[]; // {x,y,life,maxLife,target} — gorilla poison bubbles on enemy
+let fireTrails=[]; // {x,y,life,maxLife} — sandy fire trail
+let sandyAfterimages=[]; // {x,y,radius,rotation,color,life,maxLife} — speed afterimages
+let sandyOrbs=[]; // {owner,angle,dmg} — sandy+electric rotating orbs
 
 const ARENA={x:15,y:65,w:W-30,h:H-200};
 
@@ -275,7 +290,7 @@ function createFighter(charIdx,elemIdx,side){
     baseAtk:s.atk,baseDef:s.def,baseSpeed:s.speed,
     radius:45,
     rotation:0,
-    spinSpeed:(Math.random()-0.5)*0.12,
+    spinSpeed:0.06+Math.random()*0.04, // normalized consistent spin
     weaponAngle:launchAngle,
     weaponExtend:0,
     weaponFlash:0,
@@ -294,6 +309,10 @@ function createFighter(charIdx,elemIdx,side){
     relicShockwaveTimer:0,relicShockwaveCount:0,
     relicWhipSpinTimer:0,
     relicHomingShots:0,relicLockTarget:null,relicChargeTimer:0,
+    // Sandevistan state
+    dodgeChance:ch.id==='sandy'?0.05:0,
+    sandyActive:false,sandyTimer:0,sandyDodgeBoost:0,
+    sandyTimeScale:1, // 1=normal, 0.2-0.3=slowed by enemy sandy
     // Status effects
     bleedTimer:0,bleedDmg:0,bleedIcon:false,
     captureTimer:0, // can't attack while captured
@@ -314,6 +333,8 @@ function createFighter(charIdx,elemIdx,side){
     hitFlash:0,deathAnim:0,alive:true,
     // PLS explosion scaling
     plsExplosionRadius:30,plsFireRate:1,
+    // Sandy electric orbs
+    sandyOrbAngle:0,
   };
 }
 
@@ -323,10 +344,23 @@ function createFighter(charIdx,elemIdx,side){
 function updatePhysics(f,dt){
   if(!f.alive)return;
   let spdMult=1;
+  if(f.sandyTimeScale<1)spdMult*=f.sandyTimeScale; // Sandevistan slow
   if(f.stunTimer>0)spdMult=0.15;
   if(f.freezeTimer>0)spdMult=0.08;
   if(f.slowTimer>0)spdMult*=0.55;
   if(f.captureTimer>0)spdMult=0.05; // nearly immobile when captured
+
+  // Monowire stays near captured enemy
+  if(f.char.id==='monowire'){
+    const enemy=fighters[1-f.side];
+    if(enemy&&enemy.captureTimer>0&&enemy._capturedBy===f){
+      const d=dist(f,enemy);
+      if(d>100){
+        const a=angle(f,enemy);
+        f.vx+=Math.cos(a)*0.5;f.vy+=Math.sin(a)*0.5;
+      }
+    }
+  }
 
   // Relic dash override
   if(f.relicDashing&&f.relicDashTarget){
@@ -350,6 +384,19 @@ function updatePhysics(f,dt){
     f.spinSpeed+=((Math.random()-0.5)*0.03);
     SFX.wallBounce();
     spawnSparks(f.x,f.y,'#555',3);
+    // Sandy+toxic: wall bounce shoots poison orbs in all directions
+    if(f.char.id==='sandy'&&f.elementActive&&f.elem.id==='toxic'){
+      for(let i=0;i<8;i++){
+        const pa=Math.PI*2*i/8;
+        projectiles.push({
+          x:f.x+Math.cos(pa)*f.radius,y:f.y+Math.sin(pa)*f.radius,
+          vx:Math.cos(pa)*4,vy:Math.sin(pa)*4,
+          owner:f,target:null,color:'#aa44cc',life:40,radius:5,
+          dmg:f.atk*0.25,explosive:false,homing:false,
+        });
+      }
+      spawnBurst(f.x,f.y,'#aa44cc',12,5);
+    }
   }
 
   if(Math.random()<0.03){f.vx+=(Math.random()-0.5)*1.2;f.vy+=(Math.random()-0.5)*1.2;}
@@ -406,27 +453,6 @@ function checkBallCollision(f1,f2){
   SFX.clash();
 
   // No body collision damage — only weapons deal damage
-  // Weapon parry check: if both weapons are roughly facing each other, trigger a clash
-  const w1Tip={x:f1.x+Math.cos(f1.weaponAngle)*f1.range*0.6,y:f1.y+Math.sin(f1.weaponAngle)*f1.range*0.6};
-  const w2Tip={x:f2.x+Math.cos(f2.weaponAngle)*f2.range*0.6,y:f2.y+Math.sin(f2.weaponAngle)*f2.range*0.6};
-  if(dist(w1Tip,w2Tip)<50){
-    // Weapon clash / parry!
-    const cx=(w1Tip.x+w2Tip.x)/2,cy=(w1Tip.y+w2Tip.y)/2;
-    spawnBurst(cx,cy,'#ffffff',15,6);
-    spawnBurst(cx,cy,'#ffcc00',10,4);
-    spawnSparks(cx,cy,'#ffaa00',8);
-    shakeTimer=12;shakeAmt=7;
-    SFX.clash();
-    // Both get knocked back slightly
-    const ka=angle(f2,f1);
-    f1.vx+=Math.cos(ka)*4;f1.vy+=Math.sin(ka)*4;
-    f2.vx-=Math.cos(ka)*4;f2.vy-=Math.sin(ka)*4;
-    // Small special bar gain from parry
-    f1.specialBar=Math.min(f1.specialMax,f1.specialBar+5);
-    f2.specialBar=Math.min(f2.specialMax,f2.specialBar+5);
-    addLog('WEAPON CLASH!');
-    spawnDmgNum(cx,cy-15,'PARRY!','#ffcc00',true);
-  }
 }
 
 // ============================================================
@@ -435,6 +461,13 @@ function checkBallCollision(f1,f2){
 function dealDamage(attacker,defender,baseDmg,canCrit){
   if(!defender.alive)return 0;
   if(canCrit===undefined)canCrit=true;
+  // Dodge check (Sandevistan)
+  const totalDodge=defender.dodgeChance+defender.sandyDodgeBoost;
+  if(totalDodge>0&&Math.random()<totalDodge){
+    spawnDmgNum(defender.x,defender.y-defender.radius-15,'DODGE','#4488ff',true);
+    spawnBurst(defender.x,defender.y,'#4488ff',8,4);
+    return 0;
+  }
   const isCrit=canCrit&&Math.random()*100<attacker.crit;
   let dmg=baseDmg*(isCrit?2:1);
   const actualDef=Math.max(0,defender.def-defender.defReduction);
@@ -480,7 +513,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -504,6 +537,7 @@ function performWeaponAttack(f,enemy){
     case 'gorilla':attackGorilla(f,enemy,chaos);break;
     case 'monowire':attackMonowire(f,enemy,chaos);break;
     case 'pls':attackPLS(f,enemy,chaos);break;
+    case 'sandy':attackSandy(f,enemy,chaos);break;
   }
 }
 
@@ -630,6 +664,42 @@ function attackPLS(f,enemy,chaos){
   f.plsExplosionRadius=30+f.totalHits*0.3;
 }
 
+function attackSandy(f,enemy,chaos){
+  // Unarmed — speed = damage. Hits when facing and in range, then bounces away
+  f.weaponFlash=12;
+  const d=dist(f,enemy);
+  const effectiveRange=f.range+chaos*5;
+  const facing=isWeaponFacingEnemy(f,enemy);
+  const spd=Math.hypot(f.vx,f.vy);
+  // Damage scales with speed — faster = harder hit
+  const spdDmg=f.atk*(0.5+spd*0.3)+chaos*2;
+
+  SFX.punch();
+  if(facing&&d<effectiveRange){
+    dealDamage(f,enemy,spdDmg);
+    // Bounce away after hitting — prevents stunlock
+    const ka=angle(enemy,f);
+    f.vx=Math.cos(ka)*7;f.vy=Math.sin(ka)*7;
+    // Knockback enemy slightly
+    const ka2=angle(f,enemy);
+    enemy.vx+=Math.cos(ka2)*2;enemy.vy+=Math.sin(ka2)*2;
+    spawnBurst(enemy.x,enemy.y,'#4488ff',10,4);
+    shakeTimer=6;shakeAmt=4;
+    // Sandy+cryo: faster = more slow on enemy
+    if(f.elementActive&&f.elem.id==='cryo'){
+      const slowAmt=Math.min(120,30+spd*10);
+      enemy.slowTimer=Math.max(enemy.slowTimer,slowAmt);
+      spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,'SLOW','#77ddff',false);
+    }
+  } else {
+    // Whiff
+    spawnSparks(f.x+Math.cos(f.weaponAngle)*f.radius,f.y+Math.sin(f.weaponAngle)*f.radius,'#4488ff',3);
+  }
+
+  // Kerenzikov dodge scaling — increases with hits, caps at 25-30%
+  f.dodgeChance=Math.min(0.28,0.05+f.totalHits*0.003);
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -644,10 +714,13 @@ function applyBleed(target,dmg,duration){
 
 function applyCaptureWrap(target,duration){
   target.captureTimer=duration;
+  target._capturedBy=null; // track who captured for proximity
+  // Find the monowire that captured
+  fighters.forEach(f=>{if(f.char.id==='monowire'&&f.side!==target.side)target._capturedBy=f;});
   SFX.capture();
   addLog((target.side===0?'P1':'P2')+' CAPTURED!');
   spawnDmgNum(target.x,target.y-target.radius-25,'WRAPPED','#00ddff',false);
-  spawnBurst(target.x,target.y,'#00aacc',12,4);
+  spawnBurst(target.x,target.y,'#00aacc',15,5);
 }
 
 function applyQuickhack(attacker,target){
@@ -839,6 +912,28 @@ function applyElementEffect(attacker,defender){
       // Capture chance boost handled in attackMonowire when enemy is slowed
       break;
 
+    // === SANDEVISTAN ===
+    case 'sandy_fire':
+      // Fire trail — handled in updateBattle physics
+      defender.burnTimer=90;defender.burnDmg=2.5;
+      spawnBurst(defender.x,defender.y,'#ff4400',8,3);
+      break;
+    case 'sandy_electric':
+      // Rotating orbs hit enemies — handled in updateBattle
+      if(Math.random()<0.25){defender.stunTimer=25;SFX.stun();}
+      spawnBurst(defender.x,defender.y,'#ffcc00',6,3);
+      break;
+    case 'sandy_toxic':
+      // Wall bounce = poison scatter — handled in physics
+      defender.defReduction=Math.min(8,defender.defReduction+3);
+      defender.defReductionTimer=120;
+      spawnBurst(defender.x,defender.y,'#aa44cc',6,3);
+      break;
+    case 'sandy_cryo':
+      // Faster speed = more slow — handled in attackSandy
+      spawnBurst(defender.x,defender.y,'#77ddff',6,3);
+      break;
+
     // Fallback: generic element effects
     default:
       switch(attacker.elem.id){
@@ -864,6 +959,7 @@ function useSpecial(f,enemy){
     case 'gorilla':relicGorilla(f,enemy);break;
     case 'monowire':relicMonowire(f,enemy);break;
     case 'pls':relicPLS(f,enemy);break;
+    case 'sandy':relicSandy(f,enemy);break;
   }
 }
 
@@ -917,6 +1013,25 @@ function relicPLS(f,enemy){
   spawnBurst(enemy.x,enemy.y,'#ff3333',15,5);
   addLog((f.side===0?'P1':'P2')+' PLS LOCK ON!');
   SFX.relicActivate();
+}
+
+function relicSandy(f,enemy){
+  // Sandevistan: slow enemy time 75%, +30% dodge, speed boost, afterimage trail
+  f.specialTimer=360; // ~6 seconds
+  f.sandyActive=true;
+  f.sandyTimer=360;
+  f.sandyDodgeBoost=0.30; // +30% dodge
+  // Slow enemy
+  enemy.sandyTimeScale=0.25; // 75% slow
+  // Speed boost
+  f.speed=f.baseSpeed*1.5;
+  const spd=Math.hypot(f.vx,f.vy);
+  if(spd>0){f.vx=f.vx/spd*f.speed*2;f.vy=f.vy/spd*f.speed*2;}
+  // Big blue activation burst
+  spawnBurst(f.x,f.y,'#4488ff',30,8);
+  spawnBurst(f.x,f.y,'#88bbff',20,6);
+  spawnBurst(f.x,f.y,'#ffffff',10,4);
+  shakeTimer=20;shakeAmt=10;
 }
 
 // ============================================================
@@ -1085,6 +1200,47 @@ function updateRelicPLS(f,enemy,dt){
   }
 }
 
+function updateRelicSandy(f,enemy,dt){
+  f.sandyTimer-=dt;
+  // Afterimage trail — spawn ghostly copies
+  if(battleTime%3<1){
+    sandyAfterimages.push({x:f.x,y:f.y,radius:f.radius,rotation:f.rotation,color:f.char.color,life:20,maxLife:20});
+  }
+  // Blue glow particles
+  if(battleTime%2<1){
+    const a=Math.random()*Math.PI*2;
+    spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#4488ff',Math.cos(a)*1.5,Math.sin(a)*1.5,15,3);
+  }
+  // Speed-based damage when hitting — handled by attackSandy already
+  // Sandy+fire: leave fire trail
+  if(f.elementActive&&f.elem.id==='fire'&&battleTime%4<1){
+    fireTrails.push({x:f.x,y:f.y,life:45,maxLife:45,radius:12,owner:f,dmg:f.atk*0.15});
+  }
+  // Sandy+electric: rotating orbs
+  if(f.elementActive&&f.elem.id==='electric'){
+    f.sandyOrbAngle+=0.12*dt;
+    // Check orb hits
+    for(let oi=0;oi<2;oi++){
+      const oa=f.sandyOrbAngle+oi*Math.PI;
+      const ox=f.x+Math.cos(oa)*55,oy=f.y+Math.sin(oa)*55;
+      if(enemy.alive&&dist({x:ox,y:oy},enemy)<enemy.radius+8&&battleTime%10<1){
+        dealDamage(f,enemy,f.atk*0.4,false);
+        spawnBurst(ox,oy,'#ffcc00',6,3);
+      }
+    }
+  }
+  // End of Sandevistan
+  if(f.sandyTimer<=0){
+    f.sandyActive=false;
+    f.sandyDodgeBoost=0;
+    f.speed=f.baseSpeed;
+    enemy.sandyTimeScale=1;
+    f.specialTimer=0;f.specialActive=false;
+    addLog((f.side===0?'P1':'P2')+' Sandevistan ended');
+    spawnBurst(f.x,f.y,'#4488ff',10,4);
+  }
+}
+
 // ============================================================
 // BATTLE UPDATE
 // ============================================================
@@ -1159,12 +1315,13 @@ function updateBattle(dt){
         case 'gorilla':updateRelicGorilla(f,enemy,dt);break;
         case 'monowire':updateRelicMonowire(f,enemy,dt);break;
         case 'pls':updateRelicPLS(f,enemy,dt);break;
+        case 'sandy':updateRelicSandy(f,enemy,dt);break;
       }
     }
 
     // Weapon attack — only when weapon spins to face enemy AND cooldown ready
     if(!f.specialActive||f.char.id==='gorilla'){
-      if(f.attackTimer>0)f.attackTimer-=dt;
+      if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
       // Attack when: cooldown ready + weapon naturally faces the enemy
       if(f.attackTimer<=0&&isWeaponFacingEnemy(f,enemy)){
         f.attackTimer=getAttackInterval(f);
@@ -1178,6 +1335,33 @@ function updateBattle(dt){
 
   // Ball-to-ball collision
   checkBallCollision(f1,f2);
+
+  // Weapon parry check — every frame, check if weapon tips are close
+  // Sandy can't parry (no weapon)
+  if(f1.alive&&f2.alive&&f1.char.id!=='sandy'&&f2.char.id!=='sandy'){
+    const tipDist1=Math.min(f1.range*0.7,80);
+    const tipDist2=Math.min(f2.range*0.7,80);
+    const w1={x:f1.x+Math.cos(f1.weaponAngle)*tipDist1,y:f1.y+Math.sin(f1.weaponAngle)*tipDist1};
+    const w2={x:f2.x+Math.cos(f2.weaponAngle)*tipDist2,y:f2.y+Math.sin(f2.weaponAngle)*tipDist2};
+    if(dist(w1,w2)<35&&!f1._parryCooldown&&!f2._parryCooldown){
+      const cx=(w1.x+w2.x)/2,cy=(w1.y+w2.y)/2;
+      spawnBurst(cx,cy,'#ffffff',20,7);
+      spawnBurst(cx,cy,'#ffcc00',15,5);
+      spawnSparks(cx,cy,'#ffaa00',10);
+      shakeTimer=12;shakeAmt=7;
+      SFX.clash();
+      const ka=angle(f2,f1);
+      f1.vx+=Math.cos(ka)*5;f1.vy+=Math.sin(ka)*5;
+      f2.vx-=Math.cos(ka)*5;f2.vy-=Math.sin(ka)*5;
+      f1.specialBar=Math.min(f1.specialMax,f1.specialBar+8);
+      f2.specialBar=Math.min(f2.specialMax,f2.specialBar+8);
+      addLog('WEAPON CLASH!');
+      spawnDmgNum(cx,cy-15,'PARRY!','#ffcc00',true);
+      f1._parryCooldown=30;f2._parryCooldown=30;
+    }
+    if(f1._parryCooldown>0)f1._parryCooldown-=dt;
+    if(f2._parryCooldown>0)f2._parryCooldown-=dt;
+  }
 
   // Update projectiles
   for(let i=projectiles.length-1;i>=0;i--){
@@ -1200,9 +1384,17 @@ function updateBattle(dt){
     p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;
     spawnParticle(p.x,p.y,p.color,0,0,8,2);
 
-    // Check hit on target
+    // Check hit on target (or any enemy if no target)
     let hit=false;
     if(p.target&&p.target.alive&&dist(p,p.target)<p.target.radius+p.radius){hit=true;}
+    else if(!p.target){
+      // No specific target — check both fighters
+      [fighters[0],fighters[1]].forEach(f=>{
+        if(f&&f.alive&&f!==p.owner&&dist(p,f)<f.radius+p.radius){
+          p.target=f;hit=true;
+        }
+      });
+    }
 
     // Check wall hit (for explosive projectiles)
     let wallHit=false;
@@ -1248,15 +1440,7 @@ function updateBattle(dt){
       projectiles.splice(i,1);
     }
 
-    // Monowire relic parry — deflect projectiles near spinning monowire
-    [f1,f2].forEach(f=>{
-      if(f.relicWhipSpinTimer>0&&p.owner!==f&&dist(p,f)<90){
-        // Deflect!
-        p.vx*=-1;p.vy*=-1;
-        p.owner=f;p.target=f===f1?f2:f1;
-        spawnSparks(p.x,p.y,'#00ffff',5);
-      }
-    });
+    // Weapons don't deflect projectiles — only clash with other weapons
   }
 
   // Update explosions
@@ -1410,6 +1594,33 @@ function updateBattle(dt){
   // Relic text timer
   if(relicTextTimer>0)relicTextTimer-=dt;
 
+  // Update fire trails (sandy+fire)
+  for(let i=fireTrails.length-1;i>=0;i--){
+    const ft=fireTrails[i];ft.life-=dt;
+    if(ft.life<=0){fireTrails.splice(i,1);continue;}
+    [f1,f2].forEach(f=>{
+      if(f.alive&&f!==ft.owner&&dist(f,ft)<ft.radius+f.radius&&battleTime%8<dt){
+        f.hp-=ft.dmg;f.hitFlash=5;
+        spawnParticle(f.x+rand(-5,5),f.y+rand(-5,5),'#ff4400',0,-1,8,2);
+        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=ft.owner;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+      }
+    });
+    if(battleTime%4<dt)spawnParticle(ft.x+rand(-ft.radius/2,ft.radius/2),ft.y+rand(-ft.radius/2,ft.radius/2),pick(['#ff4400','#ff6600','#ffaa00']),0,-0.5,10,2);
+  }
+
+  // Update sandy afterimages
+  for(let i=sandyAfterimages.length-1;i>=0;i--){
+    sandyAfterimages[i].life-=dt;
+    if(sandyAfterimages[i].life<=0)sandyAfterimages.splice(i,1);
+  }
+
+  // Sandy+fire: fire trail during movement (non-special too if element active)
+  [f1,f2].forEach(f=>{
+    if(f.alive&&f.char.id==='sandy'&&f.elementActive&&f.elem.id==='fire'&&!f.sandyActive&&battleTime%6<1){
+      fireTrails.push({x:f.x,y:f.y,life:30,maxLife:30,radius:10,owner:f,dmg:f.atk*0.1});
+    }
+  });
+
   // Particles
   for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=0.96;p.vy*=0.96;p.life-=dt;if(p.life<=0)particles.splice(i,1);}
   // Damage numbers
@@ -1457,18 +1668,32 @@ function drawBall(f){
   // Element activation flash
   if(f.elementFlash>0){X.beginPath();X.arc(f.x,f.y,f.radius+20*(f.elementFlash/30),0,Math.PI*2);X.fillStyle=f.elem.color+(Math.floor(f.elementFlash/30*80).toString(16).padStart(2,'0'));X.fill();}
 
-  // Capture/wrap visual — wire wrapped around ball
+  // Capture/wrap visual — monowire wrapped around ball like real wire
   if(f.captureTimer>0){
-    X.strokeStyle='#00ddff';X.lineWidth=2.5;
-    for(let i=0;i<5;i++){
-      const a=battleTime*0.05+i*Math.PI*2/5;
-      const r=f.radius+3;
-      X.beginPath();
-      X.arc(f.x,f.y,r,a,a+0.8);
-      X.stroke();
+    // Multiple wire strands wrapping tightly
+    X.shadowColor='#ff8800';X.shadowBlur=8;
+    for(let w=0;w<6;w++){
+      const baseA=battleTime*0.03+w*Math.PI*2/6;
+      const r=f.radius+2+Math.sin(w*1.7)*2;
+      // Wire strand
+      X.strokeStyle='rgba(255,160,40,0.8)';X.lineWidth=2;
+      X.beginPath();X.arc(f.x,f.y,r,baseA,baseA+0.9);X.stroke();
+      // Hot center of wire
+      X.strokeStyle='rgba(255,240,180,0.5)';X.lineWidth=0.8;
+      X.beginPath();X.arc(f.x,f.y,r,baseA+0.1,baseA+0.8);X.stroke();
     }
-    X.beginPath();X.arc(f.x,f.y,f.radius+6,0,Math.PI*2);
-    X.fillStyle='rgba(0,221,255,0.15)';X.fill();
+    X.shadowBlur=0;
+    // Connected wire line to captor
+    if(f._capturedBy&&f._capturedBy.alive){
+      const cap=f._capturedBy;
+      X.strokeStyle='rgba(255,140,30,0.4)';X.lineWidth=2;
+      X.beginPath();X.moveTo(f.x,f.y);X.lineTo(cap.x,cap.y);X.stroke();
+      X.strokeStyle='rgba(255,200,80,0.6)';X.lineWidth=1;
+      X.beginPath();X.moveTo(f.x,f.y);X.lineTo(cap.x,cap.y);X.stroke();
+    }
+    // Constriction glow
+    X.beginPath();X.arc(f.x,f.y,f.radius+5,0,Math.PI*2);
+    X.fillStyle='rgba(255,140,30,0.1)';X.fill();
   }
 
   // Freeze visual
@@ -1531,11 +1756,14 @@ function drawBall(f){
   X.strokeStyle='#333';X.lineWidth=0.5;X.strokeRect(spX,spY,spW,spH);
   if(spR>=1){X.font='bold 7px Consolas,monospace';X.fillStyle='#ffcc00';X.textAlign='center';X.fillText('RELIC',f.x,spY+spH+8);}
 
-  // Chaos level indicator
+  // Scaling indicator (replaces chaos label)
   const chaos=getChaosLevel(f);
-  if(chaos>1){
+  if(chaos>0.5){
     X.font='bold 7px Consolas,monospace';X.fillStyle=chaos>4?'#ff4444':chaos>2?'#ffaa00':'#888';
-    X.textAlign='center';X.fillText('CHAOS '+chaos.toFixed(1)+'x',f.x,spY+spH+(spR>=1?17:8));
+    X.textAlign='center';
+    const atkScale=Math.round((1+chaos*0.08)*100);
+    const spdScale=Math.round(100/(1+chaos*0.5)*10)/10;
+    X.fillText('ATK:'+atkScale+'% SPD:'+spdScale+'f',f.x,spY+spH+(spR>=1?17:8));
   }
 
   // Burn visual
@@ -1559,6 +1787,7 @@ function drawWeapon(f){
     case 'gorilla':drawGorillaArms(r,ext,flash,f);break;
     case 'monowire':drawMonowire(r,ext,flash,f);break;
     case 'pls':drawPLS(r,ext,flash,f);break;
+    case 'sandy':drawSandy(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -2038,6 +2267,48 @@ function drawPLS(r,ext,flash,f){
   }
 }
 
+function drawSandy(r,ext,flash,f){
+  // Sandevistan — no weapon, just fists + spine implant visual on ball
+  // Small fists extending from ball
+  const fistR=12;
+  X.save();X.translate(r-5,0);
+  // Right fist
+  X.beginPath();X.arc(15,-4,fistR,0,Math.PI*2);
+  const fg=X.createRadialGradient(14,-5,2,15,-4,fistR);
+  fg.addColorStop(0,'#556');fg.addColorStop(0.5,'#334');fg.addColorStop(1,'#223');
+  X.fillStyle=fg;X.fill();
+  X.strokeStyle=flash?'#88bbff':'#445';X.lineWidth=1.5;X.stroke();
+  // Left fist (slightly behind)
+  X.beginPath();X.arc(10,6,fistR*0.9,0,Math.PI*2);
+  X.fillStyle='#2a2a35';X.fill();
+  X.strokeStyle=flash?'#88bbff':'#3a3a44';X.lineWidth=1.2;X.stroke();
+  // Knuckle ridges
+  for(let k=0;k<3;k++){
+    X.fillStyle=flash?'rgba(68,136,255,0.8)':'rgba(100,120,150,0.6)';
+    X.fillRect(18+k*4,-7+k*1,3,6);
+  }
+  X.restore();
+
+  // Impact flash
+  if(flash){
+    X.beginPath();X.arc(r+22,0,16,0,Math.PI*2);
+    X.fillStyle='rgba(68,136,255,0.4)';X.fill();
+    X.beginPath();X.arc(r+22,0,7,0,Math.PI*2);
+    X.fillStyle='rgba(200,220,255,0.6)';X.fill();
+  }
+
+  // Sandevistan blue glow aura when active
+  if(f&&f.sandyActive){
+    X.save();X.rotate(-f.weaponAngle);
+    // Blue energy field around ball
+    X.beginPath();X.arc(0,0,f.radius+12+Math.sin(battleTime*0.15)*4,0,Math.PI*2);
+    X.strokeStyle='rgba(68,136,255,0.6)';X.lineWidth=3;X.stroke();
+    X.beginPath();X.arc(0,0,f.radius+6,0,Math.PI*2);
+    X.strokeStyle='rgba(136,187,255,0.3)';X.lineWidth=6;X.stroke();
+    X.restore();
+  }
+}
+
 // ============================================================
 // MINI WEAPON ICON
 // ============================================================
@@ -2122,6 +2393,17 @@ function drawMiniWeapon(cx,cy,charId,size){
       // Targeting optic
       X.beginPath();X.arc(5,-11,1.5,0,Math.PI*2);X.fillStyle='#55ff55';X.fill();
       break;
+    case 'sandy':
+      // Fists + blue glow
+      X.beginPath();X.arc(8,-3,7,0,Math.PI*2);X.fillStyle='#334';X.fill();X.strokeStyle='#556';X.lineWidth=0.8;X.stroke();
+      X.beginPath();X.arc(5,4,6,0,Math.PI*2);X.fillStyle='#2a2a35';X.fill();X.strokeStyle='#445';X.lineWidth=0.7;X.stroke();
+      // Blue accent
+      X.fillStyle='rgba(68,136,255,0.5)';X.fillRect(4,-5,6,2);X.fillRect(4,3,5,2);
+      // Spine line (Sandevistan implant hint)
+      X.strokeStyle='#4488ff';X.lineWidth=1;
+      X.beginPath();X.moveTo(-10,0);X.lineTo(-2,0);X.stroke();
+      X.beginPath();X.arc(-10,0,1.5,0,Math.PI*2);X.fillStyle='#88bbff';X.fill();
+      break;
   }
   X.restore();
 }
@@ -2150,7 +2432,7 @@ function drawTitle(){
 
   const t=Date.now()*0.002;
   CHARS.forEach((ch,i)=>{
-    const bx=W/2+(i-1.5)*(isMobile?85:100);
+    const bx=W/2+(i-2)*(isMobile?72:90);
     const by=titleY+130+Math.sin(t+i)*10;
     const br=isMobile?28:32;
     const g=X.createRadialGradient(bx-br*0.2,by-br*0.2,br*0.1,bx,by,br);
@@ -2164,7 +2446,7 @@ function drawTitle(){
   const btnW=200,btnH=50;
   addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'START','#7b68ee',()=>{screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v5.1 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v6.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -2191,7 +2473,7 @@ function drawBallPreview(bx,by,r,ch){
 }
 
 function drawSelectDesktop(){
-  const cardW=180,cardH=200,gap=15;
+  const cardW=150,cardH=200,gap=10;
   const totalW=CHARS.length*cardW+(CHARS.length-1)*gap;
   const startX=(W-totalW)/2;
   const cardY=55;
@@ -2240,7 +2522,7 @@ function drawSelectDesktop(){
 }
 
 function drawSelectMobile(){
-  const cardW=90,cardH=130,gap=8;
+  const cardW=75,cardH=125,gap=5;
   const totalW=CHARS.length*cardW+(CHARS.length-1)*gap;
   const startX=(W-totalW)/2;
 
@@ -2419,6 +2701,7 @@ function startBattle(){
   screen='battle';battleOver=false;winner=null;battleTime=0;battleSpeed=1;
   particles=[];dmgNums=[];battleLog=[];projectiles=[];explosions=[];
   shockwaveProjectiles=[];wallCracks=[];fireZones=[];vulnZones=[];poisonBubbles=[];
+  fireTrails=[];sandyAfterimages=[];sandyOrbs=[];
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
@@ -2505,6 +2788,44 @@ function drawBattle(){
       X.strokeStyle='#aa44cc';X.lineWidth=1;X.stroke();
     }
     X.globalAlpha=1;
+  });
+
+  // Sandy afterimages (ghostly speed trails)
+  sandyAfterimages.forEach(ai=>{
+    const a=Math.max(0,ai.life/ai.maxLife);
+    X.globalAlpha=a*0.35;
+    X.beginPath();X.arc(ai.x,ai.y,ai.radius,0,Math.PI*2);
+    X.fillStyle=ai.color;X.fill();
+    X.strokeStyle='#4488ff';X.lineWidth=2;X.stroke();
+    X.globalAlpha=1;
+  });
+
+  // Fire trails (sandy+fire)
+  fireTrails.forEach(ft=>{
+    const a=Math.max(0.1,ft.life/ft.maxLife);
+    X.globalAlpha=a;
+    X.beginPath();X.arc(ft.x,ft.y,ft.radius,0,Math.PI*2);
+    const fg=X.createRadialGradient(ft.x,ft.y,0,ft.x,ft.y,ft.radius);
+    fg.addColorStop(0,'rgba(255,100,0,0.6)');fg.addColorStop(1,'rgba(255,60,0,0)');
+    X.fillStyle=fg;X.fill();
+    X.globalAlpha=1;
+  });
+
+  // Sandy+electric rotating orbs
+  fighters.forEach(f=>{
+    if(f.alive&&f.char.id==='sandy'&&f.elementActive&&f.elem.id==='electric'){
+      for(let oi=0;oi<2;oi++){
+        const oa=f.sandyOrbAngle+oi*Math.PI;
+        const ox=f.x+Math.cos(oa)*55,oy=f.y+Math.sin(oa)*55;
+        X.beginPath();X.arc(ox,oy,8,0,Math.PI*2);
+        const og=X.createRadialGradient(ox,oy,0,ox,oy,8);
+        og.addColorStop(0,'#ffffaa');og.addColorStop(0.5,'#ffcc00');og.addColorStop(1,'#ff990033');
+        X.fillStyle=og;X.fill();
+        X.strokeStyle='#ffcc00';X.lineWidth=1.5;X.stroke();
+        // Trail
+        spawnParticle(ox,oy,'#ffcc00',0,0,6,2);
+      }
+    }
   });
 
   // Gorilla shockwave projectiles (visible wave discs)
@@ -2710,11 +3031,12 @@ function drawFighterInfo(f,px,py,maxW,align){
     else{X.fillStyle='#555';X.fillText('No Element',ex,ey);}
   }
 
-  // Chaos level
+  // Scaling stats
   const chaos=getChaosLevel(f);
   X.font='10px Consolas,monospace';X.textAlign=isL?'left':'right';
   X.fillStyle=chaos>4?'#ff4444':chaos>2?'#ffaa00':chaos>0.5?'#888':'#444';
-  X.fillText('Chaos: '+chaos.toFixed(1)+'x',px+(isL?5:maxW-5),py+42);
+  const atkPct=Math.round((1+chaos*0.08)*100);
+  X.fillText('ATK:'+atkPct+'% | Hits:'+f.totalHits,px+(isL?5:maxW-5),py+42);
 
   // Relic status
   X.font='9px Consolas,monospace';X.fillStyle=f.specialActive?'#ffcc00':'#7b68ee';
