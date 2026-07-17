@@ -202,7 +202,7 @@ function pauseBGM(){
 }
 
 // ── CONSTANTS ──
-const TILE=1,HALF_FOV=FOV/2,MAX_DEPTH=20,MOVE_SPEED=0.025,MOUSE_SENS=0.0012;
+const TILE=1,HALF_FOV=FOV/2,MAX_DEPTH=20,MOVE_SPEED=0.04,MOUSE_SENS=0.002;
 const MAP_W=24,MAP_H=24,MAP=[];
 function generateMap(){for(let y=0;y<MAP_H;y++){MAP[y]=[];for(let x=0;x<MAP_W;x++){MAP[y][x]=(x===0||y===0||x===MAP_W-1||y===MAP_H-1)?1:0;}}MAP[6][6]=3;MAP[6][17]=3;MAP[17][6]=3;MAP[17][17]=3;}
 generateMap();
@@ -1687,9 +1687,11 @@ function renderScene(){
   const W=canvas.width,H=canvas.height;
   const ctx2=canvas.getContext('2d');
   const fov=currentFOV||FOV;
+  const pitchOff=player.pitch||0;
+  const horizon=H/2+pitchOff;
   // Floor/ceiling
-  ctx2.fillStyle='#111';ctx2.fillRect(0,H/2,W,H/2);
-  ctx2.fillStyle='#1a1a2e';ctx2.fillRect(0,0,W,H/2);
+  ctx2.fillStyle='#111';ctx2.fillRect(0,horizon,W,H-horizon);
+  ctx2.fillStyle='#1a1a2e';ctx2.fillRect(0,0,W,horizon);
 
   // Cast rays
   const zBuffer=new Float32Array(NUM_RAYS);
@@ -1702,7 +1704,7 @@ function renderScene(){
     const brightness=Math.max(0,1-corrected/MAX_DEPTH);
     const shade=Math.floor(brightness*200);
     ctx2.fillStyle=`rgb(${shade},${Math.floor(shade*0.7)},${Math.floor(shade*0.5)})`;
-    ctx2.fillRect(i*(W/NUM_RAYS),H/2-wallH/2,W/NUM_RAYS+1,wallH);
+    ctx2.fillRect(i*(W/NUM_RAYS),horizon-wallH/2,W/NUM_RAYS+1,wallH);
   }
 
   // Sprite rendering (enemies, pickups)
@@ -1731,7 +1733,7 @@ function renderScene(){
       const ET=ENEMY_TYPES.find(t=>t.name===e.typeName)||ENEMY_TYPES[0];
       const h=Math.min(H,(1/Math.max(dist,0.5))*H*0.8);
       const w2=h*(ET.spriteW/ET.spriteH||1);
-      const x0=screenX-w2/2,y0=H/2-h/2;
+      const x0=screenX-w2/2,y0=horizon-h/2;
       // Check z-buffer occlusion
       const rayIdx=Math.floor(screenX/(W/NUM_RAYS));
       if(rayIdx>=0&&rayIdx<NUM_RAYS&&dist<zBuffer[rayIdx]){
@@ -1753,9 +1755,9 @@ function renderScene(){
       if(rayIdx>=0&&rayIdx<NUM_RAYS&&dist<zBuffer[rayIdx]){
         ctx2.save();
         ctx2.fillStyle=p.type==='weapon'?'#ff0':p.type==='armor'?'#08f':p.type==='emblem'?'#a0f':p.type==='healthOrb'?'#0f0':'#fff';
-        ctx2.beginPath();ctx2.arc(screenX,H/2,h/2,0,Math.PI*2);ctx2.fill();
+        ctx2.beginPath();ctx2.arc(screenX,horizon,h/2,0,Math.PI*2);ctx2.fill();
         ctx2.fillStyle='#000';ctx2.font='bold 10px monospace';ctx2.textAlign='center';
-        ctx2.fillText(p.type==='weapon'?'W':p.type==='armor'?'A':p.type==='emblem'?'E':p.type==='healthOrb'?'+':'?',screenX,H/2+4);
+        ctx2.fillText(p.type==='weapon'?'W':p.type==='armor'?'A':p.type==='emblem'?'E':p.type==='healthOrb'?'+':'?',screenX,horizon+4);
         ctx2.restore();
       }
     }
@@ -1774,7 +1776,7 @@ function renderScene(){
     const h=10,w2=10;
     ctx2.save();ctx2.globalAlpha=0.9;
     ctx2.fillStyle=pr.color||'#ff0';
-    ctx2.beginPath();ctx2.arc(screenX,H/2,h/2,0,Math.PI*2);ctx2.fill();
+    ctx2.beginPath();ctx2.arc(screenX,horizon,h/2,0,Math.PI*2);ctx2.fill();
     ctx2.restore();
   });
 }
@@ -2535,7 +2537,7 @@ function getBaseSpeed(){
 function updatePlayer(dt){
   // Mouse look — consume accumulated mouse movement
   if(mouseDx!==0){player.angle+=mouseDx*MOUSE_SENS;mouseDx=0;}
-  if(mouseDy!==0)mouseDy=0;
+  if(mouseDy!==0){player.pitch=Math.max(-canvas.height*0.4,Math.min(canvas.height*0.4,player.pitch-mouseDy*0.5));mouseDy=0;}
   const spd=(player.speed+player.speedBuff)*0.008*(dt/16);
   if(keys['w']||keys['arrowup']){player.x+=Math.cos(player.angle)*spd;player.y+=Math.sin(player.angle)*spd;}
   if(keys['s']||keys['arrowdown']){player.x-=Math.cos(player.angle)*spd;player.y-=Math.sin(player.angle)*spd;}
@@ -3127,11 +3129,12 @@ function showBossReward(){
 
 // Override showEmblemSelect to use correct HTML
 function showEmblemSelect(){
-  gameState='emblemSelect';paused=true;
-  document.exitPointerLock&&document.exitPointerLock();
+  if(gameState!=='playing'&&gameState!=='storyPlaying')return;
   const screen=document.getElementById('emblem-screen');
   const choices=document.getElementById('emblem-choices');
   if(!screen||!choices)return;
+  gameState='emblemSelect';paused=true;
+  document.exitPointerLock&&document.exitPointerLock();
   screen.style.display='flex';choices.innerHTML='';
   playSound('levelUp');
   const shuffled=[...EMBLEM_TYPES].sort(()=>Math.random()-0.5).slice(0,3);
@@ -3145,9 +3148,8 @@ function showEmblemSelect(){
     div.addEventListener('click',()=>{
       player.emblems[em.name]=(player.emblems[em.name]||0)+2;
       screen.style.display='none';
-      gameState='playing';paused=false;
+      gameState=storyActive?'storyPlaying':'playing';paused=false;
       if(!isTouchDevice)canvas.requestPointerLock&&canvas.requestPointerLock();
-      startUnpauseCountdown();
     });
     choices.appendChild(div);
   });
