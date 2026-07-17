@@ -19,7 +19,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v4 — Full Combat Redesign
+// BALL BATTLE ARENA v5.1 — 16 Element Combos + Bug Fixes
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -135,22 +135,22 @@ const ELEMENTS=[
 ];
 
 const COMBO_EFFECTS={
-  'mantis_fire':'Kills cause explosion',
-  'mantis_electric':'Enemies explode on kill',
-  'mantis_toxic':'Poison blades stack faster',
-  'mantis_cryo':'Frozen enemies take 2x crit',
-  'gorilla_fire':'Ground pound leaves fire trail',
-  'gorilla_electric':'Punches chain lightning',
-  'gorilla_toxic':'Toxic cloud on ground pound',
-  'gorilla_cryo':'Ice armor on activation',
-  'monowire_fire':'Burning lasso DOT',
-  'monowire_electric':'Electric net paralysis',
-  'monowire_toxic':'Poison whip weakens more',
-  'monowire_cryo':'Freeze on whip connect',
-  'pls_fire':'Napalm missiles',
-  'pls_electric':'EMP missiles disable briefly',
-  'pls_toxic':'Acid warheads melt armor',
-  'pls_cryo':'Cryo missiles freeze on impact',
+  'mantis_fire':'Burn marks boost bleed damage',
+  'mantis_electric':'Wall hits = speed boost',
+  'mantis_toxic':'Bleed reapplies on re-hit',
+  'mantis_cryo':'Ice shards slow every 2 hits',
+  'gorilla_fire':'Huge knockback + wall impact DMG',
+  'gorilla_electric':'Faster attack speed',
+  'gorilla_toxic':'Poison bubbles + wall extra DMG',
+  'gorilla_cryo':'Reduced knockback, stays close',
+  'monowire_fire':'Twirl + wall collision DMG',
+  'monowire_electric':'Short circuits: attacks miss',
+  'monowire_toxic':'Longer wrap = more damage',
+  'monowire_cryo':'Slowed = easier capture',
+  'pls_fire':'Lingering fire zones',
+  'pls_electric':'Double wall explosion',
+  'pls_toxic':'Direct hit slows enemy',
+  'pls_cryo':'Vulnerability zone on impact',
 };
 
 // ============================================================
@@ -188,6 +188,9 @@ let quickhackFlashTimer=0; // screen flash on quickhack deploy
 let quickhackFlashColor='#ff0000';
 let wallCracks=[]; // {x,y,size,life} — dramatic wall crack visuals
 let shockwaveProjectiles=[]; // gorilla directional shockwaves
+let fireZones=[]; // {x,y,radius,life,maxLife,owner,dmg} — PLS fire lingering zones
+let vulnZones=[]; // {x,y,radius,life,maxLife,owner} — PLS ice vulnerability zones
+let poisonBubbles=[]; // {x,y,life,maxLife,target} — gorilla poison bubbles on enemy
 
 const ARENA={x:30,y:80,w:W-60,h:H-240};
 
@@ -220,7 +223,15 @@ function spawnExplosion(x,y,radius,color,dmg,owner,target){
   shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,radius/6);
 }
 
+let lastRelicTime=0;
 function showRelicText(text,color){
+  // Back-to-back detection — if both relics fire within 30 frames
+  if(relicTextTimer>90){
+    relicText='BACK TO BACK!!';relicTextTimer=150;relicTextColor='#ffcc00';
+    shakeTimer=20;shakeAmt=10;
+    SFX.relicActivate();SFX.special();
+    return;
+  }
   relicText=text;relicTextTimer=120;relicTextColor=color;
   SFX.relicActivate();
 }
@@ -292,6 +303,12 @@ function createFighter(charIdx,elemIdx,side){
     quickhackTimer:0,quickhackType:null,quickhackProgress:0,quickhackMax:90,
     // Element
     elementActive:false,elementFlash:0,
+    // Element combo state
+    mantisIceHitCount:0, // mantis+ice: count hits for shard every 2
+    mantisFireBurnBoost:false, // mantis+fire: burn active = bleed does more
+    gorillaKnockbackMult:1, // gorilla+fire/ice knockback modifier
+    monowireWrapDmgAccum:0, // monowire+toxic: accumulates while wrapped
+    missChance:0, // monowire+electric: chance attacks miss
     // Visual
     hitFlash:0,deathAnim:0,alive:true,
     // PLS explosion scaling
@@ -374,9 +391,7 @@ function checkBallCollision(f1,f2){
   f1.spinSpeed=(Math.random()-0.5)*0.22;
   f2.spinSpeed=(Math.random()-0.5)*0.22;
 
-  // Weapon deflect visuals
-  f1.weaponAngle=Math.atan2(f2.y-f1.y,f2.x-f1.x);
-  f2.weaponAngle=Math.atan2(f1.y-f2.y,f1.x-f2.x);
+  // Weapon deflect visuals — keep natural spin angle, don't snap to enemy
   f1.weaponExtend=1;f2.weaponExtend=1;
   f1.weaponFlash=15;f2.weaponFlash=15;
 
@@ -452,6 +467,12 @@ function performWeaponAttack(f,enemy){
   if(!f.alive||!enemy.alive)return;
   if(f.captureTimer>0)return;
   if(f.stunTimer>0||f.freezeTimer>0)return;
+  // Monowire+electric: short circuit makes attacks miss sometimes
+  if(f.missChance>0&&Math.random()<f.missChance){
+    spawnDmgNum(f.x,f.y-f.radius-10,'MISS','#ffcc00',false);
+    spawnSparks(f.x,f.y,'#ffcc00',3);
+    f.attackAnim=8;return;
+  }
 
   const chaos=getChaosLevel(f);
   // DON'T snap weapon to enemy — use natural spin angle
@@ -507,11 +528,12 @@ function attackGorilla(f,enemy,chaos){
     // Downslam — AoE ground crack
     SFX.punch();SFX.thunderclap();
     const aoeRadius=60+chaos*12;
+    const kbMult=f.gorillaKnockbackMult||1;
     if(d<aoeRadius){
       dealDamage(f,enemy,f.atk*1.4);
       const ka=angle(f,enemy);
-      enemy.vx+=Math.cos(ka)*6;
-      enemy.vy+=Math.sin(ka)*6;
+      enemy.vx+=Math.cos(ka)*6*kbMult;
+      enemy.vy+=Math.sin(ka)*6*kbMult;
     }
     spawnBurst(f.x,f.y+f.radius,'#ff8800',20,8);
     for(let i=0;i<12;i++){
@@ -523,11 +545,12 @@ function attackGorilla(f,enemy,chaos){
   } else {
     // Left/right heavy punch — only hits if facing enemy
     SFX.punch();
+    const kbMult2=f.gorillaKnockbackMult||1;
     if(facing&&d<effectiveRange){
       dealDamage(f,enemy,f.atk);
       const ka=angle(f,enemy);
-      enemy.vx+=Math.cos(ka)*3;
-      enemy.vy+=Math.sin(ka)*3;
+      enemy.vx+=Math.cos(ka)*3*kbMult2;
+      enemy.vy+=Math.sin(ka)*3*kbMult2;
     }
     spawnBurst(f.x+Math.cos(f.weaponAngle)*f.radius,f.y+Math.sin(f.weaponAngle)*f.radius,'#ff8800',6,3);
   }
@@ -543,8 +566,10 @@ function attackMonowire(f,enemy,chaos){
   SFX.whip();
   if(facing&&d<effectiveRange){
     dealDamage(f,enemy,f.atk);
-    const captureChance=0.10+chaos*0.025;
+    let captureChance=0.20+chaos*0.03;
     const captureDuration=90+chaos*15;
+    // Monowire+cryo: slowed enemies are easier to capture
+    if(f.elementActive&&f.elem.id==='cryo'&&enemy.slowTimer>0)captureChance+=0.20;
     if(Math.random()<captureChance&&enemy.captureTimer<=0){
       applyCaptureWrap(enemy,captureDuration);
     }
@@ -657,14 +682,150 @@ function triggerQuickhack(qd){
 }
 
 // ============================================================
-// ELEMENT EFFECTS
+// ELEMENT EFFECTS — 16 unique weapon+element combos
 // ============================================================
 function applyElementEffect(attacker,defender){
-  switch(attacker.elem.id){
-    case 'fire':defender.burnTimer=120;defender.burnDmg=2;spawnBurst(defender.x,defender.y,'#ff4400',4,2);break;
-    case 'electric':if(Math.random()<0.2){defender.stunTimer=30;SFX.stun();addLog((defender.side===0?'P1':'P2')+' STUNNED!');spawnBurst(defender.x,defender.y,'#ffcc00',8,3);}break;
-    case 'toxic':defender.defReduction=4;defender.defReductionTimer=180;spawnBurst(defender.x,defender.y,'#aa44cc',4,2);break;
-    case 'cryo':defender.slowTimer=90;if(Math.random()<0.12){defender.freezeTimer=45;SFX.freeze();addLog((defender.side===0?'P1':'P2')+' FROZEN!');spawnBurst(defender.x,defender.y,'#77ddff',10,3);}break;
+  const wep=attacker.char.id;
+  const elem=attacker.elem.id;
+  const comboKey=wep+'_'+elem;
+
+  switch(comboKey){
+    // === MANTIS BLADES ===
+    case 'mantis_fire':
+      // Burn mark makes bleed do MORE damage
+      defender.burnTimer=120;defender.burnDmg=2;
+      if(defender.bleedTimer>0)defender.bleedDmg*=1.5; // boost active bleed
+      attacker.mantisFireBurnBoost=true;
+      spawnBurst(defender.x,defender.y,'#ff4400',5,2);
+      break;
+    case 'mantis_toxic':
+      // Hit again before bleed timer expires = reapply bleed
+      if(defender.bleedTimer>0){
+        defender.bleedTimer=60;defender.bleedDmg+=attacker.atk*0.15;
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'BLEED STACK','#aa44cc',false);
+        spawnBurst(defender.x,defender.y,'#aa44cc',6,3);
+      } else {
+        applyBleed(defender,attacker.atk*0.25,50);
+        spawnBurst(defender.x,defender.y,'#aa44cc',4,2);
+      }
+      break;
+    case 'mantis_electric':
+      // Hitting walls makes mantis move faster for a bit
+      attacker.speed=attacker.baseSpeed*1.4;
+      attacker.slowTimer=0; // clear any slow
+      // Speed boost decays via element check in updateBattle (120 frames ~2s)
+      attacker._elecSpeedBoost=120;
+      spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+      break;
+    case 'mantis_cryo':
+      // Every 2 hits, ice shards snap onto enemy making them slower
+      attacker.mantisIceHitCount++;
+      if(attacker.mantisIceHitCount>=2){
+        attacker.mantisIceHitCount=0;
+        defender.slowTimer=Math.max(defender.slowTimer,90);
+        SFX.freeze();
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'ICE SHARD','#77ddff',false);
+        spawnBurst(defender.x,defender.y,'#77ddff',8,3);
+        // Ice shard visual
+        for(let i=0;i<6;i++){
+          const a=Math.random()*Math.PI*2;
+          spawnParticle(defender.x+Math.cos(a)*defender.radius,defender.y+Math.sin(a)*defender.radius,'#aaeeff',Math.cos(a)*-1,Math.sin(a)*-1,25,3);
+        }
+      } else {
+        spawnBurst(defender.x,defender.y,'#77ddff',3,1);
+      }
+      break;
+
+    // === PLS ===
+    case 'pls_fire':
+      // Explosions leave lingering fire zone for 1 second
+      fireZones.push({x:defender.x,y:defender.y,radius:30+getChaosLevel(attacker)*5,life:60,maxLife:60,owner:attacker,dmg:attacker.atk*0.3});
+      spawnBurst(defender.x,defender.y,'#ff4400',6,3);
+      SFX.burn();
+      break;
+    case 'pls_electric':
+      // If hits wall, explodes TWICE — handled in projectile wall collision code
+      // Here just add stun chance on direct hit
+      if(Math.random()<0.15){defender.stunTimer=25;SFX.stun();spawnBurst(defender.x,defender.y,'#ffcc00',6,3);}
+      spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+      break;
+    case 'pls_toxic':
+      // Direct hit makes enemy move slower
+      defender.slowTimer=Math.max(defender.slowTimer,75);
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'SLOWED','#aa44cc',false);
+      break;
+    case 'pls_cryo':
+      // Vulnerability zone — enemies in area take MORE damage
+      vulnZones.push({x:defender.x,y:defender.y,radius:35+getChaosLevel(attacker)*4,life:60,maxLife:60,owner:attacker});
+      spawnBurst(defender.x,defender.y,'#77ddff',6,3);
+      SFX.freeze();
+      break;
+
+    // === GORILLA ARMS ===
+    case 'gorilla_fire':
+      // Greatly increased knockback + enemies take damage if knocked into walls
+      defender.burnTimer=60;defender.burnDmg=1.5;
+      attacker.gorillaKnockbackMult=2.5;
+      spawnBurst(defender.x,defender.y,'#ff4400',6,3);
+      break;
+    case 'gorilla_electric':
+      // Slightly increases attack speed
+      attacker.attackTimer=Math.max(0,attacker.attackTimer-8);
+      spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+      break;
+    case 'gorilla_toxic':
+      // Leaves poison bubbles on enemy — wall collisions deal extra damage
+      poisonBubbles.push({x:defender.x,y:defender.y,life:180,maxLife:180,target:defender,owner:attacker,dmg:attacker.atk*0.4});
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
+      break;
+    case 'gorilla_cryo':
+      // Greatly reduces knockback so enemy stays close, easier to hit
+      attacker.gorillaKnockbackMult=0.3;
+      defender.slowTimer=Math.max(defender.slowTimer,45);
+      spawnBurst(defender.x,defender.y,'#77ddff',4,2);
+      break;
+
+    // === MONOWIRE ===
+    case 'monowire_fire':
+      // Wraps twirl enemies — damage if they collide with walls
+      defender.burnTimer=90;defender.burnDmg=2;
+      // Spin the enemy — make them bounce around
+      defender.vx+=(Math.random()-0.5)*6;defender.vy+=(Math.random()-0.5)*6;
+      defender.spinSpeed=(Math.random()-0.5)*0.3;
+      spawnBurst(defender.x,defender.y,'#ff4400',5,3);
+      break;
+    case 'monowire_electric':
+      // Short circuits enemy — their attacks have a small chance to miss
+      defender.missChance=Math.min(0.35,defender.missChance+0.1);
+      spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'SHORT CIRCUIT','#ffcc00',false);
+      break;
+    case 'monowire_toxic':
+      // Longer enemy is wrapped, more damage they take
+      if(defender.captureTimer>0){
+        defender.monowireWrapDmgAccum+=attacker.atk*0.2;
+        spawnBurst(defender.x,defender.y,'#aa44cc',4,2);
+      }
+      defender.defReduction=Math.min(8,defender.defReduction+2);
+      defender.defReductionTimer=120;
+      spawnBurst(defender.x,defender.y,'#aa44cc',3,2);
+      break;
+    case 'monowire_cryo':
+      // Slowed enemies have higher chance of getting wrapped/captured
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',4,2);
+      // Capture chance boost handled in attackMonowire when enemy is slowed
+      break;
+
+    // Fallback: generic element effects
+    default:
+      switch(attacker.elem.id){
+        case 'fire':defender.burnTimer=120;defender.burnDmg=2;spawnBurst(defender.x,defender.y,'#ff4400',4,2);break;
+        case 'electric':if(Math.random()<0.2){defender.stunTimer=30;SFX.stun();spawnBurst(defender.x,defender.y,'#ffcc00',8,3);}break;
+        case 'toxic':defender.defReduction=4;defender.defReductionTimer=180;spawnBurst(defender.x,defender.y,'#aa44cc',4,2);break;
+        case 'cryo':defender.slowTimer=90;if(Math.random()<0.12){defender.freezeTimer=45;SFX.freeze();spawnBurst(defender.x,defender.y,'#77ddff',10,3);}break;
+      }
   }
 }
 
@@ -686,15 +847,22 @@ function useSpecial(f,enemy){
 }
 
 function relicMantis(f,enemy){
-  // MB Relic: pull back blades → homing dash → high bleed chance
-  f.specialTimer=80;
+  // MB Relic: pull back blades → homing dash → high bleed chance — DRAMATIC
+  f.specialTimer=90;
   f.relicDashing=false;
   f.relicDashTarget=enemy;
-  f.relicDashTimer=25; // 25 frames charge, then dash
+  f.relicDashTimer=30; // 30 frames charge, then dash
 
-  // Pull back visual — momentary reverse
-  f.vx*=-0.5;f.vy*=-0.5;
-  spawnBurst(f.x,f.y,'#ff3333',10,3);
+  // Dramatic pull-back — big reverse + blade glow burst
+  f.vx*=-0.8;f.vy*=-0.8;
+  spawnBurst(f.x,f.y,'#ff3333',20,5);
+  spawnBurst(f.x,f.y,'#ffcc00',10,4);
+  shakeTimer=10;shakeAmt=6;
+  // Ring of blade particles
+  for(let i=0;i<16;i++){
+    const a=Math.PI*2*i/16;
+    spawnParticle(f.x+Math.cos(a)*f.radius*1.5,f.y+Math.sin(a)*f.radius*1.5,'#ff6644',Math.cos(a)*-2,Math.sin(a)*-2,20,3);
+  }
 }
 
 function relicGorilla(f,enemy){
@@ -750,20 +918,29 @@ function updateRelicMantis(f,enemy,dt){
     spawnParticle(f.x,f.y,'#ff6644',(-f.vx)*0.3,(-f.vy)*0.3,15,3);
     spawnParticle(f.x,f.y,'#ff0000',0,0,8,2);
     if(d<f.radius+enemy.radius+15){
-      // Impact!
+      // DRAMATIC IMPACT!
       f.relicDashing=false;
-      const dmg=dealDamage(f,enemy,f.atk*3,true);
+      const dmg=dealDamage(f,enemy,f.atk*3.5,true);
       // Very high bleed chance on relic dash
-      if(enemy.alive&&Math.random()<0.7){
-        applyBleed(enemy,f.atk*0.6,90);
+      if(enemy.alive&&Math.random()<0.8){
+        applyBleed(enemy,f.atk*0.7,120);
       }
-      shakeTimer=15;shakeAmt=10;
-      spawnBurst(enemy.x,enemy.y,'#ff0000',25,7);
-      spawnBurst(enemy.x,enemy.y,'#ffcc00',12,5);
+      shakeTimer=25;shakeAmt=14;
+      // Massive slash cross visual
+      spawnBurst(enemy.x,enemy.y,'#ff0000',35,8);
+      spawnBurst(enemy.x,enemy.y,'#ffcc00',20,6);
+      spawnBurst(enemy.x,enemy.y,'#ffffff',10,4);
+      // X-slash particle lines
+      for(let i=0;i<20;i++){
+        const t=i/20;
+        spawnParticle(lerp(enemy.x-40,enemy.x+40,t),lerp(enemy.y-40,enemy.y+40,t),'#ff4444',0,0,18,2);
+        spawnParticle(lerp(enemy.x+40,enemy.x-40,t),lerp(enemy.y-40,enemy.y+40,t),'#ff4444',0,0,18,2);
+      }
+      explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:80,color:'#ff3333',life:18,maxLife:18,dmg:0,owner:null,target:null,hit:true});
       f.specialTimer=0;f.specialActive=false;
       // Scatter away after hit
       const ka=angle(enemy,f);
-      f.vx=Math.cos(ka)*6;f.vy=Math.sin(ka)*6;
+      f.vx=Math.cos(ka)*8;f.vy=Math.sin(ka)*8;
     }
   }
 }
@@ -807,7 +984,7 @@ function updateRelicMonowire(f,enemy,dt){
     f.weaponExtend=1;
 
     // BB-8 whip spin — extended wires hit everything nearby
-    const spinRange=90;
+    const spinRange=110;
     const d=dist(f,enemy);
     // Strike every 12 frames
     if(Math.floor(f.relicWhipSpinTimer)%12===0&&d<spinRange&&enemy.alive){
@@ -913,7 +1090,9 @@ function updateBattle(dt){
     if(!f.elementActive&&f.elem.id!=='none'&&f.hp<=f.maxHp*0.25){
       f.elementActive=true;f.elementFlash=30;
       SFX.elementActivate();
+      const comboKey=f.char.id+'_'+f.elem.id;
       addLog((f.side===0?'P1':'P2')+' '+f.elem.name+' ELEMENT ACTIVATED!');
+      addLog('  >> '+(COMBO_EFFECTS[comboKey]||''));
       spawnBurst(f.x,f.y,f.elem.color,20,5);
       switch(f.elem.id){
         case 'fire':f.atk=f.baseAtk*1.3;break;
@@ -1008,6 +1187,19 @@ function updateBattle(dt){
       if(p.target&&p.target.alive&&dist({x:ex,y:ey},p.target)<p.explosionRadius){
         dealDamage(p.owner,p.target,p.dmg*0.5);
       }
+      // PLS+electric: wall hit = explode TWICE — second explosion immediately offset
+      if(p.owner&&p.owner.elementActive&&p.owner.elem.id==='electric'&&p.owner.char.id==='pls'){
+        const ex2=ex+(Math.random()-0.5)*25,ey2=ey+(Math.random()-0.5)*25;
+        spawnExplosion(clamp(ex2,ARENA.x,ARENA.x+ARENA.w),clamp(ey2,ARENA.y,ARENA.y+ARENA.h),p.explosionRadius*0.8,'#ffcc00',p.dmg*0.3,p.owner,p.target);
+        if(p.target&&p.target.alive&&dist({x:ex2,y:ey2},p.target)<p.explosionRadius*0.8){
+          dealDamage(p.owner,p.target,p.dmg*0.3);
+        }
+        SFX.explode();
+      }
+      // PLS+fire: leave fire zone at wall
+      if(p.owner&&p.owner.elementActive&&p.owner.elem.id==='fire'&&p.owner.char.id==='pls'){
+        fireZones.push({x:ex,y:ey,radius:25,life:60,maxLife:60,owner:p.owner,dmg:p.owner.atk*0.2});
+      }
       projectiles.splice(i,1);continue;
     }
 
@@ -1071,6 +1263,95 @@ function updateBattle(dt){
     }
     if(sw.life<=0){shockwaveProjectiles.splice(i,1);}
   }
+
+  // Update fire zones (PLS+fire lingering fire)
+  for(let i=fireZones.length-1;i>=0;i--){
+    const fz=fireZones[i];fz.life-=dt;
+    if(fz.life<=0){fireZones.splice(i,1);continue;}
+    // Damage enemy if inside zone
+    [f1,f2].forEach(f=>{
+      if(f.alive&&f!==fz.owner&&dist(f,fz)<fz.radius+f.radius&&battleTime%10<dt){
+        f.hp-=fz.dmg;f.hitFlash=5;
+        spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#ff4400',0,-1,10,2);
+        spawnDmgNum(f.x,f.y-f.radius-10,fz.dmg,'#ff4400',false);
+        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=fz.owner;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+      }
+    });
+    // Visual
+    if(battleTime%4<dt)spawnParticle(fz.x+rand(-fz.radius/2,fz.radius/2),fz.y+rand(-fz.radius/2,fz.radius/2),pick(['#ff4400','#ff6600','#ffaa00']),0,-1,12,2);
+  }
+
+  // Update vulnerability zones (PLS+cryo)
+  for(let i=vulnZones.length-1;i>=0;i--){
+    const vz=vulnZones[i];vz.life-=dt;
+    if(vz.life<=0){vulnZones.splice(i,1);continue;}
+    // Enemies in zone take more damage (reduce def)
+    [f1,f2].forEach(f=>{
+      if(f.alive&&f!==vz.owner&&dist(f,vz)<vz.radius+f.radius){
+        f.defReduction=Math.max(f.defReduction,6);f.defReductionTimer=Math.max(f.defReductionTimer,15);
+      }
+    });
+  }
+
+  // Update poison bubbles (gorilla+toxic)
+  for(let i=poisonBubbles.length-1;i>=0;i--){
+    const pb=poisonBubbles[i];pb.life-=dt;
+    if(pb.life<=0){poisonBubbles.splice(i,1);continue;}
+    // Follow target
+    if(pb.target&&pb.target.alive){pb.x=pb.target.x;pb.y=pb.target.y;}
+    // Wall collision = extra poison damage
+    if(pb.target&&pb.target.alive){
+      const t=pb.target;
+      if(t.x-t.radius<=ARENA.x+2||t.x+t.radius>=ARENA.x+ARENA.w-2||t.y-t.radius<=ARENA.y+2||t.y+t.radius>=ARENA.y+ARENA.h-2){
+        if(battleTime%15<dt){
+          t.hp-=pb.dmg;t.hitFlash=5;
+          spawnDmgNum(t.x,t.y-t.radius-15,pb.dmg,'#aa44cc',false);
+          spawnBurst(t.x,t.y,'#aa44cc',5,2);
+          if(t.hp<=0){t.hp=0;t.alive=false;t.deathAnim=60;battleOver=true;winner=pb.owner;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+        }
+      }
+    }
+    // Visual
+    if(battleTime%5<dt)spawnParticle(pb.x+rand(-12,12),pb.y+rand(-12,12),'#aa44cc',0,0.5,15,2);
+  }
+
+  // Monowire+toxic: release accumulated wrap damage when capture ends
+  [f1,f2].forEach(f=>{
+    if(f.monowireWrapDmgAccum>0&&f.captureTimer<=0){
+      const dmg=f.monowireWrapDmgAccum;
+      f.monowireWrapDmgAccum=0;
+      f.hp-=dmg;f.hitFlash=8;
+      spawnDmgNum(f.x,f.y-f.radius-20,dmg,'#aa44cc',true);
+      spawnBurst(f.x,f.y,'#aa44cc',10,4);
+      addLog((f.side===0?'P1':'P2')+' TOXIC RELEASE! '+Math.round(dmg));
+      if(f.hp<=0){const enemy=f===f1?f2:f1;f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=enemy;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+    }
+  });
+
+  // Gorilla+fire: wall collision damage
+  [f1,f2].forEach(f=>{
+    if(!f.alive)return;
+    const enemy=f===f1?f2:f1;
+    if(enemy.alive&&enemy.elementActive&&enemy.char.id==='gorilla'&&enemy.elem.id==='fire'){
+      if(f.x-f.radius<=ARENA.x+2||f.x+f.radius>=ARENA.x+ARENA.w-2||f.y-f.radius<=ARENA.y+2||f.y+f.radius>=ARENA.y+ARENA.h-2){
+        if(Math.hypot(f.vx,f.vy)>4&&battleTime%8<dt){
+          const wallDmg=enemy.atk*0.5;
+          f.hp-=wallDmg;f.hitFlash=5;
+          spawnDmgNum(f.x,f.y-f.radius-10,wallDmg,'#ff4400',false);
+          spawnBurst(f.x,f.y,'#ff4400',6,3);
+          SFX.burn();
+          if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=enemy;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+        }
+      }
+    }
+  });
+
+  // Decay miss chance over time
+  [f1,f2].forEach(f=>{
+    if(f.missChance>0)f.missChance=Math.max(0,f.missChance-0.001*dt);
+    // Mantis+electric speed boost decay
+    if(f._elecSpeedBoost>0){f._elecSpeedBoost-=dt;if(f._elecSpeedBoost<=0)f.speed=f.baseSpeed;}
+  });
 
   // Update quickhack progress
   if(quickhackDisplay){
@@ -1769,7 +2050,7 @@ function drawTitle(){
   const btnW=200,btnH=50;
   addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'START','#7b68ee',()=>{screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v5 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v5.1 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -1927,7 +2208,7 @@ function drawElementPickerMobile(sx,sy,selected,prefix,cb){
 function startBattle(){
   screen='battle';battleOver=false;winner=null;battleTime=0;battleSpeed=1;
   particles=[];dmgNums=[];battleLog=[];projectiles=[];explosions=[];
-  shockwaveProjectiles=[];wallCracks=[];
+  shockwaveProjectiles=[];wallCracks=[];fireZones=[];vulnZones=[];poisonBubbles=[];
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
@@ -1973,6 +2254,46 @@ function drawBattle(){
     // Glow at center
     X.beginPath();X.arc(wc.x,wc.y,s*0.3,0,Math.PI*2);
     X.fillStyle='rgba(255,170,0,'+a*0.3+')';X.fill();
+    X.globalAlpha=1;
+  });
+
+  // Fire zones (PLS+fire lingering)
+  fireZones.forEach(fz=>{
+    const a=Math.max(0.15,fz.life/fz.maxLife);
+    X.globalAlpha=a;
+    X.beginPath();X.arc(fz.x,fz.y,fz.radius,0,Math.PI*2);
+    const fg=X.createRadialGradient(fz.x,fz.y,0,fz.x,fz.y,fz.radius);
+    fg.addColorStop(0,'rgba(255,100,0,0.5)');fg.addColorStop(0.6,'rgba(255,60,0,0.25)');fg.addColorStop(1,'rgba(255,30,0,0)');
+    X.fillStyle=fg;X.fill();
+    X.strokeStyle='#ff4400';X.lineWidth=1.5;X.stroke();
+    X.globalAlpha=1;
+  });
+
+  // Vulnerability zones (PLS+cryo)
+  vulnZones.forEach(vz=>{
+    const a=Math.max(0.15,vz.life/vz.maxLife);
+    X.globalAlpha=a;
+    X.beginPath();X.arc(vz.x,vz.y,vz.radius,0,Math.PI*2);
+    const vg=X.createRadialGradient(vz.x,vz.y,0,vz.x,vz.y,vz.radius);
+    vg.addColorStop(0,'rgba(119,221,255,0.4)');vg.addColorStop(0.6,'rgba(119,221,255,0.15)');vg.addColorStop(1,'rgba(119,221,255,0)');
+    X.fillStyle=vg;X.fill();
+    X.setLineDash([3,3]);X.strokeStyle='#77ddff';X.lineWidth=1.5;X.stroke();X.setLineDash([]);
+    // "VULNERABLE" text
+    X.font='bold 7px Consolas,monospace';X.fillStyle='#77ddff';X.textAlign='center';X.fillText('VULN',vz.x,vz.y+2);
+    X.globalAlpha=1;
+  });
+
+  // Poison bubbles (gorilla+toxic)
+  poisonBubbles.forEach(pb=>{
+    const a=Math.max(0.2,pb.life/pb.maxLife);
+    X.globalAlpha=a;
+    for(let i=0;i<3;i++){
+      const bx=pb.x+Math.sin(battleTime*0.05+i*2)*12;
+      const by=pb.y+Math.cos(battleTime*0.04+i*1.5)*10;
+      X.beginPath();X.arc(bx,by,4+Math.sin(battleTime*0.1+i)*2,0,Math.PI*2);
+      X.fillStyle='rgba(170,68,204,0.4)';X.fill();
+      X.strokeStyle='#aa44cc';X.lineWidth=1;X.stroke();
+    }
     X.globalAlpha=1;
   });
 
@@ -2050,21 +2371,27 @@ function drawBattle(){
     X.shadowBlur=0;X.globalAlpha=1;
   }
 
-  // Quickhack screen flash — black/red outline like blackwall
-  if(quickhackFlashTimer>0){
+  // Quickhack flash — localized near the target enemy
+  if(quickhackFlashTimer>0&&quickhackDisplay&&quickhackDisplay.target){
+    const fl=quickhackFlashTimer/25;
+    const flashOn=Math.floor(quickhackFlashTimer*2)%2===0;
+    const qt=quickhackDisplay.target;
+    const flashR=qt.radius+40+fl*20;
+    if(flashOn){
+      X.beginPath();X.arc(qt.x,qt.y,flashR,0,Math.PI*2);
+      X.strokeStyle=quickhackFlashColor;X.lineWidth=6;X.stroke();
+      X.fillStyle='rgba(0,0,0,'+fl*0.35+')';X.fill();
+    }
+    X.beginPath();X.arc(qt.x,qt.y,flashR*0.7,0,Math.PI*2);
+    X.strokeStyle=flashOn?'#000000':quickhackFlashColor;X.lineWidth=3;X.stroke();
+  } else if(quickhackFlashTimer>0){
+    // Fallback if no target (e.g. after quickhack completes) — small arena border flash
     const fl=quickhackFlashTimer/25;
     const flashOn=Math.floor(quickhackFlashTimer*2)%2===0;
     if(flashOn){
-      // Screen outline flash
-      X.strokeStyle=quickhackFlashColor;X.lineWidth=6;
-      X.strokeRect(ARENA.x-3,ARENA.y-3,ARENA.w+6,ARENA.h+6);
-      // Inner dark overlay
-      X.fillStyle='rgba(0,0,0,'+fl*0.4+')';
-      X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+      X.strokeStyle=quickhackFlashColor;X.lineWidth=4;
+      X.strokeRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
     }
-    // Red/black alternating border
-    X.strokeStyle=flashOn?'#000000':quickhackFlashColor;X.lineWidth=4;
-    X.strokeRect(ARENA.x+2,ARENA.y+2,ARENA.w-4,ARENA.h-4);
   }
 
   X.restore();
