@@ -731,7 +731,7 @@ function calcDamage(baseDmg,isCrit){
 
 function startReload(){
   const w=getWeapon();if(!w||w.ammo===Infinity||player.reloading)return;
-  const reloadTimes={Pistol:1000,Shotgun:1800,Sniper:2500,'Assault Rifle':2000,'Machine Gun':2800,'Rocket Launcher':2200,'Grenade Launcher':2000,'Crossbow':1500,'Plasma Rifle':1800,'Ice Bow':1600,'Storm Bow':2000,'Void Cannon':2200,'Holy Javelin':1400};
+  const reloadTimes={Pistol:300,Shotgun:450,Sniper:600,'Assault Rifle':500,'Machine Gun':700,'Rocket Launcher':550,'Grenade Launcher':500,'Crossbow:':400,'Plasma Rifle':450,'Ice Bow':400,'Storm Bow':500,'Void Cannon':550,'Holy Javelin':350};
   player.reloading=true;
   player.reloadDuration=(reloadTimes[w.name]||1500)/player.atkSpdMult;
   player.reloadTimer=player.reloadDuration;
@@ -3119,9 +3119,9 @@ function showBossReward(){
       playerAbilityCards[card.name]=newTier;
       applyAbilityCard(card.name,newTier);
       screen.style.display='none';
-      gameState='playing';paused=false;
+      gameState=storyActive?'storyPlaying':'playing';paused=false;
       startBGM(false);
-      startUnpauseCountdown();
+      if(!isTouchDevice)canvas.requestPointerLock&&canvas.requestPointerLock();
     });
     choices.appendChild(div);
   });
@@ -3129,10 +3129,11 @@ function showBossReward(){
 
 // Override showEmblemSelect to use correct HTML
 function showEmblemSelect(){
-  if(gameState!=='playing'&&gameState!=='storyPlaying')return;
+  if(gameState==='emblemSelect'||gameState==='bossReward'||gameState==='gameOver'||gameState==='storyDeath')return;
   const screen=document.getElementById('emblem-screen');
   const choices=document.getElementById('emblem-choices');
   if(!screen||!choices)return;
+  const prevState=gameState;
   gameState='emblemSelect';paused=true;
   document.exitPointerLock&&document.exitPointerLock();
   screen.style.display='flex';choices.innerHTML='';
@@ -3142,11 +3143,26 @@ function showEmblemSelect(){
     const lv=player.emblems[em.name]||0;
     const div=document.createElement('div');div.className='emblem-card';
     div.style.borderColor=em.color;
+    div.style.color='#fff';
     const perkIdx=Math.floor(lv/4);
-    const nextPerk=em.perks[Math.min(perkIdx,em.perks.length-1)]||'Max power';
-    div.innerHTML=`<div class="em-icon" style="color:${em.color}">${em.icon||'★'}</div><h4 style="color:${em.color}">${em.name}</h4><p>Lv ${lv}→${lv+2}</p><p style="margin-top:6px;font-size:0.72rem;color:#ccc">${nextPerk}</p>`;
+    const nextPerk=(em.perks&&em.perks[Math.min(perkIdx,em.perks.length-1)])||em.desc||'Power up';
+    div.innerHTML=`<div class="em-icon" style="color:${em.color}">${em.icon||'★'}</div><h4 style="color:${em.color}">${em.name}</h4><p style="color:#ccc">Lv ${lv}→${lv+1}</p><p style="margin-top:6px;font-size:0.72rem;color:#aaa">${nextPerk}</p>`;
     div.addEventListener('click',()=>{
-      player.emblems[em.name]=(player.emblems[em.name]||0)+2;
+      if(!player.emblems[em.name])player.emblems[em.name]=0;
+      player.emblems[em.name]++;
+      const newLv=player.emblems[em.name];
+      // Apply stat bonus
+      switch(em.stat){
+        case'atk':player.atk+=em.perLevel;break;case'def':player.def+=em.perLevel;break;
+        case'spd':player.spd+=em.perLevel;break;case'crit':player.crit+=em.perLevel;break;
+        case'maxHp':player.maxHp+=em.perLevel;player.hp=Math.min(player.hp+em.perLevel,player.maxHp);break;
+        case'atkSpd':player.atkSpdMult*=(1+em.perLevel);break;case'dot':player.dotDamage+=em.perLevel;break;
+        case'healing':player.healOnKill+=em.perLevel*0.002;break;case'allDmg':player.allDmgMult*=(1+em.perLevel);break;
+        case'regen':player.natureRegen+=em.perLevel;break;case'lifesteal':player.bloodLifesteal+=em.perLevel;break;
+        case'abilityPwr':player.abilityPower+=em.perLevel;break;case'cooldown':player.timeCDR+=em.perLevel;break;
+        case'chaos':player.chaosChance+=em.perLevel;break;
+      }
+      if(typeof applyEmblemPerk==='function')applyEmblemPerk(em.name,newLv);
       screen.style.display='none';
       gameState=storyActive?'storyPlaying':'playing';paused=false;
       if(!isTouchDevice)canvas.requestPointerLock&&canvas.requestPointerLock();
