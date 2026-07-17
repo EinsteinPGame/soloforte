@@ -547,35 +547,43 @@ function calculateArrivals(code, line, directionIndex, now) {
   // Seed based on code + direction for consistency
   const seed = hashCode(code + directionIndex);
 
-  // Station position offset: further from terminus = later first arrival
-  // Use position ratio along the line
+  // Time-anchored schedule: trains depart terminus at regular intervals
+  // Travel time to this station based on position (approx 2 min per station)
   const posRatio = totalStations > 1 ? stationIdx / (totalStations - 1) : 0;
-  const baseOffset = directionIndex === 0
-    ? posRatio * maxFreq   // direction A: later arrivals further from A terminus
-    : (1 - posRatio) * maxFreq; // direction B: opposite
+  const travelTimeMin = directionIndex === 0
+    ? posRatio * totalStations * 2      // direction A: travel from A terminus
+    : (1 - posRatio) * totalStations * 2; // direction B: from B terminus
 
-  // Generate a pseudo-random initial offset
-  const randomOffset = seededRandom(seed) * (maxFreq - minFreq);
-  const firstArrival = (baseOffset + randomOffset) % maxFreq;
+  // Average frequency for this period
+  const avgFreq = (minFreq + maxFreq) / 2;
+
+  // Current time in fractional minutes since midnight
+  const nowMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+
+  // Calculate when the next train arrives at this station:
+  // Trains depart terminus at intervals of avgFreq starting from service start
+  // This station sees trains offset by travelTimeMin
+  const serviceStart = 330; // 5:30 AM in minutes
+  const timeSinceStart = nowMinutes - serviceStart;
+  if (timeSinceStart < 0) return [];
+
+  // How far into the current interval are we?
+  const adjustedTime = timeSinceStart - travelTimeMin;
+  const elapsed = adjustedTime % avgFreq;
+  const firstArrival = avgFreq - elapsed; // minutes until next train
 
   const arrivals = [];
   const windowMinutes = 25;
   let t = firstArrival;
 
-  // Current seconds into the minute for sub-minute precision
-  const nowSeconds = now.getSeconds();
-  const currentMinFrac = now.getMinutes() + nowSeconds / 60;
-
-  // Use fractional minute within the current period for countdown
-  // We generate times relative to "now"
-  while (t <= windowMinutes + maxFreq) {
+  while (t <= windowMinutes + avgFreq) {
     if (t >= 0) {
       arrivals.push(Math.round(t * 60)); // convert to seconds
     }
-    // Vary frequency slightly per interval
+    // Slight variation in interval (+/- 30 seconds)
     const intervalSeed = seed + arrivals.length;
-    const freq = minFreq + seededRandom(intervalSeed) * (maxFreq - minFreq);
-    t += freq;
+    const jitter = (seededRandom(intervalSeed) - 0.5) * 1; // +/- 0.5 min
+    t += avgFreq + jitter;
   }
 
   return arrivals; // seconds from now
