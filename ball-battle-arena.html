@@ -338,7 +338,7 @@ function createFighter(charIdx,elemIdx,side){
     // Throwing weapon state
     throwWeapons:[
       {id:'agaou',name:'AGAOU',color:'#ff44ff',dmgMult:1.3,missCD:480,returnCD:0,available:true,melee:false},
-      {id:'stinger',name:'STINGER',color:'#ffaa00',dmgMult:1.6,missCD:300,returnCD:0,available:true,melee:true},
+      {id:'fang',name:'FANG',color:'#ffaa00',dmgMult:1.6,missCD:300,returnCD:0,available:true,melee:true},
       {id:'punk',name:'PUNKBLADE',color:'#66ffcc',dmgMult:0.7,missCD:60,returnCD:0,available:true,melee:false},
     ],
     throwActiveIdx:0,throwSwitchCD:0,throwCamoActive:false,throwCamoTimer:0,
@@ -1038,17 +1038,19 @@ function applyElementEffect(attacker,defender){
       spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
       break;
     case 'throw_toxic':
-      // Phantom dagger from opposite side
+      // Phantom dagger from opposite side — VISIBLE with trail
       if(Math.random()<0.35){
         const oa=angle(attacker,defender)+Math.PI;
         const phantomDmg=attacker.atk*attacker.throwWeapons[attacker.throwActiveIdx].dmgMult*0.08;
         projectiles.push({
           x:defender.x+Math.cos(oa)*150,y:defender.y+Math.sin(oa)*150,
           vx:-Math.cos(oa)*10,vy:-Math.sin(oa)*10,
-          owner:attacker,target:defender,color:'#aa44cc',life:60,radius:6,
+          owner:attacker,target:defender,color:'#dd55ee',life:60,radius:10,
           dmg:phantomDmg,explosive:false,explosionRadius:0,homing:false,isPhantom:true,
         });
-        spawnBurst(defender.x+Math.cos(oa)*150,defender.y+Math.sin(oa)*150,'#aa44cc',4,2);
+        // Visible spawn flash
+        spawnBurst(defender.x+Math.cos(oa)*150,defender.y+Math.sin(oa)*150,'#dd55ee',8,4);
+        spawnDmgNum(defender.x+Math.cos(oa)*120,defender.y+Math.sin(oa)*120,'PHANTOM','#dd55ee',false);
       }
       break;
     case 'throw_cryo':
@@ -1393,10 +1395,12 @@ function updateRelicSandy(f,enemy,dt){
 
 function updateRelicThrow(f,enemy,dt){
   f.throwCamoTimer-=dt;
-  // Camo shimmer particles
-  if(battleTime%4<1){
-    spawnParticle(f.x+rand(-20,20),f.y+rand(-20,20),'#cc66ff',0,-1,12,2);
+  // Subtle ripple particles (not obvious)
+  if(battleTime%8<1){
+    spawnParticle(f.x+rand(-15,15),f.y+rand(-15,15),'rgba(180,200,255,0.3)',0,-0.5,10,1);
   }
+  // Auto-face enemy constantly during camo
+  f.weaponAngle=angle(f,enemy);
   // Auto-throw constantly during camo — fire every 15 frames
   if(battleTime%15<1&&enemy.alive){
     // Find strongest available weapon
@@ -1569,7 +1573,7 @@ function updateBattle(dt){
         if(f.attackTimer<=0){
           const meleeW=avail.sort((a,b)=>{
             // For melee: stinger best, agaou second, punkblade worst
-            const order={stinger:3,agaou:2,punk:1};
+            const order={fang:3,agaou:2,punk:1};
             return (order[b.id]||0)-(order[a.id]||0);
           })[0];
           const meleeDmg=f.atk*meleeW.dmgMult*0.6;
@@ -1587,11 +1591,12 @@ function updateBattle(dt){
     if(!f.specialActive||f.char.id==='gorilla'){
       if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
       if(f.attackTimer<=0){
-        // PLS and Throw fire purely on interval — projectiles aim toward enemy
+        // PLS fires purely on interval — projectile aims toward enemy
+        // Throw needs facing (but ult handles auto-throw separately)
         // Others need weapon to face enemy
         // Throw: skip if no weapon available
         if(f.char.id==='throw'&&!f.throwWeapons[f.throwActiveIdx].available){/* wait */}
-        else if(f.char.id==='pls'||f.char.id==='throw'||isWeaponFacingEnemy(f,enemy)){
+        else if(f.char.id==='pls'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -1968,7 +1973,9 @@ function darken(hex,amt){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(
 function drawBall(f){
   if(!f.alive&&f.deathAnim<=0)return;
   X.save();
-  const alpha=f.alive?1:Math.max(0,f.deathAnim/60);
+  let alpha=f.alive?1:Math.max(0,f.deathAnim/60);
+  // Optical Camo: nearly invisible
+  if(f.throwCamoActive)alpha*=0.12;
   X.globalAlpha=alpha;
 
   // Shadow
@@ -2639,18 +2646,24 @@ function drawThrowWeapon(r,ext,flash,f){
   const tw=f.throwWeapons[f.throwActiveIdx];
   const hasWeapon=tw&&tw.available;
 
-  // Optical Camo active — purple shimmer
+  // Optical Camo active — near invisible with ripple/shimmer like Cyberpunk
   if(f&&f.throwCamoActive){
     X.save();X.rotate(-f.weaponAngle);
-    const pulse=Math.sin(battleTime*0.15)*6;
-    X.beginPath();X.arc(0,0,f.radius+15+pulse,0,Math.PI*2);
-    const ag=X.createRadialGradient(0,0,f.radius,0,0,f.radius+15+pulse);
-    ag.addColorStop(0,'rgba(204,102,255,0.4)');ag.addColorStop(0.5,'rgba(204,102,255,0.15)');ag.addColorStop(1,'rgba(204,102,255,0)');
-    X.fillStyle=ag;X.fill();
-    X.beginPath();X.arc(0,0,f.radius+10+pulse,0,Math.PI*2);
-    X.shadowColor='#cc66ff';X.shadowBlur=15;
-    X.strokeStyle='rgba(204,102,255,0.7)';X.lineWidth=3;X.stroke();
-    X.shadowBlur=0;
+    // Ripple distortion lines — subtle shimmer outline
+    const t=battleTime*0.08;
+    for(let i=0;i<8;i++){
+      const a=t+i*Math.PI/4;
+      const ripple=Math.sin(battleTime*0.2+i)*3;
+      const r1=f.radius+ripple;
+      const r2=f.radius+4+ripple;
+      X.strokeStyle='rgba(180,200,255,'+(0.15+Math.sin(battleTime*0.15+i*0.5)*0.1)+')';
+      X.lineWidth=1.5;
+      X.beginPath();X.arc(0,0,r1,a-0.3,a+0.3);X.stroke();
+      X.beginPath();X.arc(0,0,r2,a+0.15-0.2,a+0.15+0.2);X.stroke();
+    }
+    // Very faint highlight outline so you can still see the ball
+    X.strokeStyle='rgba(200,220,255,0.12)';X.lineWidth=2;
+    X.beginPath();X.arc(0,0,f.radius+1,0,Math.PI*2);X.stroke();
     X.restore();
   }
 
@@ -2684,22 +2697,27 @@ function drawThrowWeapon(r,ext,flash,f){
       X.quadraticCurveTo(r+45,-8,r+50,-2);X.stroke();
       X.shadowBlur=0;
       break;
-    case 'stinger':
-      // Stinger — sleek tactical knife, gold/amber iconic look
+    case 'fang':
+      // Fang — iconic moddable claw/axe from DLC, gold/amber
+      // Axe head
       X.beginPath();
-      X.moveTo(r+7,-2);X.lineTo(r+20,-6);
-      X.quadraticCurveTo(r+35,-7,r+45,-1);
-      X.lineTo(r+47,0);
-      X.quadraticCurveTo(r+38,5,r+22,4);
-      X.lineTo(r+7,2);X.closePath();
-      const sg=X.createLinearGradient(r+7,0,r+47,0);
+      X.moveTo(r+7,-2);X.lineTo(r+15,-3);
+      X.lineTo(r+25,-12);X.quadraticCurveTo(r+38,-14,r+45,-6);
+      X.lineTo(r+48,0);
+      X.lineTo(r+45,6);X.quadraticCurveTo(r+38,14,r+25,12);
+      X.lineTo(r+15,3);X.lineTo(r+7,2);X.closePath();
+      const sg=X.createLinearGradient(r+7,0,r+48,0);
       sg.addColorStop(0,'#886622');sg.addColorStop(0.3,'#ccaa44');sg.addColorStop(0.6,'#ffdd66');sg.addColorStop(1,'#aa8833');
       X.fillStyle=sg;X.fill();X.strokeStyle='#665522';X.lineWidth=1;X.stroke();
-      // Bright edge
+      // Bright edge — curved claw
       X.shadowColor='#ffaa00';X.shadowBlur=flash?10:3;
-      X.strokeStyle=flash?'#ffcc44':'#ffaa00';X.lineWidth=1.5;
-      X.beginPath();X.moveTo(r+20,-6);X.quadraticCurveTo(r+35,-7,r+45,-1);X.stroke();
+      X.strokeStyle=flash?'#ffcc44':'#ffaa00';X.lineWidth=2;
+      X.beginPath();X.moveTo(r+25,-12);X.quadraticCurveTo(r+38,-14,r+45,-6);X.lineTo(r+48,0);
+      X.lineTo(r+45,6);X.quadraticCurveTo(r+38,14,r+25,12);X.stroke();
       X.shadowBlur=0;
+      // Mod slot — small tech rectangle on handle
+      X.fillStyle='#222';X.fillRect(r+10,-2,8,4);
+      X.fillStyle='#44ff44';X.fillRect(r+11,-1,2,2);
       break;
     case 'punk':
       // Punkblade — small sleek cyan throwing blade
