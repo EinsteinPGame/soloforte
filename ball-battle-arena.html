@@ -1441,8 +1441,14 @@ function relicSandy(f,enemy){
   f.sandyActive=true;
   f.sandyTimer=360;
   f.sandyDodgeBoost=0.18; // +18% dodge
-  // Slow enemy
-  enemy.sandyTimeScale=0.25; // 75% slow
+  // Slow ALL other fighters (enemies AND teammates) — only Sandy-immune fighters resist
+  fighters.forEach(other=>{
+    if(other&&other.alive&&other!==f){
+      if(!other._smasherSandyImmune&&!other.sandyActive){
+        other.sandyTimeScale=0.25; // 75% slow
+      }
+    }
+  });
   // Speed boost
   f.speed=f.baseSpeed*1.5;
   const spd=Math.hypot(f.vx,f.vy);
@@ -1529,6 +1535,14 @@ function relicSmasher(f,enemy){
   if(spd>0){f.vx=f.vx/spd*f.speed*2;f.vy=f.vy/spd*f.speed*2;}
   // Not slowed by enemy Sandy
   f._smasherSandyImmune=true;
+  // Slow all enemies (Sandevistan-like time slow effect)
+  fighters.forEach(other=>{
+    if(other&&other.alive&&other!==f&&other.side!==f.side){
+      if(!other._smasherSandyImmune&&!other.sandyActive){
+        other.sandyTimeScale=0.25; // 75% slow
+      }
+    }
+  });
   // Multi-color activation burst
   spawnBurst(f.x,f.y,'#cc4444',50,12);
   spawnBurst(f.x,f.y,'#ff6644',35,9);
@@ -1748,7 +1762,14 @@ function updateRelicSandy(f,enemy,dt){
     f.sandyActive=false;
     f.sandyDodgeBoost=0;
     f.speed=f.baseSpeed;
-    enemy.sandyTimeScale=1;
+    // Restore time scale for all fighters slowed by this Sandy
+    fighters.forEach(other=>{
+      if(other&&other!==f&&other.sandyTimeScale<1){
+        // Only restore if no OTHER active Sandy is still slowing them
+        const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&s.sandyActive&&s!==other);
+        if(!otherSandy)other.sandyTimeScale=1;
+      }
+    });
     f.specialTimer=0;f.specialActive=false;
     addLog((f.side===0?'P1':'P2')+' Sandevistan ended');
     spawnBurst(f.x,f.y,'#4488ff',10,4);
@@ -1911,6 +1932,13 @@ function updateRelicSmasher(f,enemy,dt){
       f.smasherAirborne=false;
       f._smasherSandyImmune=false;
       f.speed=f.baseSpeed;
+      // Restore enemy time scales after slam
+      fighters.forEach(other=>{
+        if(other&&other!==f&&other.side!==f.side&&other.sandyTimeScale<1){
+          const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&s.sandyActive&&s!==other);
+          if(!otherSandy)other.sandyTimeScale=1;
+        }
+      });
       SFX.slamImpact();
       // Massive slam explosion
       spawnExplosion(sx,sy,90,'#cc4444',f.atk*2.5,f,null);
@@ -1955,6 +1983,13 @@ function updateRelicSmasher(f,enemy,dt){
     f._smasherSandyImmune=false;
     f.speed=f.baseSpeed;
     f.sandyTimeScale=1;
+    // Restore enemy time scales
+    fighters.forEach(other=>{
+      if(other&&other!==f&&other.side!==f.side&&other.sandyTimeScale<1){
+        const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&s.sandyActive&&s!==other);
+        if(!otherSandy)other.sandyTimeScale=1;
+      }
+    });
     addLog((f.side===0?'P1':'P2')+' Smasher Protocol ended');
     spawnBurst(f.x,f.y,'#cc4444',10,4);
   }
