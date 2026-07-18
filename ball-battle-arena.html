@@ -601,14 +601,18 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     spawnBurst(defender.x,defender.y,'#4488ff',8,4);
     return 0;
   }
-  // Katana deflect — weapon must face attacker, not on cooldown or mid-dash
+  // Katana deflect — weapon must face attacker (unless relic rush = deflect everything)
+  // Specials/relics bypass deflect entirely
   if(defender.char.id==='katana'&&!defender.katanaDashing&&defender.katanaDeflectCD<=0
-    &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0){
+    &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
+    &&!(attacker.specialActive)){
     const toAttacker=angle(defender,attacker);
     let aDiff=defender.weaponAngle-toAttacker;
     while(aDiff>Math.PI)aDiff-=Math.PI*2;while(aDiff<-Math.PI)aDiff+=Math.PI*2;
-    if(Math.abs(aDiff)<0.8){
-      if(battleTime<120){
+    // During relic rush: deflect everything from any angle
+    const canDeflect=defender.katanaRushing||Math.abs(aDiff)<0.8;
+    if(canDeflect){
+      if(battleTime<120&&!defender.katanaRushing){
         baseDmg*=0.5; // early battle: 50% reduction only
       } else {
         // Full deflect — no damage, counter-dash
@@ -2205,7 +2209,7 @@ function updateBattle(dt){
           const rocketDmg=f.atk*(1.8+chaos*0.2); // huge damage
           const rocketSpeed=8+chaos*0.4;
           const rocketCount=chaos>4?3:2;
-          const spread=0.25; // cone spread
+          const spread=0.4; // wide cone spread matching warning
           for(let r=0;r<rocketCount;r++){
             const spreadAngle=ba+(r-(rocketCount-1)/2)*spread;
             projectiles.push({
@@ -2785,8 +2789,8 @@ function drawBall(f){
   // Adam Smasher: triangle warning cone before rockets fire
   if(f.char.id==='smasher'&&f.smasherWarning>0){
     const wa=f.smasherWarningAngle;
-    const coneLen=200; // long warning cone
-    const coneSpread=0.35; // half-angle of cone
+    const coneLen=350; // very long warning cone — covers huge area like Warden
+    const coneSpread=0.5; // wide half-angle
     const flashAlpha=0.15+Math.sin(battleTime*0.4)*0.15; // pulsing flash
     // Triangle cone fill
     X.save();
