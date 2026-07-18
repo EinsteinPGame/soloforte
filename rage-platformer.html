@@ -199,7 +199,7 @@
         style="background:#1a1a1a;border:2px solid #4488ff;color:#fff;font-family:'Courier New',monospace;
         font-size:16px;padding:8px 14px;border-radius:4px;text-align:center;width:200px;outline:none">
     </div>
-    <button class="btn green" onclick="enterGame()">PLAY</button>
+    <button class="btn green" onclick="startLevel(0)">PLAY</button>
     <button class="btn blue" onclick="enterGame()">LEVEL SELECT</button>
   </div>
 
@@ -464,6 +464,7 @@ let currentLevel = 0;
 let levelDeaths = 0;
 let paradoxSpikeDeaths = 0; // persists across retries for Level 10
 let gameRunning = false;
+let animFrameId = 0;
 let currentScreen = 'title'; // title | levelSelect | game | death | win
 
 let shakeTimer = 0;
@@ -1217,20 +1218,20 @@ function buildLevel9() {
     movingSpikes: [],
     levelSpikes: [
       // Spikes in the first gap
-      { x: 140, y: groundY - 14, w: 40, h: 14 },
+      { x: 140, y: groundY - 14, w: 40, h: 14, active: true },
       // Spikes between platform 1 and 2
-      { x: 250, y: groundY - 14, w: 40, h: 14 },
+      { x: 250, y: groundY - 14, w: 40, h: 14, active: true },
       // Spikes below moving platform zone
-      { x: 360, y: groundY - 14, w: 160, h: 14 },
+      { x: 360, y: groundY - 14, w: 160, h: 14, active: true },
       // Spikes at landing zone edges
-      { x: 610, y: groundY - 14, w: 10, h: 14 },
+      { x: 610, y: groundY - 14, w: 10, h: 14, active: true },
       // Wall spikes in climb section — punish wrong direction
-      { x: 520, y: groundY - 90, w: 14, h: 14 },
-      { x: 610, y: groundY - 140, w: 14, h: 14 },
-      { x: 710, y: groundY - 100, w: 14, h: 14 },
+      { x: 520, y: groundY - 90, w: 14, h: 14, active: true },
+      { x: 610, y: groundY - 140, w: 14, h: 14, active: true },
+      { x: 710, y: groundY - 100, w: 14, h: 14, active: true },
       // Spikes near final platforms
-      { x: 760, y: groundY - 150, w: 14, h: 14 },
-      { x: 830, y: groundY - 200, w: 14, h: 14 },
+      { x: 760, y: groundY - 150, w: 14, h: 14, active: true },
+      { x: 830, y: groundY - 200, w: 14, h: 14, active: true },
     ],
   };
 }
@@ -2630,9 +2631,9 @@ function winLevel() {
   if (!saveData.completedLevels.includes(currentLevel)) {
     saveData.completedLevels.push(currentLevel);
   }
-  const nextLevel = currentLevel + 1;
-  if (nextLevel < 10 && saveData.unlockedLevels <= nextLevel) {
-    saveData.unlockedLevels = nextLevel + 1;
+  const nextLevelNum = currentLevel + 1;
+  if (nextLevelNum < 10 && saveData.unlockedLevels <= nextLevelNum) {
+    saveData.unlockedLevels = nextLevelNum + 1;
   }
   writeSave();
 
@@ -3719,13 +3720,14 @@ function gameLoop(ts) {
   updateParticles(dt);
   render();
 
-  requestAnimationFrame(gameLoop);
+  animFrameId = requestAnimationFrame(gameLoop);
 }
 
 function startGameLoop() {
+  cancelAnimationFrame(animFrameId);
   gameRunning = true;
   lastTime = performance.now();
-  requestAnimationFrame(gameLoop);
+  animFrameId = requestAnimationFrame(gameLoop);
 }
 
 // =====================================================================
