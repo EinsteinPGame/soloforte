@@ -601,11 +601,26 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     spawnBurst(defender.x,defender.y,'#4488ff',8,4);
     return 0;
   }
-  // Katana deflect — ALWAYS deflects from ALL directions. Only specials bypass.
+  // Katana deflect — deflects from ALL directions. Only specials bypass.
+  // No deflect during counter-dash (unless relic rushing). First 1s (60 frames): 80% damage reduction instead.
   if(defender.char.id==='katana'
     &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
-    &&!(attacker.specialActive)){
-    // Full deflect — no damage, counter-dash (no cooldown, no angle check, no early-battle penalty)
+    &&!(attacker.specialActive)
+    &&(!defender.katanaDashing||defender.katanaRushing)){
+    // Early battle (first 60 frames / 1 second): 80% damage reduction, no full deflect
+    if(battleTime<60){
+      const isCrit=canCrit&&Math.random()*100<attacker.crit;
+      let earlyDmg=baseDmg*(isCrit?2:1);
+      const actualDef=Math.max(0,defender.def-defender.defReduction);
+      earlyDmg=Math.max(1,earlyDmg-actualDef*0.3);
+      earlyDmg=Math.round(earlyDmg*0.2); // 80% reduction
+      defender.hp-=earlyDmg;defender.hitFlash=6;
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,earlyDmg,'#ffaa00');
+      spawnBurst(defender.x,defender.y,'#ffcc00',8,3);
+      if(defender.hp<=0){defender.hp=0;defender.alive=false;defender.deathAnim=60;checkVictory(attacker);}
+      return earlyDmg;
+    }
+    // Full deflect — no damage, counter-dash
     SFX.katanaDeflect();
     defender.katanaDeflecting=40; // 40 frame deflect pose — very obvious
     // Big golden burst on defender
