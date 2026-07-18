@@ -1664,9 +1664,22 @@ function pal(){const style=['menu','charSelect','difficultySelect','eternalShop'
 function evoName(){if(!S.charData)return'';if(S.evoStage===0)return S.charName;if(S.evoStage===1)return S.charData.evo1;if(S.evoStage===2)return S.charData.evo2;if(S.evoStage===3)return (S.charData.evo2||S.charData.evo1)+' Prime';return (S.charData.evo2||S.charData.evo1)+' Absolute';}
 function checkUnlocks(){CHARS.forEach(c=>{if(!S.unlocked.includes(c.name)&&c.cost===0)S.unlocked.push(c.name)})}
 
-function effAtk(){return Math.max(1,S.atk+S.tempAtk)}
-function effDef(){return Math.max(0,S.def+S.tempDef)}
-function effSpd(){return Math.max(0,S.spd+S.tempSpd)}
+function effAtk(){
+  let atk=Math.max(1,S.atk+S.tempAtk);
+  if(S.statuses&&S.statuses.find(s=>s.type==='atkDown'))atk=Math.floor(atk*0.75);
+  if(S.charData&&S.charData.ability&&S.charData.ability.includes('Cursed'))atk=Math.floor(atk*1.5);
+  return Math.max(1,atk);
+}
+function effDef(){
+  let def=Math.max(0,S.def+S.tempDef);
+  if(S.statuses&&S.statuses.find(s=>s.type==='defDown'))def=Math.floor(def*0.75);
+  return def;
+}
+function effSpd(){
+  let spd=Math.max(0,S.spd+S.tempSpd);
+  if(S.statuses&&S.statuses.find(s=>s.type==='spdDown'))spd=Math.floor(spd*0.75);
+  return spd;
+}
 function resetTempStats(){S.tempAtk=0;S.tempDef=0;S.tempSpd=0}
 
 // Difficulty multipliers — Hard is baseline (no change)
@@ -1803,6 +1816,7 @@ function calcDmg(baseDmg,moveType,atkStat,defStat,targetType,isPlayer){
     if(a.effect==='paper_boost'&&aType==='Paper')mult*=1.2;
   }
   if(!isPlayer)mult*=[0.8,1,1.3,1.6][S.settings.difficulty];
+  if(isPlayer&&S.enemy&&S.enemy.statuses&&S.enemy.statuses.find(s=>s.type==='defDown'))mult*=1.25;
   const isCrit=Math.random()*100<(isPlayer?S.crit:5);
   if(isCrit)mult*=1.5;
   if(isPlayer&&S.statuses.find(s=>s.type==='burn'))mult*=0.9;
@@ -1908,12 +1922,14 @@ function enemyTurn(){
   const e=S.enemy;if(!e||e.hp<=0)return;
   if(e.ability==='regenerate')e.hp=Math.min(e.maxHp,e.hp+Math.floor(e.maxHp*0.03));
   if(e.ability==='enrage'&&e.hp<e.maxHp*0.3)e.atk=Math.floor(e.atk*1.05);
-  processStatuses(e,false);if(e.hp<=0)return;
+  processStatuses(e,false);if(e.hp<=0){afterCombatWin();return;}
   if(e.statuses&&e.statuses.find(s=>s.type==='freeze')){S.combatLog.push({msg:'Enemy is frozen!',color:'#64dcff'});return}
   if(Math.random()*100<S.dodge){S.combatLog.push({msg:'You dodged!',color:'#28c8dc'});return}
   let eType=e.type==='Random'?pick(TYPES):e.type;
   const spec=TYPE_SPEC[S.charData.type];
-  let dmg=Math.max(1,e.atk-Math.floor(effDef()/3));
+  let eAtk=e.atk;
+  if(e.statuses&&e.statuses.find(s=>s.type==='atkDown'))eAtk=Math.floor(eAtk*0.75);
+  let dmg=Math.max(1,eAtk-Math.floor(effDef()/3));
   if(spec.defMult)dmg=Math.floor(dmg*spec.defMult);
   if(spec.dmgTaken)dmg=Math.floor(dmg*spec.dmgTaken);
   for(const a of S.artifacts){if(a.effect==='harmony')dmg=Math.floor(dmg*0.9)}
