@@ -136,6 +136,14 @@ const CHARS=[
     baseAtkInterval:20,relicChargeRate:1.0,
     specialName:'Sandevistan Activated',
   },
+  {
+    id:'throw',name:'Throwing Weapons',color:'#cc66ff',
+    desc:'3 knives. Ranged precision.',
+    playstyle:'Range & Precision',
+    stats:{hp:380,atk:22,speed:3.5,range:200,def:5,crit:18},
+    baseAtkInterval:60,relicChargeRate:0.9,
+    specialName:'Optical Camo Activated',
+  },
 ];
 
 // ============================================================
@@ -170,6 +178,10 @@ const COMBO_EFFECTS={
   'sandy_electric':'Rotating orbs hit nearby enemies',
   'sandy_toxic':'Wall bounce = poison orb scatter',
   'sandy_cryo':'Faster speed = more enemy slow',
+  'throw_fire':'Faster aim & throw speed',
+  'throw_electric':'15-30% auto-return on miss',
+  'throw_toxic':'Phantom dagger from opposite side',
+  'throw_cryo':'Missed knives spin on ground as traps',
 };
 
 // ============================================================
@@ -322,7 +334,15 @@ function createFighter(charIdx,elemIdx,side){
     relicHomingShots:0,relicLockTarget:null,relicChargeTimer:0,
     // Sandevistan state
     dodgeChance:ch.id==='sandy'?0.02:0,
-    sandyActive:false,sandyTimer:0,sandyDodgeBoost:0,
+    sandyActive:false,sandyTimer:0,sandyDodgeBoost:0,_bodyHitCD:0,
+    // Throwing weapon state
+    throwWeapons:[
+      {id:'agaou',name:'AGAOU',color:'#ff44ff',dmgMult:1.3,missCD:480,returnCD:0,available:true,melee:false},
+      {id:'stinger',name:'STINGER',color:'#ffaa00',dmgMult:1.6,missCD:300,returnCD:0,available:true,melee:true},
+      {id:'punk',name:'PUNKBLADE',color:'#66ffcc',dmgMult:0.7,missCD:60,returnCD:0,available:true,melee:false},
+    ],
+    throwActiveIdx:0,throwSwitchCD:0,throwCamoActive:false,throwCamoTimer:0,
+    throwEmbedded:[],
     sandyTimeScale:1, // 1=normal, 0.2-0.3=slowed by enemy sandy
     // Status effects
     bleedTimer:0,bleedDmg:0,bleedIcon:false,
@@ -463,13 +483,15 @@ function checkBallCollision(f1,f2){
   shakeTimer=8;shakeAmt=5;
   SFX.clash();
 
-  // Sandevistan deals body collision damage (speed-based)
+  // Sandevistan deals body collision damage (speed-based) — with cooldown to prevent corner stunlock
   [f1,f2].forEach(sandy=>{
     if(sandy.char.id!=='sandy')return;
+    if(sandy._bodyHitCD>0)return; // cooldown prevents rapid corner bouncing
     const enemy=sandy===f1?f2:f1;
     const spd=Math.hypot(sandy.vx,sandy.vy);
     const spdDmg=sandy.atk*(0.4+spd*0.25);
     dealDamage(sandy,enemy,spdDmg);
+    sandy._bodyHitCD=18; // ~0.3 sec cooldown between body hits
     SFX.punch();
     spawnBurst(mx,my,'#4488ff',12,5);
     shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
@@ -565,6 +587,7 @@ function performWeaponAttack(f,enemy){
     case 'monowire':attackMonowire(f,enemy,chaos);break;
     case 'pls':attackPLS(f,enemy,chaos);break;
     case 'sandy':attackSandy(f,enemy,chaos);break;
+    case 'throw':attackThrow(f,enemy,chaos);break;
   }
 }
 
@@ -742,6 +765,31 @@ function attackSandy(f,enemy,chaos){
 
   // Kerenzikov dodge scaling — increases with hits, caps lower
   f.dodgeChance=Math.min(0.18,0.02+f.totalHits*0.002);
+}
+
+function attackThrow(f,enemy,chaos){
+  // Throwing weapons — fires projectile at enemy, uses active weapon
+  const tw=f.throwWeapons[f.throwActiveIdx];
+  if(!tw||!tw.available)return;
+  f.weaponFlash=12;
+  const a=angle(f,enemy)+(Math.random()-0.5)*0.1;
+  const speed=8+chaos*0.5;
+  const dmg=f.atk*tw.dmgMult*(1+chaos*0.1);
+  // Fire rate bonus from fire element
+  const fireBonus=f.elementActive&&f.elem.id==='fire'?0.7:1;
+
+  projectiles.push({
+    x:f.x+Math.cos(a)*f.radius,y:f.y+Math.sin(a)*f.radius,
+    vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,
+    owner:f,target:enemy,color:tw.color,life:180,radius:10,
+    dmg:dmg,explosive:tw.id==='agaou',
+    explosionRadius:tw.id==='agaou'?60+chaos*8:0,
+    homing:false,throwWeaponId:tw.id,throwIdx:f.throwActiveIdx,
+    isThrowWeapon:true,
+  });
+  tw.available=false;
+  SFX.missile();
+  spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,tw.color,6,3);
 }
 
 // ============================================================
@@ -979,6 +1027,35 @@ function applyElementEffect(attacker,defender){
       spawnBurst(defender.x,defender.y,'#77ddff',6,3);
       break;
 
+    // === THROWING WEAPONS ===
+    case 'throw_fire':
+      // Faster aim & throw — reduce attack timer
+      attacker.attackTimer=Math.max(0,attacker.attackTimer-15);
+      spawnBurst(defender.x,defender.y,'#ff4400',5,3);
+      break;
+    case 'throw_electric':
+      // Auto-return handled in projectile miss logic
+      spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
+      break;
+    case 'throw_toxic':
+      // Phantom dagger from opposite side
+      if(Math.random()<0.35){
+        const oa=angle(attacker,defender)+Math.PI;
+        const phantomDmg=attacker.atk*attacker.throwWeapons[attacker.throwActiveIdx].dmgMult*0.08;
+        projectiles.push({
+          x:defender.x+Math.cos(oa)*150,y:defender.y+Math.sin(oa)*150,
+          vx:-Math.cos(oa)*10,vy:-Math.sin(oa)*10,
+          owner:attacker,target:defender,color:'#aa44cc',life:60,radius:6,
+          dmg:phantomDmg,explosive:false,explosionRadius:0,homing:false,isPhantom:true,
+        });
+        spawnBurst(defender.x+Math.cos(oa)*150,defender.y+Math.sin(oa)*150,'#aa44cc',4,2);
+      }
+      break;
+    case 'throw_cryo':
+      // Missed weapons spin on ground — handled in projectile miss logic
+      spawnBurst(defender.x,defender.y,'#77ddff',5,3);
+      break;
+
     // Fallback: generic element effects
     default:
       switch(attacker.elem.id){
@@ -1005,6 +1082,7 @@ function useSpecial(f,enemy){
     case 'monowire':relicMonowire(f,enemy);break;
     case 'pls':relicPLS(f,enemy);break;
     case 'sandy':relicSandy(f,enemy);break;
+    case 'throw':relicThrow(f,enemy);break;
   }
 }
 
@@ -1082,6 +1160,24 @@ function relicSandy(f,enemy){
     explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*30,color:'#4488ff',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
   }
   shakeTimer=25;shakeAmt=14;
+}
+
+function relicThrow(f,enemy){
+  // Optical Camo: invisible, faster, auto-throw constantly, dodge boost
+  f.specialTimer=420; // 7 seconds
+  f.throwCamoActive=true;
+  f.throwCamoTimer=420;
+  f.dodgeChance=0.25;
+  f.speed=f.baseSpeed*1.6;
+  // Return all weapons immediately
+  f.throwWeapons.forEach(tw=>{tw.available=true;tw.returnCD=0;});
+  f.throwActiveIdx=0;
+  spawnBurst(f.x,f.y,'#cc66ff',40,10);
+  spawnBurst(f.x,f.y,'#ffffff',20,6);
+  for(let r=0;r<2;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:50+r*25,color:'#cc66ff',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  shakeTimer=20;shakeAmt=10;
 }
 
 // ============================================================
@@ -1295,6 +1391,46 @@ function updateRelicSandy(f,enemy,dt){
   }
 }
 
+function updateRelicThrow(f,enemy,dt){
+  f.throwCamoTimer-=dt;
+  // Camo shimmer particles
+  if(battleTime%4<1){
+    spawnParticle(f.x+rand(-20,20),f.y+rand(-20,20),'#cc66ff',0,-1,12,2);
+  }
+  // Auto-throw constantly during camo — fire every 15 frames
+  if(battleTime%15<1&&enemy.alive){
+    // Find strongest available weapon
+    const best=f.throwWeapons.filter(tw=>tw.available).sort((a,b)=>b.dmgMult-a.dmgMult)[0];
+    if(best){
+      const idx=f.throwWeapons.indexOf(best);
+      f.throwActiveIdx=idx;
+      const chaos=getChaosLevel(f);
+      attackThrow(f,enemy,chaos);
+    }
+  }
+  // Rush to pick up embedded weapons
+  f.throwEmbedded.forEach(emb=>{
+    if(!emb.active)return;
+    const d=dist(f,emb);
+    if(d<f.radius+20){
+      // Pick up
+      f.throwWeapons[emb.weaponIdx].available=true;
+      f.throwWeapons[emb.weaponIdx].returnCD=0;
+      emb.active=false;
+      spawnBurst(emb.x,emb.y,f.throwWeapons[emb.weaponIdx].color,6,3);
+    }
+  });
+  // End optical camo
+  if(f.throwCamoTimer<=0){
+    f.throwCamoActive=false;
+    f.dodgeChance=0;
+    f.speed=f.baseSpeed;
+    f.specialTimer=0;f.specialActive=false;
+    addLog((f.side===0?'P1':'P2')+' Optical Camo ended');
+    spawnBurst(f.x,f.y,'#cc66ff',10,4);
+  }
+}
+
 // ============================================================
 // BATTLE UPDATE
 // ============================================================
@@ -1309,6 +1445,7 @@ function updateBattle(dt){
 
     // Timers
     if(f.hitFlash>0)f.hitFlash-=dt;
+    if(f._bodyHitCD>0)f._bodyHitCD-=dt;
     if(f.stunTimer>0)f.stunTimer-=dt;
     if(f.slowTimer>0)f.slowTimer-=dt;
     if(f.freezeTimer>0)f.freezeTimer-=dt;
@@ -1380,6 +1517,69 @@ function updateBattle(dt){
         case 'monowire':updateRelicMonowire(f,enemy,dt);break;
         case 'pls':updateRelicPLS(f,enemy,dt);break;
         case 'sandy':updateRelicSandy(f,enemy,dt);break;
+        case 'throw':updateRelicThrow(f,enemy,dt);break;
+      }
+    }
+
+    // Throwing weapon management
+    if(f.char.id==='throw'){
+      const chaos=getChaosLevel(f);
+      // Update return cooldowns
+      f.throwWeapons.forEach((tw,idx)=>{
+        if(!tw.available&&tw.returnCD>0){
+          tw.returnCD-=dt;
+          if(tw.returnCD<=0){tw.available=true;tw.returnCD=0;}
+        }
+      });
+      // Auto-switch to strongest available weapon
+      const avail=f.throwWeapons.filter(tw=>tw.available);
+      if(avail.length>0){
+        const strongest=avail.sort((a,b)=>b.dmgMult-a.dmgMult)[0];
+        const sIdx=f.throwWeapons.indexOf(strongest);
+        if(sIdx!==f.throwActiveIdx&&f.throwSwitchCD<=0){
+          f.throwActiveIdx=sIdx;
+          f.throwSwitchCD=60; // 1 second switch
+        }
+      }
+      if(f.throwSwitchCD>0)f.throwSwitchCD-=dt;
+      // Pickup embedded weapons when near
+      f.throwEmbedded.forEach(emb=>{
+        if(!emb.active)return;
+        emb.life-=dt;
+        if(emb.life<=0){emb.active=false;f.throwWeapons[emb.weaponIdx].available=true;return;}
+        // Can pick up if within range and <180 frames left
+        if(emb.life<180&&dist(f,emb)<f.radius+25){
+          f.throwWeapons[emb.weaponIdx].available=true;
+          f.throwWeapons[emb.weaponIdx].returnCD=0;
+          emb.active=false;
+          spawnBurst(emb.x,emb.y,f.throwWeapons[emb.weaponIdx].color,6,3);
+        }
+        // Ice element: spinning embedded weapons damage enemies
+        if(f.elementActive&&f.elem.id==='cryo'&&enemy.alive){
+          if(dist(enemy,emb)<enemy.radius+15&&battleTime%12<dt){
+            dealDamage(f,enemy,f.atk*0.2,false);
+            spawnBurst(emb.x,emb.y,'#77ddff',4,2);
+          }
+        }
+      });
+      // Melee when enemy is close — use strongest available
+      const d=dist(f,enemy);
+      if(d<f.radius+enemy.radius+30&&avail.length>0&&!f.specialActive){
+        // Melee swing with available weapon (less damage than ranged)
+        if(f.attackTimer<=0){
+          const meleeW=avail.sort((a,b)=>{
+            // For melee: stinger best, agaou second, punkblade worst
+            const order={stinger:3,agaou:2,punk:1};
+            return (order[b.id]||0)-(order[a.id]||0);
+          })[0];
+          const meleeDmg=f.atk*meleeW.dmgMult*0.6;
+          dealDamage(f,enemy,meleeDmg);
+          f.attackTimer=getAttackInterval(f)*0.8;
+          f.weaponFlash=12;f.weaponExtend=1;
+          SFX.slash();
+          spawnBurst(enemy.x,enemy.y,meleeW.color,6,3);
+          shakeTimer=5;shakeAmt=3;
+        }
       }
     }
 
@@ -1387,9 +1587,11 @@ function updateBattle(dt){
     if(!f.specialActive||f.char.id==='gorilla'){
       if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
       if(f.attackTimer<=0){
-        // PLS fires purely on interval — projectile aims toward enemy
+        // PLS and Throw fire purely on interval — projectiles aim toward enemy
         // Others need weapon to face enemy
-        if(f.char.id==='pls'||isWeaponFacingEnemy(f,enemy)){
+        // Throw: skip if no weapon available
+        if(f.char.id==='throw'&&!f.throwWeapons[f.throwActiveIdx].available){/* wait */}
+        else if(f.char.id==='pls'||f.char.id==='throw'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -1479,6 +1681,11 @@ function updateBattle(dt){
         dealDamage(p.owner,p.target,p.dmg);
         spawnBurst(p.target.x,p.target.y,p.color,8,3);
       }
+      // Throwing weapon on hit: return instantly
+      if(p.isThrowWeapon&&p.owner){
+        p.owner.throwWeapons[p.throwIdx].available=true;
+        p.owner.throwWeapons[p.throwIdx].returnCD=0;
+      }
       projectiles.splice(i,1);continue;
     }
 
@@ -1508,6 +1715,34 @@ function updateBattle(dt){
     }
 
     if(p.life<=0||wallHit){
+      // Throwing weapon missed — embed on ground, start return cooldown
+      if(p.isThrowWeapon&&p.owner){
+        const tw=p.owner.throwWeapons[p.throwIdx];
+        // Electric element: 15-30% chance auto-return
+        if(p.owner.elementActive&&p.owner.elem.id==='electric'&&Math.random()<(0.15+getChaosLevel(p.owner)*0.03)){
+          tw.available=true;tw.returnCD=0;
+          spawnBurst(p.x,p.y,'#ffcc00',8,3);
+          spawnDmgNum(p.x,p.y-15,'AUTO-RETURN','#ffcc00',false);
+        } else {
+          // Embed weapon on ground
+          const ex=clamp(p.x,ARENA.x+5,ARENA.x+ARENA.w-5);
+          const ey=clamp(p.y,ARENA.y+5,ARENA.y+ARENA.h-5);
+          const chaos=getChaosLevel(p.owner);
+          const scaledCD=Math.max(tw.missCD*0.3,tw.missCD/(1+chaos*0.3)); // faster returns at higher chaos
+          p.owner.throwEmbedded.push({x:ex,y:ey,weaponIdx:p.throwIdx,active:true,life:scaledCD,color:tw.color});
+          tw.returnCD=scaledCD;
+          tw.available=false;
+        }
+        // Agaou wall explosion
+        if(wallHit&&tw.id==='agaou'){
+          const ex=clamp(p.x,ARENA.x,ARENA.x+ARENA.w),ey=clamp(p.y,ARENA.y,ARENA.y+ARENA.h);
+          spawnExplosion(ex,ey,p.explosionRadius||60,p.color,p.dmg*0.4,p.owner,p.target);
+          if(p.target&&p.target.alive&&dist({x:ex,y:ey},p.target)<(p.explosionRadius||60)){
+            dealDamage(p.owner,p.target,p.dmg*0.4);
+          }
+          SFX.explode();
+        }
+      }
       projectiles.splice(i,1);
     }
 
@@ -1903,6 +2138,7 @@ function drawWeapon(f){
     case 'monowire':drawMonowire(r,ext,flash,f);break;
     case 'pls':drawPLS(r,ext,flash,f);break;
     case 'sandy':drawSandy(r,ext,flash,f);break;
+    case 'throw':drawThrowWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -2398,6 +2634,90 @@ function drawSandy(r,ext,flash,f){
   }
 }
 
+function drawThrowWeapon(r,ext,flash,f){
+  // Throwing weapons — show currently held knife in throwing stance
+  const tw=f.throwWeapons[f.throwActiveIdx];
+  const hasWeapon=tw&&tw.available;
+
+  // Optical Camo active — purple shimmer
+  if(f&&f.throwCamoActive){
+    X.save();X.rotate(-f.weaponAngle);
+    const pulse=Math.sin(battleTime*0.15)*6;
+    X.beginPath();X.arc(0,0,f.radius+15+pulse,0,Math.PI*2);
+    const ag=X.createRadialGradient(0,0,f.radius,0,0,f.radius+15+pulse);
+    ag.addColorStop(0,'rgba(204,102,255,0.4)');ag.addColorStop(0.5,'rgba(204,102,255,0.15)');ag.addColorStop(1,'rgba(204,102,255,0)');
+    X.fillStyle=ag;X.fill();
+    X.beginPath();X.arc(0,0,f.radius+10+pulse,0,Math.PI*2);
+    X.shadowColor='#cc66ff';X.shadowBlur=15;
+    X.strokeStyle='rgba(204,102,255,0.7)';X.lineWidth=3;X.stroke();
+    X.shadowBlur=0;
+    X.restore();
+  }
+
+  if(!hasWeapon){
+    // No weapon — empty hand aura
+    X.strokeStyle='rgba(204,102,255,0.3)';X.lineWidth=2;
+    X.beginPath();X.moveTo(r,0);X.lineTo(r+20,0);X.stroke();
+    return;
+  }
+
+  // Arm/handle
+  X.fillStyle='#2a2a30';X.fillRect(r-5,-4,12,8);
+
+  switch(tw.id){
+    case 'agaou':
+      // Agaou — large machete/cleaver with purple-pink energy edge
+      X.beginPath();
+      X.moveTo(r+7,-3);
+      X.lineTo(r+15,-8);X.lineTo(r+35,-10);
+      X.quadraticCurveTo(r+45,-8,r+50,-2);
+      X.lineTo(r+50,2);
+      X.quadraticCurveTo(r+40,6,r+25,5);
+      X.lineTo(r+7,3);X.closePath();
+      const ag=X.createLinearGradient(r+7,0,r+50,0);
+      ag.addColorStop(0,'#445');ag.addColorStop(0.3,'#778');ag.addColorStop(0.7,'#99a');ag.addColorStop(1,'#667');
+      X.fillStyle=ag;X.fill();X.strokeStyle='#333';X.lineWidth=1;X.stroke();
+      // Energy edge — purple-pink glow
+      X.shadowColor='#ff44ff';X.shadowBlur=flash?12:4;
+      X.strokeStyle=flash?'#ff88ff':'#cc44cc';X.lineWidth=2;
+      X.beginPath();X.moveTo(r+15,-8);X.lineTo(r+35,-10);
+      X.quadraticCurveTo(r+45,-8,r+50,-2);X.stroke();
+      X.shadowBlur=0;
+      break;
+    case 'stinger':
+      // Stinger — sleek tactical knife, gold/amber iconic look
+      X.beginPath();
+      X.moveTo(r+7,-2);X.lineTo(r+20,-6);
+      X.quadraticCurveTo(r+35,-7,r+45,-1);
+      X.lineTo(r+47,0);
+      X.quadraticCurveTo(r+38,5,r+22,4);
+      X.lineTo(r+7,2);X.closePath();
+      const sg=X.createLinearGradient(r+7,0,r+47,0);
+      sg.addColorStop(0,'#886622');sg.addColorStop(0.3,'#ccaa44');sg.addColorStop(0.6,'#ffdd66');sg.addColorStop(1,'#aa8833');
+      X.fillStyle=sg;X.fill();X.strokeStyle='#665522';X.lineWidth=1;X.stroke();
+      // Bright edge
+      X.shadowColor='#ffaa00';X.shadowBlur=flash?10:3;
+      X.strokeStyle=flash?'#ffcc44':'#ffaa00';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(r+20,-6);X.quadraticCurveTo(r+35,-7,r+45,-1);X.stroke();
+      X.shadowBlur=0;
+      break;
+    case 'punk':
+      // Punkblade — small sleek cyan throwing blade
+      X.beginPath();
+      X.moveTo(r+7,-2);X.lineTo(r+15,-5);X.lineTo(r+30,-4);
+      X.lineTo(r+35,0);X.lineTo(r+30,4);X.lineTo(r+15,5);
+      X.lineTo(r+7,2);X.closePath();
+      const pg=X.createLinearGradient(r+7,0,r+35,0);
+      pg.addColorStop(0,'#225544');pg.addColorStop(0.4,'#44aa88');pg.addColorStop(0.7,'#66ffcc');pg.addColorStop(1,'#338866');
+      X.fillStyle=pg;X.fill();X.strokeStyle='#224433';X.lineWidth=1;X.stroke();
+      X.shadowColor='#66ffcc';X.shadowBlur=flash?8:2;
+      X.strokeStyle=flash?'#88ffdd':'#66ffcc';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(r+15,-5);X.lineTo(r+30,-4);X.lineTo(r+35,0);X.stroke();
+      X.shadowBlur=0;
+      break;
+  }
+}
+
 // ============================================================
 // MINI WEAPON ICON
 // ============================================================
@@ -2492,6 +2812,16 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.shadowBlur=0;
       // Speed lines
       for(let i=0;i<4;i++){const a=Math.PI*2*i/4;X.strokeStyle='rgba(68,136,255,0.4)';X.lineWidth=1.5;X.beginPath();X.moveTo(Math.cos(a)*10,Math.sin(a)*10);X.lineTo(Math.cos(a)*18,Math.sin(a)*18);X.stroke();}
+      break;
+    case 'throw':
+      // 3 small throwing knives fanned
+      X.shadowColor='#cc66ff';X.shadowBlur=4;
+      [[-6,'#ff44ff'],[0,'#ffaa00'],[6,'#66ffcc']].forEach(([oy,col])=>{
+        X.strokeStyle=col;X.lineWidth=2;
+        X.beginPath();X.moveTo(-4,oy);X.lineTo(18,oy);X.stroke();
+        X.beginPath();X.moveTo(14,oy-2);X.lineTo(18,oy);X.lineTo(14,oy+2);X.stroke();
+      });
+      X.shadowBlur=0;
       break;
   }
   X.restore();
@@ -2889,6 +3219,28 @@ function drawBattle(){
     X.globalAlpha=1;
   });
 
+  // Embedded throwing weapons on ground
+  fighters.forEach(f=>{
+    if(f.char.id!=='throw')return;
+    f.throwEmbedded.forEach(emb=>{
+      if(!emb.active)return;
+      const a=Math.min(1,emb.life/120);
+      X.globalAlpha=a;
+      X.save();X.translate(emb.x,emb.y);
+      X.rotate(Math.atan2(emb.y-f.y,emb.x-f.x));
+      // Small knife stuck in ground
+      X.fillStyle=emb.color;X.strokeStyle='#333';X.lineWidth=1;
+      X.beginPath();X.moveTo(-8,-3);X.lineTo(8,-1);X.lineTo(8,1);X.lineTo(-8,3);X.closePath();
+      X.fill();X.stroke();
+      // Glow
+      X.shadowColor=emb.color;X.shadowBlur=6;
+      X.beginPath();X.arc(0,0,5,0,Math.PI*2);X.fillStyle=emb.color+'44';X.fill();
+      X.shadowBlur=0;
+      X.restore();
+      X.globalAlpha=1;
+    });
+  });
+
   // Sandy afterimages (ghostly speed trails)
   sandyAfterimages.forEach(ai=>{
     const a=Math.max(0,ai.life/ai.maxLife);
@@ -3165,6 +3517,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'monowire':statLine='Cap:'+Math.round((0.30+chaos*0.04)*100)+'% Hack:40%';break;
     case 'pls':statLine='Exp:'+Math.round(f.plsExplosionRadius+chaos*10)+' DMG:'+Math.round((1+chaos*0.12)*100)+'%';break;
     case 'sandy':statLine='Spd:'+(f.baseSpeed*0.6).toFixed(1)+'-'+(f.baseSpeed*(1+chaos*0.15)).toFixed(1)+' Dodge:'+Math.round((f.dodgeChance+f.sandyDodgeBoost)*100)+'%';break;
+    case 'throw':const avl=f.throwWeapons.filter(tw=>tw.available).length;const cur=f.throwWeapons[f.throwActiveIdx];statLine=(cur?cur.name:'---')+' '+avl+'/3';break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
