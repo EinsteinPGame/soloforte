@@ -205,6 +205,7 @@ let particles=[];
 let dmgNums=[];
 let battleLog=[];
 let battleTime=0;
+let battleRealFrames=0; // real frames elapsed (for accurate duration display)
 let battleOver=false;
 let winner=null;
 let battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
@@ -262,7 +263,6 @@ function spawnExplosion(x,y,radius,color,dmg,owner,target){
   shakeTimer=Math.max(shakeTimer,15);shakeAmt=Math.max(shakeAmt,bigR/4);
 }
 
-let lastRelicTime=0;
 function showRelicText(text,color){
   // Back-to-back detection — if both relics fire within 30 frames
   if(relicTextTimer>90){
@@ -288,8 +288,7 @@ function getChaosLevel(f){
 function getAttackInterval(f){
   const chaos=getChaosLevel(f);
   const base=f.char.baseAtkInterval;
-  // At chaos 8: mantis=36/(1+4)=7.2 frames (~8.3 attacks/sec), PLS=120/5=24 frames (~2.5/sec)
-  return Math.max(base===120?18:4, base/(1+chaos*0.5));
+  return Math.max(4, base/(1+chaos*0.5));
 }
 
 // ============================================================
@@ -864,7 +863,7 @@ function triggerQuickhack(qd){
       }
       break;
   }
-  quickhackDisplay=null;
+  // Keep quickhackDisplay alive until flash finishes (cleared in drawBattle when quickhackFlashTimer hits 0)
 }
 
 // ============================================================
@@ -1261,7 +1260,9 @@ function updateRelicGorilla(f,enemy,dt){
 }
 
 function spawnWallCrack(x,y,owner){
-  wallCracks.push({x,y,size:50+Math.random()*40,life:500,maxLife:500,owner:owner||null,dmgCooldown:0});
+  // Pre-generate crack line lengths so they don't flicker each frame
+  const crackLines=[];for(let i=0;i<10;i++){crackLines.push(0.5+Math.random()*0.5);}
+  wallCracks.push({x,y,size:50+Math.random()*40,life:500,maxLife:500,owner:owner||null,dmgCooldown:0,crackLines});
   // Visual impact burst at crack point
   spawnBurst(x,y,'#ffaa00',14,6);
   spawnSparks(x,y,'#ffdd44',10);
@@ -1470,7 +1471,8 @@ function updateBattle(dt){
     // Bleed DOT
     if(f.bleedTimer>0){
       f.bleedTimer-=dt;
-      if(battleTime%15<dt){
+      if(!f._bleedTickCD)f._bleedTickCD=0;f._bleedTickCD-=dt;
+      if(f._bleedTickCD<=0){f._bleedTickCD=15;
         f.hp-=f.bleedDmg;
         spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#cc0000',rand(-1,1),-1,12,2);
         spawnDmgNum(f.x+rand(-10,10),f.y-f.radius-5,f.bleedDmg,'#cc0000',false);
@@ -1481,7 +1483,8 @@ function updateBattle(dt){
     // Burn DOT
     if(f.burnTimer>0){
       f.burnTimer-=dt;
-      if(battleTime%10<dt){
+      if(!f._burnTickCD)f._burnTickCD=0;f._burnTickCD-=dt;
+      if(f._burnTickCD<=0){f._burnTickCD=10;
         f.hp-=f.burnDmg;
         spawnParticle(f.x+rand(-10,10),f.y-f.radius,'#ff4400',0,-1,15,2);
         if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=enemy;addLog((enemy.side===0?'P1':'P2')+' '+enemy.char.name+' WINS! (burn)');SFX.ko();setTimeout(()=>SFX.victory(),500);}
@@ -1728,6 +1731,18 @@ function updateBattle(dt){
           tw.available=true;tw.returnCD=0;
           spawnBurst(p.x,p.y,'#ffcc00',8,3);
           spawnDmgNum(p.x,p.y-15,'AUTO-RETURN','#ffcc00',false);
+        } else if(wallHit&&tw.id==='agaou'){
+          // Agaou wall explosion — explode only, don't embed
+          const ex=clamp(p.x,ARENA.x,ARENA.x+ARENA.w),ey=clamp(p.y,ARENA.y,ARENA.y+ARENA.h);
+          spawnExplosion(ex,ey,p.explosionRadius||60,p.color,p.dmg*0.4,p.owner,p.target);
+          if(p.target&&p.target.alive&&dist({x:ex,y:ey},p.target)<(p.explosionRadius||60)){
+            dealDamage(p.owner,p.target,p.dmg*0.4);
+          }
+          SFX.explode();
+          // Agaou returns after wall explosion with normal miss cooldown
+          const chaos=getChaosLevel(p.owner);
+          const scaledCD=Math.max(tw.missCD*0.3,tw.missCD/(1+chaos*0.3));
+          tw.returnCD=scaledCD;tw.available=false;
         } else {
           // Embed weapon on ground
           const ex=clamp(p.x,ARENA.x+5,ARENA.x+ARENA.w-5);
@@ -1737,15 +1752,6 @@ function updateBattle(dt){
           p.owner.throwEmbedded.push({x:ex,y:ey,weaponIdx:p.throwIdx,active:true,life:scaledCD,color:tw.color});
           tw.returnCD=scaledCD;
           tw.available=false;
-        }
-        // Agaou wall explosion
-        if(wallHit&&tw.id==='agaou'){
-          const ex=clamp(p.x,ARENA.x,ARENA.x+ARENA.w),ey=clamp(p.y,ARENA.y,ARENA.y+ARENA.h);
-          spawnExplosion(ex,ey,p.explosionRadius||60,p.color,p.dmg*0.4,p.owner,p.target);
-          if(p.target&&p.target.alive&&dist({x:ex,y:ey},p.target)<(p.explosionRadius||60)){
-            dealDamage(p.owner,p.target,p.dmg*0.4);
-          }
-          SFX.explode();
         }
       }
       projectiles.splice(i,1);
@@ -1898,7 +1904,7 @@ function updateBattle(dt){
   }
 
   // Quickhack screen flash
-  if(quickhackFlashTimer>0)quickhackFlashTimer-=dt;
+  if(quickhackFlashTimer>0){quickhackFlashTimer-=dt;if(quickhackFlashTimer<=0)quickhackDisplay=null;}
   // Wall crack decay + hazard damage
   for(let i=wallCracks.length-1;i>=0;i--){
     const wc=wallCracks[i];
@@ -3133,7 +3139,7 @@ function drawElementPickerMobile(sx,sy,selected,prefix,cb){
 // BATTLE SCREEN
 // ============================================================
 function startBattle(){
-  screen='battle';battleOver=false;winner=null;battleTime=0;battleSpeed=1;
+  screen='battle';battleOver=false;winner=null;battleTime=0;battleRealFrames=0;battleSpeed=1;
   particles=[];dmgNums=[];battleLog=[];projectiles=[];explosions=[];
   shockwaveProjectiles=[];wallCracks=[];fireZones=[];vulnZones=[];poisonBubbles=[];
   fireTrails=[];sandyAfterimages=[];sandyOrbs=[];
@@ -3147,7 +3153,7 @@ function drawBattle(){
   clearBtns();
   const f1=fighters[0],f2=fighters[1];
   X.save();
-  if(shakeTimer>0)X.translate(rand(-shakeAmt,shakeAmt),rand(-shakeAmt,shakeAmt));
+  if(shakeTimer>0)X.translate((Math.random()*2-1)*shakeAmt,(Math.random()*2-1)*shakeAmt);
   X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
 
   // Arena
@@ -3171,7 +3177,7 @@ function drawBattle(){
     X.strokeStyle='#ffaa00';X.lineWidth=3;
     for(let i=0;i<10;i++){
       const ca=Math.PI*2*i/10+(wc.x*0.01);
-      const len=s*(0.5+Math.random()*0.5);
+      const len=s*(wc.crackLines?wc.crackLines[i]:0.75);
       X.beginPath();X.moveTo(wc.x,wc.y);
       X.lineTo(wc.x+Math.cos(ca)*len,wc.y+Math.sin(ca)*len);
       X.stroke();
@@ -3574,7 +3580,7 @@ function drawResult(){
   const sl=[['','P1 '+f1.char.name,'P2 '+f2.char.name],['Hits',battleStats.p1Hits,battleStats.p2Hits],['Damage',Math.round(battleStats.p1Dmg),Math.round(battleStats.p2Dmg)],['Crits',battleStats.p1Crits,battleStats.p2Crits],['HP Left',Math.max(0,Math.ceil(f1.hp)),Math.max(0,Math.ceil(f2.hp))]];
   const colW=isMobile?120:160;
   sl.forEach((line,i)=>{const sy=statsY+18+i*20;X.textAlign='right';X.fillStyle='#888';X.fillText(line[0],W/2-10,sy);X.textAlign='center';X.fillStyle=i===0?f1.char.color:'#ccc';X.fillText(''+line[1],W/2-10-colW/2,sy);X.fillStyle=i===0?f2.char.color:'#ccc';X.fillText(''+line[2],W/2+10+colW/2,sy);});
-  X.font='11px Consolas,monospace';X.fillStyle='#666';X.textAlign='center';X.fillText('Duration: '+(battleTime/60).toFixed(1)+'s',W/2,statsY+125);
+  X.font='11px Consolas,monospace';X.fillStyle='#666';X.textAlign='center';X.fillText('Duration: '+(battleRealFrames/60).toFixed(1)+'s',W/2,statsY+125);
 
   const btnY=statsY+150,btnW=isMobile?140:160;
   addBtn('rematch',W/2-btnW-10,btnY,btnW,42,'Rematch','#ff4444',()=>{startBattle();});
@@ -3593,7 +3599,7 @@ function loop(time){
   switch(screen){
     case 'title':drawTitle();break;
     case 'select':drawSelect();break;
-    case 'battle':for(let i=0;i<battleSpeed;i++)updateBattle(1);drawBattle();break;
+    case 'battle':for(let i=0;i<battleSpeed;i++)updateBattle(1);battleRealFrames++;drawBattle();break;
     case 'result':drawResult();break;
   }
   X.restore();
