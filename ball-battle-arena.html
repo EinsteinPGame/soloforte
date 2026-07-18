@@ -428,6 +428,7 @@ function createFighter(charIdx,elemIdx,side){
     katanaDeflectCD:0, // cooldown after counter-dash
     katanaPostDashTimer:0, // frames remaining of 80% dmg reduction after counter-dash
     katanaDashing:false, // mid counter-dash
+    katanaDashTimer:0, // timeout for dash (prevent getting stuck)
     katanaDashTarget:null,
     katanaDeflectCount:0, // charges relic
     katanaRushDeflects:0, // relic: deflects during rush = more final damage
@@ -634,6 +635,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     defender.katanaDeflectCount++;
     if(!defender.katanaRushing&&!defender.katanaDashing){
       defender.katanaDashing=true;
+      defender.katanaDashTimer=90; // max 1.5s dash before auto-cancel
       defender.katanaDashTarget=attacker;
     }
     if(defender.elementActive&&defender.elem.id==='fire'){
@@ -2176,6 +2178,8 @@ function updateBattle(dt){
       if(f.katanaPostDashTimer>0)f.katanaPostDashTimer-=dt;
       // Counter-dash: weaker mantis-blade-like rush → single slash → bounce back
       if(f.katanaDashing&&f.katanaDashTarget&&f.katanaDashTarget.alive){
+        f.katanaDashTimer-=dt;
+        if(f.katanaDashTimer<=0){f.katanaDashing=false;f.katanaPostDashTimer=60;} // timeout — unstick
         const t=f.katanaDashTarget;
         const d=dist(f,t);
         const a=angle(f,t);
@@ -2185,7 +2189,7 @@ function updateBattle(dt){
         // Orange trail behind (like mantis blade trail)
         spawnParticle(f.x,f.y,'#ff6644',-f.vx*0.15,-f.vy*0.15,12,2.5);
         spawnParticle(f.x,f.y,'#ffcc00',-f.vx*0.1,-f.vy*0.1,8,1.5);
-        if(d<f.radius+t.radius+15){
+        if(f.katanaDashTimer<=0||d<f.radius+t.radius+15){
           // Hit! Single slash like weaker mantis finisher
           f.katanaDashing=false;
           f.katanaPostDashTimer=60; // 1 second of 80% dmg reduction after counter-dash
