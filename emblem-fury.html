@@ -2948,6 +2948,7 @@ function showBossReward(){
       // Check for pending emblem selections
       if(pendingEmblems>0){pendingEmblems--;showEmblemSelect();return;}
       gameState=storyActive?'storyPlaying':'playing';paused=false;
+      mouseDown=false;player.fireTimer=0; // reset shooting state after menu
       if(!isTouchDevice)canvas.requestPointerLock&&canvas.requestPointerLock();
     });
     choices.appendChild(div);
@@ -3000,6 +3001,7 @@ function showEmblemSelect(){
       // Check for more pending emblem selections
       if(pendingEmblems>0){pendingEmblems--;setTimeout(()=>showEmblemSelect(),50);return;}
       gameState=storyActive?'storyPlaying':'playing';paused=false;
+      mouseDown=false;player.fireTimer=0; // reset shooting state after menu
       if(!isTouchDevice)canvas.requestPointerLock&&canvas.requestPointerLock();
     });
     choices.appendChild(div);
@@ -3021,12 +3023,12 @@ function showCharacterSelect(){
   const descs={easy:'Enemies deal 60% damage, move 80% speed',medium:'Standard experience',hard:'Enemies deal 140% damage, move 120% speed',nightmare:'Enemies deal 200% damage, bosses every 60s, 1.8x HP'};
   if(diffDesc)diffDesc.textContent=descs[selectedDifficulty.toLowerCase()]||'';
 
-  CHARACTERS.forEach(ch=>{
+  CHARACTERS.forEach((ch,idx)=>{
     const card=document.createElement('div');card.className='char-card';
     card.style.borderColor=ch.color;
     card.innerHTML=`<h3 style="color:${ch.color}">${ch.name}</h3><p>HP: ${ch.hp} | SPD: ${ch.speed}</p><p>[Q] ${ch.skillName}</p><p>[E] ${ch.ultName}</p>${ch.desc?`<p style="margin-top:4px;color:#777">${ch.desc}</p>`:''}`;
     card.addEventListener('click',()=>{
-      selectedChar=ch;
+      selectedChar=ch;player.character=idx;
       player.maxHp=ch.hp;player.speed=ch.speed;player.critChance=ch.critChance||0.05;
       const diffMults={easy:0.6,medium:1,hard:1.4,nightmare:2};
       window._diffMult=diffMults[selectedDifficulty.toLowerCase()]||1;
@@ -3189,12 +3191,12 @@ function startStoryMode(){
   const storyBtnDiv=titleScreen.querySelector('[style*="display:flex;gap:12px"]');
   if(storyBtnDiv)storyBtnDiv.style.display='none';
 
-  CHARACTERS.forEach(ch=>{
+  CHARACTERS.forEach((ch,idx)=>{
     const card=document.createElement('div');card.className='char-card';
     card.style.borderColor=ch.color;
     card.innerHTML=`<h3 style="color:${ch.color}">${ch.name}</h3><p>HP: ${ch.hp} | SPD: ${ch.speed}</p><p>[Q] ${ch.skillName}</p><p>[E] ${ch.ultName}</p>${ch.desc?`<p style="margin-top:4px;color:#777">${ch.desc}</p>`:''}`;
     card.addEventListener('click',()=>{
-      selectedChar=ch;
+      selectedChar=ch;player.character=idx;
       player.maxHp=ch.hp;player.speed=ch.speed;player.critChance=ch.critChance||0.05;
       window._diffMult=1;
       titleScreen.style.display='none';
