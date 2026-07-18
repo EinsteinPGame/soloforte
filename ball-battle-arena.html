@@ -635,7 +635,7 @@ function attackGorilla(f,enemy,chaos){
       }
     }
     explosions.push({x:f.x,y:f.y,radius:0,maxRadius:aoeRadius,color:'#ff8800',life:20,maxLife:20,dmg:0,owner:f,target:null,hit:true});
-    spawnWallCrack(f.x,f.y); // ground crack at slam point
+    spawnWallCrack(f.x,f.y,f); // ground crack at slam point
     shakeTimer=18;shakeAmt=12;
   } else {
     // Left/right heavy punch — only hits if facing enemy
@@ -1160,11 +1160,12 @@ function updateRelicGorilla(f,enemy,dt){
   }
 }
 
-function spawnWallCrack(x,y){
-  wallCracks.push({x,y,size:25+Math.random()*30,life:400,maxLife:400});
+function spawnWallCrack(x,y,owner){
+  wallCracks.push({x,y,size:50+Math.random()*40,life:500,maxLife:500,owner:owner||null,dmgCooldown:0});
   // Visual impact burst at crack point
-  spawnBurst(x,y,'#ffaa00',8,4);
-  spawnSparks(x,y,'#ffdd44',6);
+  spawnBurst(x,y,'#ffaa00',14,6);
+  spawnSparks(x,y,'#ffdd44',10);
+  SFX.thunderclap();
 }
 
 function updateRelicMonowire(f,enemy,dt){
@@ -1536,7 +1537,7 @@ function updateBattle(dt){
       else if(minD===dT){sw.target.vy=-8;wallX=ex;wallY=ARENA.y;}
       else{sw.target.vy=8;wallX=ex;wallY=ARENA.y+ARENA.h;}
       // Wall crack at impact point
-      spawnWallCrack(wallX,wallY);
+      spawnWallCrack(wallX,wallY,sw.owner);
       spawnBurst(sw.target.x,sw.target.y,'#ffaa00',15,6);
       shakeTimer=10;shakeAmt=8;
       SFX.thunderclap();
@@ -1546,7 +1547,7 @@ function updateBattle(dt){
     if(sw.x<ARENA.x||sw.x>ARENA.x+ARENA.w||sw.y<ARENA.y||sw.y>ARENA.y+ARENA.h){
       const wx=clamp(sw.x,ARENA.x,ARENA.x+ARENA.w);
       const wy=clamp(sw.y,ARENA.y,ARENA.y+ARENA.h);
-      spawnWallCrack(wx,wy);
+      spawnWallCrack(wx,wy,sw.owner);
       spawnBurst(wx,wy,'#ffaa00',10,4);
       SFX.punch();
       shockwaveProjectiles.splice(i,1);continue;
@@ -1653,8 +1654,28 @@ function updateBattle(dt){
 
   // Quickhack screen flash
   if(quickhackFlashTimer>0)quickhackFlashTimer-=dt;
-  // Wall crack decay
-  for(let i=wallCracks.length-1;i>=0;i--){wallCracks[i].life-=dt;if(wallCracks[i].life<=0)wallCracks.splice(i,1);}
+  // Wall crack decay + hazard damage
+  for(let i=wallCracks.length-1;i>=0;i--){
+    const wc=wallCracks[i];
+    wc.life-=dt;
+    if(wc.life<=0){wallCracks.splice(i,1);continue;}
+    if(wc.dmgCooldown>0)wc.dmgCooldown-=dt;
+    // Cracks damage enemies who walk over them
+    if(wc.owner&&wc.dmgCooldown<=0){
+      fighters.forEach(f=>{
+        if(f.side===wc.owner.side||!f.alive)return;
+        if(dist(f,wc)<wc.size*0.7){
+          const crackDmg=wc.owner.atk*0.3;
+          f.hp-=crackDmg;f.hitFlash=4;
+          spawnDmgNum(f.x+rand(-10,10),f.y-f.radius-10,crackDmg,'#ffaa00',false);
+          spawnParticle(f.x,f.y+f.radius,'#ffaa00',0,-2,10,2);
+          f.slowTimer=Math.max(f.slowTimer,20);
+          wc.dmgCooldown=25;
+          if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=wc.owner;addLog((wc.owner.side===0?'P1':'P2')+' '+wc.owner.char.name+' WINS!');SFX.ko();setTimeout(()=>SFX.victory(),500);}
+        }
+      });
+    }
+  }
 
   // Relic text timer
   if(relicTextTimer>0)relicTextTimer-=dt;
@@ -2790,26 +2811,36 @@ function drawBattle(){
   wallCracks.forEach(wc=>{
     const a=Math.min(1,wc.life/wc.maxLife);
     X.globalAlpha=a;
-    X.strokeStyle='#ffaa00';X.lineWidth=2;
     const s=wc.size;
-    for(let i=0;i<6;i++){
-      const ca=Math.PI*2*i/6+(wc.x*0.01);
-      const len=s*(0.4+Math.random()*0.6);
+    // Hazard zone glow
+    const hg=X.createRadialGradient(wc.x,wc.y,0,wc.x,wc.y,s*0.8);
+    hg.addColorStop(0,'rgba(255,140,0,'+a*0.25+')');hg.addColorStop(0.6,'rgba(255,100,0,'+a*0.12+')');hg.addColorStop(1,'rgba(255,60,0,0)');
+    X.fillStyle=hg;X.beginPath();X.arc(wc.x,wc.y,s*0.8,0,Math.PI*2);X.fill();
+    // Thick crack lines
+    X.strokeStyle='#ffaa00';X.lineWidth=3;
+    for(let i=0;i<10;i++){
+      const ca=Math.PI*2*i/10+(wc.x*0.01);
+      const len=s*(0.5+Math.random()*0.5);
       X.beginPath();X.moveTo(wc.x,wc.y);
       X.lineTo(wc.x+Math.cos(ca)*len,wc.y+Math.sin(ca)*len);
       X.stroke();
-      // Branch cracks
-      if(i%2===0){
+      // Branch cracks on most lines
+      if(i%2===0||i%3===0){
         const bx=wc.x+Math.cos(ca)*len*0.6;
         const by=wc.y+Math.sin(ca)*len*0.6;
+        X.lineWidth=2;
         X.beginPath();X.moveTo(bx,by);
-        X.lineTo(bx+Math.cos(ca+0.5)*len*0.4,by+Math.sin(ca+0.5)*len*0.4);
+        X.lineTo(bx+Math.cos(ca+0.5)*len*0.5,by+Math.sin(ca+0.5)*len*0.5);
         X.stroke();
+        X.beginPath();X.moveTo(bx,by);
+        X.lineTo(bx+Math.cos(ca-0.4)*len*0.4,by+Math.sin(ca-0.4)*len*0.4);
+        X.stroke();
+        X.lineWidth=3;
       }
     }
-    // Glow at center
-    X.beginPath();X.arc(wc.x,wc.y,s*0.3,0,Math.PI*2);
-    X.fillStyle='rgba(255,170,0,'+a*0.3+')';X.fill();
+    // Bright center glow
+    X.beginPath();X.arc(wc.x,wc.y,s*0.25,0,Math.PI*2);
+    X.fillStyle='rgba(255,200,50,'+a*0.5+')';X.fill();
     X.globalAlpha=1;
   });
 
