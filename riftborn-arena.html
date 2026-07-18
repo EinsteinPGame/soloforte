@@ -746,7 +746,7 @@ function evolveCreature(c,newId){
   c.specId=newId;c.name=newSpec.name;c.type=newSpec.type;
   c.baseStats={...newSpec.stats};
   calcStats(c);
-  c.hp=Math.max(1,Math.floor(c.maxHp*hpPct));
+  c.hp=Math.floor(c.maxHp*hpPct);
   // Add new moves if space
   let allMoves=c.moves.map(m=>m.name);
   newSpec.moves.forEach(m=>{
@@ -1455,7 +1455,7 @@ function drawOverworld(){
     const tx=W-30-i*28;
     X.fillStyle=tp[i].hp>0?TYPE_COLORS[tp[i].type]:'#333';
     X.beginPath();X.arc(tx,25,10,0,Math.PI*2);X.fill();
-    if(tp[i].hp<=0){X.strokeStyle='#ff3333';X.lineWidth=2;X.beginPath();X.moveTo(tx-6,tx-6);X.lineTo(tx+6,tx+6);X.stroke()}
+    if(tp[i].hp<=0){X.strokeStyle='#ff3333';X.lineWidth=2;X.beginPath();X.moveTo(tx-6,25-6);X.lineTo(tx+6,25+6);X.stroke();X.beginPath();X.moveTo(tx+6,25-6);X.lineTo(tx-6,25+6);X.stroke()}
   }
 
   // Main menu buttons
@@ -1663,7 +1663,7 @@ function drawBattle(){
       drawHPBar(25,by+18,100,6,c.hp,c.maxHp);
       drawText(`${c.hp}/${c.maxHp}`,130,by+15,9,'#888');
     });
-    const backIdx=team.length-1;
+    const backIdx=team.length-2;
     drawButton(W/2-60,botY+10+backIdx*32,120,28,'Back',b.subIdx===backIdx);
   }
 
@@ -2225,7 +2225,11 @@ function handleClick(cx,cy){
     if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=1;return}
     if(GS.arenaIdx>=8&&cy>=100&&cy<=128){handleInput('Enter');return}
     ARENAS.forEach((a,i)=>{
-      if(i===GS.arenaIdx){GS.menuIdx=i;handleInput('Enter')}
+      if(i===GS.arenaIdx&&i<8){
+        const startY=55,rowY=startY+25+i*42;
+        const btnX=W-90,btnY=rowY+4,btnW=75,btnH=28;
+        if(cx>=btnX&&cx<=btnX+btnW&&cy>=btnY&&cy<=btnY+btnH){GS.menuIdx=i;handleInput('Enter')}
+      }
     });
   }
 
