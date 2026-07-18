@@ -96,6 +96,12 @@ const SFX={
   // Berserk = SHOTGUN boom — deep blast + pellet scatter
   shotgun(){this._tone(60,0.2,'sine',0.35);this._tone(120,0.15,'sine',0.25,0.02);this._noise(0.15,0.25);this._tone(300,0.08,'square',0.1,0.04)},
   shellLoad(){this._tone(400,0.06,'triangle',0.1);this._tone(600,0.04,'square',0.08,0.03)},
+  // Adam Smasher = ROCKET launch — deep whoosh + ignition
+  rocketLaunch(){this._tone(100,0.2,'sawtooth',0.3);this._tone(50,0.25,'sine',0.25,0.03);this._noise(0.2,0.2);this._tone(300,0.1,'square',0.15,0.08)},
+  // Adam Smasher = SLAM impact — massive ground slam
+  slamImpact(){this._tone(30,0.4,'sine',0.45);this._tone(60,0.3,'sine',0.35,0.03);this._noise(0.3,0.3);this._tone(150,0.15,'sawtooth',0.2,0.1);this._tone(200,0.1,'square',0.15,0.15)},
+  // Adam Smasher = WARNING siren
+  warning(){this._tone(800,0.15,'square',0.18);this._tone(600,0.15,'square',0.15,0.15);this._tone(800,0.12,'square',0.18,0.3)},
 };
 
 // ============================================================
@@ -166,6 +172,15 @@ const CHARS=[
     baseAtkInterval:140,relicChargeRate:1.0,
     specialName:'Berserk Mode Activated',
   },
+  {
+    id:'smasher',name:'Adam Smasher',color:'#cc4444',
+    desc:'BOSS. Rockets + Air Slam.',
+    playstyle:'Boss — 2v1',
+    stats:{hp:1200,atk:32,speed:2.5,range:200,def:14,crit:12},
+    baseAtkInterval:90,relicChargeRate:0.7,
+    specialName:'SMASHER PROTOCOL',
+    isBoss:true,
+  },
 ];
 
 // ============================================================
@@ -212,6 +227,10 @@ const COMBO_EFFECTS={
   'berserk_electric':'Pellets return after hitting',
   'berserk_toxic':'Slight pull on enemies toward Berserk',
   'berserk_cryo':'Slow lingering pellets persist longer',
+  'smasher_fire':'Explosions + landing leave fire zones',
+  'smasher_electric':'Shorter rocket + landing delays',
+  'smasher_toxic':'Rapid hits within 0.75s = 50% bonus',
+  'smasher_cryo':'Ice shrapnel after explosions',
 };
 
 // ============================================================
@@ -257,6 +276,11 @@ let fireTrails=[]; // {x,y,life,maxLife} — sandy fire trail
 let sandyAfterimages=[]; // {x,y,radius,rotation,color,life,maxLife} — speed afterimages
 let sandyOrbs=[]; // {owner,angle,dmg} — sandy+electric rotating orbs
 let iceWalls=[]; // {x,y,angle,life,maxLife,owner} — katana+ice walls behind enemy
+let smasherWarnings=[]; // {x,y,radius,life,maxLife} — red warning zones before slam
+let gameMode='1v1'; // '1v1' or 'boss'
+let bossChar=0; // index of boss char for boss mode p1/p2 team select
+let teamChar1=0,teamChar2=1; // team chars for boss mode
+let teamElem1=0,teamElem2=0,bossElem=0; // elements
 
 const ARENA={x:15,y:65,w:W-30,h:H-200};
 
@@ -411,6 +435,15 @@ function createFighter(charIdx,elemIdx,side){
     berserkSpeedBoost:0, // speed gain from taking damage
     berserkInvincible:false, // relic invincibility
     berserkPelletCount:6, // scales with chaos
+    // Adam Smasher state
+    smasherRocketDelay:0, // delay before rocket fires
+    smasherRocketTarget:null, // where rocket is aimed
+    smasherAirborne:false, // in air during slam
+    smasherSlamTarget:null, // {x,y} landing target
+    smasherSlamTimer:0, // timer for air → slam
+    smasherSlamWarning:0, // warning display timer
+    smasherLastHitTime:0, // for toxic rapid-hit tracking
+    smasherRapidHitCount:0, // toxic double damage counter
   };
 }
 
@@ -590,7 +623,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
         if(defender.elementActive&&defender.elem.id==='fire'){
           spawnExplosion(attacker.x,attacker.y,40,'#ff4400',defender.atk*0.5,defender,attacker);
           attacker.hp-=defender.atk*0.5;attacker.hitFlash=8;
-          if(attacker.hp<=0){attacker.hp=0;attacker.alive=false;attacker.deathAnim=60;}
+          if(attacker.hp<=0){attacker.hp=0;attacker.alive=false;attacker.deathAnim=60;checkVictory(defender);}
         }
         if(defender.elementActive&&defender.elem.id==='cryo'){
           const behindAngle=angle(defender,attacker);
@@ -644,11 +677,26 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
 
   if(defender.hp<=0){
     defender.hp=0;defender.alive=false;defender.deathAnim=60;
-    battleOver=true;winner=attacker;
-    addLog((attacker.side===0?'P1':'P2')+' '+attacker.char.name+' WINS!');
-    SFX.ko();setTimeout(()=>SFX.victory(),500);
+    checkVictory(attacker);
   }
   return dmg;
+}
+
+function checkVictory(lastAttacker){
+  // Check if one side is fully eliminated
+  const side0Alive=fighters.filter(f=>f.side===0&&f.alive);
+  const side1Alive=fighters.filter(f=>f.side===1&&f.alive);
+  if(side0Alive.length===0){
+    battleOver=true;winner=lastAttacker||side1Alive[0];
+    const winLabel=gameMode==='boss'?(winner.char.isBoss?'BOSS':'TEAM'):(winner.side===0?'P1':'P2');
+    addLog(winLabel+' '+winner.char.name+' WINS!');
+    SFX.ko();setTimeout(()=>SFX.victory(),500);
+  } else if(side1Alive.length===0){
+    battleOver=true;winner=lastAttacker||side0Alive[0];
+    const winLabel=gameMode==='boss'?(winner.char.isBoss?'BOSS':'TEAM'):(winner.side===0?'P1':'P2');
+    addLog(winLabel+' '+winner.char.name+' WINS!');
+    SFX.ko();setTimeout(()=>SFX.victory(),500);
+  }
 }
 
 // ============================================================
@@ -661,7 +709,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -689,6 +737,7 @@ function performWeaponAttack(f,enemy){
     case 'throw':attackThrow(f,enemy,chaos);break;
     case 'katana':attackKatana(f,enemy,chaos);break;
     case 'berserk':attackBerserk(f,enemy,chaos);break;
+    case 'smasher':attackSmasher(f,enemy,chaos);break;
   }
 }
 
@@ -959,6 +1008,41 @@ function attackBerserk(f,enemy,chaos){
   f.berserkReloadTimer=reloadTime;
 }
 
+function attackSmasher(f,enemy,chaos){
+  // Adam Smasher — ROCKETS: cone area blast with delay before firing
+  f.weaponExtend=1;f.weaponFlash=15;
+  SFX.rocketLaunch();
+  const baseAngle=angle(f,enemy);
+  let rocketDelay=Math.max(15, 45-chaos*3); // shorter delay at higher chaos
+  // Electric element: shorter delays
+  if(f.elementActive&&f.elem.id==='electric')rocketDelay*=0.6;
+  const rocketDmg=f.atk*(1.2+chaos*0.15);
+  const rocketSpeed=6+chaos*0.3;
+  // Fire 1-2 rockets (more at higher chaos)
+  const rocketCount=chaos>4?2:1;
+  for(let r=0;r<rocketCount;r++){
+    const spreadAngle=baseAngle+(r-0.5)*0.3*rocketCount;
+    projectiles.push({
+      x:f.x+Math.cos(baseAngle)*f.radius,
+      y:f.y+Math.sin(baseAngle)*f.radius,
+      vx:Math.cos(spreadAngle)*rocketSpeed,vy:Math.sin(spreadAngle)*rocketSpeed,
+      owner:f,target:enemy,color:'#ff4444',
+      life:60,radius:8,dmg:rocketDmg,
+      explosive:true,explosionRadius:55+chaos*5,homing:true,homingStrength:0.06,
+      isRocket:true,
+    });
+  }
+  spawnBurst(f.x+Math.cos(baseAngle)*f.radius,f.y+Math.sin(baseAngle)*f.radius,'#ff6644',15,6);
+  spawnBurst(f.x+Math.cos(baseAngle)*f.radius,f.y+Math.sin(baseAngle)*f.radius,'#ffaa44',10,4);
+  shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
+  // Fire element: leave fire zone at launch point
+  if(f.elementActive&&f.elem.id==='fire'){
+    fireZones.push({x:f.x+Math.cos(baseAngle)*f.radius*2,y:f.y+Math.sin(baseAngle)*f.radius*2,
+      radius:35,life:180,maxLife:180,owner:f,dmg:f.atk*0.08});
+  }
+  // Cryo element: ice shrapnel after rocket explodes (handled in projectile hit)
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -975,7 +1059,7 @@ function applyCaptureWrap(target,duration){
   target.captureTimer=duration;
   target._capturedBy=null; // track who captured for proximity
   // Find the monowire that captured
-  fighters.forEach(f=>{if(f.char.id==='monowire'&&f.side!==target.side)target._capturedBy=f;});
+  fighters.forEach(f=>{if(f&&f.alive&&f.char.id==='monowire'&&f.side!==target.side)target._capturedBy=f;});
   SFX.capture();
   addLog((target.side===0?'P1':'P2')+' CAPTURED!');
   spawnDmgNum(target.x,target.y-target.radius-25,'WRAPPED','#00ddff',false);
@@ -1302,6 +1386,7 @@ function useSpecial(f,enemy){
     case 'throw':relicThrow(f,enemy);break;
     case 'katana':relicKatana(f,enemy);break;
     case 'berserk':relicBerserk(f,enemy);break;
+    case 'smasher':relicSmasher(f,enemy);break;
   }
 }
 
@@ -1434,6 +1519,33 @@ function relicBerserk(f,enemy){
   }
   shakeTimer=25;shakeAmt=14;
   addLog((f.side===0?'P1':'P2')+' BERSERK MODE!');
+}
+
+function relicSmasher(f,enemy){
+  // SMASHER PROTOCOL: Sandevistan activation (speed up, not slowed by bullet time) →
+  // at end: flies up → red warning zone → slam (AoE damage)
+  f.specialTimer=480; // ~8 seconds total
+  f.smasherAirborne=false;
+  f.smasherSlamTimer=0;
+  f.smasherSlamWarning=0;
+  // Speed boost + can't be slowed
+  f.sandyTimeScale=1;
+  f.speed=f.baseSpeed*1.8;
+  const spd=Math.hypot(f.vx,f.vy);
+  if(spd>0){f.vx=f.vx/spd*f.speed*2;f.vy=f.vy/spd*f.speed*2;}
+  // Not slowed by enemy Sandy
+  f._smasherSandyImmune=true;
+  // Multi-color activation burst
+  spawnBurst(f.x,f.y,'#cc4444',50,12);
+  spawnBurst(f.x,f.y,'#ff6644',35,9);
+  spawnBurst(f.x,f.y,'#ffcc00',25,7);
+  spawnBurst(f.x,f.y,'#4488ff',15,5);
+  for(let r=0;r<3;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:70+r*30,color:'#cc4444',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  shakeTimer=30;shakeAmt=16;
+  SFX.warning();
+  addLog((f.side===0?'P1':'P2')+' SMASHER PROTOCOL!');
 }
 
 // ============================================================
@@ -1747,6 +1859,108 @@ function updateRelicBerserk(f,enemy,dt){
   }
 }
 
+function updateRelicSmasher(f,enemy,dt){
+  // Phase 1: Sandevistan-like speed boost (first ~5 sec) — multi-color afterimages
+  if(!f.smasherAirborne){
+    // Colorful afterimage trail (multi-color, not just blue)
+    if(battleTime%2<1){
+      const colors=['#cc4444','#ff6644','#ffcc00','#4488ff','#cc66ff'];
+      const col=pick(colors);
+      sandyAfterimages.push({x:f.x,y:f.y,radius:f.radius*0.8,rotation:f.rotation,color:col,life:15,maxLife:15});
+    }
+    // Can't be slowed by Sandy during relic
+    f.sandyTimeScale=1;
+    // Transition to air slam at 160 frames remaining
+    if(f.specialTimer<=160){
+      f.smasherAirborne=true;
+      f.smasherSlamTimer=90; // ~1.5 sec in air
+      // Find best target (closest alive enemy)
+      const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
+      const target=enemies.length>0?enemies.reduce((a,b)=>dist(f,a)<dist(f,b)?a:b):enemy;
+      f.smasherSlamTarget={x:target.x,y:target.y};
+      // Warning zone
+      smasherWarnings.push({x:target.x,y:target.y,radius:80,life:90,maxLife:90});
+      SFX.warning();
+      addLog('WARNING: INCOMING SLAM!');
+      // Fly up (shrink + move up visually)
+      f._savedY=f.y;
+      f.vx=0;f.vy=-3;
+      spawnBurst(f.x,f.y,'#cc4444',20,8);
+    }
+  } else {
+    // Phase 2: Airborne → slam
+    f.smasherSlamTimer-=dt;
+    f.vx=0;f.vy=0;
+    // Float above, slowly center over target
+    if(f.smasherSlamTarget){
+      f.x=lerp(f.x,f.smasherSlamTarget.x,0.03);
+      f.y=lerp(f.y,f.smasherSlamTarget.y-100,0.05); // hover above target
+    }
+    // Warning pulse particles
+    if(f.smasherSlamTarget&&battleTime%4<1){
+      const wx=f.smasherSlamTarget.x,wy=f.smasherSlamTarget.y;
+      for(let i=0;i<3;i++){
+        const a=Math.random()*Math.PI*2;
+        spawnParticle(wx+Math.cos(a)*60,wy+Math.sin(a)*60,'#ff2222',0,0,12,3);
+      }
+    }
+    // SLAM!
+    if(f.smasherSlamTimer<=0){
+      const sx=f.smasherSlamTarget?f.smasherSlamTarget.x:f.x;
+      const sy=f.smasherSlamTarget?f.smasherSlamTarget.y:f.y;
+      f.x=sx;f.y=sy;
+      f.smasherAirborne=false;
+      f._smasherSandyImmune=false;
+      f.speed=f.baseSpeed;
+      SFX.slamImpact();
+      // Massive slam explosion
+      spawnExplosion(sx,sy,90,'#cc4444',f.atk*2.5,f,null);
+      spawnBurst(sx,sy,'#ff4444',40,15);
+      spawnBurst(sx,sy,'#ffaa44',30,10);
+      spawnBurst(sx,sy,'#ffffff',20,8);
+      shakeTimer=30;shakeAmt=18;
+      // Deal damage to all enemies in range
+      fighters.forEach(e=>{
+        if(e.side===f.side||!e.alive)return;
+        if(dist(e,{x:sx,y:sy})<90){
+          dealDamage(f,e,f.atk*2.5,true);
+          // Knockback from slam center
+          const ka=angle({x:sx,y:sy},e);
+          e.vx+=Math.cos(ka)*10;e.vy+=Math.sin(ka)*10;
+        }
+      });
+      // Fire element: leave fire zone
+      if(f.elementActive&&f.elem.id==='fire'){
+        fireZones.push({x:sx,y:sy,radius:60,life:300,maxLife:300,owner:f,dmg:f.atk*0.1});
+      }
+      // Cryo element: ice shrapnel in all directions
+      if(f.elementActive&&f.elem.id==='cryo'){
+        for(let i=0;i<12;i++){
+          const a=Math.PI*2*i/12;
+          projectiles.push({
+            x:sx+Math.cos(a)*20,y:sy+Math.sin(a)*20,
+            vx:Math.cos(a)*5,vy:Math.sin(a)*5,
+            owner:f,target:null,color:'#77ddff',
+            life:40,radius:4,dmg:f.atk*0.4,
+            explosive:false,explosionRadius:0,homing:false,
+          });
+        }
+      }
+      // Wall cracks at slam
+      wallCracks.push({x:sx,y:sy,size:50,life:300,maxLife:300,crackLines:Array.from({length:10},()=>0.5+Math.random()*0.5)});
+      addLog('SMASHER SLAM!');
+    }
+  }
+  // End of relic
+  if(f.specialTimer<=0&&!f.smasherAirborne){
+    f._smasherSandyImmune=false;
+    f.speed=f.baseSpeed;
+    f.sandyTimeScale=1;
+    addLog((f.side===0?'P1':'P2')+' Smasher Protocol ended');
+    spawnBurst(f.x,f.y,'#cc4444',10,4);
+  }
+}
+
 // ============================================================
 // BATTLE UPDATE
 // ============================================================
@@ -1755,8 +1969,22 @@ function updateBattle(dt){
   battleTime+=dt;
   const f1=fighters[0],f2=fighters[1];
 
-  [f1,f2].forEach((f,i)=>{
-    const enemy=i===0?f2:f1;
+  // Update smasher warnings
+  for(let i=smasherWarnings.length-1;i>=0;i--){
+    smasherWarnings[i].life-=dt;
+    if(smasherWarnings[i].life<=0)smasherWarnings.splice(i,1);
+  }
+
+  fighters.forEach((f,i)=>{
+    // In boss mode, find the best enemy (closest alive)
+    let enemy;
+    if(gameMode==='boss'){
+      const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
+      enemy=enemies.length>0?enemies.reduce((a,b)=>dist(f,a)<dist(f,b)?a:b):null;
+      if(!enemy)return;
+    } else {
+      enemy=i===0?f2:f1;
+    }
     if(!f.alive)return;
 
     // Timers
@@ -1773,7 +2001,7 @@ function updateBattle(dt){
         f.hp-=crushDmg;f.hitFlash=4;
         spawnDmgNum(f.x+rand(-10,10),f.y-f.radius-10,crushDmg,'#00ddff',false);
         spawnParticle(f.x+rand(-20,20),f.y+rand(-20,20),'#00ddff',0,-1,12,2);
-        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=f._capturedBy;addLog((f._capturedBy.side===0?'P1':'P2')+' '+f._capturedBy.char.name+' WINS!');SFX.ko();setTimeout(()=>SFX.victory(),500);}
+        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(f._capturedBy);}
       }
     }
     if(f.defReductionTimer>0)f.defReductionTimer-=dt;else f.defReduction=0;
@@ -1787,7 +2015,7 @@ function updateBattle(dt){
         f.hp-=f.bleedDmg;
         spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#cc0000',rand(-1,1),-1,12,2);
         spawnDmgNum(f.x+rand(-10,10),f.y-f.radius-5,f.bleedDmg,'#cc0000',false);
-        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=enemy;addLog((enemy.side===0?'P1':'P2')+' '+enemy.char.name+' WINS! (bleed)');SFX.ko();setTimeout(()=>SFX.victory(),500);}
+        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(enemy);}
       }
     } else {f.bleedIcon=false;}
 
@@ -1798,7 +2026,7 @@ function updateBattle(dt){
       if(f._burnTickCD<=0){f._burnTickCD=10;
         f.hp-=f.burnDmg;
         spawnParticle(f.x+rand(-10,10),f.y-f.radius,'#ff4400',0,-1,15,2);
-        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=enemy;addLog((enemy.side===0?'P1':'P2')+' '+enemy.char.name+' WINS! (burn)');SFX.ko();setTimeout(()=>SFX.victory(),500);}
+        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(enemy);}
       }
     }
 
@@ -1838,6 +2066,7 @@ function updateBattle(dt){
         case 'throw':updateRelicThrow(f,enemy,dt);break;
         case 'katana':updateRelicKatana(f,enemy,dt);break;
         case 'berserk':updateRelicBerserk(f,enemy,dt);break;
+        case 'smasher':updateRelicSmasher(f,enemy,dt);break;
       }
     }
 
@@ -1945,12 +2174,24 @@ function updateBattle(dt){
       }
     }
 
+    // Smasher per-frame: toxic rapid-hit tracking, airborne skip
+    if(f.char.id==='smasher'){
+      // Smasher Sandy immunity during relic
+      if(f._smasherSandyImmune)f.sandyTimeScale=1;
+      // Toxic element: track rapid hits for bonus damage
+      if(f.elementActive&&f.elem.id==='toxic'){
+        if(battleTime-f.smasherLastHitTime>45)f.smasherRapidHitCount=0; // reset after 0.75 sec gap
+      }
+    }
+
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
-    // Berserk keeps attacking during relic (invincible mode)
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'){
-      if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
-      if(f.attackTimer<=0){
+    // Berserk + Smasher keep attacking during relic
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'){
+      // Smasher: skip attacks while airborne
+      if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
+      else if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
+      else if(f.attackTimer<=0){
         // PLS fires purely on interval — projectile aims toward enemy
         // Throw needs facing (but ult handles auto-throw separately)
         // Others need weapon to face enemy
@@ -1958,7 +2199,7 @@ function updateBattle(dt){
         if(f.char.id==='throw'&&!f.throwWeapons[f.throwActiveIdx].available){/* wait */}
         else if(f.char.id==='berserk'&&f.berserkReloadTimer>0){/* reloading */}
         else if(f.char.id==='katana'&&f.katanaDashing){/* mid counter-dash */}
-        else if(f.char.id==='pls'||f.char.id==='berserk'||isWeaponFacingEnemy(f,enemy)){
+        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -1969,38 +2210,45 @@ function updateBattle(dt){
     updatePhysics(f,dt);
   });
 
-  // Ball-to-ball collision
-  checkBallCollision(f1,f2);
-
-  // Weapon parry check — every frame, check if weapon tips are close
-  // Sandy can't parry (no weapon)
-  if(f1.alive&&f2.alive&&f1.char.id!=='sandy'&&f2.char.id!=='sandy'){
-    const tipDist1=Math.min(f1.range*0.7,80);
-    const tipDist2=Math.min(f2.range*0.7,80);
-    const w1={x:f1.x+Math.cos(f1.weaponAngle)*tipDist1,y:f1.y+Math.sin(f1.weaponAngle)*tipDist1};
-    const w2={x:f2.x+Math.cos(f2.weaponAngle)*tipDist2,y:f2.y+Math.sin(f2.weaponAngle)*tipDist2};
-    if(dist(w1,w2)<35&&!f1._parryCooldown&&!f2._parryCooldown){
-      const cx=(w1.x+w2.x)/2,cy=(w1.y+w2.y)/2;
-      // MASSIVE parry spark explosion
-      spawnBurst(cx,cy,'#ffffff',30,9);
-      spawnBurst(cx,cy,'#ffcc00',25,7);
-      spawnBurst(cx,cy,'#ffaa00',15,5);
-      spawnSparks(cx,cy,'#ffdd44',18);
-      // Spark lines radiating from clash point
-      for(let i=0;i<12;i++){const a=Math.PI*2*i/12;spawnParticle(cx,cy,'#ffcc00',Math.cos(a)*5,Math.sin(a)*5,14,3);}
-      shakeTimer=16;shakeAmt=10;
-      SFX.clash();
-      const ka=angle(f2,f1);
-      f1.vx+=Math.cos(ka)*5;f1.vy+=Math.sin(ka)*5;
-      f2.vx-=Math.cos(ka)*5;f2.vy-=Math.sin(ka)*5;
-      f1.specialBar=Math.min(f1.specialMax,f1.specialBar+8*(f1.char.relicChargeRate||1));
-      f2.specialBar=Math.min(f2.specialMax,f2.specialBar+8*(f2.char.relicChargeRate||1));
-      addLog('WEAPON CLASH!');
-      spawnDmgNum(cx,cy-15,'PARRY!','#ffcc00',true);
-      f1._parryCooldown=30;f2._parryCooldown=30;
+  // Ball-to-ball collision — all pairs
+  for(let a=0;a<fighters.length;a++){
+    for(let b=a+1;b<fighters.length;b++){
+      if(fighters[a].alive&&fighters[b].alive)checkBallCollision(fighters[a],fighters[b]);
     }
-    if(f1._parryCooldown>0)f1._parryCooldown-=dt;
-    if(f2._parryCooldown>0)f2._parryCooldown-=dt;
+  }
+
+  // Weapon parry check — all pairs of enemy fighters with weapons
+  for(let a=0;a<fighters.length;a++){
+    for(let b=a+1;b<fighters.length;b++){
+      const fa=fighters[a],fb=fighters[b];
+      if(!fa.alive||!fb.alive)continue;
+      if(fa.side===fb.side)continue; // teammates don't parry
+      if(fa.char.id==='sandy'||fb.char.id==='sandy')continue;
+      const tipDist1=Math.min(fa.range*0.7,80);
+      const tipDist2=Math.min(fb.range*0.7,80);
+      const w1={x:fa.x+Math.cos(fa.weaponAngle)*tipDist1,y:fa.y+Math.sin(fa.weaponAngle)*tipDist1};
+      const w2={x:fb.x+Math.cos(fb.weaponAngle)*tipDist2,y:fb.y+Math.sin(fb.weaponAngle)*tipDist2};
+      if(dist(w1,w2)<35&&!fa._parryCooldown&&!fb._parryCooldown){
+        const cx=(w1.x+w2.x)/2,cy=(w1.y+w2.y)/2;
+        spawnBurst(cx,cy,'#ffffff',30,9);
+        spawnBurst(cx,cy,'#ffcc00',25,7);
+        spawnBurst(cx,cy,'#ffaa00',15,5);
+        spawnSparks(cx,cy,'#ffdd44',18);
+        for(let i=0;i<12;i++){const pa=Math.PI*2*i/12;spawnParticle(cx,cy,'#ffcc00',Math.cos(pa)*5,Math.sin(pa)*5,14,3);}
+        shakeTimer=16;shakeAmt=10;
+        SFX.clash();
+        const ka=angle(fb,fa);
+        fa.vx+=Math.cos(ka)*5;fa.vy+=Math.sin(ka)*5;
+        fb.vx-=Math.cos(ka)*5;fb.vy-=Math.sin(ka)*5;
+        fa.specialBar=Math.min(fa.specialMax,fa.specialBar+8*(fa.char.relicChargeRate||1));
+        fb.specialBar=Math.min(fb.specialMax,fb.specialBar+8*(fb.char.relicChargeRate||1));
+        addLog('WEAPON CLASH!');
+        spawnDmgNum(cx,cy-15,'PARRY!','#ffcc00',true);
+        fa._parryCooldown=30;fb._parryCooldown=30;
+      }
+      if(fa._parryCooldown>0)fa._parryCooldown-=dt;
+      if(fb._parryCooldown>0)fb._parryCooldown-=dt;
+    }
   }
 
   // Update projectiles
@@ -2028,9 +2276,9 @@ function updateBattle(dt){
     let hit=false;
     if(p.target&&p.target.alive&&dist(p,p.target)<p.target.radius+p.radius){hit=true;}
     else if(!p.target){
-      // No specific target — check both fighters
-      [fighters[0],fighters[1]].forEach(f=>{
-        if(f&&f.alive&&f!==p.owner&&dist(p,f)<f.radius+p.radius){
+      // No specific target — check all enemy fighters
+      fighters.forEach(f=>{
+        if(f&&f.alive&&f!==p.owner&&f.side!==p.owner.side&&dist(p,f)<f.radius+p.radius){
           p.target=f;hit=true;
         }
       });
@@ -2178,12 +2426,12 @@ function updateBattle(dt){
     const fz=fireZones[i];fz.life-=dt;
     if(fz.life<=0){fireZones.splice(i,1);continue;}
     // Damage enemy if inside zone
-    [f1,f2].forEach(f=>{
-      if(f.alive&&f!==fz.owner&&dist(f,fz)<fz.radius+f.radius&&battleTime%10<dt){
+    fighters.forEach(f=>{
+      if(f.alive&&f.side!==(fz.owner?fz.owner.side:-1)&&dist(f,fz)<fz.radius+f.radius&&battleTime%10<dt){
         f.hp-=fz.dmg;f.hitFlash=5;
         spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#ff4400',0,-1,10,2);
         spawnDmgNum(f.x,f.y-f.radius-10,fz.dmg,'#ff4400',false);
-        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=fz.owner;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(fz.owner);}
       }
     });
     // Visual
@@ -2195,8 +2443,8 @@ function updateBattle(dt){
     const vz=vulnZones[i];vz.life-=dt;
     if(vz.life<=0){vulnZones.splice(i,1);continue;}
     // Enemies in zone take more damage (reduce def)
-    [f1,f2].forEach(f=>{
-      if(f.alive&&f!==vz.owner&&dist(f,vz)<vz.radius+f.radius){
+    fighters.forEach(f=>{
+      if(f.alive&&f.side!==(vz.owner?vz.owner.side:-1)&&dist(f,vz)<vz.radius+f.radius){
         f.defReduction=Math.max(f.defReduction,6);f.defReductionTimer=Math.max(f.defReductionTimer,15);
       }
     });
@@ -2216,7 +2464,7 @@ function updateBattle(dt){
           t.hp-=pb.dmg;t.hitFlash=5;
           spawnDmgNum(t.x,t.y-t.radius-15,pb.dmg,'#aa44cc',false);
           spawnBurst(t.x,t.y,'#aa44cc',5,2);
-          if(t.hp<=0){t.hp=0;t.alive=false;t.deathAnim=60;battleOver=true;winner=pb.owner;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+          if(t.hp<=0){t.hp=0;t.alive=false;t.deathAnim=60;checkVictory(pb.owner);}
         }
       }
     }
@@ -2225,7 +2473,7 @@ function updateBattle(dt){
   }
 
   // Monowire+toxic: release accumulated wrap damage when capture ends
-  [f1,f2].forEach(f=>{
+  fighters.forEach(f=>{
     if(f.monowireWrapDmgAccum>0&&f.captureTimer<=0){
       const dmg=f.monowireWrapDmgAccum;
       f.monowireWrapDmgAccum=0;
@@ -2233,15 +2481,17 @@ function updateBattle(dt){
       spawnDmgNum(f.x,f.y-f.radius-20,dmg,'#aa44cc',true);
       spawnBurst(f.x,f.y,'#aa44cc',10,4);
       addLog((f.side===0?'P1':'P2')+' TOXIC RELEASE! '+Math.round(dmg));
-      if(f.hp<=0){const enemy=f===f1?f2:f1;f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=enemy;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+      if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(fighters.find(e=>e.side!==f.side&&e.alive));}
     }
   });
 
   // Gorilla+fire: wall collision damage
-  [f1,f2].forEach(f=>{
+  fighters.forEach(f=>{
     if(!f.alive)return;
-    const enemy=f===f1?f2:f1;
-    if(enemy.alive&&enemy.elementActive&&enemy.char.id==='gorilla'&&enemy.elem.id==='fire'){
+    // Check if any enemy gorilla with fire element is active
+    const gorillaFire=fighters.find(e=>e.alive&&e.side!==f.side&&e.elementActive&&e.char.id==='gorilla'&&e.elem.id==='fire');
+    if(gorillaFire){
+      const enemy=gorillaFire;
       if(f.x-f.radius<=ARENA.x+2||f.x+f.radius>=ARENA.x+ARENA.w-2||f.y-f.radius<=ARENA.y+2||f.y+f.radius>=ARENA.y+ARENA.h-2){
         if(Math.hypot(f.vx,f.vy)>4&&battleTime%8<dt){
           const wallDmg=enemy.atk*0.5;
@@ -2249,14 +2499,14 @@ function updateBattle(dt){
           spawnDmgNum(f.x,f.y-f.radius-10,wallDmg,'#ff4400',false);
           spawnBurst(f.x,f.y,'#ff4400',6,3);
           SFX.burn();
-          if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=enemy;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+          if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(fighters.find(e=>e.side!==f.side&&e.alive));}
         }
       }
     }
   });
 
   // Decay miss chance over time
-  [f1,f2].forEach(f=>{
+  fighters.forEach(f=>{
     if(f.missChance>0)f.missChance=Math.max(0,f.missChance-0.001*dt);
     // Mantis+electric speed boost decay
     if(f._elecSpeedBoost>0){f._elecSpeedBoost-=dt;if(f._elecSpeedBoost<=0)f.speed=f.baseSpeed;}
@@ -2289,7 +2539,7 @@ function updateBattle(dt){
           spawnParticle(f.x,f.y+f.radius,'#ffaa00',0,-2,10,2);
           f.slowTimer=Math.max(f.slowTimer,20);
           wc.dmgCooldown=25;
-          if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=wc.owner;addLog((wc.owner.side===0?'P1':'P2')+' '+wc.owner.char.name+' WINS!');SFX.ko();setTimeout(()=>SFX.victory(),500);}
+          if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(wc.owner);}
         }
       });
     }
@@ -2302,11 +2552,11 @@ function updateBattle(dt){
   for(let i=fireTrails.length-1;i>=0;i--){
     const ft=fireTrails[i];ft.life-=dt;
     if(ft.life<=0){fireTrails.splice(i,1);continue;}
-    [f1,f2].forEach(f=>{
-      if(f.alive&&f!==ft.owner&&dist(f,ft)<ft.radius+f.radius&&battleTime%8<dt){
+    fighters.forEach(f=>{
+      if(f.alive&&f.side!==(ft.owner?ft.owner.side:-1)&&dist(f,ft)<ft.radius+f.radius&&battleTime%8<dt){
         f.hp-=ft.dmg;f.hitFlash=5;
         spawnParticle(f.x+rand(-5,5),f.y+rand(-5,5),'#ff4400',0,-1,8,2);
-        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=ft.owner;SFX.ko();setTimeout(()=>SFX.victory(),500);}
+        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(ft.owner);}
       }
     });
     if(battleTime%4<dt)spawnParticle(ft.x+rand(-ft.radius/2,ft.radius/2),ft.y+rand(-ft.radius/2,ft.radius/2),pick(['#ff4400','#ff6600','#ffaa00']),0,-0.5,10,2);
@@ -2319,7 +2569,7 @@ function updateBattle(dt){
   }
 
   // Sandy+fire: fire trail during movement (non-special too if element active)
-  [f1,f2].forEach(f=>{
+  fighters.forEach(f=>{
     if(f.alive&&f.char.id==='sandy'&&f.elementActive&&f.elem.id==='fire'&&!f.sandyActive&&battleTime%6<1){
       fireTrails.push({x:f.x,y:f.y,life:30,maxLife:30,radius:10,owner:f,dmg:f.atk*0.1});
     }
@@ -2329,8 +2579,8 @@ function updateBattle(dt){
   for(let i=iceWalls.length-1;i>=0;i--){
     const iw=iceWalls[i];iw.life-=dt;
     if(iw.life<=0){iceWalls.splice(i,1);continue;}
-    [f1,f2].forEach(f=>{
-      if(f.alive&&f!==iw.owner&&dist(f,iw)<f.radius+20){
+    fighters.forEach(f=>{
+      if(f.alive&&f.side!==(iw.owner?iw.owner.side:-1)&&dist(f,iw)<f.radius+20){
         // Push enemy back toward katana owner
         const pushAngle=iw.angle+Math.PI;
         f.vx+=Math.cos(pushAngle)*4;f.vy+=Math.sin(pushAngle)*4;
@@ -2452,6 +2702,30 @@ function drawBall(f){
   X.beginPath();X.arc(f.x-f.radius*0.25,f.y-f.radius*0.25,f.radius*0.2,0,Math.PI*2);
   X.fillStyle='rgba(255,255,255,0.35)';X.fill();
 
+  // Adam Smasher face — cybernetic face visible on ball
+  if(f.char.id==='smasher'){
+    // Red eye slit (left)
+    X.save();
+    X.beginPath();X.arc(f.x-f.radius*0.2,f.y-f.radius*0.15,f.radius*0.08,0,Math.PI*2);
+    X.fillStyle=f.specialActive?'#ff0000':'#cc2222';X.fill();
+    X.shadowColor='#ff0000';X.shadowBlur=f.specialActive?10:4;X.fill();X.shadowBlur=0;
+    // Right eye slit
+    X.beginPath();X.arc(f.x+f.radius*0.2,f.y-f.radius*0.15,f.radius*0.08,0,Math.PI*2);
+    X.fillStyle=f.specialActive?'#ff0000':'#cc2222';X.fill();
+    X.shadowColor='#ff0000';X.shadowBlur=f.specialActive?10:4;X.fill();X.shadowBlur=0;
+    // Metal jaw line
+    X.strokeStyle='#666';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(f.x-f.radius*0.3,f.y+f.radius*0.1);
+    X.lineTo(f.x-f.radius*0.15,f.y+f.radius*0.3);
+    X.lineTo(f.x+f.radius*0.15,f.y+f.radius*0.3);
+    X.lineTo(f.x+f.radius*0.3,f.y+f.radius*0.1);X.stroke();
+    // Scar line
+    X.strokeStyle='#553333';X.lineWidth=1;
+    X.beginPath();X.moveTo(f.x-f.radius*0.1,f.y-f.radius*0.35);
+    X.lineTo(f.x+f.radius*0.05,f.y+f.radius*0.05);X.stroke();
+    X.restore();
+  }
+
   // HP text in center
   X.font='bold 13px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
   X.strokeStyle='#000';X.lineWidth=3;
@@ -2511,6 +2785,10 @@ function drawBall(f){
       const dodgePct=Math.round((f.dodgeChance+f.sandyDodgeBoost)*100);
       X.fillText('Spd:'+minSpd+'-'+maxSpd+' Dodge:'+dodgePct+'%',f.x,statY);
       break;}
+    case 'smasher':{
+      const rocketDmg=Math.round(f.atk*(1.2+chaos*0.15));
+      X.fillText('RKT:'+rocketDmg+' BOSS',f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -2538,6 +2816,7 @@ function drawWeapon(f){
     case 'throw':drawThrowWeapon(r,ext,flash,f);break;
     case 'katana':drawKatanaWeapon(r,ext,flash,f);break;
     case 'berserk':drawBerserkWeapon(r,ext,flash,f);break;
+    case 'smasher':drawSmasherWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -3288,6 +3567,78 @@ function drawBerserkWeapon(r,ext,flash,f){
   }
 }
 
+function drawSmasherWeapon(r,ext,flash,f){
+  const launchLen=55;
+  // Heavy arm mount
+  X.fillStyle='#2a2a30';X.fillRect(r-10,-12,20,24);
+  X.strokeStyle='#3a3a44';X.lineWidth=1.2;X.strokeRect(r-10,-12,20,24);
+  X.fillStyle='rgba(255,50,50,0.4)';X.fillRect(r-8,-12,16,2);X.fillRect(r-8,10,16,2);
+
+  // Rocket launcher body — large, heavy, military
+  const bx=r+8;
+  const bodyG=X.createLinearGradient(bx,-14,bx,14);
+  bodyG.addColorStop(0,'#1a1a1e');bodyG.addColorStop(0.3,'#2a2a35');bodyG.addColorStop(0.5,'#333340');
+  bodyG.addColorStop(0.7,'#2a2a35');bodyG.addColorStop(1,'#1a1a1e');
+  X.fillStyle=bodyG;
+  drawRoundRect(bx,-14,launchLen,28,4);X.fill();
+  X.strokeStyle='#555';X.lineWidth=1.5;X.stroke();
+
+  // Launch tube (main barrel)
+  X.fillStyle='#0a0a10';
+  X.beginPath();X.arc(bx+launchLen,0,8,0,Math.PI*2);X.fill();
+  X.strokeStyle='#666';X.lineWidth=1;X.stroke();
+  // Inner glow
+  X.beginPath();X.arc(bx+launchLen,0,5,0,Math.PI*2);
+  X.fillStyle=flash?'#ff4400':'#331100';X.fill();
+
+  // Red accent strips + panel lines
+  X.fillStyle=flash?'rgba(255,60,60,1)':'rgba(255,40,40,0.5)';
+  X.fillRect(bx+3,-14,launchLen-8,2);X.fillRect(bx+3,12,launchLen-8,2);
+  X.strokeStyle='#222';X.lineWidth=0.5;
+  [0.25,0.5,0.75].forEach(p=>{X.beginPath();X.moveTo(bx+launchLen*p,-14);X.lineTo(bx+launchLen*p,14);X.stroke();});
+
+  // Targeting scope on top
+  X.fillStyle='#1e1e28';X.fillRect(bx+10,-18,14,4);
+  X.beginPath();X.arc(bx+17,-18,2,0,Math.PI*2);
+  X.fillStyle=flash?'#ff0000':'#cc0000';X.fill();
+
+  // Muzzle flash — big rocket ignition
+  if(flash){
+    X.shadowColor='#ff4400';X.shadowBlur=20;
+    X.beginPath();X.arc(bx+launchLen+10,0,25,0,Math.PI*2);
+    X.fillStyle='rgba(255,80,40,0.5)';X.fill();
+    X.beginPath();X.arc(bx+launchLen+6,0,12,0,Math.PI*2);
+    X.fillStyle='rgba(255,200,100,0.7)';X.fill();
+    // Exhaust trails
+    for(let i=0;i<4;i++){
+      const a=(Math.random()-0.5)*0.8;
+      X.strokeStyle='rgba(255,150,50,0.6)';X.lineWidth=2;
+      X.beginPath();X.moveTo(bx+launchLen,0);
+      X.lineTo(bx+launchLen+Math.cos(a)*30,Math.sin(a)*30);X.stroke();
+    }
+    X.shadowBlur=0;
+  }
+
+  // Relic active — multi-color afterimage aura
+  if(f&&f.specialActive&&!f.smasherAirborne){
+    X.save();X.rotate(-f.weaponAngle);
+    const pulse=Math.sin(battleTime*0.12)*8;
+    const colors=['#cc4444','#ff6644','#ffcc00','#4488ff'];
+    colors.forEach((col,ci)=>{
+      const sa=battleTime*0.08+ci*Math.PI/2;
+      const lineLen=15+pulse;
+      X.strokeStyle=col+'88';X.lineWidth=3;
+      X.beginPath();X.moveTo(Math.cos(sa)*(f.radius+5),Math.sin(sa)*(f.radius+5));
+      X.lineTo(Math.cos(sa)*(f.radius+5+lineLen),Math.sin(sa)*(f.radius+5+lineLen));X.stroke();
+    });
+    X.beginPath();X.arc(0,0,f.radius+15+pulse,0,Math.PI*2);
+    const ag=X.createRadialGradient(0,0,f.radius,0,0,f.radius+15+pulse);
+    ag.addColorStop(0,'rgba(204,68,68,0.4)');ag.addColorStop(1,'rgba(204,68,68,0)');
+    X.fillStyle=ag;X.fill();
+    X.restore();
+  }
+}
+
 // ============================================================
 // MINI WEAPON ICON
 // ============================================================
@@ -3432,6 +3783,23 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.arc(16,-2.5,3,0,Math.PI*2);X.stroke();
       X.beginPath();X.arc(16,2.5,3,0,Math.PI*2);X.stroke();
       break;
+    case 'smasher':
+      // Rocket launcher — heavy military
+      X.fillStyle='#2a2a30';X.fillRect(-14,-6,8,12); // arm mount
+      // Body
+      drawRoundRect(-6,-8,26,16,3);
+      const rg=X.createLinearGradient(-6,-8,-6,8);
+      rg.addColorStop(0,'#1a1a1e');rg.addColorStop(0.5,'#333340');rg.addColorStop(1,'#1a1a1e');
+      X.fillStyle=rg;X.fill();X.strokeStyle='#555';X.lineWidth=0.8;X.stroke();
+      // Red strips
+      X.fillStyle='rgba(255,40,40,0.6)';X.fillRect(-4,-8,22,1.2);X.fillRect(-4,6.8,22,1.2);
+      // Launch tube
+      X.fillStyle='#0a0a10';
+      X.beginPath();X.arc(20,0,5,0,Math.PI*2);X.fill();
+      X.strokeStyle='#666';X.lineWidth=0.5;X.stroke();
+      // Scope
+      X.beginPath();X.arc(6,-10,1.5,0,Math.PI*2);X.fillStyle='#cc0000';X.fill();
+      break;
   }
   X.restore();
 }
@@ -3474,9 +3842,10 @@ function drawTitle(){
   });
 
   const btnW=200,btnH=50;
-  addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'START','#7b68ee',()=>{screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
+  addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
+  addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamElem1=0;teamElem2=0;bossElem=0;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v6.1 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v6.3 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -3731,11 +4100,25 @@ function startBattle(){
   screen='battle';battleOver=false;winner=null;battleTime=0;battleRealFrames=0;battleSpeed=1;
   particles=[];dmgNums=[];battleLog=[];projectiles=[];explosions=[];
   shockwaveProjectiles=[];wallCracks=[];fireZones=[];vulnZones=[];poisonBubbles=[];
-  fireTrails=[];sandyAfterimages=[];sandyOrbs=[];iceWalls=[];
+  fireTrails=[];sandyAfterimages=[];sandyOrbs=[];iceWalls=[];smasherWarnings=[];
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
-  fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
-  addLog('Battle Start!');addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
+  if(gameMode==='boss'){
+    const smasherIdx=CHARS.findIndex(c=>c.id==='smasher');
+    // Boss is side 1 (enemy), team is side 0
+    const t1=createFighter(teamChar1,teamElem1,0);
+    const t2=createFighter(teamChar2,teamElem2,0);
+    const boss=createFighter(smasherIdx,bossElem,1);
+    // Position team on left, boss on right
+    t1.y=ARENA.y+ARENA.h*0.35;
+    t2.y=ARENA.y+ARENA.h*0.65;
+    boss.radius=55; // Boss is bigger
+    fighters=[t1,t2,boss];
+    addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' vs ADAM SMASHER');
+  } else {
+    fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
+    addLog('Battle Start!');addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
+  }
 }
 
 function drawBattle(){
@@ -3980,8 +4363,24 @@ function drawBattle(){
   // Particles
   particles.forEach(p=>{const a=Math.max(0,p.life/p.maxLife);X.globalAlpha=a;X.beginPath();X.arc(p.x,p.y,p.size*a,0,Math.PI*2);X.fillStyle=p.color;X.fill();X.globalAlpha=1;});
 
+  // Smasher warning zones
+  smasherWarnings.forEach(w=>{
+    const a=w.life/w.maxLife;
+    const pulse=Math.sin(battleTime*0.3)*0.2+0.8;
+    X.globalAlpha=a*0.4*pulse;
+    X.beginPath();X.arc(w.x,w.y,w.radius,0,Math.PI*2);
+    X.fillStyle='#ff0000';X.fill();
+    X.globalAlpha=a*0.8;
+    X.strokeStyle='#ff0000';X.lineWidth=3;X.stroke();
+    // Crosshair
+    X.lineWidth=2;
+    X.beginPath();X.moveTo(w.x-w.radius*0.5,w.y);X.lineTo(w.x+w.radius*0.5,w.y);X.stroke();
+    X.beginPath();X.moveTo(w.x,w.y-w.radius*0.5);X.lineTo(w.x,w.y+w.radius*0.5);X.stroke();
+    X.globalAlpha=1;
+  });
+
   // Fighters
-  drawBall(f1);drawBall(f2);
+  fighters.forEach(f=>drawBall(f));
 
   // Quickhack progress display
   if(quickhackDisplay&&quickhackDisplay.target.alive){
@@ -4006,7 +4405,7 @@ function drawBattle(){
   dmgNums.forEach(d=>{const a=Math.max(0,d.life/50);X.globalAlpha=a;X.font=(d.isCrit?'bold 18':'bold 14')+'px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle=d.color;X.shadowColor=d.color;X.shadowBlur=d.isCrit?8:0;X.fillText(d.val,d.x,d.y);X.shadowBlur=0;X.globalAlpha=1;});
 
   // Death anim
-  [f1,f2].forEach(f=>{if(!f.alive&&f.deathAnim>0){f.deathAnim-=battleSpeed;if(f.deathAnim%5<2)spawnBurst(f.x+rand(-20,20),f.y+rand(-20,20),f.char.color,3,3);}});
+  fighters.forEach(f=>{if(!f.alive&&f.deathAnim>0){f.deathAnim-=battleSpeed;if(f.deathAnim%5<2)spawnBurst(f.x+rand(-20,20),f.y+rand(-20,20),f.char.color,3,3);}});
 
   // Relic activation text
   if(relicTextTimer>0){
@@ -4046,9 +4445,9 @@ function drawBattle(){
   X.restore();
 
   // Berserk+Sandy simultaneous ult: half screen red + half screen blue
-  if(f1.alive&&f2.alive){
-    const berk=f1.berserkInvincible?f1:(f2.berserkInvincible?f2:null);
-    const sandy=f1.sandyActive?f1:(f2.sandyActive?f2:null);
+  {
+    const berk=fighters.find(f=>f.alive&&f.berserkInvincible);
+    const sandy=fighters.find(f=>f.alive&&f.sandyActive);
     if(berk&&sandy&&berk!==sandy){
       X.globalAlpha=0.08+Math.sin(battleTime*0.15)*0.04;
       X.fillStyle='#dd2222';X.fillRect(0,0,W/2,H);
@@ -4058,50 +4457,96 @@ function drawBattle(){
   }
 
   // === HUD ===
-  const barW=isMobile?150:300,barH=16,barY=15;
-  const p1bx=isMobile?10:40;
-  X.fillStyle='#222';X.fillRect(p1bx,barY,barW,barH);
-  const p1r=Math.max(0,f1.hp/f1.maxHp);
-  X.fillStyle=p1r>0.6?'#44bb44':p1r>0.3?'#ccaa00':'#cc3333';
-  X.fillRect(p1bx,barY,barW*p1r,barH);X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(p1bx,barY,barW,barH);
-  X.font='bold 11px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(f1.hp)+'/'+f1.maxHp,p1bx+4,barY+12);
-  X.fillStyle=f1.char.color;X.fillText(f1.char.name,p1bx,barY-3);
-  if(f1.elem.id!=='none'){X.fillStyle=f1.elementActive?f1.elem.color:f1.elem.color+'66';X.fillText('['+f1.elem.name+']',p1bx+barW-60,barY-3);}
+  const barH=16,barY=15;
+  if(gameMode==='boss'){
+    // Boss mode HUD: boss bar full width top, team bars below
+    const boss=fighters.find(f=>f.char.isBoss);
+    const team=fighters.filter(f=>!f.char.isBoss);
+    const bossBarW=isMobile?W-40:W-100;
+    const bossBx=isMobile?20:50;
+    // Boss HP bar — big red
+    X.fillStyle='#222';X.fillRect(bossBx,barY,bossBarW,barH+2);
+    const bossR=Math.max(0,boss.hp/boss.maxHp);
+    X.fillStyle=bossR>0.6?'#cc3333':bossR>0.3?'#cc6600':'#ff4444';
+    X.fillRect(bossBx,barY,bossBarW*bossR,barH+2);X.strokeStyle='#888';X.lineWidth=2;X.strokeRect(bossBx,barY,bossBarW,barH+2);
+    X.font='bold 12px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
+    X.fillText('BOSS: '+boss.char.name+' — '+Math.ceil(boss.hp)+'/'+boss.maxHp,W/2,barY+13);
+    if(boss.elem.id!=='none'){X.font='9px Consolas,monospace';X.fillStyle=boss.elementActive?boss.elem.color:boss.elem.color+'66';X.fillText('['+boss.elem.name+']',W/2,barY-3);}
+    // Boss relic bar
+    const bspBarY=barY+barH+6,bspBarH=6;
+    X.fillStyle='#111';X.fillRect(bossBx,bspBarY,bossBarW,bspBarH);
+    const bsp=boss.specialBar/boss.specialMax;X.fillStyle=bsp>=1?'#ffcc00':'#7b68ee';X.fillRect(bossBx,bspBarY,bossBarW*bsp,bspBarH);
+    X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(bossBx,bspBarY,bossBarW,bspBarH);
+    if(bsp>=1){X.font='bold 7px Consolas,monospace';X.fillStyle='#fff';X.fillText('RELIC READY!',W/2,bspBarY+5);}
+    // Team HP bars — side by side below boss
+    const tBarY=bspBarY+bspBarH+8;
+    const tBarW=isMobile?(W-50)/2:(W-120)/2;
+    team.forEach((t,ti)=>{
+      const tx=isMobile?20+ti*(tBarW+10):50+ti*(tBarW+20);
+      X.fillStyle='#222';X.fillRect(tx,tBarY,tBarW,barH-2);
+      const tr=Math.max(0,t.hp/t.maxHp);
+      X.fillStyle=tr>0.6?'#44bb44':tr>0.3?'#ccaa00':'#cc3333';
+      X.fillRect(tx,tBarY,tBarW*tr,barH-2);X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(tx,tBarY,tBarW,barH-2);
+      X.font='bold 10px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(t.hp)+'/'+t.maxHp,tx+3,tBarY+11);
+      X.fillStyle=t.char.color;X.fillText(t.char.name,tx,tBarY-3);
+      if(!t.alive){X.globalAlpha=0.5;X.fillStyle='#ff0000';X.font='bold 10px Consolas,monospace';X.fillText('KO',tx+tBarW-20,tBarY+11);X.globalAlpha=1;}
+    });
+  } else {
+    const barW=isMobile?150:300;
+    const p1bx=isMobile?10:40;
+    X.fillStyle='#222';X.fillRect(p1bx,barY,barW,barH);
+    const p1r=Math.max(0,f1.hp/f1.maxHp);
+    X.fillStyle=p1r>0.6?'#44bb44':p1r>0.3?'#ccaa00':'#cc3333';
+    X.fillRect(p1bx,barY,barW*p1r,barH);X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(p1bx,barY,barW,barH);
+    X.font='bold 11px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(f1.hp)+'/'+f1.maxHp,p1bx+4,barY+12);
+    X.fillStyle=f1.char.color;X.fillText(f1.char.name,p1bx,barY-3);
+    if(f1.elem.id!=='none'){X.fillStyle=f1.elementActive?f1.elem.color:f1.elem.color+'66';X.fillText('['+f1.elem.name+']',p1bx+barW-60,barY-3);}
 
-  const p2bx=isMobile?W-10-barW:W-40-barW;
-  X.fillStyle='#222';X.fillRect(p2bx,barY,barW,barH);
-  const p2r=Math.max(0,f2.hp/f2.maxHp);
-  X.fillStyle=p2r>0.6?'#44bb44':p2r>0.3?'#ccaa00':'#cc3333';
-  X.fillRect(p2bx+barW*(1-p2r),barY,barW*p2r,barH);X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(p2bx,barY,barW,barH);
-  X.font='bold 11px Consolas,monospace';X.textAlign='right';X.fillStyle='#fff';X.fillText(Math.ceil(f2.hp)+'/'+f2.maxHp,p2bx+barW-4,barY+12);
-  X.fillStyle=f2.char.color;X.fillText(f2.char.name,p2bx+barW,barY-3);
-  if(f2.elem.id!=='none'){X.fillStyle=f2.elementActive?f2.elem.color:f2.elem.color+'66';X.textAlign='left';X.fillText('['+f2.elem.name+']',p2bx,barY-3);}
+    const p2bx=isMobile?W-10-barW:W-40-barW;
+    X.fillStyle='#222';X.fillRect(p2bx,barY,barW,barH);
+    const p2r=Math.max(0,f2.hp/f2.maxHp);
+    X.fillStyle=p2r>0.6?'#44bb44':p2r>0.3?'#ccaa00':'#cc3333';
+    X.fillRect(p2bx+barW*(1-p2r),barY,barW*p2r,barH);X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(p2bx,barY,barW,barH);
+    X.font='bold 11px Consolas,monospace';X.textAlign='right';X.fillStyle='#fff';X.fillText(Math.ceil(f2.hp)+'/'+f2.maxHp,p2bx+barW-4,barY+12);
+    X.fillStyle=f2.char.color;X.fillText(f2.char.name,p2bx+barW,barY-3);
+    if(f2.elem.id!=='none'){X.fillStyle=f2.elementActive?f2.elem.color:f2.elem.color+'66';X.textAlign='left';X.fillText('['+f2.elem.name+']',p2bx,barY-3);}
 
-  // Special bars top
-  const spBarY=barY+barH+4,spBarH=8;
-  X.fillStyle='#111';X.fillRect(p1bx,spBarY,barW,spBarH);
-  const sp1=f1.specialBar/f1.specialMax;X.fillStyle=sp1>=1?'#ffcc00':'#7b68ee';X.fillRect(p1bx,spBarY,barW*sp1,spBarH);
-  X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p1bx,spBarY,barW,spBarH);
-  if(sp1>=1){X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText('RELIC READY!',p1bx+3,spBarY+7);}
-  X.fillStyle='#111';X.fillRect(p2bx,spBarY,barW,spBarH);
-  const sp2=f2.specialBar/f2.specialMax;X.fillStyle=sp2>=1?'#ffcc00':'#7b68ee';X.fillRect(p2bx+barW*(1-sp2),spBarY,barW*sp2,spBarH);
-  X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p2bx,spBarY,barW,spBarH);
-  if(sp2>=1){X.font='bold 8px Consolas,monospace';X.textAlign='right';X.fillStyle='#fff';X.fillText('RELIC READY!',p2bx+barW-3,spBarY+7);}
+    // Special bars top
+    const spBarY=barY+barH+4,spBarH=8;
+    X.fillStyle='#111';X.fillRect(p1bx,spBarY,barW,spBarH);
+    const sp1=f1.specialBar/f1.specialMax;X.fillStyle=sp1>=1?'#ffcc00':'#7b68ee';X.fillRect(p1bx,spBarY,barW*sp1,spBarH);
+    X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p1bx,spBarY,barW,spBarH);
+    if(sp1>=1){X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText('RELIC READY!',p1bx+3,spBarY+7);}
+    X.fillStyle='#111';X.fillRect(p2bx,spBarY,barW,spBarH);
+    const sp2=f2.specialBar/f2.specialMax;X.fillStyle=sp2>=1?'#ffcc00':'#7b68ee';X.fillRect(p2bx+barW*(1-sp2),spBarY,barW*sp2,spBarH);
+    X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p2bx,spBarY,barW,spBarH);
+    if(sp2>=1){X.font='bold 8px Consolas,monospace';X.textAlign='right';X.fillStyle='#fff';X.fillText('RELIC READY!',p2bx+barW-3,spBarY+7);}
 
-  X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';X.fillText('VS',W/2,barY+12);
+    X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';X.fillText('VS',W/2,barY+12);
+  }
 
   // Speed controls
-  const sbY=spBarY+spBarH+4,sbX=W/2-60;
+  const spdCtrlY=gameMode==='boss'?barY+62:barY+barH+16;
+  const sbX=W/2-60;
   [{l:'1x',s:1},{l:'2x',s:2},{l:'3x',s:3}].forEach((sb,i)=>{
-    addBtn('spd'+i,sbX+i*42,sbY,38,18,sb.l,battleSpeed===sb.s?'#ffcc00':'#555',()=>{battleSpeed=sb.s;});
+    addBtn('spd'+i,sbX+i*42,spdCtrlY,38,18,sb.l,battleSpeed===sb.s?'#ffcc00':'#555',()=>{battleSpeed=sb.s;});
   });
 
   // Info panel below arena
   const infoY=ARENA.y+ARENA.h+6,infoH=70;
   drawRoundRect(ARENA.x,infoY,ARENA.w,infoH,6);X.fillStyle='#0a0a20';X.fill();X.strokeStyle='#1a1a4a';X.lineWidth=1;X.stroke();
-  X.strokeStyle='#1a1a4a';X.beginPath();X.moveTo(W/2,infoY+5);X.lineTo(W/2,infoY+infoH-5);X.stroke();
-  drawFighterInfo(f1,ARENA.x+10,infoY+8,(ARENA.w-20)/2,'left');
-  drawFighterInfo(f2,W/2+10,infoY+8,(ARENA.w-20)/2,'right');
+  if(gameMode==='boss'){
+    // Boss mode info: show all fighters
+    const infoW=(ARENA.w-20)/Math.min(fighters.length,3);
+    fighters.forEach((f,fi)=>{
+      drawFighterInfo(f,ARENA.x+10+fi*infoW,infoY+8,infoW-5,'left');
+      if(fi<fighters.length-1){X.strokeStyle='#1a1a4a';X.beginPath();X.moveTo(ARENA.x+10+(fi+1)*infoW,infoY+5);X.lineTo(ARENA.x+10+(fi+1)*infoW,infoY+infoH-5);X.stroke();}
+    });
+  } else {
+    X.strokeStyle='#1a1a4a';X.beginPath();X.moveTo(W/2,infoY+5);X.lineTo(W/2,infoY+infoH-5);X.stroke();
+    drawFighterInfo(f1,ARENA.x+10,infoY+8,(ARENA.w-20)/2,'left');
+    drawFighterInfo(f2,W/2+10,infoY+8,(ARENA.w-20)/2,'right');
+  }
 
   // Battle log
   const logY=infoY+infoH+4;
@@ -4159,6 +4604,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'pls':statLine='Exp:'+Math.round(f.plsExplosionRadius+chaos*10)+' DMG:'+Math.round((1+chaos*0.12)*100)+'%';break;
     case 'sandy':statLine='Spd:'+(f.baseSpeed*0.6).toFixed(1)+'-'+(f.baseSpeed*(1+chaos*0.15)).toFixed(1)+' Dodge:'+Math.round((f.dodgeChance+f.sandyDodgeBoost)*100)+'%';break;
     case 'throw':const avl=f.throwWeapons.filter(tw=>tw.available).length;const cur=f.throwWeapons[f.throwActiveIdx];statLine=(cur?cur.name:'---')+' '+avl+'/3';break;
+    case 'smasher':statLine='RKT:'+Math.round(f.atk*(1.2+chaos*0.15))+' BOSS';break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
@@ -4170,6 +4616,94 @@ function drawFighterInfo(f,px,py,maxW,align){
 // ============================================================
 // RESULT SCREEN
 // ============================================================
+function drawBossSelect(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  X.font='bold '+(isMobile?'18':'26')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.fillStyle='#cc4444';
+  X.fillText('BOSS FIGHT — PICK YOUR TEAM',W/2,isMobile?25:30);
+  // Filter out the boss from selectable chars
+  const selectableChars=CHARS.filter(c=>!c.isBoss);
+  const cols=isMobile?3:4;
+  const cardW=isMobile?130:(selectableChars.length>6?125:140);
+  const cardH=isMobile?70:(selectableChars.length>6?110:130);
+  const gapX=isMobile?5:10,gapY=isMobile?3:6;
+  const rows=Math.ceil(selectableChars.length/cols);
+  const totalW=cols*cardW+(cols-1)*gapX;
+  const startX=(W-totalW)/2;
+  const gridStartY=isMobile?35:45;
+  // Draw "Pick 2 team members" header
+  X.font='bold '+(isMobile?'10':'13')+'px Consolas,monospace';X.textAlign='center';
+  X.fillStyle='#4488ff';X.fillText('Click to select Team Member 1 (blue) and Team Member 2 (green)',W/2,gridStartY);
+  const charGridY=gridStartY+8;
+  selectableChars.forEach((ch,i)=>{
+    const origIdx=CHARS.indexOf(ch);
+    const row=Math.floor(i/cols),col=i%cols;
+    const cx=startX+col*(cardW+gapX),cy=charGridY+row*(cardH+gapY);
+    const isT1=teamChar1===origIdx,isT2=teamChar2===origIdx;
+    drawRoundRect(cx,cy,cardW,cardH,isMobile?5:8);
+    X.fillStyle=isT1?'#112244':isT2?'#113322':'#111128';X.fill();
+    X.strokeStyle=isT1?'#4488ff':isT2?'#33cc66':ch.color+'66';X.lineWidth=isT1||isT2?3:1.5;X.stroke();
+    if(isT1){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('T1',cx+5,cy+12);}
+    if(isT2){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#33cc66';X.textAlign='right';X.fillText('T2',cx+cardW-5,cy+12);}
+    const ballR=isMobile?10:(cardH>120?22:16);
+    drawBallPreview(cx+cardW/2,cy+(isMobile?22:cardH>120?35:28),ballR,ch);
+    X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
+    X.fillText(ch.name.length>14?ch.name.slice(0,14):ch.name,cx+cardW/2,cy+(isMobile?38:cardH>120?62:50));
+    X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
+    X.fillText(ch.playstyle,cx+cardW/2,cy+(isMobile?48:cardH>120?74:60));
+    if(!isMobile&&cardH>100){
+      X.font='8px Consolas,monospace';X.textAlign='left';X.fillStyle='#888';
+      X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),cx+8,cy+(cardH>120?90:74));
+      X.fillText('RNG:'+ch.stats.range+' DEF:'+ch.stats.def,cx+8,cy+(cardH>120?102:84));
+    }
+    // Left click = T1, right click = T2
+    addBtn('bt1_'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{if(origIdx!==teamChar2)teamChar1=origIdx;});
+    addBtn('bt2_'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{if(origIdx!==teamChar1)teamChar2=origIdx;});
+  });
+  const gridBottom=charGridY+rows*(cardH+gapY);
+
+  // Element pickers for team
+  const elemY=gridBottom+(isMobile?6:12);
+  X.font='bold '+(isMobile?'9':'12')+'px Consolas,monospace';X.textAlign='center';
+  X.fillStyle='#4488ff';X.fillText('T1 ELEMENT',W/4+(isMobile?10:0),elemY);
+  X.fillStyle='#33cc66';X.fillText('T2 ELEMENT',W*3/4-(isMobile?10:0),elemY);
+  if(isMobile){
+    drawElementPickerMobile(10,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
+    drawElementPickerMobile(W/2+10,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
+  } else {
+    drawElementPicker(W/4-130,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
+    drawElementPicker(W*3/4-130,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
+  }
+  // Boss element picker
+  const bossElemY=elemY+(isMobile?40:65);
+  X.fillStyle='#cc4444';X.fillText('BOSS ELEMENT',W/2,bossElemY);
+  if(isMobile){
+    drawElementPickerMobile(W/4-5,bossElemY+8,bossElem,'beb',(i)=>{bossElem=i;});
+  } else {
+    drawElementPicker(W/2-130,bossElemY+8,bossElem,'beb',(i)=>{bossElem=i;});
+  }
+
+  // Boss preview
+  const bossPreviewY=bossElemY-30;
+  if(!isMobile){
+    const smasherChar=CHARS.find(c=>c.id==='smasher');
+    X.font='bold 12px Consolas,monospace';X.fillStyle='#cc4444';X.textAlign='right';
+    X.fillText('VS ADAM SMASHER',W-60,bossPreviewY);
+    X.font='9px Consolas,monospace';X.fillStyle='#888';
+    X.fillText('HP:'+smasherChar.stats.hp+' ATK:'+smasherChar.stats.atk+' DEF:'+smasherChar.stats.def,W-60,bossPreviewY+14);
+    drawBallPreview(W-30,bossPreviewY-5,18,smasherChar);
+  }
+
+  // Battle button
+  const bBtnY=isMobile?H-50:H-65;
+  addBtn('bossBattle',W/2-100,bBtnY,200,isMobile?38:48,'FIGHT BOSS!','#cc4444',startBattle);
+  addBtn('bossBack',20,bBtnY,80,isMobile?32:38,'Back','#666',()=>{screen='title';});
+  buttons.forEach(b=>{
+    if(b.id.startsWith('bt1_')||b.id.startsWith('bt2_'))return;
+    drawBtn(b);
+  });
+}
+
 function drawResult(){
   clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
   if(!winner)return;
@@ -4203,7 +4737,7 @@ function drawResult(){
 
   const btnY=statsY+150,btnW=isMobile?140:160;
   addBtn('rematch',W/2-btnW-10,btnY,btnW,42,'Rematch','#ff4444',()=>{startBattle();});
-  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{screen='select';});
+  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{screen=gameMode==='boss'?'bossSelect':'select';});
   addBtn('titleback',W/2-60,btnY+55,120,35,'Title','#555',()=>{screen='title';});
   buttons.forEach(drawBtn);
 }
@@ -4218,6 +4752,7 @@ function loop(time){
   switch(screen){
     case 'title':drawTitle();break;
     case 'select':drawSelect();break;
+    case 'bossSelect':drawBossSelect();break;
     case 'battle':for(let i=0;i<battleSpeed;i++)updateBattle(1);battleRealFrames++;drawBattle();break;
     case 'result':drawResult();break;
   }
