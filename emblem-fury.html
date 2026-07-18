@@ -1366,46 +1366,8 @@ function spawnBoss(idx){
 }
 
 // ── EMBLEM SYSTEM ──
-function showEmblemSelect(){
-  gameState='emblem';paused=true;
-  document.exitPointerLock&&document.exitPointerLock();
-  const screen=document.getElementById('emblem-screen');screen.style.display='flex';
-  const container=document.getElementById('emblem-choices');container.innerHTML='';
-  const indices=[];while(indices.length<3){const r=randInt(0,EMBLEM_TYPES.length-1);if(!indices.includes(r))indices.push(r);}
-  for(const i of indices){
-    const em=EMBLEM_TYPES[i],currentLv=player.emblems[em.name]||0,nextLv=currentLv+1;
-    const perkText=getEmblemPerk(em.name,nextLv);
-    const nextPerk=nextLv<20?getEmblemPerk(em.name,nextLv+1):'';
-    const card=document.createElement('div');card.className='emblem-card';card.style.borderColor=em.color;
-    card.innerHTML=`<div class="em-icon">${em.icon}</div><h4 style="color:${em.color}">${em.name} Lv${nextLv}</h4>
-    <p>${em.desc} (+${em.perLevel})</p>
-    ${perkText?`<p style="color:${em.color};margin-top:5px;font-weight:bold">★ ${perkText}</p>`:''}
-    ${nextPerk&&nextLv<19?`<p style="color:#888;font-size:0.65rem;margin-top:3px">Next(${nextLv+1}): ${nextPerk}</p>`:''}
-    ${currentLv>0?`<p style="color:#666;font-size:0.65rem">Current: Lv${currentLv}</p>`:''}`;
-    card.onclick=()=>pickEmblem(i);container.appendChild(card);
-  }
-}
-
-function pickEmblem(typeIdx){
-  const em=EMBLEM_TYPES[typeIdx];
-  if(!player.emblems[em.name])player.emblems[em.name]=0;
-  player.emblems[em.name]++;const lv=player.emblems[em.name];
-  playSound('emblemSelect');
-  switch(em.stat){
-    case'atk':player.atk+=em.perLevel;break;case'def':player.def+=em.perLevel;break;
-    case'spd':player.spd+=em.perLevel;break;case'crit':player.crit+=em.perLevel;break;
-    case'maxHp':player.maxHp+=em.perLevel;player.hp=Math.min(player.hp+em.perLevel,player.maxHp);break;
-    case'atkSpd':player.atkSpdMult*=(1+em.perLevel);break;case'dot':player.dotDamage+=em.perLevel;break;
-    case'healing':player.healOnKill+=em.perLevel*0.002;break;case'allDmg':player.allDmgMult*=(1+em.perLevel);break;
-    case'regen':player.natureRegen+=em.perLevel;break;case'lifesteal':player.bloodLifesteal+=em.perLevel;break;
-    case'abilityPwr':player.abilityPower+=em.perLevel;break;case'cooldown':player.timeCDR+=em.perLevel;break;
-    case'chaos':player.chaosChance+=em.perLevel;break;
-  }
-  applyEmblemPerk(em.name,lv);
-  document.getElementById('emblem-screen').style.display='none';
-  gameState='playing';paused=false;
-  if(!isTouchDevice)C.requestPointerLock();
-}
+// showEmblemSelect and pickEmblem are defined in the override section below (line ~3139)
+let pendingEmblems=0; // queue for multi-level-up emblem selections
 
 function applyEmblemPerk(name,lv){
   switch(name){
@@ -1429,37 +1391,7 @@ function applyEmblemPerk(name,lv){
 }
 
 // ── BOSS REWARDS (Ability Cards) ──
-function showBossReward(){
-  gameState='bossReward';paused=true;
-  document.exitPointerLock&&document.exitPointerLock();
-  const screen=document.getElementById('boss-reward-screen');screen.style.display='flex';
-  const container=document.getElementById('boss-reward-choices');container.innerHTML='';
-  // Pick 3 random ability cards
-  const indices=[];while(indices.length<3){const r=randInt(0,ABILITY_CARDS.length-1);if(!indices.includes(r))indices.push(r);}
-  for(const i of indices){
-    const ac=ABILITY_CARDS[i];
-    const curTier=(playerAbilityCards[ac.name]!==undefined)?playerAbilityCards[ac.name]+1:0;
-    const isMaxed=curTier>=3;
-    const card=document.createElement('div');card.className='buff-card';
-    card.style.borderColor=ac.color;
-    const tierStars=['★','★★','★★★'];
-    const tierColors=['#aaa','#4af','#ffd700'];
-    card.innerHTML=`
-      <p style="color:${ac.color};font-size:1rem;font-weight:bold;margin-bottom:6px">${ac.name}</p>
-      ${curTier>0?`<p style="color:${tierColors[curTier-1]};font-size:0.72rem;margin-bottom:5px">Current: ${tierStars[curTier-1]||''}</p>`:''}
-      <p style="color:#0f0;font-size:0.82rem;margin-bottom:4px">${isMaxed?'MAXED - Bonus Stats':ac.desc[curTier]||ac.desc[2]}</p>
-      ${!isMaxed?`<p style="color:${tierColors[curTier]};font-size:0.72rem">${tierStars[curTier]||'★★★'} Tier ${curTier+1}</p>`:''}
-    `;
-    card.onclick=()=>{
-      if(!isMaxed){playerAbilityCards[ac.name]=curTier;}
-      else{player.atk+=5;player.maxHp+=20;player.hp+=20;}
-      applyAbilityCard(ac.name,curTier);
-      screen.style.display='none';gameState='playing';paused=false;
-      if(!isTouchDevice)C.requestPointerLock();
-    };
-    container.appendChild(card);
-  }
-}
+// showBossReward is defined in the override section below (line ~3110)
 
 function applyAbilityCard(name,tier){
   // tier=0 means first pick (becomes tier 1 effect)
@@ -1528,16 +1460,7 @@ function fuseWeapons(idx1,idx2){
 
 // ── INVENTORY UI ────────────────────────────────────────────────────────────
 // fusionSelectIndices declared above
-function toggleInventory(){
-  if(gameState==='playing'){
-    gameState='inventory';document.exitPointerLock&&document.exitPointerLock();
-    document.getElementById('inv-panel').style.display='flex';renderInventory();
-  } else if(gameState==='inventory'){
-    gameState='playing';
-    document.getElementById('inv-panel').style.display='none';
-    canvas.requestPointerLock&&canvas.requestPointerLock();
-  }
-}
+// toggleInventory is defined in the override section below
 function tierClass(tier){
   const map={'1':'tier-1','1+':'tier-1p','2':'tier-2','2+':'tier-2p','3':'tier-3','UNIQUE':'tier-u','BOSS':'tier-u'};
   return map[tier]||'tier-1';
@@ -2654,54 +2577,7 @@ function spawnBoss(){
 }
 
 // ── EMBLEM SELECT ─────────────────────────────────────────────────────────────
-function showEmblemSelect(){
-  if(gameState==='playing'){
-    gameState='emblemSelect';paused=true;
-    document.exitPointerLock&&document.exitPointerLock();
-  }
-  const panel=document.getElementById('emblem-panel');
-  panel.style.display='flex';
-  panel.innerHTML='';
-  const title=document.createElement('div');
-  title.style.cssText='color:#a0f;font-size:1.5rem;font-weight:bold;margin-bottom:12px;';
-  title.textContent='EMBLEM SELECT';panel.appendChild(title);
-  const sub=document.createElement('div');
-  sub.style.cssText='color:#aaa;font-size:0.85rem;margin-bottom:12px;';
-  sub.textContent='Choose an emblem to level up';panel.appendChild(sub);
-  // Pick 3 random emblems
-  const shuffled=[...EMBLEM_TYPES].sort(()=>Math.random()-0.5).slice(0,3);
-  const grid=document.createElement('div');
-  grid.style.cssText='display:flex;gap:16px;';
-  shuffled.forEach(em=>{
-    const lv=player.emblems[em.name]||0;
-    const card=document.createElement('div');
-    card.style.cssText=`padding:14px;border-radius:8px;cursor:pointer;max-width:180px;background:rgba(0,0,0,0.7);border:2px solid ${em.color};transition:transform 0.15s;`;
-    card.onmouseenter=()=>card.style.transform='scale(1.05)';
-    card.onmouseleave=()=>card.style.transform='scale(1)';
-    const nm=document.createElement('div');nm.style.cssText=`color:${em.color};font-size:1rem;font-weight:bold;`;nm.textContent=em.name;card.appendChild(nm);
-    const lv2=document.createElement('div');lv2.style.cssText='color:#aaa;font-size:0.75rem;margin:4px 0;';lv2.textContent=`Level ${lv} → ${lv+2}`;card.appendChild(lv2);
-    // Show next perk
-    const perkIdx=Math.floor(lv/4);
-    const nextPerk=(em.perks||[])[Math.min(perkIdx,(em.perks||[]).length-1)];
-    const desc=document.createElement('div');desc.style.cssText='color:#ccc;font-size:0.72rem;';desc.textContent=nextPerk||'Max power';card.appendChild(desc);
-    // All perks list
-    (em.perks||[]).forEach((p,pi)=>{
-      const pdiv=document.createElement('div');
-      pdiv.style.cssText=`color:${lv>pi*4?em.color:'#444'};font-size:0.65rem;margin-top:2px;`;
-      pdiv.textContent=`• ${p}`;card.appendChild(pdiv);
-    });
-    card.addEventListener('click',()=>{
-      player.emblems[em.name]=(player.emblems[em.name]||0)+2;
-      panel.style.display='none';
-      gameState='playing';paused=false;
-      canvas.requestPointerLock&&canvas.requestPointerLock();
-      startUnpauseCountdown();
-      playSound('levelUp');
-    });
-    grid.appendChild(card);
-  });
-  panel.appendChild(grid);
-}
+// showEmblemSelect is defined in the override section below
 
 // ── GAME LOOP ─────────────────────────────────────────────────────────────────
 let lastTime=0,score=0; // gameTime declared above
@@ -2799,7 +2675,8 @@ function renderParticles(ctx2){
 // ── DEATH + RESTART ───────────────────────────────────────────────────────────
 function triggerDeath(){
   if(gameState==='gameOver')return;
-  player.hp=0;gameState='gameOver';
+  player.hp=0;gameState='gameOver';pendingEmblems=0;
+  hideAllOverlays();
   document.exitPointerLock&&document.exitPointerLock();
   stopBGM();playSound('death');
 }
@@ -2873,7 +2750,7 @@ function initGame(){
   enemies.length=0;projectiles.length=0;particles.length=0;pickups.length=0;damageNumbers.length=0;
   currentWave=1;waveTimer=0;bossSpawnTimer=0;bossCountdown=0;gameTime=0;score=0;
   fusionSelectIndices=[];playerAbilityCards={};equippedArmorIndex=-1;armorAbilityCooldown=0;
-  unpausing=false;paused=false;
+  unpausing=false;paused=false;pendingEmblems=0;
   player.x=MAP_W/2;player.y=MAP_H/2;
   player.angle=0;player.maxHp=player.maxHp||120;player.hp=player.maxHp;player.kills=0;
   player.atk=10;player.def=0;player.level=1;player.xp=0;player.xpNeeded=15;
@@ -2909,71 +2786,7 @@ function startGame(){
 }
 
 // ── CHARACTER SELECT SCREEN ───────────────────────────────────────────────────
-function showCharacterSelect(){
-  const panel=document.getElementById('char-select');
-  panel.innerHTML='';
-  panel.style.display='flex';
-  const title=document.createElement('div');
-  title.style.cssText='color:#fff;font-size:2rem;font-weight:bold;margin-bottom:8px;letter-spacing:2px;';
-  title.textContent='EMBLEM FURY';panel.appendChild(title);
-  const sub2=document.createElement('div');
-  sub2.style.cssText='color:#aaa;font-size:0.9rem;margin-bottom:20px;';
-  sub2.textContent='Choose your hero — each has unique skills and ultimates';panel.appendChild(sub2);
-
-  // Difficulty
-  const diffRow=document.createElement('div');diffRow.style.cssText='display:flex;gap:10px;margin-bottom:18px;';
-  ['Easy','Medium','Hard','Nightmare'].forEach(d=>{
-    const btn=document.createElement('button');
-    btn.style.cssText=`padding:6px 14px;border-radius:4px;border:2px solid ${selectedDifficulty===d?'#fff':'#555'};background:${selectedDifficulty===d?'rgba(255,255,255,0.18)':'rgba(0,0,0,0.5)'};color:#fff;cursor:pointer;font-size:0.85rem;`;
-    btn.textContent=d;
-    btn.onclick=()=>{selectedDifficulty=d;showCharacterSelect();};
-    diffRow.appendChild(btn);
-  });
-  panel.appendChild(diffRow);
-
-  const grid=document.createElement('div');
-  grid.style.cssText='display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:900px;';
-  CHARACTERS.forEach(ch=>{
-    const card=document.createElement('div');
-    card.style.cssText=`padding:14px;border-radius:8px;cursor:pointer;min-width:140px;max-width:160px;background:rgba(0,0,0,0.7);border:2px solid ${ch.color};text-align:center;transition:transform 0.15s;`;
-    card.onmouseenter=()=>card.style.transform='scale(1.06)';
-    card.onmouseleave=()=>card.style.transform='scale(1)';
-    const nm=document.createElement('div');nm.style.cssText=`color:${ch.color};font-size:1rem;font-weight:bold;`;nm.textContent=ch.name;card.appendChild(nm);
-    const hp=document.createElement('div');hp.style.cssText='color:#aaa;font-size:0.72rem;margin:4px 0;';hp.textContent=`HP: ${ch.hp} | SPD: ${ch.speed}`;card.appendChild(hp);
-    const sk=document.createElement('div');sk.style.cssText='color:#8cf;font-size:0.68rem;';sk.textContent=`[Q] ${ch.skillName}`;card.appendChild(sk);
-    const ul=document.createElement('div');ul.style.cssText='color:#f8c;font-size:0.68rem;margin-top:2px;';ul.textContent=`[E] ${ch.ultName}`;card.appendChild(ul);
-    if(ch.desc){const d2=document.createElement('div');d2.style.cssText='color:#888;font-size:0.62rem;margin-top:4px;';d2.textContent=ch.desc;card.appendChild(d2);}
-    card.addEventListener('click',()=>{
-      selectedChar=ch;
-      player.maxHp=ch.hp;
-      player.speed=ch.speed;
-      player.critChance=ch.critChance||0.05;
-      const diffMults={Easy:0.6,Medium:1,Hard:1.4,Nightmare:2};
-      const dm=diffMults[selectedDifficulty]||1;
-      // Adjust enemy scaling
-      window._diffMult=dm;
-      panel.style.display='none';
-      initGame();startGame();
-    });
-    grid.appendChild(card);
-  });
-  panel.appendChild(grid);
-}
-
-// ── DOM ID ALIASES ─────────────────────────────────────────────────────────────
-// Map our JS references to the actual HTML elements
-Object.defineProperty(window,'_getEl',{value:function(id){return document.getElementById(id);}});
-
-// Patch: showCharacterSelect uses '#char-select' but HTML has '#char-select-container'
-// Patch: showEmblemSelect uses '#emblem-panel' but HTML has '#emblem-screen'
-// Patch: toggleInventory uses '#inv-panel' but HTML has '#inventory-screen'
-// Fix all references at runtime:
-const _origGetElemById=document.getElementById.bind(document);
-document.getElementById=function(id){
-  const aliases={'char-select':'char-select-container','emblem-panel':'emblem-screen','inv-panel':'inventory-screen','mobile-overlay':null};
-  if(id in aliases){const mapped=aliases[id];if(mapped===null)return null;return _origGetElemById(mapped)||_origGetElemById(id);}
-  return _origGetElemById(id);
-};
+// showCharacterSelect is defined in the override section below
 
 // Mobile: map joystick IDs
 // The existing HTML has #move-joystick / #aim-joystick; re-map our setupMobileControls to use those
@@ -3108,6 +2921,10 @@ function renderInventoryInto(container){
 
 // Override showBossReward to use correct HTML
 function showBossReward(){
+  if(gameState==='gameOver'||gameState==='storyDeath')return;
+  // Hide emblem screen if it was open; queue the emblem for after boss reward
+  const emblemScreen=document.getElementById('emblem-screen');
+  if(gameState==='emblemSelect'&&emblemScreen){emblemScreen.style.display='none';pendingEmblems++;}
   gameState='bossReward';paused=true;
   document.exitPointerLock&&document.exitPointerLock();
   stopBGM();
@@ -3127,21 +2944,28 @@ function showBossReward(){
       playerAbilityCards[card.name]=newTier;
       applyAbilityCard(card.name,newTier);
       screen.style.display='none';
-      gameState=storyActive?'storyPlaying':'playing';paused=false;
       startBGM(false);
+      // Check for pending emblem selections
+      if(pendingEmblems>0){pendingEmblems--;showEmblemSelect();return;}
+      gameState=storyActive?'storyPlaying':'playing';paused=false;
       if(!isTouchDevice)canvas.requestPointerLock&&canvas.requestPointerLock();
     });
     choices.appendChild(div);
   });
 }
 
-// Override showEmblemSelect to use correct HTML
+function hideAllOverlays(){
+  const ids=['emblem-screen','boss-reward-screen'];
+  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';});
+}
+
 function showEmblemSelect(){
-  if(gameState==='emblemSelect'||gameState==='bossReward'||gameState==='gameOver'||gameState==='storyDeath')return;
+  // Queue if another screen is active
+  if(gameState==='bossReward'||gameState==='gameOver'||gameState==='storyDeath'){pendingEmblems++;return;}
+  if(gameState==='emblemSelect'){pendingEmblems++;return;}
   const screen=document.getElementById('emblem-screen');
   const choices=document.getElementById('emblem-choices');
   if(!screen||!choices)return;
-  const prevState=gameState;
   gameState='emblemSelect';paused=true;
   document.exitPointerLock&&document.exitPointerLock();
   screen.style.display='flex';choices.innerHTML='';
@@ -3159,7 +2983,6 @@ function showEmblemSelect(){
       if(!player.emblems[em.name])player.emblems[em.name]=0;
       player.emblems[em.name]++;
       const newLv=player.emblems[em.name];
-      // Apply stat bonus
       switch(em.stat){
         case'atk':player.atk+=em.perLevel;break;case'def':player.def+=em.perLevel;break;
         case'spd':player.spd+=em.perLevel;break;case'crit':player.crit+=em.perLevel;break;
@@ -3172,6 +2995,8 @@ function showEmblemSelect(){
       }
       if(typeof applyEmblemPerk==='function')applyEmblemPerk(em.name,newLv);
       screen.style.display='none';
+      // Check for more pending emblem selections
+      if(pendingEmblems>0){pendingEmblems--;setTimeout(()=>showEmblemSelect(),50);return;}
       gameState=storyActive?'storyPlaying':'playing';paused=false;
       if(!isTouchDevice)canvas.requestPointerLock&&canvas.requestPointerLock();
     });
@@ -3931,7 +3756,8 @@ function renderStoryVictory(){
 }
 
 function triggerStoryDeath(){
-  gameState='storyDeath';
+  gameState='storyDeath';pendingEmblems=0;
+  hideAllOverlays();
   storyState='death';
   document.exitPointerLock&&document.exitPointerLock();
   playSound('playerHurt');
