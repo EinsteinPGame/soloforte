@@ -1309,7 +1309,17 @@ function updateBattle(dt){
     if(f.stunTimer>0)f.stunTimer-=dt;
     if(f.slowTimer>0)f.slowTimer-=dt;
     if(f.freezeTimer>0)f.freezeTimer-=dt;
-    if(f.captureTimer>0)f.captureTimer-=dt;
+    if(f.captureTimer>0){
+      f.captureTimer-=dt;
+      // Captured enemies take constant crush damage
+      if(battleTime%10<dt&&f._capturedBy&&f._capturedBy.alive){
+        const crushDmg=f._capturedBy.atk*0.25;
+        f.hp-=crushDmg;f.hitFlash=4;
+        spawnDmgNum(f.x+rand(-10,10),f.y-f.radius-10,crushDmg,'#00ddff',false);
+        spawnParticle(f.x+rand(-20,20),f.y+rand(-20,20),'#00ddff',0,-1,12,2);
+        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;battleOver=true;winner=f._capturedBy;addLog((f._capturedBy.side===0?'P1':'P2')+' '+f._capturedBy.char.name+' WINS!');SFX.ko();setTimeout(()=>SFX.victory(),500);}
+      }
+    }
     if(f.defReductionTimer>0)f.defReductionTimer-=dt;else f.defReduction=0;
     if(f.specialTimer>0)f.specialTimer-=dt;else if(f.specialActive){f.specialActive=false;f.relicDashing=false;}
 
