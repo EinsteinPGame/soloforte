@@ -1468,10 +1468,18 @@ function updateSinglePlayer(p, moveLeft, moveRight, doJump, dt) {
   }
 
   // Jump — weaker in Level 2 so players can't skip to the end
-  if (doJump && p.onGround) {
+  // PC: edge-trigger (must release and re-press to jump again) + cooldown
+  // Mobile: hold to keep jumping (touch controls)
+  if (!p._jumpWasDown) p._jumpWasDown = false;
+  if (!p._jumpCD) p._jumpCD = 0;
+  if (p._jumpCD > 0) p._jumpCD -= 1;
+  const jumpEdge = _isMobile ? doJump : (doJump && !p._jumpWasDown && p._jumpCD <= 0);
+  p._jumpWasDown = doJump;
+  if (jumpEdge && p.onGround) {
     const jumpMod = (currentLevel === 1) ? 0.75 : 1.0;
     p.vy = JUMP_FORCE * jumpMod * (debugMode ? 1.15 : 1);
     p.onGround = false;
+    if (!_isMobile) p._jumpCD = 8; // ~130ms cooldown on PC
   }
 
   // Gravity
