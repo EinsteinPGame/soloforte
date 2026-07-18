@@ -101,7 +101,7 @@ const CHARS=[
     desc:'Twin arm blades. Fast attacker.',
     playstyle:'Speed & Bleed',
     stats:{hp:460,atk:26,speed:4.8,range:75,def:5,crit:18},
-    baseAtkInterval:26,
+    baseAtkInterval:26,relicChargeRate:1.4,
     specialName:'MB Relic Activated',
   },
   {
@@ -109,7 +109,7 @@ const CHARS=[
     desc:'Heavy fists. Strength tank.',
     playstyle:'Power & AoE',
     stats:{hp:520,atk:35,speed:2.8,range:65,def:9,crit:10},
-    baseAtkInterval:45,
+    baseAtkInterval:45,relicChargeRate:1.2,
     specialName:'GA Relic Activated',
   },
   {
@@ -117,7 +117,7 @@ const CHARS=[
     desc:'Whip weapon. Capture specialist.',
     playstyle:'Control & Hack',
     stats:{hp:380,atk:18,speed:3.8,range:110,def:5,crit:22},
-    baseAtkInterval:50,
+    baseAtkInterval:50,relicChargeRate:0.8,
     specialName:'MW Relic Activated',
   },
   {
@@ -125,7 +125,7 @@ const CHARS=[
     desc:'Projectile launcher. AoE explosions.',
     playstyle:'AoE & Zoning',
     stats:{hp:360,atk:16,speed:3.2,range:180,def:6,crit:12},
-    baseAtkInterval:90,
+    baseAtkInterval:90,relicChargeRate:0.65,
     specialName:'PLS Relic Activated',
   },
   {
@@ -133,7 +133,7 @@ const CHARS=[
     desc:'Unarmed speedster. Body collision = Damage.',
     playstyle:'Speed & Dodge',
     stats:{hp:380,atk:15,speed:7.5,range:55,def:4,crit:16},
-    baseAtkInterval:18,
+    baseAtkInterval:18,relicChargeRate:1.0,
     specialName:'Sandevistan Activated',
   },
 ];
@@ -514,8 +514,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker.side===0){battleStats.p1Hits++;battleStats.p1Dmg+=dmg;if(isCrit)battleStats.p1Crits++;}
   else{battleStats.p2Hits++;battleStats.p2Dmg+=dmg;if(isCrit)battleStats.p2Crits++;}
 
-  attacker.specialBar=Math.min(attacker.specialMax,attacker.specialBar+6+Math.random()*2);
-  defender.specialBar=Math.min(defender.specialMax,defender.specialBar+2+Math.random());
+  attacker.specialBar=Math.min(attacker.specialMax,attacker.specialBar+(6+Math.random()*2)*(attacker.char.relicChargeRate||1));
+  defender.specialBar=Math.min(defender.specialMax,defender.specialBar+(2+Math.random())*(defender.char.relicChargeRate||1));
 
   if(dmg>20){shakeTimer=Math.max(shakeTimer,6);shakeAmt=Math.max(shakeAmt,dmg>40?6:3);}
 
@@ -572,7 +572,7 @@ function attackMantis(f,enemy,chaos){
   f.weaponExtend=1;
   f.weaponFlash=12;
   const d=dist(f,enemy);
-  const effectiveRange=f.range+chaos*8;
+  const effectiveRange=f.range+enemy.radius+chaos*8;
   const facing=isWeaponFacingEnemy(f,enemy);
 
   SFX.slash();
@@ -606,7 +606,7 @@ function attackGorilla(f,enemy,chaos){
   f.weaponExtend=1;
   f.weaponFlash=15;
   const d=dist(f,enemy);
-  const effectiveRange=f.range+chaos*5;
+  const effectiveRange=f.range+enemy.radius+chaos*5;
   const isDownslam=f.attackPhase===2;
   const facing=isWeaponFacingEnemy(f,enemy);
 
@@ -655,7 +655,7 @@ function attackMonowire(f,enemy,chaos){
   f.weaponExtend=1;
   f.weaponFlash=15;
   const d=dist(f,enemy);
-  const effectiveRange=f.range+chaos*10;
+  const effectiveRange=f.range+enemy.radius+chaos*10;
   const facing=isWeaponFacingEnemy(f,enemy);
 
   SFX.whip();
@@ -710,7 +710,7 @@ function attackSandy(f,enemy,chaos){
   // Unarmed — speed = damage. Hits when facing and in range, then bounces away
   f.weaponFlash=12;
   const d=dist(f,enemy);
-  const effectiveRange=f.range+chaos*5;
+  const effectiveRange=f.range+enemy.radius+chaos*5;
   const facing=isWeaponFacingEnemy(f,enemy);
   const spd=Math.hypot(f.vx,f.vy);
   // Damage scales with speed — faster = harder hit
@@ -1352,7 +1352,7 @@ function updateBattle(dt){
     if(f.elementFlash>0)f.elementFlash-=dt;
 
     // Special bar passive fill (slow time-based + attack bonus is the main driver)
-    f.specialBar=Math.min(f.specialMax,f.specialBar+0.025*dt);
+    f.specialBar=Math.min(f.specialMax,f.specialBar+0.025*(f.char.relicChargeRate||1)*dt);
 
     // Check if should use relic special
     if(f.specialBar>=f.specialMax&&!f.specialActive&&enemy.alive){
@@ -1408,8 +1408,8 @@ function updateBattle(dt){
       const ka=angle(f2,f1);
       f1.vx+=Math.cos(ka)*5;f1.vy+=Math.sin(ka)*5;
       f2.vx-=Math.cos(ka)*5;f2.vy-=Math.sin(ka)*5;
-      f1.specialBar=Math.min(f1.specialMax,f1.specialBar+8);
-      f2.specialBar=Math.min(f2.specialMax,f2.specialBar+8);
+      f1.specialBar=Math.min(f1.specialMax,f1.specialBar+8*(f1.char.relicChargeRate||1));
+      f2.specialBar=Math.min(f2.specialMax,f2.specialBar+8*(f2.char.relicChargeRate||1));
       addLog('WEAPON CLASH!');
       spawnDmgNum(cx,cy-15,'PARRY!','#ffcc00',true);
       f1._parryCooldown=30;f2._parryCooldown=30;
