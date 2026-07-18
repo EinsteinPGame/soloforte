@@ -731,7 +731,7 @@ function calcDamage(baseDmg,isCrit){
 
 function startReload(){
   const w=getWeapon();if(!w||w.ammo===Infinity||player.reloading)return;
-  const reloadTimes={Pistol:300,Shotgun:450,Sniper:600,'Assault Rifle':500,'Machine Gun':700,'Rocket Launcher':550,'Grenade Launcher':500,'Crossbow:':400,'Plasma Rifle':450,'Ice Bow':400,'Storm Bow':500,'Void Cannon':550,'Holy Javelin':350};
+  const reloadTimes={Pistol:300,Shotgun:450,Sniper:600,'Assault Rifle':500,'Machine Gun':700,'Rocket Launcher':550,'Grenade Launcher':500,'Crossbow':400,'Plasma Rifle':450,'Ice Bow':400,'Storm Bow':500,'Void Cannon':550,'Holy Javelin':350};
   player.reloading=true;
   player.reloadDuration=(reloadTimes[w.name]||1500)/player.atkSpdMult;
   player.reloadTimer=player.reloadDuration;
@@ -909,7 +909,15 @@ function damageEnemy(e,dmg,isCrit){
 }
 
 function addDmgNum(x,y,dmg,isCrit,customText){
-  damageNumbers.push({x,y,dmg,isCrit,life:900,customText:customText||null});
+  const _dx=x-player.x,_dy=y-player.y;
+  const _angle=Math.atan2(_dy,_dx)-player.angle;
+  let _sa=_angle;while(_sa>Math.PI)_sa-=Math.PI*2;while(_sa<-Math.PI)_sa+=Math.PI*2;
+  const _fov=player.currentFOV||FOV;
+  const _sx=Math.abs(_sa)>_fov?canvas.width/2:((_sa/_fov)+0.5)*canvas.width;
+  const _dist=Math.sqrt(_dx*_dx+_dy*_dy)||0.1;
+  const _h=Math.min(canvas.height,(1/Math.max(_dist,0.5))*canvas.height*0.8);
+  const _sy=canvas.height/2-_h/2;
+  damageNumbers.push({x,y,sx:_sx,sy:_sy,dmg,isCrit,life:900,maxLife:900,customText:customText||null,text:customText||(isCrit?'CRIT '+dmg:String(Math.ceil(dmg))),color:isCrit?'#f84':'#ff0',alpha:1});
 }
 
 function spawnExplosion(x,y,color){
@@ -951,7 +959,7 @@ function onEnemyKill(e){
   if(e.frozen&&player.shatterExplosion){for(const e2 of enemies){if(e2!==e&&e2.hp>0&&dist(e2,e)<3.2)damageEnemy(e2,30,false);}spawnExplosion(e.x,e.y,'#44ccff');}
   // Weapon drop (15% chance)
   if(Math.random()<0.15&&e.weaponDrop!==undefined){
-    const wt={...WEAPON_TYPES[Math.min(e.weaponDrop,WEAPON_TYPES.length-1)],kills:0};
+    const wt={...WEAPON_TYPES[Math.min(e.weaponDrop,WEAPON_TYPES.length-1)],kills:0};wt.maxAmmo=wt.ammo||Infinity;
     player.weapons.push(wt);playSound('pickupWeapon');addDmgNum(e.x,e.y,0,false,'NEW: '+wt.name);
   }
   // Health orb (22%)
@@ -1608,10 +1616,10 @@ function renderInventory(){
     card.style.cssText='position:relative;padding:8px 10px;border-radius:6px;cursor:pointer;min-width:110px;background:rgba(0,0,0,0.6);border-width:2px;';
     if(i===equippedArmorIndex)card.style.boxShadow='0 0 8px #08f';
     const tip=document.createElement('div');tip.className='inv-tooltip';
-    tip.innerHTML=`<b>${ar.name}</b><br>DEF: ${ar.defense}<br>Ability: ${ar.shiftAbility}<br>${ar.desc||''}`;
+    tip.innerHTML=`<b>${ar.name}</b><br>DEF: ${ar.def}<br>Ability: ${ar.shiftAbility}<br>${ar.desc||''}`;
     card.appendChild(tip);
     const nm=document.createElement('div');nm.style.cssText='color:#fff;font-size:0.8rem;font-weight:bold;';nm.textContent=ar.name;card.appendChild(nm);
-    const df=document.createElement('div');df.style.cssText='color:#aaa;font-size:0.7rem;';df.textContent=`DEF ${ar.defense} | ${ar.shiftAbility}`;card.appendChild(df);
+    const df=document.createElement('div');df.style.cssText='color:#aaa;font-size:0.7rem;';df.textContent=`DEF ${ar.def} | ${ar.shiftAbility}`;card.appendChild(df);
     if(i===equippedArmorIndex){const eq=document.createElement('div');eq.style.cssText='color:#08f;font-size:0.65rem;';eq.textContent='[EQUIPPED]';card.appendChild(eq);}
     card.addEventListener('click',()=>{equippedArmorIndex=i;armorAbilityCooldown=0;renderInventory();});
     aGrid.appendChild(card);
@@ -1632,7 +1640,7 @@ function renderInventory(){
     if(lvl>0)card.style.boxShadow=`0 0 6px ${em.color}`;
     const tip=document.createElement('div');tip.className='inv-tooltip';
     let perkHtml=`<b>${em.name} Emblem</b> (Lv ${lvl})<br>`;
-    em.perks.forEach((p,pi)=>{
+    (em.perks||[]).forEach((p,pi)=>{
       const acquired=lvl>(pi*3);
       perkHtml+=`<span style="color:${acquired?em.color:'#555'}">${p}</span><br>`;
     });
@@ -2286,7 +2294,7 @@ function chainLightningHit(origin,dmg,count){
 
 function getArmorDef(){
   if(equippedArmorIndex<0||!player.armors[equippedArmorIndex])return 0;
-  return player.armors[equippedArmorIndex].defense||0;
+  return player.armors[equippedArmorIndex].def||0;
 }
 
 // ── PARTICLE UPDATE ──────────────────────────────────────────────────────────
@@ -2310,7 +2318,7 @@ function spawnParticles(x,y,count,color){
 function updateDamageNumbers(dt){
   for(let i=damageNumbers.length-1;i>=0;i--){
     const d=damageNumbers[i];
-    d.y-=0.5*(dt/16);d.life-=dt;d.alpha=d.life/d.maxLife;
+    d.y-=0.5*(dt/16);if(d.sy!==undefined)d.sy-=0.5*(dt/16);d.life-=dt;d.alpha=d.life/d.maxLife;
     if(d.life<=0)damageNumbers.splice(i,1);
   }
 }
@@ -2465,7 +2473,7 @@ function updatePickups(dt){
         // Auto-pickup if less than 4 weapons, else prompt
         if(player.weapons.length<4){
           const wt=WEAPON_TYPES[Math.floor(Math.random()*WEAPON_TYPES.length)];
-          const newW={...wt,kills:0,ammo:wt.ammo||Infinity};
+          const newW={...wt,kills:0,ammo:wt.ammo||Infinity,maxAmmo:wt.ammo||Infinity};
           // Apply tier
           if(p.tier){newW.tier=p.tier;}
           player.weapons.push(newW);playSound('pickupWeapon');pickups.splice(i,1);
@@ -2674,10 +2682,10 @@ function showEmblemSelect(){
     const lv2=document.createElement('div');lv2.style.cssText='color:#aaa;font-size:0.75rem;margin:4px 0;';lv2.textContent=`Level ${lv} → ${lv+2}`;card.appendChild(lv2);
     // Show next perk
     const perkIdx=Math.floor(lv/4);
-    const nextPerk=em.perks[Math.min(perkIdx,em.perks.length-1)];
+    const nextPerk=(em.perks||[])[Math.min(perkIdx,(em.perks||[]).length-1)];
     const desc=document.createElement('div');desc.style.cssText='color:#ccc;font-size:0.72rem;';desc.textContent=nextPerk||'Max power';card.appendChild(desc);
     // All perks list
-    em.perks.forEach((p,pi)=>{
+    (em.perks||[]).forEach((p,pi)=>{
       const pdiv=document.createElement('div');
       pdiv.style.cssText=`color:${lv>pi*4?em.color:'#444'};font-size:0.65rem;margin-top:2px;`;
       pdiv.textContent=`• ${p}`;card.appendChild(pdiv);
@@ -2848,7 +2856,7 @@ function setupMobileControls(){
 
   // Mobile action buttons
   document.getElementById('btn-skill')?.addEventListener('click',useSkill);
-  document.getElementById('btn-ult')?.addEventListener('click',useUlt);
+  document.getElementById('btn-ult')?.addEventListener('click',useUltimate);
   document.getElementById('btn-inv')?.addEventListener('click',toggleInventory);
   document.getElementById('btn-armor')?.addEventListener('click',useArmorAbility);
   document.getElementById('btn-pause')?.addEventListener('click',togglePause);
@@ -2932,8 +2940,8 @@ function showCharacterSelect(){
     card.onmouseleave=()=>card.style.transform='scale(1)';
     const nm=document.createElement('div');nm.style.cssText=`color:${ch.color};font-size:1rem;font-weight:bold;`;nm.textContent=ch.name;card.appendChild(nm);
     const hp=document.createElement('div');hp.style.cssText='color:#aaa;font-size:0.72rem;margin:4px 0;';hp.textContent=`HP: ${ch.hp} | SPD: ${ch.speed}`;card.appendChild(hp);
-    const sk=document.createElement('div');sk.style.cssText='color:#8cf;font-size:0.68rem;';sk.textContent=`[Q] ${ch.skill}`;card.appendChild(sk);
-    const ul=document.createElement('div');ul.style.cssText='color:#f8c;font-size:0.68rem;margin-top:2px;';ul.textContent=`[E] ${ch.ult}`;card.appendChild(ul);
+    const sk=document.createElement('div');sk.style.cssText='color:#8cf;font-size:0.68rem;';sk.textContent=`[Q] ${ch.skillName}`;card.appendChild(sk);
+    const ul=document.createElement('div');ul.style.cssText='color:#f8c;font-size:0.68rem;margin-top:2px;';ul.textContent=`[E] ${ch.ultName}`;card.appendChild(ul);
     if(ch.desc){const d2=document.createElement('div');d2.style.cssText='color:#888;font-size:0.62rem;margin-top:4px;';d2.textContent=ch.desc;card.appendChild(d2);}
     card.addEventListener('click',()=>{
       selectedChar=ch;
@@ -3013,7 +3021,7 @@ function setupMobileControls(){
   const mub=document.getElementById('mobile-ult-btn');
   const mib=document.getElementById('mobile-inv-btn');
   if(msb)msb.addEventListener('click',useSkill);
-  if(mub)mub.addEventListener('click',useUlt);
+  if(mub)mub.addEventListener('click',useUltimate);
   if(mib)mib.addEventListener('click',toggleInventory);
 }
 
@@ -3066,7 +3074,7 @@ function renderInventoryInto(container){
   if(player.armors.length===0){const na=document.createElement('div');na.style.color='#888';na.textContent='None';aRow.appendChild(na);}
   player.armors.forEach((ar,i)=>{
     const div=document.createElement('div');div.className='inv-item '+(i===equippedArmorIndex?'selected':'');
-    div.innerHTML=`<div class="inv-tooltip"><b>${ar.name}</b><br>DEF: ${ar.defense}<br>[Shift] ${ar.shiftAbility}</div>${ar.name}<br><small>DEF ${ar.defense}</small>${i===equippedArmorIndex?'<br><small style="color:#08f">[ON]</small>':''}`;
+    div.innerHTML=`<div class="inv-tooltip"><b>${ar.name}</b><br>DEF: ${ar.def}<br>[Shift] ${ar.shiftAbility}</div>${ar.name}<br><small>DEF ${ar.def}</small>${i===equippedArmorIndex?'<br><small style="color:#08f">[ON]</small>':''}`;
     div.addEventListener('click',()=>{equippedArmorIndex=i;armorAbilityCooldown=0;const c=document.getElementById('inv-content');if(c){c.innerHTML='';renderInventoryInto(c);}});
     aRow.appendChild(div);
   });
@@ -3079,7 +3087,7 @@ function renderInventoryInto(container){
     const lv=player.emblems[em.name]||0;
     const div=document.createElement('div');div.className='inv-item';
     div.style.borderColor=lv>0?em.color:'#333';
-    div.innerHTML=`<div class="inv-tooltip" style="left:0;transform:none;right:auto;">${em.perks.map((p,pi)=>`<span style="color:${lv>pi*4?em.color:'#555'}">• ${p}</span>`).join('<br>')}</div><span style="color:${lv>0?em.color:'#666'}">${em.name}</span><br><small>Lv ${lv}/20</small>`;
+    div.innerHTML=`<div class="inv-tooltip" style="left:0;transform:none;right:auto;">${(em.perks||[]).map((p,pi)=>`<span style="color:${lv>pi*4?em.color:'#555'}">• ${p}</span>`).join('<br>')}</div><span style="color:${lv>0?em.color:'#666'}">${em.name}</span><br><small>Lv ${lv}/20</small>`;
     eRow.appendChild(div);
   });
   eSec.appendChild(eRow);container.appendChild(eSec);
@@ -3189,7 +3197,7 @@ function showCharacterSelect(){
   CHARACTERS.forEach(ch=>{
     const card=document.createElement('div');card.className='char-card';
     card.style.borderColor=ch.color;
-    card.innerHTML=`<h3 style="color:${ch.color}">${ch.name}</h3><p>HP: ${ch.hp} | SPD: ${ch.speed}</p><p>[Q] ${ch.skill}</p><p>[E] ${ch.ult}</p>${ch.desc?`<p style="margin-top:4px;color:#777">${ch.desc}</p>`:''}`;
+    card.innerHTML=`<h3 style="color:${ch.color}">${ch.name}</h3><p>HP: ${ch.hp} | SPD: ${ch.speed}</p><p>[Q] ${ch.skillName}</p><p>[E] ${ch.ultName}</p>${ch.desc?`<p style="margin-top:4px;color:#777">${ch.desc}</p>`:''}`;
     card.addEventListener('click',()=>{
       selectedChar=ch;
       player.maxHp=ch.hp;player.speed=ch.speed;player.critChance=ch.critChance||0.05;
@@ -3357,7 +3365,7 @@ function startStoryMode(){
   CHARACTERS.forEach(ch=>{
     const card=document.createElement('div');card.className='char-card';
     card.style.borderColor=ch.color;
-    card.innerHTML=`<h3 style="color:${ch.color}">${ch.name}</h3><p>HP: ${ch.hp} | SPD: ${ch.speed}</p><p>[Q] ${ch.skill}</p><p>[E] ${ch.ult}</p>${ch.desc?`<p style="margin-top:4px;color:#777">${ch.desc}</p>`:''}`;
+    card.innerHTML=`<h3 style="color:${ch.color}">${ch.name}</h3><p>HP: ${ch.hp} | SPD: ${ch.speed}</p><p>[Q] ${ch.skillName}</p><p>[E] ${ch.ultName}</p>${ch.desc?`<p style="margin-top:4px;color:#777">${ch.desc}</p>`:''}`;
     card.addEventListener('click',()=>{
       selectedChar=ch;
       player.maxHp=ch.hp;player.speed=ch.speed;player.critChance=ch.critChance||0.05;
@@ -3493,7 +3501,7 @@ function storyLevelComplete(){
   const lvl=STORY_LEVELS[storyLevel];
   if(lvl.nextWeapon!=null&&lvl.nextWeapon<WEAPON_TYPES.length){
     const wt=WEAPON_TYPES[lvl.nextWeapon];
-    player.weapons.push({...wt,kills:0,ammo:wt.ammo});
+    player.weapons.push({...wt,kills:0,ammo:wt.ammo,maxAmmo:wt.ammo||Infinity});
     announceAbility(`Got: ${wt.name}!`,'#ffd700');
   }
 
