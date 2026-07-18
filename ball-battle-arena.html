@@ -90,6 +90,12 @@ const SFX={
   // Gorilla thunder = massive ground pound
   thunderclap(){this._tone(40,0.4,'sine',0.4);this._tone(60,0.3,'sine',0.3,0.05);this._noise(0.3,0.25);this._tone(100,0.15,'sawtooth',0.15,0.1)},
   dashHit(){this._tone(200,0.1,'sawtooth',0.25);this._tone(500,0.08,'square',0.18,0.02);this._noise(0.08,0.18)},
+  // Katana = crisp metallic deflect + quick counter slash
+  katanaDeflect(){this._tone(1400,0.08,'square',0.25);this._tone(2000,0.06,'sawtooth',0.18,0.02);this._tone(800,0.1,'triangle',0.12,0.03);this._noise(0.04,0.06)},
+  katanaSlash(){this._tone(1000,0.05,'sawtooth',0.22);this._tone(1800,0.04,'sawtooth',0.15,0.01);this._noise(0.03,0.06)},
+  // Berserk = SHOTGUN boom — deep blast + pellet scatter
+  shotgun(){this._tone(60,0.2,'sine',0.35);this._tone(120,0.15,'sine',0.25,0.02);this._noise(0.15,0.25);this._tone(300,0.08,'square',0.1,0.04)},
+  shellLoad(){this._tone(400,0.06,'triangle',0.1);this._tone(600,0.04,'square',0.08,0.03)},
 };
 
 // ============================================================
@@ -144,6 +150,22 @@ const CHARS=[
     baseAtkInterval:70,relicChargeRate:0.85,
     specialName:'Optical Camo Activated',
   },
+  {
+    id:'katana',name:'Katana',color:'#ff6644',
+    desc:'Deflect blade. Counter-attacker.',
+    playstyle:'Deflect & Counter',
+    stats:{hp:460,atk:28,speed:3.8,range:85,def:7,crit:18},
+    baseAtkInterval:35,relicChargeRate:0.5,
+    specialName:'Katana Relic Activated',
+  },
+  {
+    id:'berserk',name:'Berserk',color:'#dd2222',
+    desc:'Shotgun blast. Rage tank.',
+    playstyle:'Spread & Rage',
+    stats:{hp:480,atk:14,speed:3.0,range:140,def:8,crit:8},
+    baseAtkInterval:140,relicChargeRate:1.0,
+    specialName:'Berserk Mode Activated',
+  },
 ];
 
 // ============================================================
@@ -182,6 +204,14 @@ const COMBO_EFFECTS={
   'throw_electric':'15-30% auto-return on miss',
   'throw_toxic':'Phantom dagger from opposite side',
   'throw_cryo':'Missed knives spin on ground as traps',
+  'katana_fire':'Deflects explode on enemy',
+  'katana_electric':'Faster relic rush speed',
+  'katana_toxic':'Slight homing pull toward deflect',
+  'katana_cryo':'Ice wall behind enemy on counter',
+  'berserk_fire':'Faster pellets + tighter spread',
+  'berserk_electric':'Pellets return after hitting',
+  'berserk_toxic':'Slight pull on enemies toward Berserk',
+  'berserk_cryo':'Slow lingering pellets persist longer',
 };
 
 // ============================================================
@@ -226,6 +256,7 @@ let poisonBubbles=[]; // {x,y,life,maxLife,target} — gorilla poison bubbles on
 let fireTrails=[]; // {x,y,life,maxLife} — sandy fire trail
 let sandyAfterimages=[]; // {x,y,radius,rotation,color,life,maxLife} — speed afterimages
 let sandyOrbs=[]; // {owner,angle,dmg} — sandy+electric rotating orbs
+let iceWalls=[]; // {x,y,angle,life,maxLife,owner} — katana+ice walls behind enemy
 
 const ARENA={x:15,y:65,w:W-30,h:H-200};
 
@@ -288,6 +319,8 @@ function getChaosLevel(f){
 function getAttackInterval(f){
   const chaos=getChaosLevel(f);
   const base=f.char.baseAtkInterval;
+  // Katana: minimal scaling — stays at roughly base interval
+  if(f.char.id==='katana')return Math.max(20,base/(1+chaos*0.1));
   return Math.max(4, base/(1+chaos*0.5));
 }
 
@@ -365,6 +398,19 @@ function createFighter(charIdx,elemIdx,side){
     plsExplosionRadius:30,plsFireRate:1,
     // Sandy electric orbs
     sandyOrbAngle:0,
+    // Katana state
+    katanaDeflectCD:0, // cooldown after counter-dash
+    katanaDashing:false, // mid counter-dash
+    katanaDashTarget:null,
+    katanaDeflectCount:0, // charges relic
+    katanaRushDeflects:0, // relic: deflects during rush = more final damage
+    katanaRushing:false, // relic rush state
+    katanaRushTimer:0,
+    // Berserk state
+    berserkReloadTimer:0, // shell reload cooldown
+    berserkSpeedBoost:0, // speed gain from taking damage
+    berserkInvincible:false, // relic invincibility
+    berserkPelletCount:6, // scales with chaos
   };
 }
 
@@ -516,6 +562,54 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     spawnBurst(defender.x,defender.y,'#4488ff',8,4);
     return 0;
   }
+  // Katana deflect — weapon must face attacker, not on cooldown or mid-dash
+  if(defender.char.id==='katana'&&!defender.katanaDashing&&defender.katanaDeflectCD<=0
+    &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0){
+    const toAttacker=angle(defender,attacker);
+    let aDiff=defender.weaponAngle-toAttacker;
+    while(aDiff>Math.PI)aDiff-=Math.PI*2;while(aDiff<-Math.PI)aDiff+=Math.PI*2;
+    if(Math.abs(aDiff)<0.8){
+      if(battleTime<120){
+        baseDmg*=0.5; // early battle: 50% reduction only
+      } else {
+        // Full deflect — no damage, counter-dash
+        SFX.katanaDeflect();
+        spawnBurst(defender.x+Math.cos(defender.weaponAngle)*defender.radius,
+          defender.y+Math.sin(defender.weaponAngle)*defender.radius,'#ffcc00',15,5);
+        spawnSparks(defender.x+Math.cos(defender.weaponAngle)*defender.radius,
+          defender.y+Math.sin(defender.weaponAngle)*defender.radius,'#ffffff',8);
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,'DEFLECT','#ffcc00',true);
+        shakeTimer=Math.max(shakeTimer,6);shakeAmt=Math.max(shakeAmt,4);
+        defender.specialBar=Math.min(defender.specialMax,defender.specialBar+12*(defender.char.relicChargeRate||1));
+        defender.katanaDeflectCount++;
+        if(!defender.katanaRushing){
+          defender.katanaDashing=true;
+          defender.katanaDashTarget=attacker;
+          defender.katanaDeflectCD=35;
+        }
+        if(defender.elementActive&&defender.elem.id==='fire'){
+          spawnExplosion(attacker.x,attacker.y,40,'#ff4400',defender.atk*0.5,defender,attacker);
+          attacker.hp-=defender.atk*0.5;attacker.hitFlash=8;
+          if(attacker.hp<=0){attacker.hp=0;attacker.alive=false;attacker.deathAnim=60;}
+        }
+        if(defender.elementActive&&defender.elem.id==='cryo'){
+          const behindAngle=angle(defender,attacker);
+          iceWalls.push({x:attacker.x+Math.cos(behindAngle)*60,y:attacker.y+Math.sin(behindAngle)*60,
+            angle:behindAngle,life:120,maxLife:120,owner:defender});
+          SFX.freeze();
+        }
+        if(defender.katanaRushing)defender.katanaRushDeflects++;
+        return 0;
+      }
+    }
+  }
+  // Berserk invincible during relic
+  if(defender.berserkInvincible){
+    spawnDmgNum(defender.x,defender.y-defender.radius-15,'INVINCIBLE','#dd2222',true);
+    spawnBurst(defender.x,defender.y,'#dd2222',4,2);
+    return 0;
+  }
+
   const isCrit=canCrit&&Math.random()*100<attacker.crit;
   let dmg=baseDmg*(isCrit?2:1);
   const actualDef=Math.max(0,defender.def-defender.defReduction);
@@ -523,12 +617,18 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
 
   // Chaos scaling: more damage at higher chaos — very aggressive
   const chaos=getChaosLevel(attacker);
-  dmg*=(1+chaos*0.15);
+  // Katana: no chaos damage scaling (early powerhouse, falls off late)
+  if(attacker.char.id!=='katana')dmg*=(1+chaos*0.15);
 
   if(attacker.elementActive&&attacker.elem.id!=='none')applyElementEffect(attacker,defender);
   defender.hp-=dmg;
   defender.hitFlash=8;
   attacker.totalHits++;
+  // Berserk: speed boost on taking damage
+  if(defender.char.id==='berserk'&&defender.alive){
+    defender.berserkSpeedBoost=Math.min(3,defender.berserkSpeedBoost+0.3);
+    defender.speed=defender.baseSpeed+defender.berserkSpeedBoost;
+  }
 
   if(isCrit){SFX.crit();spawnBurst(defender.x,defender.y,'#ffff00',12,4);addLog((attacker.side===0?'P1':'P2')+' CRIT! '+Math.round(dmg));}
   spawnDmgNum(defender.x+rand(-15,15),defender.y-defender.radius-10,dmg,isCrit?'#ffff00':'#fff',isCrit);
@@ -561,7 +661,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -587,6 +687,8 @@ function performWeaponAttack(f,enemy){
     case 'pls':attackPLS(f,enemy,chaos);break;
     case 'sandy':attackSandy(f,enemy,chaos);break;
     case 'throw':attackThrow(f,enemy,chaos);break;
+    case 'katana':attackKatana(f,enemy,chaos);break;
+    case 'berserk':attackBerserk(f,enemy,chaos);break;
   }
 }
 
@@ -789,6 +891,72 @@ function attackThrow(f,enemy,chaos){
   tw.available=false;
   SFX.missile();
   spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,tw.color,6,3);
+}
+
+function attackKatana(f,enemy,chaos){
+  // Katana — quick slash, NO chaos damage scaling (early powerhouse, no scaling)
+  f.weaponExtend=1;f.weaponFlash=12;
+  const d=dist(f,enemy);
+  const effectiveRange=f.range+enemy.radius; // no chaos range boost
+  SFX.katanaSlash();
+  if(d<effectiveRange){
+    // Katana doesn't scale with chaos — use base atk only
+    const dmg=f.atk; // flat damage, no chaos mult
+    dealDamage(f,enemy,dmg);
+    const sa=f.weaponAngle;
+    for(let i=0;i<8;i++){
+      const spread=(Math.random()-0.5)*1.0;
+      const speed=3+Math.random()*3;
+      spawnParticle(f.x+Math.cos(sa)*f.radius,f.y+Math.sin(sa)*f.radius,
+        pick(['#ff8844','#ff6644','#ffaa44']),Math.cos(sa+spread)*speed,Math.sin(sa+spread)*speed,14,2.5);
+    }
+    spawnBurst(enemy.x,enemy.y,'#ff6644',6,3);
+    shakeTimer=Math.max(shakeTimer,4);shakeAmt=Math.max(shakeAmt,3);
+  } else {
+    const whiffX=f.x+Math.cos(f.weaponAngle)*f.radius*1.5;
+    const whiffY=f.y+Math.sin(f.weaponAngle)*f.radius*1.5;
+    spawnSparks(whiffX,whiffY,'#ff6644',4);
+  }
+}
+
+function attackBerserk(f,enemy,chaos){
+  // Berserk — SHOTGUN: many pellets in spread cone
+  if(f.berserkReloadTimer>0)return; // still reloading
+  f.weaponExtend=1;f.weaponFlash=15;
+  SFX.shotgun();
+  const baseAngle=angle(f,enemy);
+  let pelletCount=Math.floor(6+chaos*0.8); // more pellets with chaos
+  let spread=Math.max(0.15, 0.6-chaos*0.04); // tighter spread with chaos
+  let speed=10+chaos*0.3;
+  const pelletDmg=f.atk*(1+chaos*0.12);
+  let pelletLife=35;
+  // Fire element: faster pellets + tighter spread
+  if(f.elementActive&&f.elem.id==='fire'){speed*=1.3;spread*=0.7;}
+  // Cryo element: slow lingering pellets persist longer
+  if(f.elementActive&&f.elem.id==='cryo'){pelletLife=70;speed*=0.75;}
+
+  for(let i=0;i<pelletCount;i++){
+    const a=baseAngle+(Math.random()-0.5)*2*spread;
+    const s=speed*(0.9+Math.random()*0.2);
+    projectiles.push({
+      x:f.x+Math.cos(baseAngle)*f.radius,
+      y:f.y+Math.sin(baseAngle)*f.radius,
+      vx:Math.cos(a)*s,vy:Math.sin(a)*s,
+      owner:f,target:enemy,color:'#dd2222',
+      life:pelletLife,radius:5,dmg:pelletDmg,
+      explosive:false,explosionRadius:0,homing:false,
+      isShotgunPellet:true,
+    });
+  }
+  // Muzzle flash burst
+  spawnBurst(f.x+Math.cos(baseAngle)*f.radius,f.y+Math.sin(baseAngle)*f.radius,'#ff4444',12,5);
+  spawnBurst(f.x+Math.cos(baseAngle)*f.radius,f.y+Math.sin(baseAngle)*f.radius,'#ffaa44',8,3);
+  shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
+  // Knockback self slightly (recoil)
+  f.vx-=Math.cos(baseAngle)*2;f.vy-=Math.sin(baseAngle)*2;
+  // Start reload
+  const reloadTime=f.berserkInvincible?45:Math.max(60,150-chaos*12); // faster reload during relic
+  f.berserkReloadTimer=reloadTime;
 }
 
 // ============================================================
@@ -1057,6 +1225,54 @@ function applyElementEffect(attacker,defender){
       spawnBurst(defender.x,defender.y,'#77ddff',5,3);
       break;
 
+    // === KATANA ===
+    case 'katana_fire':
+      // Deflect explosions — handled in deflect logic (dealDamage)
+      defender.burnTimer=90;defender.burnDmg=2.5;
+      spawnBurst(defender.x,defender.y,'#ff4400',6,3);
+      break;
+    case 'katana_electric':
+      // Faster relic rush — handled in relic update
+      if(Math.random()<0.2){defender.stunTimer=25;SFX.stun();}
+      spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
+      break;
+    case 'katana_toxic':
+      // Slight homing pull toward katana on hit
+      {const pullAngle=angle(defender,attacker);
+      defender.vx+=Math.cos(pullAngle)*1.5;defender.vy+=Math.sin(pullAngle)*1.5;}
+      defender.defReduction=Math.min(6,defender.defReduction+2);
+      defender.defReductionTimer=90;
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,3);
+      break;
+    case 'katana_cryo':
+      // Ice wall — handled in deflect logic (dealDamage)
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',5,2);
+      break;
+
+    // === BERSERK ===
+    case 'berserk_fire':
+      // Faster pellets + tighter spread — handled in attackBerserk
+      defender.burnTimer=60;defender.burnDmg=1.5;
+      spawnBurst(defender.x,defender.y,'#ff4400',5,2);
+      break;
+    case 'berserk_electric':
+      // Pellets return after hitting — handled in projectile hit code
+      if(Math.random()<0.15){defender.stunTimer=20;SFX.stun();}
+      spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+      break;
+    case 'berserk_toxic':
+      // Slight pull toward berserk
+      {const pullA=angle(defender,attacker);
+      defender.vx+=Math.cos(pullA)*1.2;defender.vy+=Math.sin(pullA)*1.2;}
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,3);
+      break;
+    case 'berserk_cryo':
+      // Slow lingering — handled by making pellets last longer in attackBerserk
+      defender.slowTimer=Math.max(defender.slowTimer,75);
+      spawnBurst(defender.x,defender.y,'#77ddff',5,3);
+      break;
+
     // Fallback: generic element effects
     default:
       switch(attacker.elem.id){
@@ -1084,6 +1300,8 @@ function useSpecial(f,enemy){
     case 'pls':relicPLS(f,enemy);break;
     case 'sandy':relicSandy(f,enemy);break;
     case 'throw':relicThrow(f,enemy);break;
+    case 'katana':relicKatana(f,enemy);break;
+    case 'berserk':relicBerserk(f,enemy);break;
   }
 }
 
@@ -1179,6 +1397,43 @@ function relicThrow(f,enemy){
     explosions.push({x:f.x,y:f.y,radius:0,maxRadius:50+r*25,color:'#cc66ff',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
   }
   shakeTimer=20;shakeAmt=10;
+}
+
+function relicKatana(f,enemy){
+  // Katana Relic: rushes at enemy slowly while deflecting; deflects = more final damage
+  f.specialTimer=300; // ~5 seconds
+  f.katanaRushing=true;
+  f.katanaRushTimer=300;
+  f.katanaRushDeflects=0;
+  f.katanaDeflectCD=0; // reset deflect cooldown for relic
+  // Slow approach — move toward enemy
+  const a=angle(f,enemy);
+  f.vx=Math.cos(a)*1.5;f.vy=Math.sin(a)*1.5;
+  // Big activation burst — orange/gold
+  spawnBurst(f.x,f.y,'#ff6644',40,10);
+  spawnBurst(f.x,f.y,'#ffcc00',25,7);
+  spawnBurst(f.x,f.y,'#ffffff',15,5);
+  for(let r=0;r<2;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:50+r*25,color:'#ff6644',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  shakeTimer=20;shakeAmt=12;
+}
+
+function relicBerserk(f,enemy){
+  // Berserk Mode: invincible, fast reload, red glow, 4 seconds
+  f.specialTimer=240;
+  f.berserkInvincible=true;
+  f.berserkReloadTimer=0; // instant reload
+  f.speed=f.baseSpeed*1.4+f.berserkSpeedBoost;
+  // MASSIVE red activation — very obvious
+  spawnBurst(f.x,f.y,'#dd2222',50,12);
+  spawnBurst(f.x,f.y,'#ff4444',35,9);
+  spawnBurst(f.x,f.y,'#ffaa44',20,6);
+  for(let r=0;r<3;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*25,color:'#dd2222',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  shakeTimer=25;shakeAmt=14;
+  addLog((f.side===0?'P1':'P2')+' BERSERK MODE!');
 }
 
 // ============================================================
@@ -1426,6 +1681,72 @@ function updateRelicThrow(f,enemy,dt){
   }
 }
 
+function updateRelicKatana(f,enemy,dt){
+  f.katanaRushTimer-=dt;
+  // Slow steady approach toward enemy while deflecting
+  if(enemy.alive){
+    const a=angle(f,enemy);
+    const rushSpeed=f.elementActive&&f.elem.id==='electric'?2.5:1.5; // lightning = faster rush
+    f.vx=lerp(f.vx,Math.cos(a)*rushSpeed,0.1);
+    f.vy=lerp(f.vy,Math.sin(a)*rushSpeed,0.1);
+    // Face enemy
+    f.weaponAngle=a;
+    f.weaponExtend=0.8;
+    // Deflect glow trail
+    if(battleTime%3<1){
+      spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#ff6644',0,0,12,2);
+      spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#ffcc00',0,0,8,1.5);
+    }
+  }
+  // End rush — deliver multiplied slash
+  if(f.katanaRushTimer<=0||!enemy.alive){
+    f.katanaRushing=false;
+    if(enemy.alive){
+      // Final slash — damage multiplied by deflects during rush
+      const baseDmg=f.atk*3;
+      const mult=1+f.katanaRushDeflects*0.8; // each deflect = +80% more damage
+      const totalDmg=baseDmg*mult;
+      dealDamage(f,enemy,totalDmg,true);
+      SFX.katanaSlash();SFX.crit();
+      // MASSIVE slash visual
+      spawnBurst(enemy.x,enemy.y,'#ff6644',35,10);
+      spawnBurst(enemy.x,enemy.y,'#ffcc00',20,7);
+      spawnBurst(enemy.x,enemy.y,'#ffffff',12,5);
+      // X-slash
+      for(let i=0;i<20;i++){
+        const t=i/20;
+        spawnParticle(lerp(enemy.x-50,enemy.x+50,t),lerp(enemy.y-50,enemy.y+50,t),'#ff6644',0,0,18,2);
+        spawnParticle(lerp(enemy.x+50,enemy.x-50,t),lerp(enemy.y-50,enemy.y+50,t),'#ff6644',0,0,18,2);
+      }
+      explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:90,color:'#ff6644',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+      shakeTimer=25;shakeAmt=16;
+      if(f.katanaRushDeflects>0){
+        spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'x'+mult.toFixed(1)+'!','#ffcc00',true);
+        addLog((f.side===0?'P1':'P2')+' KATANA FINISH! '+f.katanaRushDeflects+' deflects = x'+mult.toFixed(1));
+      }
+      // Bounce away
+      const ka=angle(enemy,f);
+      f.vx=Math.cos(ka)*8;f.vy=Math.sin(ka)*8;
+    }
+    f.specialTimer=0;f.specialActive=false;
+  }
+}
+
+function updateRelicBerserk(f,enemy,dt){
+  // Red glow particles
+  if(battleTime%3<1){
+    const a=Math.random()*Math.PI*2;
+    spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#dd2222',Math.cos(a)*1.5,Math.sin(a)*1.5,15,3);
+  }
+  // End berserk mode
+  if(f.specialTimer<=0){
+    f.berserkInvincible=false;
+    f.speed=f.baseSpeed+f.berserkSpeedBoost;
+    addLog((f.side===0?'P1':'P2')+' Berserk Mode ended');
+    spawnBurst(f.x,f.y,'#dd2222',10,4);
+  }
+}
+
 // ============================================================
 // BATTLE UPDATE
 // ============================================================
@@ -1515,6 +1836,8 @@ function updateBattle(dt){
         case 'pls':updateRelicPLS(f,enemy,dt);break;
         case 'sandy':updateRelicSandy(f,enemy,dt);break;
         case 'throw':updateRelicThrow(f,enemy,dt);break;
+        case 'katana':updateRelicKatana(f,enemy,dt);break;
+        case 'berserk':updateRelicBerserk(f,enemy,dt);break;
       }
     }
 
@@ -1580,9 +1903,52 @@ function updateBattle(dt){
       }
     }
 
+    // Katana per-frame: deflect CD, counter-dash, rush deflect CD reset
+    if(f.char.id==='katana'){
+      if(f.katanaDeflectCD>0)f.katanaDeflectCD-=dt;
+      // Counter-dash: rush to enemy, slash, return to pose
+      if(f.katanaDashing&&f.katanaDashTarget&&f.katanaDashTarget.alive){
+        const t=f.katanaDashTarget;
+        const d=dist(f,t);
+        const a=angle(f,t);
+        // Accelerate toward enemy
+        f.vx=Math.cos(a)*12;f.vy=Math.sin(a)*12;
+        f.weaponAngle=a;f.weaponExtend=1;f.weaponFlash=5;
+        // Trail
+        spawnParticle(f.x,f.y,'#ff6644',-f.vx*0.2,-f.vy*0.2,10,2);
+        if(d<f.radius+t.radius+15){
+          // Hit! Slash and bounce away
+          f.katanaDashing=false;
+          dealDamage(f,t,f.atk*1.5,true);
+          SFX.katanaSlash();
+          spawnBurst(t.x,t.y,'#ff6644',12,5);
+          spawnBurst(t.x,t.y,'#ffcc00',8,3);
+          shakeTimer=8;shakeAmt=5;
+          const ka=angle(t,f);
+          f.vx=Math.cos(ka)*7;f.vy=Math.sin(ka)*7;
+        }
+      } else if(f.katanaDashing){f.katanaDashing=false;}
+      // During relic rush, deflect CD resets constantly
+      if(f.katanaRushing)f.katanaDeflectCD=0;
+    }
+
+    // Berserk per-frame: reload timer, speed boost decay
+    if(f.char.id==='berserk'){
+      if(f.berserkReloadTimer>0){
+        f.berserkReloadTimer-=dt;
+        if(f.berserkReloadTimer<=0)SFX.shellLoad();
+      }
+      // Speed boost slowly decays
+      if(f.berserkSpeedBoost>0&&!f.berserkInvincible){
+        f.berserkSpeedBoost=Math.max(0,f.berserkSpeedBoost-0.003*dt);
+        f.speed=f.baseSpeed+f.berserkSpeedBoost;
+      }
+    }
+
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'){
+    // Berserk keeps attacking during relic (invincible mode)
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'){
       if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
       if(f.attackTimer<=0){
         // PLS fires purely on interval — projectile aims toward enemy
@@ -1590,7 +1956,9 @@ function updateBattle(dt){
         // Others need weapon to face enemy
         // Throw: skip if no weapon available
         if(f.char.id==='throw'&&!f.throwWeapons[f.throwActiveIdx].available){/* wait */}
-        else if(f.char.id==='pls'||isWeaponFacingEnemy(f,enemy)){
+        else if(f.char.id==='berserk'&&f.berserkReloadTimer>0){/* reloading */}
+        else if(f.char.id==='katana'&&f.katanaDashing){/* mid counter-dash */}
+        else if(f.char.id==='pls'||f.char.id==='berserk'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -1684,6 +2052,14 @@ function updateBattle(dt){
       if(p.isThrowWeapon&&p.owner){
         p.owner.throwWeapons[p.throwIdx].available=true;
         p.owner.throwWeapons[p.throwIdx].returnCD=0;
+      }
+      // Berserk+electric: pellets return after hitting (spawn new pellet back at berserk)
+      if(p.isShotgunPellet&&p.owner&&p.owner.elementActive&&p.owner.elem.id==='electric'&&Math.random()<0.35){
+        const returnAngle=angle(p.target,p.owner);
+        projectiles.push({x:p.target.x,y:p.target.y,vx:Math.cos(returnAngle)*8,vy:Math.sin(returnAngle)*8,
+          owner:p.owner,target:p.target,color:'#ffcc00',life:40,radius:4,dmg:p.dmg*0.4,
+          explosive:false,explosionRadius:0,homing:false,isShotgunPellet:false});
+        spawnBurst(p.target.x,p.target.y,'#ffcc00',4,2);
       }
       projectiles.splice(i,1);continue;
     }
@@ -1949,6 +2325,23 @@ function updateBattle(dt){
     }
   });
 
+  // Katana+ice walls: bounce enemies back
+  for(let i=iceWalls.length-1;i>=0;i--){
+    const iw=iceWalls[i];iw.life-=dt;
+    if(iw.life<=0){iceWalls.splice(i,1);continue;}
+    [f1,f2].forEach(f=>{
+      if(f.alive&&f!==iw.owner&&dist(f,iw)<f.radius+20){
+        // Push enemy back toward katana owner
+        const pushAngle=iw.angle+Math.PI;
+        f.vx+=Math.cos(pushAngle)*4;f.vy+=Math.sin(pushAngle)*4;
+        f.slowTimer=Math.max(f.slowTimer,30);
+        spawnBurst(iw.x,iw.y,'#77ddff',6,3);
+        SFX.freeze();
+        iceWalls.splice(i,1);
+      }
+    });
+  }
+
   // Particles
   for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=0.96;p.vy*=0.96;p.life-=dt;if(p.life<=0)particles.splice(i,1);}
   // Damage numbers
@@ -2143,6 +2536,8 @@ function drawWeapon(f){
     case 'pls':drawPLS(r,ext,flash,f);break;
     case 'sandy':drawSandy(r,ext,flash,f);break;
     case 'throw':drawThrowWeapon(r,ext,flash,f);break;
+    case 'katana':drawKatanaWeapon(r,ext,flash,f);break;
+    case 'berserk':drawBerserkWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -2733,6 +3128,166 @@ function drawThrowWeapon(r,ext,flash,f){
   }
 }
 
+function drawKatanaWeapon(r,ext,flash,f){
+  const bladeLen=62;
+  // Handle/tsuka — wrapped grip
+  X.fillStyle='#1a1a22';X.fillRect(r-8,-5,16,10);
+  X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-5,16,10);
+  // Wrapping lines
+  X.strokeStyle='#ff6644';X.lineWidth=0.8;
+  for(let i=0;i<4;i++){X.beginPath();X.moveTo(r-6+i*4,-5);X.lineTo(r-4+i*4,5);X.stroke();}
+  // Tsuba (guard) — oval crossguard
+  X.beginPath();X.ellipse(r+8,0,4,10,0,0,Math.PI*2);
+  X.fillStyle='#444';X.fill();X.strokeStyle='#666';X.lineWidth=1;X.stroke();
+  X.fillStyle='#ff6644';X.fillRect(r+6,-1,4,2); // accent
+
+  // Blade — curved katana profile, single edge
+  const bx=r+12;
+  X.beginPath();
+  X.moveTo(bx,-4);
+  // Spine (back) — slight curve
+  X.quadraticCurveTo(bx+bladeLen*0.3,-5,bx+bladeLen*0.6,-4);
+  X.quadraticCurveTo(bx+bladeLen*0.85,-2.5,bx+bladeLen,0);
+  // Kissaki (tip)
+  X.lineTo(bx+bladeLen+2,0.5);
+  // Ha (cutting edge) — deeper curve
+  X.quadraticCurveTo(bx+bladeLen*0.8,5,bx+bladeLen*0.5,5.5);
+  X.quadraticCurveTo(bx+bladeLen*0.2,5,bx,3);
+  X.closePath();
+  // Steel gradient — bright silver/blue tint
+  const bg=X.createLinearGradient(bx,-5,bx+bladeLen,0);
+  bg.addColorStop(0,'#778');bg.addColorStop(0.15,'#aab');bg.addColorStop(0.35,'#dde');
+  bg.addColorStop(0.5,'#eef');bg.addColorStop(0.7,'#ccd');bg.addColorStop(0.9,'#99a');bg.addColorStop(1,'#667');
+  X.fillStyle=bg;X.fill();
+  X.strokeStyle='#556';X.lineWidth=0.8;X.stroke();
+  // Hamon line — wavy temper line
+  X.strokeStyle='rgba(255,200,150,0.4)';X.lineWidth=1.2;
+  X.beginPath();X.moveTo(bx+5,2);
+  X.quadraticCurveTo(bx+bladeLen*0.2,3.5,bx+bladeLen*0.35,2);
+  X.quadraticCurveTo(bx+bladeLen*0.5,3.5,bx+bladeLen*0.65,2);
+  X.quadraticCurveTo(bx+bladeLen*0.8,3,bx+bladeLen*0.95,0.5);
+  X.stroke();
+  // Cutting edge glow
+  X.strokeStyle=flash?'rgba(255,100,60,0.9)':'rgba(255,80,50,0.3)';
+  X.lineWidth=flash?2.5:1;
+  X.beginPath();X.moveTo(bx+2,3);
+  X.quadraticCurveTo(bx+bladeLen*0.3,5.5,bx+bladeLen*0.6,5);
+  X.quadraticCurveTo(bx+bladeLen*0.85,3,bx+bladeLen+1,0.5);
+  X.stroke();
+  if(flash){X.shadowColor='#ff6040';X.shadowBlur=8;X.stroke();X.shadowBlur=0;}
+
+  // Deflect stance glow — shows katana is always ready
+  if(f&&!f.katanaDashing&&!f.katanaRushing){
+    const pulse=Math.sin(battleTime*0.08)*3;
+    X.strokeStyle='rgba(255,204,0,'+(0.15+Math.sin(battleTime*0.1)*0.1)+')';
+    X.lineWidth=3+pulse*0.3;
+    X.beginPath();X.arc(bx+bladeLen*0.5,0,bladeLen*0.35+pulse,Math.PI*0.7,Math.PI*1.3);X.stroke();
+  }
+  // Relic rush — intense orange aura around blade
+  if(f&&f.katanaRushing){
+    X.shadowColor='#ff6644';X.shadowBlur=20;
+    X.strokeStyle='rgba(255,102,68,0.6)';X.lineWidth=4;
+    X.beginPath();X.moveTo(bx+2,3);
+    X.quadraticCurveTo(bx+bladeLen*0.5,8,bx+bladeLen+2,0);
+    X.stroke();X.shadowBlur=0;
+  }
+
+  // Slash trail
+  if(flash&&f.attackAnim>0){
+    X.strokeStyle='rgba(255,100,60,0.5)';X.lineWidth=5;
+    X.beginPath();X.arc(0,0,r+bladeLen*0.5,-0.4,0.4);X.stroke();
+    X.strokeStyle='rgba(255,200,100,0.25)';X.lineWidth=10;
+    X.beginPath();X.arc(0,0,r+bladeLen*0.35,-0.3,0.3);X.stroke();
+  }
+}
+
+function drawBerserkWeapon(r,ext,flash,f){
+  const gunLen=50;
+  // Arm/forearm
+  X.fillStyle='#2a2a30';X.fillRect(r-8,-8,16,16);
+  X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-8,16,16);
+  // Red accent
+  X.fillStyle='rgba(255,30,30,0.6)';X.fillRect(r-6,-8,12,2);X.fillRect(r-6,6,12,2);
+
+  // Shotgun body — blocky, double barrel
+  const bx=r+6;
+  const bodyG=X.createLinearGradient(bx,-10,bx,10);
+  bodyG.addColorStop(0,'#151518');bodyG.addColorStop(0.3,'#252530');bodyG.addColorStop(0.5,'#2e2e38');
+  bodyG.addColorStop(0.7,'#252530');bodyG.addColorStop(1,'#151518');
+  X.fillStyle=bodyG;
+  drawRoundRect(bx,-10,gunLen,20,3);X.fill();
+  X.strokeStyle='#444';X.lineWidth=1.2;X.stroke();
+  // Double barrel holes
+  const muzzX=bx+gunLen;
+  X.fillStyle='#0a0a10';
+  X.beginPath();X.arc(muzzX,-3.5,4,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(muzzX,3.5,4,0,Math.PI*2);X.fill();
+  X.strokeStyle='#444';X.lineWidth=0.8;
+  X.beginPath();X.arc(muzzX,-3.5,4,0,Math.PI*2);X.stroke();
+  X.beginPath();X.arc(muzzX,3.5,4,0,Math.PI*2);X.stroke();
+  // Red LED strips
+  X.fillStyle=flash?'rgba(255,50,50,1)':'rgba(255,30,30,0.5)';
+  X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);
+  if(flash){X.shadowColor='#ff2020';X.shadowBlur=8;X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);X.shadowBlur=0;}
+  // Barrel segments
+  X.strokeStyle='#2a2a35';X.lineWidth=0.8;
+  [0.3,0.55,0.8].forEach(p=>{X.beginPath();X.moveTo(bx+gunLen*p,-10);X.lineTo(bx+gunLen*p,10);X.stroke();});
+  // Pump grip
+  X.fillStyle='#331111';
+  drawRoundRect(bx+gunLen*0.25,-12,gunLen*0.2,4,2);X.fill();
+  drawRoundRect(bx+gunLen*0.25,8,gunLen*0.2,4,2);X.fill();
+
+  // Muzzle flash — BIG red/orange shotgun blast
+  if(flash){
+    X.shadowColor='#ff4400';X.shadowBlur=15;
+    X.beginPath();X.arc(muzzX+8,0,20,0,Math.PI*2);
+    X.fillStyle='rgba(255,80,40,0.5)';X.fill();
+    X.beginPath();X.arc(muzzX+5,0,10,0,Math.PI*2);
+    X.fillStyle='rgba(255,200,100,0.7)';X.fill();
+    // Pellet scatter lines
+    for(let i=0;i<6;i++){
+      const a=(Math.random()-0.5)*1.2;
+      X.strokeStyle='rgba(255,150,50,0.6)';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(muzzX,0);
+      X.lineTo(muzzX+Math.cos(a)*25,Math.sin(a)*25);X.stroke();
+    }
+    X.shadowBlur=0;
+  }
+
+  // Reload indicator — shell loading visual
+  if(f&&f.berserkReloadTimer>0){
+    const reloadPct=f.berserkReloadTimer/(f.berserkInvincible?45:150);
+    X.fillStyle='rgba(255,50,50,0.3)';
+    X.fillRect(bx,10,gunLen*reloadPct,3);
+    // Shell icon
+    X.fillStyle='#aa4444';X.fillRect(bx+gunLen*0.4,-2,8,4);
+    X.strokeStyle='#cc6666';X.lineWidth=0.5;X.strokeRect(bx+gunLen*0.4,-2,8,4);
+  }
+
+  // Berserk mode — massive red aura
+  if(f&&f.berserkInvincible){
+    X.save();X.rotate(-f.weaponAngle);
+    const pulse=Math.sin(battleTime*0.12)*8;
+    X.beginPath();X.arc(0,0,f.radius+18+pulse,0,Math.PI*2);
+    const ag=X.createRadialGradient(0,0,f.radius,0,0,f.radius+18+pulse);
+    ag.addColorStop(0,'rgba(221,34,34,0.5)');ag.addColorStop(0.5,'rgba(221,34,34,0.2)');ag.addColorStop(1,'rgba(221,34,34,0)');
+    X.fillStyle=ag;X.fill();
+    X.beginPath();X.arc(0,0,f.radius+14+pulse,0,Math.PI*2);
+    X.shadowColor='#dd2222';X.shadowBlur=20;
+    X.strokeStyle='rgba(221,34,34,0.8)';X.lineWidth=4;X.stroke();
+    X.shadowBlur=0;
+    // Red rage lines
+    for(let i=0;i<8;i++){
+      const sa=battleTime*0.15+i*Math.PI/4;
+      const lineLen=12+pulse+Math.sin(battleTime*0.25+i)*4;
+      X.strokeStyle='rgba(255,50,50,0.5)';X.lineWidth=2.5;
+      X.beginPath();X.moveTo(Math.cos(sa)*(f.radius+5),Math.sin(sa)*(f.radius+5));
+      X.lineTo(Math.cos(sa)*(f.radius+5+lineLen),Math.sin(sa)*(f.radius+5+lineLen));X.stroke();
+    }
+    X.restore();
+  }
+}
+
 // ============================================================
 // MINI WEAPON ICON
 // ============================================================
@@ -2838,6 +3393,45 @@ function drawMiniWeapon(cx,cy,charId,size){
       });
       X.shadowBlur=0;
       break;
+    case 'katana':
+      // Katana blade — curved single-edge sword
+      X.fillStyle='#333';X.fillRect(-14,-3,8,6); // handle
+      X.strokeStyle='#ff6644';X.lineWidth=0.6;
+      X.beginPath();X.moveTo(-12,-3);X.lineTo(-10,3);X.stroke();
+      X.beginPath();X.moveTo(-10,-3);X.lineTo(-8,3);X.stroke();
+      // Guard
+      X.beginPath();X.ellipse(-6,0,2,6,0,0,Math.PI*2);X.fillStyle='#555';X.fill();
+      // Blade
+      X.beginPath();X.moveTo(-4,-3);
+      X.quadraticCurveTo(6,-4,16,-1);X.lineTo(18,0);
+      X.quadraticCurveTo(10,4,0,3.5);X.lineTo(-4,2);X.closePath();
+      const kg=X.createLinearGradient(-4,0,18,0);
+      kg.addColorStop(0,'#99a');kg.addColorStop(0.4,'#dde');kg.addColorStop(1,'#778');
+      X.fillStyle=kg;X.fill();X.strokeStyle='#556';X.lineWidth=0.5;X.stroke();
+      // Edge glow
+      X.shadowColor='#ff6644';X.shadowBlur=3;
+      X.strokeStyle='rgba(255,100,68,0.5)';X.lineWidth=1;
+      X.beginPath();X.moveTo(-2,2);X.quadraticCurveTo(8,4,18,0);X.stroke();
+      X.shadowBlur=0;
+      break;
+    case 'berserk':
+      // Shotgun — double barrel
+      X.fillStyle='#2a2a30';X.fillRect(-14,-4,8,8); // grip
+      // Body
+      drawRoundRect(-6,-6,22,12,2);
+      const sg=X.createLinearGradient(-6,-6,-6,6);
+      sg.addColorStop(0,'#151518');sg.addColorStop(0.5,'#2e2e38');sg.addColorStop(1,'#151518');
+      X.fillStyle=sg;X.fill();X.strokeStyle='#444';X.lineWidth=0.8;X.stroke();
+      // Red strips
+      X.fillStyle='rgba(255,30,30,0.6)';X.fillRect(-4,-6,18,1.2);X.fillRect(-4,4.8,18,1.2);
+      // Double barrel
+      X.fillStyle='#0a0a10';
+      X.beginPath();X.arc(16,-2.5,3,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(16,2.5,3,0,Math.PI*2);X.fill();
+      X.strokeStyle='#444';X.lineWidth=0.5;
+      X.beginPath();X.arc(16,-2.5,3,0,Math.PI*2);X.stroke();
+      X.beginPath();X.arc(16,2.5,3,0,Math.PI*2);X.stroke();
+      break;
   }
   X.restore();
 }
@@ -2909,8 +3503,8 @@ function drawBallPreview(bx,by,r,ch){
 }
 
 function drawSelectDesktop(){
-  // 2-row grid: 3 chars per row for clean layout with 6+ characters
-  const cols=3,cardW=140,cardH=170,gapX=10,gapY=8;
+  // Dynamic grid: 4 cols when 7+ characters for better fit
+  const cols=CHARS.length>6?4:3,cardW=CHARS.length>6?125:140,cardH=CHARS.length>6?155:170,gapX=10,gapY=8;
   const rows=Math.ceil(CHARS.length/cols);
   const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
@@ -2928,16 +3522,17 @@ function drawSelectDesktop(){
     X.strokeStyle=isP1?'#4488ff':isP2?'#ff4444':ch.color+'66';X.lineWidth=isP1||isP2?3:1.5;X.stroke();
     if(isP1){X.font='bold 11px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('P1',cx+8,cy+16);}
     if(isP2){X.font='bold 11px Consolas,monospace';X.fillStyle='#ff4444';X.textAlign='right';X.fillText('P2',cx+cardW-8,cy+16);}
-    drawBallPreview(cx+cardW/2,cy+40,24,ch);
-    X.font='bold 11px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';X.fillText(ch.name,cx+cardW/2,cy+72);
-    X.font='9px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+cardW/2,cy+85);
+    drawBallPreview(cx+cardW/2,cy+(cardH>160?40:32),cardH>160?24:20,ch);
+    X.font='bold '+(cardH>160?'11':'10')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';X.fillText(ch.name,cx+cardW/2,cy+(cardH>160?72:60));
+    X.font=(cardH>160?'9':'8')+'px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+cardW/2,cy+(cardH>160?85:72));
     X.font='9px Consolas,monospace';X.textAlign='left';
-    const sx=cx+10,sy=cy+100;
+    const statGap=cardH>160?13:11;
+    const sx=cx+10,sy=cy+(cardH>160?100:85);
     const stats=[['HP',ch.stats.hp],['ATK',ch.stats.atk],['SPD',ch.stats.speed.toFixed(1)],['RNG',ch.stats.range],['DEF',ch.stats.def]];
     stats.forEach((s,si)=>{
-      X.fillStyle='#888';X.fillText(s[0]+':',sx,sy+si*13);X.fillStyle='#ccc';X.fillText(''+s[1],sx+30,sy+si*13);
+      X.fillStyle='#888';X.fillText(s[0]+':',sx,sy+si*statGap);X.fillStyle='#ccc';X.fillText(''+s[1],sx+30,sy+si*statGap);
       const barVal=s[0]==='HP'?ch.stats.hp/750:s[0]==='RNG'?ch.stats.range/200:s[0]==='SPD'?ch.stats.speed/8:s[0]==='ATK'?ch.stats.atk/35:ch.stats.def/10;
-      X.fillStyle='#222';X.fillRect(sx+55,sy+si*13-7,cardW-78,5);X.fillStyle=ch.color;X.fillRect(sx+55,sy+si*13-7,(cardW-78)*Math.min(1,barVal),5);
+      X.fillStyle='#222';X.fillRect(sx+55,sy+si*statGap-7,cardW-78,5);X.fillStyle=ch.color;X.fillRect(sx+55,sy+si*statGap-7,(cardW-78)*Math.min(1,barVal),5);
     });
     addBtn('p1c'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{p1Char=i;});
     addBtn('p2c'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{p2Char=i;});
@@ -2962,8 +3557,8 @@ function drawSelectDesktop(){
 }
 
 function drawSelectMobile(){
-  // 3-per-row grid for 6+ characters
-  const cols=3,cardW=130,cardH=95,gapX=5,gapY=4;
+  // 3-per-row grid, compact when 7+ characters
+  const cols=3,cardW=130,cardH=CHARS.length>6?75:95,gapX=5,gapY=CHARS.length>6?3:4;
   const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
 
@@ -2978,15 +3573,16 @@ function drawSelectMobile(){
       drawRoundRect(cx,cy,cardW,cardH,5);
       X.fillStyle=isSel?(labelColor==='#4488ff'?'#112244':'#441122'):'#111128';X.fill();
       X.strokeStyle=isSel?labelColor:ch.color+'44';X.lineWidth=isSel?2.5:1;X.stroke();
-      drawBallPreview(cx+20,cy+28,12,ch);
+      const compact=CHARS.length>6;
+      drawBallPreview(cx+20,cy+(compact?20:28),compact?10:12,ch);
       X.font='bold 9px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
       const shortName=ch.name.length>12?ch.name.slice(0,12):ch.name;
-      X.fillText(shortName,cx+40,cy+22);
-      X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+40,cy+34);
+      X.fillText(shortName,cx+40,cy+(compact?16:22));
+      X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+40,cy+(compact?27:34));
       X.fillStyle='#888';
-      X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk,cx+8,cy+55);
-      X.fillText('SPD:'+ch.stats.speed.toFixed(1)+' RNG:'+ch.stats.range,cx+8,cy+67);
-      X.fillText('DEF:'+ch.stats.def+' CRT:'+ch.stats.crit+'%',cx+8,cy+79);
+      X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk,cx+8,cy+(compact?42:55));
+      X.fillText('SPD:'+ch.stats.speed.toFixed(1)+' RNG:'+ch.stats.range,cx+8,cy+(compact?52:67));
+      X.fillText('DEF:'+ch.stats.def+' CRT:'+ch.stats.crit+'%',cx+8,cy+(compact?62:79));
       if(isSel){X.font='bold 9px Consolas,monospace';X.fillStyle=labelColor;X.textAlign='right';X.fillText(label,cx+cardW-6,cy+14);}
       addBtn(prefix+i,cx,cy,cardW,cardH,'','transparent',()=>{cb(i);});
     });
@@ -3135,7 +3731,7 @@ function startBattle(){
   screen='battle';battleOver=false;winner=null;battleTime=0;battleRealFrames=0;battleSpeed=1;
   particles=[];dmgNums=[];battleLog=[];projectiles=[];explosions=[];
   shockwaveProjectiles=[];wallCracks=[];fireZones=[];vulnZones=[];poisonBubbles=[];
-  fireTrails=[];sandyAfterimages=[];sandyOrbs=[];
+  fireTrails=[];sandyAfterimages=[];sandyOrbs=[];iceWalls=[];
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
@@ -3218,6 +3814,24 @@ function drawBattle(){
     // "VULNERABLE" text
     X.font='bold 7px Consolas,monospace';X.fillStyle='#77ddff';X.textAlign='center';X.fillText('VULN',vz.x,vz.y+2);
     X.globalAlpha=1;
+  });
+
+  // Ice walls (katana+cryo)
+  iceWalls.forEach(iw=>{
+    const a=Math.min(1,iw.life/iw.maxLife);
+    X.globalAlpha=a;
+    X.save();X.translate(iw.x,iw.y);X.rotate(iw.angle+Math.PI/2);
+    // Ice wall rectangle
+    const ww=40,wh=8;
+    X.fillStyle='rgba(119,221,255,0.4)';X.fillRect(-ww/2,-wh/2,ww,wh);
+    X.strokeStyle='#77ddff';X.lineWidth=2;X.strokeRect(-ww/2,-wh/2,ww,wh);
+    // Crystal shards on top
+    for(let j=0;j<5;j++){
+      const sx=-ww/2+j*(ww/4);
+      X.beginPath();X.moveTo(sx,-wh/2);X.lineTo(sx+4,-wh/2-8-Math.random()*4);X.lineTo(sx+8,-wh/2);X.closePath();
+      X.fillStyle='rgba(170,238,255,0.6)';X.fill();
+    }
+    X.restore();X.globalAlpha=1;
   });
 
   // Poison bubbles (gorilla+toxic)
@@ -3430,6 +4044,18 @@ function drawBattle(){
   }
 
   X.restore();
+
+  // Berserk+Sandy simultaneous ult: half screen red + half screen blue
+  if(f1.alive&&f2.alive){
+    const berk=f1.berserkInvincible?f1:(f2.berserkInvincible?f2:null);
+    const sandy=f1.sandyActive?f1:(f2.sandyActive?f2:null);
+    if(berk&&sandy&&berk!==sandy){
+      X.globalAlpha=0.08+Math.sin(battleTime*0.15)*0.04;
+      X.fillStyle='#dd2222';X.fillRect(0,0,W/2,H);
+      X.fillStyle='#4488ff';X.fillRect(W/2,0,W/2,H);
+      X.globalAlpha=1;
+    }
+  }
 
   // === HUD ===
   const barW=isMobile?150:300,barH=16,barY=15;
