@@ -131,7 +131,7 @@ const CHARS=[
     id:'mantis',name:'Mantis Blades',color:'#ff3333',
     desc:'Twin arm blades. Fast attacker.',
     playstyle:'Speed & Bleed',
-    stats:{hp:440,atk:23,speed:4.8,range:75,def:4,crit:16},
+    stats:{hp:520,atk:27,speed:5.0,range:80,def:5,crit:18},
     baseAtkInterval:28,relicChargeRate:1.4,
     specialName:'Relic Activated',
   },
@@ -139,7 +139,7 @@ const CHARS=[
     id:'gorilla',name:'Gorilla Arms',color:'#ff8800',
     desc:'Heavy fists. Strength tank.',
     playstyle:'Power & AoE',
-    stats:{hp:520,atk:35,speed:2.8,range:65,def:9,crit:10},
+    stats:{hp:620,atk:40,speed:3.0,range:70,def:11,crit:12},
     baseAtkInterval:45,relicChargeRate:1.2,
     specialName:'Relic Activated',
   },
@@ -147,7 +147,7 @@ const CHARS=[
     id:'monowire',name:'Monowire',color:'#00ddff',
     desc:'Whip weapon. Capture specialist.',
     playstyle:'Control & Hack',
-    stats:{hp:420,atk:21,speed:4.0,range:120,def:6,crit:24},
+    stats:{hp:500,atk:25,speed:4.2,range:125,def:7,crit:26},
     baseAtkInterval:44,relicChargeRate:0.8,
     specialName:'Relic Activated',
   },
@@ -155,7 +155,7 @@ const CHARS=[
     id:'pls',name:'PLS',color:'#33cc33',
     desc:'Projectile launcher. AoE explosions.',
     playstyle:'AoE & Zoning',
-    stats:{hp:400,atk:20,speed:3.5,range:190,def:7,crit:14},
+    stats:{hp:480,atk:24,speed:3.7,range:195,def:8,crit:16},
     baseAtkInterval:75,relicChargeRate:0.65,
     specialName:'Relic Activated',
   },
@@ -163,7 +163,7 @@ const CHARS=[
     id:'sandy',name:'Sandevistan',color:'#4488ff',
     desc:'Unarmed speedster. Body collision = Damage.',
     playstyle:'Speed & Dodge',
-    stats:{hp:350,atk:13,speed:7.0,range:55,def:3,crit:14},
+    stats:{hp:420,atk:16,speed:7.2,range:60,def:4,crit:16},
     baseAtkInterval:20,relicChargeRate:1.0,
     specialName:'Sandevistan Activated',
   },
@@ -171,7 +171,7 @@ const CHARS=[
     id:'throw',name:'Throwing Weapons',color:'#cc66ff',
     desc:'3 knives. Ranged precision.',
     playstyle:'Range & Precision',
-    stats:{hp:350,atk:18,speed:3.2,range:190,def:4,crit:14},
+    stats:{hp:420,atk:22,speed:3.4,range:195,def:5,crit:16},
     baseAtkInterval:70,relicChargeRate:0.85,
     specialName:'Optical Camo Activated',
   },
@@ -179,7 +179,7 @@ const CHARS=[
     id:'katana',name:'Katana',color:'#4466cc',
     desc:'Vergil\'s blade. Deflect & counter.',
     playstyle:'Deflect & Counter',
-    stats:{hp:460,atk:20,speed:3.8,range:85,def:7,crit:18},
+    stats:{hp:540,atk:24,speed:4.0,range:90,def:9,crit:20},
     baseAtkInterval:35,relicChargeRate:0.5,
     specialName:'Relic Activated',
   },
@@ -187,16 +187,16 @@ const CHARS=[
     id:'berserk',name:'Berserk',color:'#ff55aa',
     desc:'Edgerunner shotgun. Rage mode.',
     playstyle:'Shotgun Rage',
-    stats:{hp:480,atk:14,speed:3.0,range:140,def:8,crit:8},
+    stats:{hp:560,atk:17,speed:3.2,range:145,def:10,crit:10},
     baseAtkInterval:140,relicChargeRate:0.4,
     specialName:'Relic Activated',
   },
   {
     id:'smasher',name:'Adam Smasher',color:'#cc4444',
-    desc:'BOSS. Rockets + Air Slam.',
+    desc:'BOSS. Heavy Artillery + Fists.',
     playstyle:'Boss — 3v1',
     stats:{hp:1200,atk:32,speed:2.5,range:200,def:14,crit:12},
-    baseAtkInterval:130,relicChargeRate:0.7,
+    baseAtkInterval:110,relicChargeRate:0.7,
     specialName:'YOU\'RE NOTHING BUT MEAT',
     isBoss:true,
   },
@@ -511,6 +511,8 @@ function createFighter(charIdx,elemIdx,side){
     smasherSlamWarning:0, // warning display timer
     smasherLastHitTime:0, // for toxic rapid-hit tracking
     smasherRapidHitCount:0, // toxic double damage counter
+    smasherGatlingBurst:420, // 7s burst (60fps * 7)
+    smasherGatlingReload:0, // 5s reload (300 frames when active)
     // Gojo state
     gojoInfinityCharges:ch.id==='gojo'?5:0, // absorbs 5 hits before breaking
     gojoInfinityMax:5,
@@ -1159,20 +1161,45 @@ function attackBerserk(f,enemy,chaos){
 }
 
 function attackSmasher(f,enemy,chaos){
-  // Adam Smasher — triangle warning cone → then fires giant NON-HOMING rockets
-  // If already in warning phase, don't start another
-  if(f.smasherWarning>0)return;
-  const baseAngle=angle(f,enemy);
-  // Start triangle warning — delay before rockets fire
-  let warningDuration=Math.max(25, 50-chaos*3);
-  if(f.elementActive&&f.elem.id==='electric')warningDuration*=0.6;
-  f.smasherWarning=warningDuration;
-  f.smasherWarningAngle=baseAngle;
-  f.smasherWarningReady=true;
-  f.weaponAngle=baseAngle;
-  f.weaponExtend=0.5;
-  // Warning sound
-  SFX.warning();
+  // Adam Smasher — range-based attacks:
+  // Close: cybernetic fist punch + blade slash
+  // Mid/Far: heavy explosive burst projectiles with knockback (warning cone first)
+  const d=dist(f,enemy);
+  const meleeRange=f.radius+enemy.radius+35;
+  if(d<meleeRange){
+    // Close-quarters: cybernetic fist + blade
+    f.weaponExtend=1;f.weaponFlash=12;
+    const fistDmg=f.atk*(1.2+chaos*0.15);
+    dealDamage(f,enemy,fistDmg,true);
+    // Severe knockback from fist
+    const ka=angle(f,enemy);
+    const kb=8+chaos*0.6;
+    enemy.vx+=Math.cos(ka)*kb;enemy.vy+=Math.sin(ka)*kb;
+    SFX.punch();
+    spawnBurst(enemy.x,enemy.y,'#ff4444',10,4);
+    spawnBurst(enemy.x,enemy.y,'#ffaa44',6,3);
+    shakeTimer=3;shakeAmt=2;
+    // Blade slash follow-up (50% chance at high chaos)
+    if(chaos>2&&Math.random()<0.5){
+      const bladeDmg=f.atk*(0.6+chaos*0.1);
+      dealDamage(f,enemy,bladeDmg);
+      SFX.slash();
+      spawnBurst(enemy.x,enemy.y,'#cc2222',8,3);
+      spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'BLADE','#ff6644',false);
+    }
+  } else {
+    // Ranged: heavy explosive burst — warning cone then fire
+    if(f.smasherWarning>0)return;
+    const baseAngle=angle(f,enemy);
+    let warningDuration=Math.max(30, 55-chaos*2); // scales with chaos
+    if(f.elementActive&&f.elem.id==='electric')warningDuration*=0.6;
+    f.smasherWarning=warningDuration;
+    f.smasherWarningAngle=baseAngle;
+    f.smasherWarningReady=true;
+    f.weaponAngle=baseAngle;
+    f.weaponExtend=0.5;
+    SFX.warning();
+  }
 }
 
 function attackGojo(f,enemy,chaos){
@@ -1779,27 +1806,15 @@ function relicGojo(f,enemy){
 }
 
 function relicSmasher(f,enemy){
-  // YOU'RE NOTHING BUT MEAT: Sandevistan activation (speed up, not slowed by bullet time) →
-  // at end: flies up → red warning zone → slam (AoE damage)
+  // YOU'RE NOTHING BUT MEAT: mortar barrage from back-mounted artillery
+  // Fires mortar rounds at enemy positions, melee fists available when close
   f.specialTimer=480; // ~8 seconds total
   f.smasherAirborne=false;
   f.smasherSlamTimer=0;
   f.smasherSlamWarning=0;
-  // Speed boost + can't be slowed
-  f.sandyTimeScale=1;
-  f.speed=f.baseSpeed*1.8;
-  const spd=Math.hypot(f.vx,f.vy);
-  if(spd>0){f.vx=f.vx/spd*f.speed*2;f.vy=f.vy/spd*f.speed*2;}
-  // Not slowed by enemy Sandy
-  f._smasherSandyImmune=true;
-  // Slow all enemies (Sandevistan-like time slow effect)
-  fighters.forEach(other=>{
-    if(other&&other.alive&&other!==f&&other.side!==f.side){
-      if(!other._smasherSandyImmune&&!other.sandyActive){
-        other.sandyTimeScale=0.25; // 75% slow
-      }
-    }
-  });
+  f._smasherMortarCD=0; // mortar cooldown
+  f._smasherMortarCount=0; // mortars fired
+  f._smasherRelicMelee=true; // enable melee during relic
   // Multi-color activation burst
   spawnBurst(f.x,f.y,'#cc4444',50,12);
   spawnBurst(f.x,f.y,'#ff6644',35,9);
@@ -1808,7 +1823,7 @@ function relicSmasher(f,enemy){
   for(let r=0;r<3;r++){
     explosions.push({x:f.x,y:f.y,radius:0,maxRadius:70+r*30,color:'#cc4444',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
   }
-  shakeTimer=30;shakeAmt=16;
+  shakeTimer=8;shakeAmt=6;
   SFX.warning();
   addLog((f.side===0?'P1':'P2')+' YOU\'RE NOTHING BUT MEAT!');
 }
@@ -2233,116 +2248,99 @@ function updateRelicGojo(f,enemy,dt){
 }
 
 function updateRelicSmasher(f,enemy,dt){
-  // Phase 1: Sandevistan-like speed boost (first ~5 sec) — multi-color afterimages
-  if(!f.smasherAirborne){
-    // Colorful afterimage trail (multi-color, not just blue)
-    if(battleTime%2<1){
-      const colors=['#cc4444','#ff6644','#ffcc00','#4488ff','#cc66ff'];
-      const col=pick(colors);
-      sandyAfterimages.push({x:f.x,y:f.y,radius:f.radius*0.8,rotation:f.rotation,color:col,life:15,maxLife:15});
-    }
-    // Can't be slowed by Sandy during relic
-    f.sandyTimeScale=1;
-    // Transition to air slam at 160 frames remaining
-    if(f.specialTimer<=160){
-      f.smasherAirborne=true;
-      f.smasherSlamTimer=90; // ~1.5 sec in air
-      // Find best target (closest alive enemy)
-      const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
-      const target=enemies.length>0?enemies.reduce((a,b)=>dist(f,a)<dist(f,b)?a:b):enemy;
-      f.smasherSlamTarget={x:target.x,y:target.y};
-      // Warning zone
-      smasherWarnings.push({x:target.x,y:target.y,radius:80,life:90,maxLife:90});
+  // Mortar barrage from back-mounted artillery + melee fists when close
+  if(!f._smasherMortarCD)f._smasherMortarCD=0;
+  f._smasherMortarCD-=dt;
+  // Colorful relic aura particles
+  if(battleTime%3<1){
+    const colors=['#cc4444','#ff6644','#ffcc00'];
+    spawnParticle(f.x+rand(-15,15),f.y+rand(-15,15),pick(colors),0,-1,12,2);
+  }
+  // Fire mortar rounds at enemy positions periodically
+  if(f._smasherMortarCD<=0){
+    f._smasherMortarCD=75; // fire every ~1.25s
+    f._smasherMortarCount=(f._smasherMortarCount||0)+1;
+    const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
+    if(enemies.length>0){
+      // Pick a random alive enemy to target
+      const target=pick(enemies);
+      // Mortar warning zone at target position (with slight prediction)
+      const tx=target.x+target.vx*15+rand(-30,30);
+      const ty=target.y+target.vy*15+rand(-30,30);
+      smasherWarnings.push({x:tx,y:ty,radius:65,life:50,maxLife:50});
       SFX.warning();
-      addLog('WARNING: INCOMING SLAM!');
-      // Fly up (shrink + move up visually)
-      f._savedY=f.y;
-      f.vx=0;f.vy=-3;
-      spawnBurst(f.x,f.y,'#cc4444',20,8);
-    }
-  } else {
-    // Phase 2: Airborne → slam
-    f.smasherSlamTimer-=dt;
-    f.vx=0;f.vy=0;
-    // Float above, slowly center over target
-    if(f.smasherSlamTarget){
-      f.x=lerp(f.x,f.smasherSlamTarget.x,0.03);
-      f.y=lerp(f.y,f.smasherSlamTarget.y-100,0.05); // hover above target
-    }
-    // Warning pulse particles
-    if(f.smasherSlamTarget&&battleTime%4<1){
-      const wx=f.smasherSlamTarget.x,wy=f.smasherSlamTarget.y;
-      for(let i=0;i<3;i++){
-        const a=Math.random()*Math.PI*2;
-        spawnParticle(wx+Math.cos(a)*60,wy+Math.sin(a)*60,'#ff2222',0,0,12,3);
-      }
-    }
-    // SLAM!
-    if(f.smasherSlamTimer<=0){
-      const sx=f.smasherSlamTarget?f.smasherSlamTarget.x:f.x;
-      const sy=f.smasherSlamTarget?f.smasherSlamTarget.y:f.y;
-      f.x=sx;f.y=sy;
-      f.smasherAirborne=false;
-      f._smasherSandyImmune=false;
-      f.speed=f.baseSpeed;
-      // Restore enemy time scales after slam
-      fighters.forEach(other=>{
-        if(other&&other!==f&&other.side!==f.side&&other.sandyTimeScale<1){
-          const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&s.sandyActive&&s!==other);
-          if(!otherSandy)other.sandyTimeScale=1;
+      // Delayed mortar impact (mortar lands after warning fades)
+      const chaos=getChaosLevel(f);
+      const mortarDmg=f.atk*(1.5+chaos*0.15);
+      setTimeout(()=>{
+        if(!f.alive||!f.specialActive)return;
+        spawnExplosion(tx,ty,65+chaos*3,'#ff4444',mortarDmg,f,null);
+        spawnBurst(tx,ty,'#ff6644',25,8);
+        spawnBurst(tx,ty,'#ffaa44',15,5);
+        shakeTimer=Math.max(shakeTimer,3);shakeAmt=Math.max(shakeAmt,2);
+        SFX.slamImpact();
+        // Knockback enemies near impact
+        fighters.forEach(e=>{
+          if(e.side===f.side||!e.alive)return;
+          const d=dist(e,{x:tx,y:ty});
+          if(d<65+chaos*3){
+            dealDamage(f,e,mortarDmg,true);
+            const ka=angle({x:tx,y:ty},e);
+            e.vx+=Math.cos(ka)*(8+chaos*0.5);e.vy+=Math.sin(ka)*(8+chaos*0.5);
+          }
+        });
+        // Fire element: fire zone at impact
+        if(f.elementActive&&f.elem.id==='fire'){
+          fireZones.push({x:tx,y:ty,radius:45,life:240,maxLife:240,owner:f,dmg:f.atk*0.08});
         }
-      });
-      SFX.slamImpact();
-      // Massive slam explosion
-      spawnExplosion(sx,sy,90,'#cc4444',f.atk*2.5,f,null);
-      spawnBurst(sx,sy,'#ff4444',40,15);
-      spawnBurst(sx,sy,'#ffaa44',30,10);
-      spawnBurst(sx,sy,'#ffffff',20,8);
-      shakeTimer=10;shakeAmt=5;
-      // Deal damage to all enemies in range
-      fighters.forEach(e=>{
-        if(e.side===f.side||!e.alive)return;
-        if(dist(e,{x:sx,y:sy})<90){
-          dealDamage(f,e,f.atk*2.5,true);
-          // Knockback from slam center
-          const ka=angle({x:sx,y:sy},e);
-          e.vx+=Math.cos(ka)*10;e.vy+=Math.sin(ka)*10;
-        }
-      });
-      // Fire element: leave fire zone
-      if(f.elementActive&&f.elem.id==='fire'){
-        fireZones.push({x:sx,y:sy,radius:60,life:300,maxLife:300,owner:f,dmg:f.atk*0.1});
-      }
-      // Cryo element: ice shrapnel in all directions
-      if(f.elementActive&&f.elem.id==='cryo'){
-        for(let i=0;i<12;i++){
-          const a=Math.PI*2*i/12;
-          projectiles.push({
-            x:sx+Math.cos(a)*20,y:sy+Math.sin(a)*20,
-            vx:Math.cos(a)*5,vy:Math.sin(a)*5,
-            owner:f,target:null,color:'#77ddff',
-            life:40,radius:4,dmg:f.atk*0.4,
-            explosive:false,explosionRadius:0,homing:false,
-          });
+        wallCracks.push({x:tx,y:ty,size:35,life:200,maxLife:200,crackLines:Array.from({length:6},()=>0.5+Math.random()*0.5)});
+      },50*1000/60); // ~50 frames delay matching warning
+      // Every 3rd mortar fires a cluster (multiple impacts)
+      if(f._smasherMortarCount%3===0){
+        for(let i=0;i<2;i++){
+          const ox=tx+rand(-50,50),oy=ty+rand(-50,50);
+          smasherWarnings.push({x:ox,y:oy,radius:45,life:60,maxLife:60});
+          setTimeout(()=>{
+            if(!f.alive||!f.specialActive)return;
+            spawnExplosion(ox,oy,45,'#ff6644',mortarDmg*0.6,f,null);
+            spawnBurst(ox,oy,'#ffaa44',10,4);
+            fighters.forEach(e=>{
+              if(e.side===f.side||!e.alive)return;
+              if(dist(e,{x:ox,y:oy})<45){
+                dealDamage(f,e,mortarDmg*0.6,true);
+                const ka=angle({x:ox,y:oy},e);
+                e.vx+=Math.cos(ka)*6;e.vy+=Math.sin(ka)*6;
+              }
+            });
+          },60*1000/60);
         }
       }
-      // Wall cracks at slam
-      wallCracks.push({x:sx,y:sy,size:50,life:300,maxLife:300,crackLines:Array.from({length:10},()=>0.5+Math.random()*0.5)});
-      addLog('SMASHER SLAM!');
     }
   }
-  // End of relic
-  if(f.specialTimer<=0&&!f.smasherAirborne){
-    f._smasherSandyImmune=false;
-    f.speed=f.baseSpeed;
-    f.sandyTimeScale=1;
-    // Restore enemy time scales
-    fighters.forEach(other=>{
-      if(other&&other!==f&&other.side!==f.side&&other.sandyTimeScale<1){
-        const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&s.sandyActive&&s!==other);
-        if(!otherSandy)other.sandyTimeScale=1;
+  // Melee fists+blades when enemies are close during relic
+  if(f._smasherRelicMelee){
+    const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
+    enemies.forEach(e=>{
+      if(dist(f,e)<f.radius+e.radius+40){
+        if(!f._smasherRelicMeleeCD)f._smasherRelicMeleeCD=0;
+        if(f._smasherRelicMeleeCD<=0){
+          f._smasherRelicMeleeCD=25;
+          const chaos=getChaosLevel(f);
+          const fistDmg=f.atk*(1.0+chaos*0.1);
+          dealDamage(f,e,fistDmg,true);
+          const ka=angle(f,e);
+          e.vx+=Math.cos(ka)*(6+chaos*0.4);e.vy+=Math.sin(ka)*(6+chaos*0.4);
+          SFX.punch();
+          spawnBurst(e.x,e.y,'#ff4444',8,3);
+          f.weaponExtend=1;f.weaponFlash=8;
+        }
       }
     });
+    if(f._smasherRelicMeleeCD>0)f._smasherRelicMeleeCD-=dt;
+  }
+  // End of relic
+  if(f.specialTimer<=0){
+    f._smasherRelicMelee=false;
     addLog((f.side===0?'P1':'P2')+' Smasher Protocol ended');
     spawnBurst(f.x,f.y,'#cc4444',10,4);
   }
@@ -2584,31 +2582,42 @@ function updateBattle(dt){
       if(f.elementActive&&f.elem.id==='toxic'){
         if(battleTime-f.smasherLastHitTime>45)f.smasherRapidHitCount=0;
       }
-      // Triangle warning countdown → fire giant rockets when done
-      // GATLING GUN: secondary rapid-fire while charging rockets
+      // GATLING GUN: continuous rapid-fire (7s burst → 5s reload cycle)
       if(!f._gatlingCD)f._gatlingCD=0;
       if(f._gatlingCD>0)f._gatlingCD-=dt;
-      if(f.smasherWarning>0||(!f.specialActive&&f._gatlingCD<=0&&battleTime%25<dt)){
-        // Fire gatling bursts — small fast bullets aimed at closest enemy
+      if(f.smasherGatlingReload>0){
+        // Reloading — no firing
+        f.smasherGatlingReload-=dt;
+        if(f.smasherGatlingReload<=0){
+          f.smasherGatlingBurst=420; // 7s burst ready
+          f.smasherGatlingReload=0;
+        }
+      } else if(f.smasherGatlingBurst>0&&!f.specialActive&&!f.smasherAirborne){
+        // Burst phase — fire tracking bullets at closest enemy
+        f.smasherGatlingBurst-=dt;
+        if(f.smasherGatlingBurst<=0){
+          f.smasherGatlingReload=300; // 5s reload
+          f.smasherGatlingBurst=0;
+        }
         if(f._gatlingCD<=0){
-          f._gatlingCD=18; // slightly slower fire rate
+          f._gatlingCD=12; // rapid fire rate
           const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
           if(enemies.length>0){
             const target=enemies.reduce((a,b)=>dist(f,a)<dist(f,b)?a:b);
-            const ga=angle(f,target)+(Math.random()-0.5)*0.7; // wide spread, no autolock
+            const ga=angle(f,target)+(Math.random()-0.5)*0.5; // tracking with some spread
             projectiles.push({
               x:f.x+Math.cos(ga)*f.radius,y:f.y+Math.sin(ga)*f.radius,
               vx:Math.cos(ga)*10,vy:Math.sin(ga)*10,
               owner:f,target:null,color:'#ffaa44',
-              life:35,radius:3,dmg:f.atk*0.3,
+              life:35,radius:3,dmg:f.atk*0.25,
               explosive:false,homing:false,isGatling:true,
             });
-            // Small muzzle flash
             spawnParticle(f.x+Math.cos(ga)*f.radius,f.y+Math.sin(ga)*f.radius,'#ffaa44',0,0,5,2);
-            if(battleTime%24<dt)SFX.hit(); // occasional sound
+            if(battleTime%18<dt)SFX.hit();
           }
         }
       }
+      // Triangle warning countdown → fire explosive bursts when done
       if(f.smasherWarning>0){
         f.smasherWarning-=dt;
         f.weaponAngle=f.smasherWarningAngle; // lock aim during warning
@@ -2643,7 +2652,7 @@ function updateBattle(dt){
           }
           spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ff6644',20,8);
           spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ffaa44',12,5);
-          shakeTimer=Math.max(shakeTimer,4);shakeAmt=Math.max(shakeAmt,2);
+          shakeTimer=Math.max(shakeTimer,2);shakeAmt=Math.max(shakeAmt,1);
           // Fire element: fire zones
           if(f.elementActive&&f.elem.id==='fire'){
             fireZones.push({x:f.x+Math.cos(ba)*f.radius*2,y:f.y+Math.sin(ba)*f.radius*2,
@@ -3314,22 +3323,33 @@ function drawBall(f){
   // Gojo face — white hair, blue eyes
   if(f.char.id==='gojo'){
     X.save();
-    // White spiky hair on top — BIG and obviously hair, not crown-like
+    // White messy anime hair — wild, asymmetric, strands falling in different directions
     const hx=f.x,hy=f.y-f.radius*0.3;
     X.fillStyle=f.gojoAwakened?'#eeeeff':'#ffffff';
-    // Hair base — wide fluffy band
+    // Hair base — wide fluffy mass covering top of head
     X.beginPath();
-    X.ellipse(hx,f.y-f.radius*0.45,f.radius*0.7,f.radius*0.25,0,Math.PI,0);
+    X.ellipse(hx,f.y-f.radius*0.4,f.radius*0.75,f.radius*0.3,0,Math.PI,0);
     X.fill();
-    // Big spiky hair strands — asymmetric, messy anime style
+    // Side hair — strands falling down past the ball on left and right
+    X.beginPath();
+    X.moveTo(hx-f.radius*0.65,f.y-f.radius*0.5);
+    X.quadraticCurveTo(hx-f.radius*0.85,f.y-f.radius*0.1,hx-f.radius*0.7,f.y+f.radius*0.1);
+    X.lineTo(hx-f.radius*0.55,f.y-f.radius*0.2);
+    X.closePath();X.fill();
+    X.beginPath();
+    X.moveTo(hx+f.radius*0.6,f.y-f.radius*0.5);
+    X.quadraticCurveTo(hx+f.radius*0.8,f.y-f.radius*0.15,hx+f.radius*0.65,f.y+f.radius*0.05);
+    X.lineTo(hx+f.radius*0.5,f.y-f.radius*0.25);
+    X.closePath();X.fill();
+    // Messy spikes — wild directions, varying thickness, some curving forward/sideways
     const spikes=[
-      {off:-0.35,h:0.7,w:0.15,tilt:-0.1},
-      {off:-0.22,h:0.85,w:0.13,tilt:-0.05},
-      {off:-0.1,h:0.65,w:0.12,tilt:0},
-      {off:0.0,h:0.9,w:0.14,tilt:0.03},
-      {off:0.12,h:0.75,w:0.13,tilt:0.05},
-      {off:0.25,h:0.8,w:0.14,tilt:0.08},
-      {off:0.38,h:0.6,w:0.12,tilt:0.12},
+      {off:-0.4,h:0.55,w:0.12,tilt:-0.2}, // far left, leaning out
+      {off:-0.25,h:0.8,w:0.11,tilt:-0.12}, // tall left spike
+      {off:-0.12,h:0.6,w:0.1,tilt:0.05}, // slight right lean
+      {off:0.02,h:0.95,w:0.13,tilt:-0.05}, // tallest center-left spike
+      {off:0.15,h:0.7,w:0.1,tilt:0.1}, // right-leaning
+      {off:0.28,h:0.85,w:0.12,tilt:0.15}, // tall right spike, leaning right
+      {off:0.42,h:0.5,w:0.1,tilt:0.22}, // far right, strongly leaning
     ];
     spikes.forEach(sp=>{
       const sx=hx+sp.off*f.radius;
@@ -3339,14 +3359,23 @@ function drawBall(f){
       const sw=f.radius*sp.w;
       X.beginPath();
       X.moveTo(sx-sw,baseY);
-      X.quadraticCurveTo(sx-sw*0.3,tipY+f.radius*0.15,tipX,tipY);
-      X.quadraticCurveTo(sx+sw*0.3,tipY+f.radius*0.15,sx+sw,baseY);
+      X.quadraticCurveTo(sx-sw*0.5,lerp(baseY,tipY,0.6),tipX-sw*0.15,tipY);
+      X.quadraticCurveTo(sx+sw*0.5,lerp(baseY,tipY,0.5),sx+sw,baseY);
       X.closePath();X.fill();
     });
+    // Front fringe — thin strands hanging down over forehead
+    X.strokeStyle=f.gojoAwakened?'#ddddf8':'#f0f0f0';
+    X.lineWidth=2;
+    X.beginPath();X.moveTo(hx-f.radius*0.2,f.y-f.radius*0.5);
+    X.quadraticCurveTo(hx-f.radius*0.25,f.y-f.radius*0.2,hx-f.radius*0.15,f.y-f.radius*0.05);X.stroke();
+    X.beginPath();X.moveTo(hx+f.radius*0.05,f.y-f.radius*0.55);
+    X.quadraticCurveTo(hx+f.radius*0.1,f.y-f.radius*0.25,hx+f.radius*0.0,f.y-f.radius*0.08);X.stroke();
+    X.beginPath();X.moveTo(hx+f.radius*0.2,f.y-f.radius*0.48);
+    X.quadraticCurveTo(hx+f.radius*0.28,f.y-f.radius*0.2,hx+f.radius*0.22,f.y-f.radius*0.02);X.stroke();
     // Subtle shadow on hair base
-    X.fillStyle='rgba(180,180,220,0.3)';
+    X.fillStyle='rgba(180,180,220,0.25)';
     X.beginPath();
-    X.ellipse(hx,f.y-f.radius*0.45,f.radius*0.65,f.radius*0.08,0,0,Math.PI);
+    X.ellipse(hx,f.y-f.radius*0.4,f.radius*0.7,f.radius*0.08,0,0,Math.PI);
     X.fill();
     // Blue eyes
     const eyeGlow=f.gojoAwakened||f.specialActive;
@@ -5675,7 +5704,7 @@ function drawBossSelect(){
     const ballR=isMobile?(compact?8:10):(cardH>120?22:16);
     drawBallPreview(cx+cardW/2,cy+(isMobile?(compact?16:22):cardH>120?35:28),ballR,ch);
     X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
-    X.fillText(ch.name.length>14?ch.name.slice(0,14):ch.name,cx+cardW/2,cy+(isMobile?(compact?30:38):cardH>120?62:50));
+    X.fillText(ch.name.length>16?ch.name.slice(0,15)+'…':ch.name,cx+cardW/2,cy+(isMobile?(compact?30:38):cardH>120?62:50));
     X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
     X.fillText(ch.playstyle,cx+cardW/2,cy+(isMobile?(compact?40:48):cardH>120?74:60));
     if(isMobile){
@@ -5703,55 +5732,86 @@ function drawBossSelect(){
   });
   const gridBottom=charGridY+rows*(cardH+gapY);
 
-  // Element pickers for team
-  const elemY=gridBottom+(isMobile?6:12);
-  X.font='bold '+(isMobile?'9':'12')+'px Consolas,monospace';X.textAlign='center';
-  const eColW=isMobile?Math.floor(W/3)-5:Math.floor(W/3)-10;
-  X.fillStyle='#4488ff';X.fillText('T1 ELEM',eColW/2+(isMobile?2:5),elemY);
-  X.fillStyle='#33cc66';X.fillText('T2 ELEM',W/2,elemY);
-  X.fillStyle='#ff8833';X.fillText('T3 ELEM',W-eColW/2-(isMobile?2:5),elemY);
   if(isMobile){
-    drawElementPickerMobile(2,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
-    drawElementPickerMobile(eColW+4,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
-    drawElementPickerMobile(eColW*2+6,elemY+8,teamElem3,'be3',(i)=>{teamElem3=i;});
+    // MOBILE LAYOUT: stack element pickers in 2 rows to avoid overlap
+    let secY=gridBottom+4;
+    // Row 1: T1 + T2 elements side by side
+    const halfW=Math.floor(W/2)-4;
+    X.font='bold 9px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#4488ff';X.fillText('T1 ELEM',halfW/2+2,secY);
+    X.fillStyle='#33cc66';X.fillText('T2 ELEM',W/2+halfW/2,secY);
+    drawElementPickerMobile(2,secY+6,teamElem1,'be1',(i)=>{teamElem1=i;});
+    drawElementPickerMobile(halfW+4,secY+6,teamElem2,'be2',(i)=>{teamElem2=i;});
+    secY+=42;
+    // Row 2: T3 element + Boss element side by side
+    X.fillStyle='#ff8833';X.fillText('T3 ELEM',halfW/2+2,secY);
+    X.fillStyle='#cc4444';X.fillText('BOSS ELEM',W/2+halfW/2,secY);
+    drawElementPickerMobile(2,secY+6,teamElem3,'be3',(i)=>{teamElem3=i;});
+    drawElementPickerMobile(halfW+4,secY+6,bossElem,'beb',(i)=>{bossElem=i;});
+    secY+=42;
+
+    // Boss selection — clear labeled section
+    X.font='bold 11px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#cc4444';X.fillText('SELECT BOSS',W/2,secY);
+    secY+=6;
+    const bosses=CHARS.filter(c=>c.isBoss);
+    const bossCardW=Math.min(130,Math.floor((W-20-(bosses.length-1)*8)/bosses.length));
+    const bossTotalW=bosses.length*bossCardW+(bosses.length-1)*8;
+    const bossStartX=(W-bossTotalW)/2;
+    bosses.forEach((bch,bi)=>{
+      const bIdx=CHARS.indexOf(bch);
+      const bx=bossStartX+bi*(bossCardW+8);
+      const by=secY;
+      const isSel=bossChar===bIdx;
+      drawRoundRect(bx,by,bossCardW,55,6);
+      X.fillStyle=isSel?'#221122':'#111128';X.fill();
+      X.strokeStyle=isSel?bch.color:bch.color+'66';X.lineWidth=isSel?3:1.5;X.stroke();
+      drawBallPreview(bx+bossCardW/2,by+18,12,bch);
+      X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
+      X.fillText(bch.name,bx+bossCardW/2,by+36);
+      X.font='7px Consolas,monospace';X.fillStyle='#888';
+      X.fillText('HP:'+bch.stats.hp,bx+bossCardW/2,by+47);
+      addBtn('boss_sel_'+bi,bx,by,bossCardW,55,'','transparent',()=>{bossChar=bIdx;});
+    });
   } else {
+    // DESKTOP LAYOUT: element pickers in a row
+    const elemY=gridBottom+12;
+    X.font='bold 12px Consolas,monospace';X.textAlign='center';
+    const eColW=Math.floor(W/3)-10;
+    X.fillStyle='#4488ff';X.fillText('T1 ELEM',eColW/2+5,elemY);
+    X.fillStyle='#33cc66';X.fillText('T2 ELEM',W/2,elemY);
+    X.fillStyle='#ff8833';X.fillText('T3 ELEM',W-eColW/2-5,elemY);
     drawElementPicker(5,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
     drawElementPicker(W/3+5,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
     drawElementPicker(W*2/3+5,elemY+8,teamElem3,'be3',(i)=>{teamElem3=i;});
-  }
-  // Boss element picker
-  const bossElemY=elemY+(isMobile?40:65);
-  X.fillStyle='#cc4444';X.fillText('BOSS ELEMENT',W/2,bossElemY);
-  if(isMobile){
-    drawElementPickerMobile(W/4-5,bossElemY+8,bossElem,'beb',(i)=>{bossElem=i;});
-  } else {
+    // Boss element picker
+    const bossElemY=elemY+65;
+    X.fillStyle='#cc4444';X.fillText('BOSS ELEMENT',W/2,bossElemY);
     drawElementPicker(W/2-130,bossElemY+8,bossElem,'beb',(i)=>{bossElem=i;});
-  }
 
-  // Boss selection — show all bosses
-  const bosses=CHARS.filter(c=>c.isBoss);
-  const bossPreviewY=bossElemY-30;
-  const bossSelY=bossElemY+(isMobile?40:50);
-  X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
-  X.fillStyle='#cc4444';X.fillText('SELECT BOSS',W/2,bossSelY);
-  const bossCardW=isMobile?90:120;
-  const bossTotalW=bosses.length*bossCardW+(bosses.length-1)*10;
-  const bossStartX=(W-bossTotalW)/2;
-  bosses.forEach((bch,bi)=>{
-    const bIdx=CHARS.indexOf(bch);
-    const bx=bossStartX+bi*(bossCardW+10);
-    const by=bossSelY+8;
-    const isSel=bossChar===bIdx;
-    drawRoundRect(bx,by,bossCardW,isMobile?45:55,6);
-    X.fillStyle=isSel?'#221122':'#111128';X.fill();
-    X.strokeStyle=isSel?bch.color:bch.color+'66';X.lineWidth=isSel?3:1.5;X.stroke();
-    const ballR=isMobile?10:14;
-    drawBallPreview(bx+bossCardW/2,by+(isMobile?16:20),ballR,bch);
-    X.font='bold '+(isMobile?'8':'9')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
-    X.fillText(bch.name,bx+bossCardW/2,by+(isMobile?32:40));
-    X.font='7px Consolas,monospace';X.fillStyle='#888';X.fillText('HP:'+bch.stats.hp,bx+bossCardW/2,by+(isMobile?42:50));
-    addBtn('boss_sel_'+bi,bx,by,bossCardW,isMobile?45:55,'','transparent',()=>{bossChar=bIdx;});
-  });
+    // Boss selection
+    const bosses=CHARS.filter(c=>c.isBoss);
+    const bossSelY=bossElemY+50;
+    X.font='bold 12px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#cc4444';X.fillText('SELECT BOSS',W/2,bossSelY);
+    const bossCardW=120;
+    const bossTotalW=bosses.length*bossCardW+(bosses.length-1)*10;
+    const bossStartX=(W-bossTotalW)/2;
+    bosses.forEach((bch,bi)=>{
+      const bIdx=CHARS.indexOf(bch);
+      const bx=bossStartX+bi*(bossCardW+10);
+      const by=bossSelY+8;
+      const isSel=bossChar===bIdx;
+      drawRoundRect(bx,by,bossCardW,55,6);
+      X.fillStyle=isSel?'#221122':'#111128';X.fill();
+      X.strokeStyle=isSel?bch.color:bch.color+'66';X.lineWidth=isSel?3:1.5;X.stroke();
+      drawBallPreview(bx+bossCardW/2,by+20,14,bch);
+      X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
+      X.fillText(bch.name,bx+bossCardW/2,by+40);
+      X.font='7px Consolas,monospace';X.fillStyle='#888';X.fillText('HP:'+bch.stats.hp,bx+bossCardW/2,by+50);
+      addBtn('boss_sel_'+bi,bx,by,bossCardW,55,'','transparent',()=>{bossChar=bIdx;});
+    });
+  }
 
   // Battle button
   const bBtnY=isMobile?H-50:H-65;
