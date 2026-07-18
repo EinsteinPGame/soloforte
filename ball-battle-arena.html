@@ -19,7 +19,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.2 — Gojo Boss, Smasher Gatling Gun, Boss Selection
+// BALL BATTLE ARENA v7.3 — 3v1 Boss Mode, Gojo Nerfs, Red/Blue Projectiles, Sandy Fix
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -176,17 +176,17 @@ const CHARS=[
     specialName:'Optical Camo Activated',
   },
   {
-    id:'katana',name:'Yamato',color:'#4466cc',
+    id:'katana',name:'Katana',color:'#4466cc',
     desc:'Vergil\'s blade. Deflect & counter.',
-    playstyle:'Judgement Cut',
+    playstyle:'Deflect & Counter',
     stats:{hp:460,atk:20,speed:3.8,range:85,def:7,crit:18},
     baseAtkInterval:35,relicChargeRate:0.5,
     specialName:'Relic Activated',
   },
   {
-    id:'berserk',name:'Rebecca',color:'#ff55aa',
+    id:'berserk',name:'Berserk',color:'#ff55aa',
     desc:'Edgerunner shotgun. Rage mode.',
-    playstyle:'Guts & Glory',
+    playstyle:'Shotgun Rage',
     stats:{hp:480,atk:14,speed:3.0,range:140,def:8,crit:8},
     baseAtkInterval:140,relicChargeRate:0.4,
     specialName:'Relic Activated',
@@ -194,17 +194,17 @@ const CHARS=[
   {
     id:'smasher',name:'Adam Smasher',color:'#cc4444',
     desc:'BOSS. Rockets + Air Slam.',
-    playstyle:'Boss — 2v1',
+    playstyle:'Boss — 3v1',
     stats:{hp:1200,atk:32,speed:2.5,range:200,def:14,crit:12},
-    baseAtkInterval:90,relicChargeRate:0.7,
+    baseAtkInterval:130,relicChargeRate:0.7,
     specialName:'YOU\'RE NOTHING BUT MEAT',
     isBoss:true,
   },
   {
     id:'gojo',name:'Gojo Satoru',color:'#5577ff',
     desc:'BOSS. Infinity + Hollow Purple.',
-    playstyle:'Boss — 2v1',
-    stats:{hp:1200,atk:30,speed:2.8,range:180,def:12,crit:14},
+    playstyle:'Boss — 3v1',
+    stats:{hp:800,atk:30,speed:2.8,range:180,def:12,crit:14},
     baseAtkInterval:80,relicChargeRate:0.6,
     specialName:'I ALONE AM THE HONOURED ONE',
     isBoss:true,
@@ -315,8 +315,9 @@ let damageBarDecay=[]; // {fighter, oldHP, timer} — white bar that drops after
 let comboCounter={}; // {side: {count, timer}} — hit combo display
 let gameMode='1v1'; // '1v1' or 'boss'
 let bossChar=CHARS.findIndex(c=>c.id==='smasher'); // selected boss for boss mode
-let teamChar1=0,teamChar2=1; // team chars for boss mode
-let teamElem1=0,teamElem2=0,bossElem=0; // elements
+let teamChar1=0,teamChar2=1,teamChar3=2; // team chars for boss mode (3v1)
+let _bossSelSlot=1; // cycling slot for boss select UI
+let teamElem1=0,teamElem2=0,teamElem3=0,bossElem=0; // elements
 
 const ARENA={x:15,y:65,w:W-30,h:H-200};
 
@@ -511,8 +512,8 @@ function createFighter(charIdx,elemIdx,side){
     smasherLastHitTime:0, // for toxic rapid-hit tracking
     smasherRapidHitCount:0, // toxic double damage counter
     // Gojo state
-    gojoInfinityCharges:ch.id==='gojo'?9:0, // absorbs 9 hits before breaking
-    gojoInfinityMax:9,
+    gojoInfinityCharges:ch.id==='gojo'?5:0, // absorbs 5 hits before breaking
+    gojoInfinityMax:5,
     gojoInfinityRegenCD:0, // regen timer
     gojoAttackMode:'red', // alternates 'red' and 'blue'
     gojoSpinTarget:null, // target being spun around gojo
@@ -670,6 +671,8 @@ function checkBallCollision(f1,f2){
 // ============================================================
 function dealDamage(attacker,defender,baseDmg,canCrit){
   if(!defender.alive)return 0;
+  // Gojo revival invulnerability — no damage in or out during float-up
+  if(attacker.gojoReviving||defender.gojoReviving)return 0;
   // Captured enemies cannot damage the monowire that captured them
   if(attacker.captureTimer>0&&defender===attacker._capturedBy)return 0;
   if(canCrit===undefined)canCrit=true;
@@ -802,6 +805,15 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       return dmg;
     }
     defender.hp=0;defender.alive=false;defender.deathAnim=90;
+    // Sandy slow cleanup — if a Sandy dies, un-slow everyone it was affecting
+    if(defender.char.id==='sandy'){
+      fighters.forEach(other=>{
+        if(other&&other!==defender&&other.sandyTimeScale<1){
+          const otherSandy=fighters.find(s=>s&&s!==defender&&s.alive&&s.sandyActive&&s!==other);
+          if(!otherSandy)other.sandyTimeScale=1;
+        }
+      });
+    }
     // Dramatic death explosion
     SFX.deathExplosion();
     triggerHitFreeze(8);triggerScreenFlash('#ffffff',15);
@@ -1197,66 +1209,44 @@ function attackGojo(f,enemy,chaos){
     return;
   }
   if(f.gojoAttackMode==='red'){
-    // RED — Reversal: close-range repulsion blast, knocks enemies back
+    // RED — Reversal: shoots a red projectile that pushes enemies away on hit
     SFX.gojoRed();
-    const effectRange=(120+chaos*8)*radiusMult;
     f.weaponFlash=12;
-    // Red burst visual
-    spawnBurst(f.x,f.y,'#ff4444',18,6);
-    spawnBurst(f.x,f.y,'#ff8866',12,4);
-    // Damage + knockback all enemies in range
-    fighters.forEach(e=>{
-      if(e.side===f.side||!e.alive)return;
-      const ed=dist(f,e);
-      if(ed<effectRange){
-        const redDmg=f.atk*(0.8+chaos*0.1)*dmgMult;
-        dealDamage(f,e,redDmg);
-        // Knockback
-        const ka=angle(f,e);
-        const kb=6+chaos*0.5;
-        e.vx+=Math.cos(ka)*kb;e.vy+=Math.sin(ka)*kb;
-        spawnBurst(e.x,e.y,'#ff4444',8,3);
-      }
+    const ba=angle(f,enemy);
+    const redDmg=f.atk*(0.8+chaos*0.1)*dmgMult;
+    const projRadius=(14+chaos*1)*radiusMult;
+    const projSpeed=7+chaos*0.3;
+    projectiles.push({
+      x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+      vx:Math.cos(ba)*projSpeed,vy:Math.sin(ba)*projSpeed,
+      owner:f,target:null,color:'#ff4444',
+      life:90,radius:projRadius,dmg:redDmg,
+      explosive:false,homing:false,isGojoRed:true,
+      knockback:8+chaos*0.5,
     });
-    // Visual: expanding red ring
-    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:effectRange,color:'#ff4444',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
-    shakeTimer=6;shakeAmt=4;
+    spawnBurst(f.x,f.y,'#ff4444',12,5);
+    spawnBurst(f.x,f.y,'#ff8866',8,3);
+    shakeTimer=4;shakeAmt=3;
     f.gojoAttackMode='blue';
   } else {
-    // BLUE — Lapse: pulls enemies toward Gojo
+    // BLUE — Lapse: shoots a blue projectile that pulls enemies toward Gojo on hit
     SFX.gojoBlue();
-    const pullRange=(160+chaos*10)*radiusMult;
     f.weaponFlash=12;
-    spawnBurst(f.x,f.y,'#4488ff',18,6);
-    spawnBurst(f.x,f.y,'#6688cc',12,4);
-    fighters.forEach(e=>{
-      if(e.side===f.side||!e.alive)return;
-      const ed=dist(f,e);
-      if(ed<pullRange){
-        const blueDmg=f.atk*(0.5+chaos*0.08)*dmgMult;
-        dealDamage(f,e,blueDmg);
-        // Pull toward Gojo
-        const pa=angle(e,f);
-        const ps=5+chaos*0.4;
-        e.vx+=Math.cos(pa)*ps;e.vy+=Math.sin(pa)*ps;
-        spawnBurst(e.x,e.y,'#4488ff',6,3);
-        // If pulled to center (very close), start spinning
-        if(ed<f.radius+e.radius+20&&!f.gojoSpinTarget){
-          f.gojoSpinTarget=e;
-          f.gojoSpinAngle=angle(f,e);
-          f.gojoSpinTimer=90; // 1.5 seconds of spinning
-          addLog('GOJO SPIN!');
-        }
-      }
+    const ba=angle(f,enemy);
+    const blueDmg=f.atk*(0.5+chaos*0.08)*dmgMult;
+    const projRadius=(14+chaos*1)*radiusMult;
+    const projSpeed=6+chaos*0.3;
+    projectiles.push({
+      x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+      vx:Math.cos(ba)*projSpeed,vy:Math.sin(ba)*projSpeed,
+      owner:f,target:null,color:'#4488ff',
+      life:90,radius:projRadius,dmg:blueDmg,
+      explosive:false,homing:false,isGojoBlue:true,
+      pullStrength:7+chaos*0.4,gojoOwner:f,
     });
-    // Visual: blue pull ring (inward particles)
-    for(let i=0;i<16;i++){
-      const pa=Math.PI*2*i/16;
-      const pr=pullRange*0.8;
-      spawnParticle(f.x+Math.cos(pa)*pr,f.y+Math.sin(pa)*pr,'#4488ff',
-        Math.cos(pa+Math.PI)*4,Math.sin(pa+Math.PI)*4,18,3);
-    }
-    shakeTimer=5;shakeAmt=3;
+    spawnBurst(f.x,f.y,'#4488ff',12,5);
+    spawnBurst(f.x,f.y,'#6688cc',8,3);
+    shakeTimer=3;shakeAmt=2;
     f.gojoAttackMode='red';
   }
 }
@@ -1777,7 +1767,7 @@ function relicGojo(f,enemy){
   } else {
     // Normal Relic: Hollow Purple — warning line, then thick straight beam
     f.specialTimer=180;
-    f._gojoPurpleWarning=50; // 50 frame warning before firing
+    f._gojoPurpleWarning=90; // 90 frame warning before firing (longer charge)
     f._gojoPurpleAngle=angle(f,enemy);
     SFX.warning();
     spawnBurst(f.x,f.y,'#9944ff',15,5);
@@ -2143,7 +2133,7 @@ function updateRelicBerserk(f,enemy,dt){
   if(f.specialTimer<=0){
     f.berserkInvincible=false;
     f.speed=f.baseSpeed+f.berserkSpeedBoost;
-    addLog((f.side===0?'P1':'P2')+' Rebecca\'s Fury ended');
+    addLog((f.side===0?'P1':'P2')+' Berserk Fury ended');
     spawnBurst(f.x,f.y,'#dd2222',10,4);
   }
 }
@@ -2163,13 +2153,13 @@ function updateRelicGojo(f,enemy,dt){
       const ba=f._gojoPurpleAngle;
       SFX.gojoPurple();
       const beamDmg=f.atk*3.5;
-      for(let i=-1;i<=1;i++){
-        const spreadAngle=ba+i*0.08;
+      for(let i=-2;i<=2;i++){
+        const spreadAngle=ba+i*0.1;
         projectiles.push({
           x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
           vx:Math.cos(spreadAngle)*12,vy:Math.sin(spreadAngle)*12,
           owner:f,target:null,color:'#9944ff',
-          life:80,radius:16,dmg:beamDmg,
+          life:80,radius:20,dmg:beamDmg,
           explosive:false,homing:false,isGojoPurple:true,
         });
       }
@@ -2308,7 +2298,7 @@ function updateRelicSmasher(f,enemy,dt){
       spawnBurst(sx,sy,'#ff4444',40,15);
       spawnBurst(sx,sy,'#ffaa44',30,10);
       spawnBurst(sx,sy,'#ffffff',20,8);
-      shakeTimer=15;shakeAmt=8;
+      shakeTimer=10;shakeAmt=5;
       // Deal damage to all enemies in range
       fighters.forEach(e=>{
         if(e.side===f.side||!e.alive)return;
@@ -2478,10 +2468,11 @@ function updateBattle(dt){
           if(tw.returnCD<=0){tw.available=true;tw.returnCD=0;}
         }
       });
-      // Auto-switch to strongest available weapon
+      // Auto-switch to preferred available weapon (Agaou > Fang > Punkblade)
       const avail=f.throwWeapons.filter(tw=>tw.available);
       if(avail.length>0){
-        const strongest=avail.sort((a,b)=>b.dmgMult-a.dmgMult)[0];
+        const throwPriority={agaou:3,fang:2,punk:1};
+        const strongest=avail.sort((a,b)=>(throwPriority[b.id]||0)-(throwPriority[a.id]||0))[0];
         const sIdx=f.throwWeapons.indexOf(strongest);
         if(sIdx!==f.throwActiveIdx&&f.throwSwitchCD<=0){
           f.throwActiveIdx=sIdx;
@@ -2600,11 +2591,11 @@ function updateBattle(dt){
       if(f.smasherWarning>0||(!f.specialActive&&f._gatlingCD<=0&&battleTime%25<dt)){
         // Fire gatling bursts — small fast bullets aimed at closest enemy
         if(f._gatlingCD<=0){
-          f._gatlingCD=12; // rapid fire rate
+          f._gatlingCD=18; // slightly slower fire rate
           const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
           if(enemies.length>0){
             const target=enemies.reduce((a,b)=>dist(f,a)<dist(f,b)?a:b);
-            const ga=angle(f,target)+(Math.random()-0.5)*0.3;
+            const ga=angle(f,target)+(Math.random()-0.5)*0.7; // wide spread, no autolock
             projectiles.push({
               x:f.x+Math.cos(ga)*f.radius,y:f.y+Math.sin(ga)*f.radius,
               vx:Math.cos(ga)*10,vy:Math.sin(ga)*10,
@@ -2652,7 +2643,7 @@ function updateBattle(dt){
           }
           spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ff6644',20,8);
           spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ffaa44',12,5);
-          shakeTimer=Math.max(shakeTimer,6);shakeAmt=Math.max(shakeAmt,4);
+          shakeTimer=Math.max(shakeTimer,4);shakeAmt=Math.max(shakeAmt,2);
           // Fire element: fire zones
           if(f.elementActive&&f.elem.id==='fire'){
             fireZones.push({x:f.x+Math.cos(ba)*f.radius*2,y:f.y+Math.sin(ba)*f.radius*2,
@@ -2669,14 +2660,14 @@ function updateBattle(dt){
         f.gojoInfinityRegenCD-=dt;
         if(f.gojoInfinityRegenCD<=0){
           f.gojoInfinityCharges=Math.min(f.gojoInfinityMax,f.gojoInfinityCharges+1);
-          f.gojoInfinityRegenCD=f.gojoAwakened?120:180; // faster regen in awakened
+          f.gojoInfinityRegenCD=f.gojoAwakened?240:360; // much slower regen
           spawnParticle(f.x+rand(-10,10),f.y+rand(-10,10),'#8888ff',0,-1,15,2);
         }
       }
       // Awakened: less infinity charges
-      if(f.gojoAwakened&&f.gojoInfinityMax===9){
-        f.gojoInfinityMax=5;
-        f.gojoInfinityCharges=Math.min(f.gojoInfinityCharges,5);
+      if(f.gojoAwakened&&f.gojoInfinityMax===5){
+        f.gojoInfinityMax=3;
+        f.gojoInfinityCharges=Math.min(f.gojoInfinityCharges,3);
       }
       // Spin mechanic — enemy spins around Gojo taking damage
       if(f.gojoSpinTarget&&f.gojoSpinTarget.alive&&f.gojoSpinTimer>0){
@@ -2725,6 +2716,7 @@ function updateBattle(dt){
         if(f.gojoReviveTimer<=0){
           f.gojoReviving=false;
           f.gojoAwakened=true;
+          f.maxHp=1000; // phase 2 HP
           f.hp=f.maxHp;
           f.gojoPurpleChance=0.15;
           // Boost stats for awakened
@@ -2852,6 +2844,29 @@ function updateBattle(dt){
       } else {
         dealDamage(p.owner,p.target,p.dmg);
         spawnBurst(p.target.x,p.target.y,p.color,8,3);
+      }
+      // Gojo Red projectile hit: knockback enemy away from projectile direction
+      if(p.isGojoRed&&p.target&&p.target.alive){
+        const ka=Math.atan2(p.vy,p.vx);
+        const kb=p.knockback||8;
+        p.target.vx+=Math.cos(ka)*kb;p.target.vy+=Math.sin(ka)*kb;
+        spawnBurst(p.target.x,p.target.y,'#ff4444',12,5);
+        shakeTimer=6;shakeAmt=4;
+      }
+      // Gojo Blue projectile hit: pull enemy toward Gojo
+      if(p.isGojoBlue&&p.target&&p.target.alive&&p.gojoOwner){
+        const pa=angle(p.target,p.gojoOwner);
+        const ps=p.pullStrength||7;
+        p.target.vx+=Math.cos(pa)*ps;p.target.vy+=Math.sin(pa)*ps;
+        spawnBurst(p.target.x,p.target.y,'#4488ff',10,4);
+        // If pulled very close, start spinning
+        if(dist(p.target,p.gojoOwner)<p.gojoOwner.radius+p.target.radius+25&&!p.gojoOwner.gojoSpinTarget){
+          p.gojoOwner.gojoSpinTarget=p.target;
+          p.gojoOwner.gojoSpinAngle=angle(p.gojoOwner,p.target);
+          p.gojoOwner.gojoSpinTimer=90;
+          addLog('GOJO SPIN!');
+        }
+        shakeTimer=5;shakeAmt=3;
       }
       // Throwing weapon on hit: return instantly
       if(p.isThrowWeapon&&p.owner){
@@ -3259,51 +3274,79 @@ function drawBall(f){
   X.beginPath();X.arc(f.x-f.radius*0.25,f.y-f.radius*0.25,f.radius*0.2,0,Math.PI*2);
   X.fillStyle='rgba(255,255,255,0.35)';X.fill();
 
-  // Adam Smasher face — cybernetic face visible on ball
+  // Adam Smasher face — cybernetic face visible on ball, heavy armor plating
   if(f.char.id==='smasher'){
-    // Red eye slit (left)
     X.save();
-    X.beginPath();X.arc(f.x-f.radius*0.2,f.y-f.radius*0.15,f.radius*0.08,0,Math.PI*2);
+    // Armor plate lines (heavy mech feel)
+    X.strokeStyle='#884444';X.lineWidth=2;
+    X.beginPath();X.arc(f.x,f.y,f.radius*0.95,Math.PI*0.6,Math.PI*0.9);X.stroke();
+    X.beginPath();X.arc(f.x,f.y,f.radius*0.95,Math.PI*1.1,Math.PI*1.4);X.stroke();
+    // Top armor crest
+    X.strokeStyle='#aa3333';X.lineWidth=2.5;
+    X.beginPath();X.moveTo(f.x-f.radius*0.3,f.y-f.radius*0.65);
+    X.lineTo(f.x,f.y-f.radius*0.8);
+    X.lineTo(f.x+f.radius*0.3,f.y-f.radius*0.65);X.stroke();
+    // Red eye slit (left) — bigger, more menacing
+    X.beginPath();X.arc(f.x-f.radius*0.2,f.y-f.radius*0.15,f.radius*0.1,0,Math.PI*2);
     X.fillStyle=f.specialActive?'#ff0000':'#cc2222';X.fill();
-    X.shadowColor='#ff0000';X.shadowBlur=f.specialActive?10:4;X.fill();X.shadowBlur=0;
+    X.shadowColor='#ff0000';X.shadowBlur=f.specialActive?12:6;X.fill();X.shadowBlur=0;
     // Right eye slit
-    X.beginPath();X.arc(f.x+f.radius*0.2,f.y-f.radius*0.15,f.radius*0.08,0,Math.PI*2);
+    X.beginPath();X.arc(f.x+f.radius*0.2,f.y-f.radius*0.15,f.radius*0.1,0,Math.PI*2);
     X.fillStyle=f.specialActive?'#ff0000':'#cc2222';X.fill();
-    X.shadowColor='#ff0000';X.shadowBlur=f.specialActive?10:4;X.fill();X.shadowBlur=0;
-    // Metal jaw line
-    X.strokeStyle='#666';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(f.x-f.radius*0.3,f.y+f.radius*0.1);
-    X.lineTo(f.x-f.radius*0.15,f.y+f.radius*0.3);
-    X.lineTo(f.x+f.radius*0.15,f.y+f.radius*0.3);
-    X.lineTo(f.x+f.radius*0.3,f.y+f.radius*0.1);X.stroke();
+    X.shadowColor='#ff0000';X.shadowBlur=f.specialActive?12:6;X.fill();X.shadowBlur=0;
+    // Metal jaw line — thicker
+    X.strokeStyle='#777';X.lineWidth=2;
+    X.beginPath();X.moveTo(f.x-f.radius*0.35,f.y+f.radius*0.1);
+    X.lineTo(f.x-f.radius*0.2,f.y+f.radius*0.35);
+    X.lineTo(f.x+f.radius*0.2,f.y+f.radius*0.35);
+    X.lineTo(f.x+f.radius*0.35,f.y+f.radius*0.1);X.stroke();
     // Scar line
-    X.strokeStyle='#553333';X.lineWidth=1;
+    X.strokeStyle='#553333';X.lineWidth=1.5;
     X.beginPath();X.moveTo(f.x-f.radius*0.1,f.y-f.radius*0.35);
     X.lineTo(f.x+f.radius*0.05,f.y+f.radius*0.05);X.stroke();
+    // Side shoulder armor accents
+    X.fillStyle='#993333';
+    X.beginPath();X.arc(f.x-f.radius*0.75,f.y,f.radius*0.15,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(f.x+f.radius*0.75,f.y,f.radius*0.15,0,Math.PI*2);X.fill();
     X.restore();
   }
 
   // Gojo face — white hair, blue eyes
   if(f.char.id==='gojo'){
     X.save();
-    // White spiky hair on top
+    // White spiky hair on top — BIG and obviously hair, not crown-like
     const hx=f.x,hy=f.y-f.radius*0.3;
     X.fillStyle=f.gojoAwakened?'#eeeeff':'#ffffff';
-    // Hair spikes
-    for(let i=-3;i<=3;i++){
-      const sx=hx+i*f.radius*0.13;
-      const baseY=f.y-f.radius*0.55;
-      const tipY=baseY-f.radius*(0.35+Math.abs(i)*0.05);
-      const spikeW=f.radius*0.12;
-      X.beginPath();
-      X.moveTo(sx-spikeW,baseY);
-      X.lineTo(sx,tipY);
-      X.lineTo(sx+spikeW,baseY);
-      X.closePath();X.fill();
-    }
-    // Hair base band
+    // Hair base — wide fluffy band
     X.beginPath();
-    X.ellipse(hx,f.y-f.radius*0.5,f.radius*0.55,f.radius*0.15,0,Math.PI,0);
+    X.ellipse(hx,f.y-f.radius*0.45,f.radius*0.7,f.radius*0.25,0,Math.PI,0);
+    X.fill();
+    // Big spiky hair strands — asymmetric, messy anime style
+    const spikes=[
+      {off:-0.35,h:0.7,w:0.15,tilt:-0.1},
+      {off:-0.22,h:0.85,w:0.13,tilt:-0.05},
+      {off:-0.1,h:0.65,w:0.12,tilt:0},
+      {off:0.0,h:0.9,w:0.14,tilt:0.03},
+      {off:0.12,h:0.75,w:0.13,tilt:0.05},
+      {off:0.25,h:0.8,w:0.14,tilt:0.08},
+      {off:0.38,h:0.6,w:0.12,tilt:0.12},
+    ];
+    spikes.forEach(sp=>{
+      const sx=hx+sp.off*f.radius;
+      const baseY=f.y-f.radius*0.55;
+      const tipY=baseY-f.radius*sp.h;
+      const tipX=sx+sp.tilt*f.radius;
+      const sw=f.radius*sp.w;
+      X.beginPath();
+      X.moveTo(sx-sw,baseY);
+      X.quadraticCurveTo(sx-sw*0.3,tipY+f.radius*0.15,tipX,tipY);
+      X.quadraticCurveTo(sx+sw*0.3,tipY+f.radius*0.15,sx+sw,baseY);
+      X.closePath();X.fill();
+    });
+    // Subtle shadow on hair base
+    X.fillStyle='rgba(180,180,220,0.3)';
+    X.beginPath();
+    X.ellipse(hx,f.y-f.radius*0.45,f.radius*0.65,f.radius*0.08,0,0,Math.PI);
     X.fill();
     // Blue eyes
     const eyeGlow=f.gojoAwakened||f.specialActive;
@@ -4211,7 +4254,7 @@ function drawKatanaWeapon(r,ext,flash,f){
   // Handle/tsuka — wrapped grip
   X.fillStyle='#1a1a22';X.fillRect(r-8,-5,16,10);
   X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-5,16,10);
-  // Wrapping lines — dark blue/silver for Yamato
+  // Wrapping lines — dark blue/silver for Katana
   X.strokeStyle='#4466cc';X.lineWidth=0.8;
   for(let i=0;i<4;i++){X.beginPath();X.moveTo(r-6+i*4,-5);X.lineTo(r-4+i*4,5);X.stroke();}
   // Tsuba (guard) — oval crossguard, gold accent
@@ -4245,7 +4288,7 @@ function drawKatanaWeapon(r,ext,flash,f){
   X.quadraticCurveTo(bx+bladeLen*0.5,3.5,bx+bladeLen*0.65,2);
   X.quadraticCurveTo(bx+bladeLen*0.8,3,bx+bladeLen*0.95,0.5);
   X.stroke();
-  // Cutting edge glow — blue/purple Yamato energy
+  // Cutting edge glow — blue/purple Katana energy
   X.strokeStyle=flash?'rgba(80,100,255,0.9)':'rgba(68,102,204,0.4)';
   X.lineWidth=flash?2.5:1;
   X.beginPath();X.moveTo(bx+2,3);
@@ -4254,7 +4297,7 @@ function drawKatanaWeapon(r,ext,flash,f){
   X.stroke();
   if(flash){X.shadowColor='#4466cc';X.shadowBlur=10;X.stroke();X.shadowBlur=0;}
 
-  // Deflect stance glow — blue Yamato readiness
+  // Deflect stance glow — blue Katana readiness
   if(f&&!f.katanaDashing&&!f.katanaRushing){
     const pulse=Math.sin(battleTime*0.08)*3;
     X.strokeStyle='rgba(68,102,204,'+(0.2+Math.sin(battleTime*0.1)*0.1)+')';
@@ -4284,7 +4327,7 @@ function drawBerserkWeapon(r,ext,flash,f){
   // Arm/forearm
   X.fillStyle='#2a2a30';X.fillRect(r-8,-8,16,16);
   X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-8,16,16);
-  // Pink accent (Rebecca's style)
+  // Pink accent (Berserk's style)
   X.fillStyle='rgba(255,85,170,0.7)';X.fillRect(r-6,-8,12,2);X.fillRect(r-6,6,12,2);
 
   // Shotgun body — blocky, double barrel
@@ -4303,7 +4346,7 @@ function drawBerserkWeapon(r,ext,flash,f){
   X.strokeStyle='#444';X.lineWidth=0.8;
   X.beginPath();X.arc(muzzX,-3.5,4,0,Math.PI*2);X.stroke();
   X.beginPath();X.arc(muzzX,3.5,4,0,Math.PI*2);X.stroke();
-  // Pink LED strips (Rebecca)
+  // Pink LED strips (Berserk)
   X.fillStyle=flash?'rgba(255,85,170,1)':'rgba(255,55,140,0.6)';
   X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);
   if(flash){X.shadowColor='#ff55aa';X.shadowBlur=10;X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);X.shadowBlur=0;}
@@ -4656,7 +4699,7 @@ function drawTitle(){
 
   const btnW=200,btnH=50;
   addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
-  addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamElem1=0;teamElem2=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');});
+  addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('P10 v7.2 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
@@ -4948,16 +4991,18 @@ function startBattle(){
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   if(gameMode==='boss'){
-    // Boss is side 1 (enemy), team is side 0
+    // Boss is side 1 (enemy), team is side 0 (3v1)
     const t1=createFighter(teamChar1,teamElem1,0);
     const t2=createFighter(teamChar2,teamElem2,0);
+    const t3=createFighter(teamChar3,teamElem3,0);
     const boss=createFighter(bossChar,bossElem,1);
-    // Position team on left, boss on right
-    t1.y=ARENA.y+ARENA.h*0.35;
-    t2.y=ARENA.y+ARENA.h*0.65;
+    // Position team spread out, boss on right
+    t1.y=ARENA.y+ARENA.h*0.25;
+    t2.y=ARENA.y+ARENA.h*0.5;
+    t3.y=ARENA.y+ARENA.h*0.75;
     boss.radius=55; // Boss is bigger
-    fighters=[t1,t2,boss];
-    addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' vs '+CHARS[bossChar].name);
+    fighters=[t1,t2,t3,boss];
+    addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' + '+CHARS[teamChar3].name+' vs '+CHARS[bossChar].name);
   } else {
     fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
     addLog('Battle Start!');addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
@@ -5442,18 +5487,22 @@ function drawBattle(){
     const bsp=boss.specialBar/boss.specialMax;X.fillStyle=bsp>=1?'#ffcc00':'#7b68ee';X.fillRect(bossBx,bspBarY,bossBarW*bsp,bspBarH);
     X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(bossBx,bspBarY,bossBarW,bspBarH);
     if(bsp>=1){X.font='bold 7px Consolas,monospace';X.fillStyle='#fff';X.fillText('RELIC READY!',W/2,bspBarY+5);}
-    // Team HP bars — side by side below boss
+    // Team HP bars — side by side below boss (3 bars for 3v1)
     const tBarY=bspBarY+bspBarH+8;
-    const tBarW=isMobile?(W-50)/2:(W-120)/2;
+    const tCount=team.length;
+    const tGap=isMobile?6:10;
+    const tBarW=isMobile?Math.floor((W-40-(tCount-1)*tGap)/tCount):Math.floor((W-100-(tCount-1)*tGap)/tCount);
     team.forEach((t,ti)=>{
-      const tx=isMobile?20+ti*(tBarW+10):50+ti*(tBarW+20);
+      const tx=isMobile?20+ti*(tBarW+tGap):50+ti*(tBarW+tGap);
       X.fillStyle='#222';X.fillRect(tx,tBarY,tBarW,barH-2);
       const tr=Math.max(0,t.hp/t.maxHp);
       X.fillStyle=tr>0.6?'#44bb44':tr>0.3?'#ccaa00':'#cc3333';
       X.fillRect(tx,tBarY,tBarW*tr,barH-2);X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(tx,tBarY,tBarW,barH-2);
-      X.font='bold 10px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(t.hp)+'/'+t.maxHp,tx+3,tBarY+11);
-      X.fillStyle=t.char.color;X.fillText(t.char.name,tx,tBarY-3);
-      if(!t.alive){X.globalAlpha=0.5;X.fillStyle='#ff0000';X.font='bold 10px Consolas,monospace';X.fillText('KO',tx+tBarW-20,tBarY+11);X.globalAlpha=1;}
+      X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(t.hp)+'/'+t.maxHp,tx+3,tBarY+11);
+      X.fillStyle=t.char.color;X.fillText(t.char.name.length>(isMobile?7:14)?t.char.name.slice(0,isMobile?7:14):t.char.name,tx,tBarY-3);
+      // Show element name on mobile
+      if(t.elem.id!=='none'){X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.textAlign='right';X.fillStyle=t.elementActive?t.elem.color:t.elem.color+'88';X.fillText(t.elem.name,tx+tBarW,tBarY-3);X.textAlign='left';}
+      if(!t.alive){X.globalAlpha=0.5;X.fillStyle='#ff0000';X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillText('KO',tx+tBarW-16,tBarY+11);X.globalAlpha=1;}
     });
   } else {
     const barW=isMobile?150:300;
@@ -5487,7 +5536,7 @@ function drawBattle(){
   }
 
   // Speed controls
-  const spdCtrlY=gameMode==='boss'?barY+62:barY+barH+16;
+  const spdCtrlY=gameMode==='boss'?barY+66:barY+barH+16;
   const sbX=W/2-60;
   [{l:'1x',s:1},{l:'2x',s:2},{l:'3x',s:3}].forEach((sb,i)=>{
     addBtn('spd'+i,sbX+i*42,spdCtrlY,38,18,sb.l,battleSpeed===sb.s?'#ffcc00':'#555',()=>{battleSpeed=sb.s;});
@@ -5498,7 +5547,7 @@ function drawBattle(){
   drawRoundRect(ARENA.x,infoY,ARENA.w,infoH,6);X.fillStyle='#0a0a20';X.fill();X.strokeStyle='#1a1a4a';X.lineWidth=1;X.stroke();
   if(gameMode==='boss'){
     // Boss mode info: show all fighters
-    const infoW=(ARENA.w-20)/Math.min(fighters.length,3);
+    const infoW=(ARENA.w-20)/Math.min(fighters.length,4);
     fighters.forEach((f,fi)=>{
       drawFighterInfo(f,ARENA.x+10+fi*infoW,infoY+8,infoW-5,'left');
       if(fi<fighters.length-1){X.strokeStyle='#1a1a4a';X.beginPath();X.moveTo(ARENA.x+10+(fi+1)*infoW,infoY+5);X.lineTo(ARENA.x+10+(fi+1)*infoW,infoY+infoH-5);X.stroke();}
@@ -5609,18 +5658,19 @@ function drawBossSelect(){
   const startX=(W-totalW)/2;
   const gridStartY=isMobile?35:45;
   X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
-  X.fillStyle='#4488ff';X.fillText('Click to select Team Member 1 (blue) and Team Member 2 (green)',W/2,gridStartY);
+  X.fillStyle='#4488ff';X.fillText('Click to cycle: T1 (blue) / T2 (green) / T3 (orange)',W/2,gridStartY);
   const charGridY=gridStartY+8;
   selectableChars.forEach((ch,i)=>{
     const origIdx=CHARS.indexOf(ch);
     const row=Math.floor(i/cols),col=i%cols;
     const cx=startX+col*(cardW+gapX),cy=charGridY+row*(cardH+gapY);
-    const isT1=teamChar1===origIdx,isT2=teamChar2===origIdx;
+    const isT1=teamChar1===origIdx,isT2=teamChar2===origIdx,isT3=teamChar3===origIdx;
     drawRoundRect(cx,cy,cardW,cardH,isMobile?5:8);
-    X.fillStyle=isT1?'#112244':isT2?'#113322':'#111128';X.fill();
-    X.strokeStyle=isT1?'#4488ff':isT2?'#33cc66':ch.color+'66';X.lineWidth=isT1||isT2?3:1.5;X.stroke();
+    X.fillStyle=isT1?'#112244':isT2?'#113322':isT3?'#221a11':'#111128';X.fill();
+    X.strokeStyle=isT1?'#4488ff':isT2?'#33cc66':isT3?'#ff8833':ch.color+'66';X.lineWidth=isT1||isT2||isT3?3:1.5;X.stroke();
     if(isT1){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('T1',cx+5,cy+12);}
-    if(isT2){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#33cc66';X.textAlign='right';X.fillText('T2',cx+cardW-5,cy+12);}
+    if(isT2){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#33cc66';X.textAlign='center';X.fillText('T2',cx+cardW/2,cy+12);}
+    if(isT3){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#ff8833';X.textAlign='right';X.fillText('T3',cx+cardW-5,cy+12);}
     const compact=cardH<80;
     const ballR=isMobile?(compact?8:10):(cardH>120?22:16);
     drawBallPreview(cx+cardW/2,cy+(isMobile?(compact?16:22):cardH>120?35:28),ballR,ch);
@@ -5628,28 +5678,46 @@ function drawBossSelect(){
     X.fillText(ch.name.length>14?ch.name.slice(0,14):ch.name,cx+cardW/2,cy+(isMobile?(compact?30:38):cardH>120?62:50));
     X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
     X.fillText(ch.playstyle,cx+cardW/2,cy+(isMobile?(compact?40:48):cardH>120?74:60));
-    if(cardH>70&&!isMobile){
+    if(isMobile){
+      X.font='7px Consolas,monospace';X.fillStyle='#888';X.textAlign='center';
+      X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+cardW/2,cy+(compact?52:58));
+      if(!compact)X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+cardW/2,cy+68);
+    } else if(cardH>70){
       X.font='8px Consolas,monospace';X.textAlign='left';X.fillStyle='#888';
       X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),cx+8,cy+(cardH>120?90:74));
       X.fillText('RNG:'+ch.stats.range+' DEF:'+ch.stats.def,cx+8,cy+(cardH>120?102:84));
     }
-    // Left click = T1, right click = T2
-    addBtn('bt1_'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{if(origIdx!==teamChar2)teamChar1=origIdx;});
-    addBtn('bt2_'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{if(origIdx!==teamChar1)teamChar2=origIdx;});
+    // Click cycles through T1/T2/T3 assignment
+    addBtn('bsel_'+i,cx,cy,cardW,cardH,'','transparent',()=>{
+      if(origIdx===teamChar1){/* already T1, do nothing */}
+      else if(origIdx===teamChar2){/* already T2, do nothing */}
+      else if(origIdx===teamChar3){/* already T3, do nothing */}
+      else{
+        // Assign to first unoccupied, or cycle: replace T1→T2→T3→T1
+        if(!_bossSelSlot)_bossSelSlot=1;
+        if(_bossSelSlot===1){teamChar1=origIdx;_bossSelSlot=2;}
+        else if(_bossSelSlot===2){teamChar2=origIdx;_bossSelSlot=3;}
+        else{teamChar3=origIdx;_bossSelSlot=1;}
+      }
+    });
   });
   const gridBottom=charGridY+rows*(cardH+gapY);
 
   // Element pickers for team
   const elemY=gridBottom+(isMobile?6:12);
   X.font='bold '+(isMobile?'9':'12')+'px Consolas,monospace';X.textAlign='center';
-  X.fillStyle='#4488ff';X.fillText('T1 ELEMENT',W/4+(isMobile?10:0),elemY);
-  X.fillStyle='#33cc66';X.fillText('T2 ELEMENT',W*3/4-(isMobile?10:0),elemY);
+  const eColW=isMobile?Math.floor(W/3)-5:Math.floor(W/3)-10;
+  X.fillStyle='#4488ff';X.fillText('T1 ELEM',eColW/2+(isMobile?2:5),elemY);
+  X.fillStyle='#33cc66';X.fillText('T2 ELEM',W/2,elemY);
+  X.fillStyle='#ff8833';X.fillText('T3 ELEM',W-eColW/2-(isMobile?2:5),elemY);
   if(isMobile){
-    drawElementPickerMobile(10,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
-    drawElementPickerMobile(W/2+10,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
+    drawElementPickerMobile(2,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
+    drawElementPickerMobile(eColW+4,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
+    drawElementPickerMobile(eColW*2+6,elemY+8,teamElem3,'be3',(i)=>{teamElem3=i;});
   } else {
-    drawElementPicker(W/4-130,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
-    drawElementPicker(W*3/4-130,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
+    drawElementPicker(5,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
+    drawElementPicker(W/3+5,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
+    drawElementPicker(W*2/3+5,elemY+8,teamElem3,'be3',(i)=>{teamElem3=i;});
   }
   // Boss element picker
   const bossElemY=elemY+(isMobile?40:65);
@@ -5681,7 +5749,7 @@ function drawBossSelect(){
     drawBallPreview(bx+bossCardW/2,by+(isMobile?16:20),ballR,bch);
     X.font='bold '+(isMobile?'8':'9')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
     X.fillText(bch.name,bx+bossCardW/2,by+(isMobile?32:40));
-    if(!isMobile){X.font='7px Consolas,monospace';X.fillStyle='#888';X.fillText('HP:'+bch.stats.hp,bx+bossCardW/2,by+50);}
+    X.font='7px Consolas,monospace';X.fillStyle='#888';X.fillText('HP:'+bch.stats.hp,bx+bossCardW/2,by+(isMobile?42:50));
     addBtn('boss_sel_'+bi,bx,by,bossCardW,isMobile?45:55,'','transparent',()=>{bossChar=bIdx;});
   });
 
@@ -5690,7 +5758,7 @@ function drawBossSelect(){
   addBtn('bossBattle',W/2-100,bBtnY,200,isMobile?38:48,'FIGHT BOSS!','#cc4444',startBattle);
   addBtn('bossBack',20,bBtnY,80,isMobile?32:38,'Back','#666',()=>{screen='title';});
   buttons.forEach(b=>{
-    if(b.id.startsWith('bt1_')||b.id.startsWith('bt2_'))return;
+    if(b.id.startsWith('bsel_'))return;
     drawBtn(b);
   });
 }
