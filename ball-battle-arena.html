@@ -2910,38 +2910,42 @@ function drawBallPreview(bx,by,r,ch){
 }
 
 function drawSelectDesktop(){
-  const cardW=150,cardH=200,gap=10;
-  const totalW=CHARS.length*cardW+(CHARS.length-1)*gap;
+  // 2-row grid: 3 chars per row for clean layout with 6+ characters
+  const cols=3,cardW=140,cardH=170,gapX=10,gapY=8;
+  const rows=Math.ceil(CHARS.length/cols);
+  const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
-  const cardY=55;
+  const cardY=50;
   X.font='bold 14px Consolas,Courier New,monospace';
-  X.textAlign='left';X.fillStyle='#4488ff';X.fillText('P1 SELECT',startX,cardY);
-  X.textAlign='right';X.fillStyle='#ff4444';X.fillText('P2 SELECT',startX+totalW,cardY);
+  X.textAlign='left';X.fillStyle='#4488ff';X.fillText('P1 — Left click',startX,cardY);
+  X.textAlign='right';X.fillStyle='#ff4444';X.fillText('P2 — Right click',startX+totalW,cardY);
 
   CHARS.forEach((ch,i)=>{
-    const cx=startX+i*(cardW+gap),cy=cardY+10;
+    const row=Math.floor(i/cols),col=i%cols;
+    const cx=startX+col*(cardW+gapX),cy=cardY+10+row*(cardH+gapY);
     const isP1=p1Char===i,isP2=p2Char===i;
     drawRoundRect(cx,cy,cardW,cardH,8);
     X.fillStyle=isP1?'#112244':isP2?'#441122':'#111128';X.fill();
     X.strokeStyle=isP1?'#4488ff':isP2?'#ff4444':ch.color+'66';X.lineWidth=isP1||isP2?3:1.5;X.stroke();
     if(isP1){X.font='bold 11px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('P1',cx+8,cy+16);}
     if(isP2){X.font='bold 11px Consolas,monospace';X.fillStyle='#ff4444';X.textAlign='right';X.fillText('P2',cx+cardW-8,cy+16);}
-    drawBallPreview(cx+cardW/2,cy+50,30,ch);
-    X.font='bold 12px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';X.fillText(ch.name,cx+cardW/2,cy+85);
-    X.font='10px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+cardW/2,cy+100);
-    X.font='10px Consolas,monospace';X.textAlign='left';
-    const sx=cx+12,sy=cy+118;
-    const stats=[['HP',ch.stats.hp],['ATK',ch.stats.atk],['SPD',ch.stats.speed],['RNG',ch.stats.range],['DEF',ch.stats.def]];
+    drawBallPreview(cx+cardW/2,cy+40,24,ch);
+    X.font='bold 11px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';X.fillText(ch.name,cx+cardW/2,cy+72);
+    X.font='9px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+cardW/2,cy+85);
+    X.font='9px Consolas,monospace';X.textAlign='left';
+    const sx=cx+10,sy=cy+100;
+    const stats=[['HP',ch.stats.hp],['ATK',ch.stats.atk],['SPD',ch.stats.speed.toFixed(1)],['RNG',ch.stats.range],['DEF',ch.stats.def]];
     stats.forEach((s,si)=>{
-      X.fillStyle='#888';X.fillText(s[0]+':',sx,sy+si*14);X.fillStyle='#ccc';X.fillText(''+s[1],sx+35,sy+si*14);
-      const barVal=s[0]==='HP'?ch.stats.hp/750:s[0]==='RNG'?ch.stats.range/200:s[0]==='SPD'?ch.stats.speed/5:s[0]==='ATK'?ch.stats.atk/25:ch.stats.def/10;
-      X.fillStyle='#222';X.fillRect(sx+60,sy+si*14-8,cardW-85,6);X.fillStyle=ch.color;X.fillRect(sx+60,sy+si*14-8,(cardW-85)*Math.min(1,barVal),6);
+      X.fillStyle='#888';X.fillText(s[0]+':',sx,sy+si*13);X.fillStyle='#ccc';X.fillText(''+s[1],sx+30,sy+si*13);
+      const barVal=s[0]==='HP'?ch.stats.hp/750:s[0]==='RNG'?ch.stats.range/200:s[0]==='SPD'?ch.stats.speed/8:s[0]==='ATK'?ch.stats.atk/35:ch.stats.def/10;
+      X.fillStyle='#222';X.fillRect(sx+55,sy+si*13-7,cardW-78,5);X.fillStyle=ch.color;X.fillRect(sx+55,sy+si*13-7,(cardW-78)*Math.min(1,barVal),5);
     });
     addBtn('p1c'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{p1Char=i;});
     addBtn('p2c'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{p2Char=i;});
   });
 
-  const elemY=cardY+cardH+25;
+  const gridBottom=cardY+10+rows*(cardH+gapY);
+  const elemY=gridBottom+10;
   X.font='bold 13px Consolas,monospace';X.textAlign='center';
   X.fillStyle='#4488ff';X.fillText('P1 ELEMENT',W/4,elemY);
   drawElementPicker(W/4-130,elemY+10,p1Elem,'p1e',(i)=>{p1Elem=i;});
@@ -2959,48 +2963,42 @@ function drawSelectDesktop(){
 }
 
 function drawSelectMobile(){
-  const cardW=75,cardH=125,gap=5;
-  const totalW=CHARS.length*cardW+(CHARS.length-1)*gap;
+  // 3-per-row grid for 6+ characters
+  const cols=3,cardW=130,cardH=95,gapX=5,gapY=4;
+  const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
 
-  X.font='bold 12px Consolas,monospace';X.textAlign='center';
-  X.fillStyle='#4488ff';X.fillText('P1',W/2,48);
-  const p1Y=55;
-  CHARS.forEach((ch,i)=>{
-    const cx=startX+i*(cardW+gap),isP1=p1Char===i;
-    drawRoundRect(cx,p1Y,cardW,cardH,6);X.fillStyle=isP1?'#112244':'#111128';X.fill();
-    X.strokeStyle=isP1?'#4488ff':ch.color+'44';X.lineWidth=isP1?2.5:1;X.stroke();
-    drawBallPreview(cx+cardW/2,p1Y+30,14,ch);
-    X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
-    X.fillText(ch.name.length>10?ch.name.slice(0,10):ch.name,cx+cardW/2,p1Y+55);
-    X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+cardW/2,p1Y+67);
-    X.fillStyle='#888';X.textAlign='center';
-    X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk,cx+cardW/2,p1Y+82);
-    X.fillText('S:'+ch.stats.speed.toFixed(1)+' R:'+ch.stats.range,cx+cardW/2,p1Y+93);
-    X.fillText('D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+cardW/2,p1Y+104);
-    if(isP1){X.font='bold 10px Consolas,monospace';X.fillStyle='#4488ff';X.fillText('P1',cx+cardW/2,p1Y+120);}
-    addBtn('p1m'+i,cx,p1Y,cardW,cardH,'','transparent',()=>{p1Char=i;});
-  });
+  function drawCharGrid(label,labelColor,yStart,selected,prefix,cb){
+    X.font='bold 11px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=labelColor;X.fillText(label,W/2,yStart);
+    const gridY=yStart+5;
+    CHARS.forEach((ch,i)=>{
+      const row=Math.floor(i/cols),col=i%cols;
+      const cx=startX+col*(cardW+gapX),cy=gridY+row*(cardH+gapY);
+      const isSel=selected===i;
+      drawRoundRect(cx,cy,cardW,cardH,5);
+      X.fillStyle=isSel?(labelColor==='#4488ff'?'#112244':'#441122'):'#111128';X.fill();
+      X.strokeStyle=isSel?labelColor:ch.color+'44';X.lineWidth=isSel?2.5:1;X.stroke();
+      drawBallPreview(cx+20,cy+28,12,ch);
+      X.font='bold 9px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
+      const shortName=ch.name.length>12?ch.name.slice(0,12):ch.name;
+      X.fillText(shortName,cx+40,cy+22);
+      X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+40,cy+34);
+      X.fillStyle='#888';
+      X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk,cx+8,cy+55);
+      X.fillText('SPD:'+ch.stats.speed.toFixed(1)+' RNG:'+ch.stats.range,cx+8,cy+67);
+      X.fillText('DEF:'+ch.stats.def+' CRT:'+ch.stats.crit+'%',cx+8,cy+79);
+      if(isSel){X.font='bold 9px Consolas,monospace';X.fillStyle=labelColor;X.textAlign='right';X.fillText(label,cx+cardW-6,cy+14);}
+      addBtn(prefix+i,cx,cy,cardW,cardH,'','transparent',()=>{cb(i);});
+    });
+    const rows=Math.ceil(CHARS.length/cols);
+    return gridY+rows*(cardH+gapY);
+  }
 
-  const p2Y=p1Y+cardH+15;
-  X.font='bold 12px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff4444';X.fillText('P2',W/2,p2Y-3);
-  CHARS.forEach((ch,i)=>{
-    const cx=startX+i*(cardW+gap),isP2=p2Char===i;
-    drawRoundRect(cx,p2Y,cardW,cardH,6);X.fillStyle=isP2?'#441122':'#111128';X.fill();
-    X.strokeStyle=isP2?'#ff4444':ch.color+'44';X.lineWidth=isP2?2.5:1;X.stroke();
-    drawBallPreview(cx+cardW/2,p2Y+30,14,ch);
-    X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
-    X.fillText(ch.name.length>10?ch.name.slice(0,10):ch.name,cx+cardW/2,p2Y+55);
-    X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+cardW/2,p2Y+67);
-    X.fillStyle='#888';X.textAlign='center';
-    X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk,cx+cardW/2,p2Y+82);
-    X.fillText('S:'+ch.stats.speed.toFixed(1)+' R:'+ch.stats.range,cx+cardW/2,p2Y+93);
-    X.fillText('D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+cardW/2,p2Y+104);
-    if(isP2){X.font='bold 10px Consolas,monospace';X.fillStyle='#ff4444';X.fillText('P2',cx+cardW/2,p2Y+120);}
-    addBtn('p2m'+i,cx,p2Y,cardW,cardH,'','transparent',()=>{p2Char=i;});
-  });
+  const p1Bottom=drawCharGrid('P1','#4488ff',42,p1Char,'p1m',(i)=>{p1Char=i;});
+  const p2Bottom=drawCharGrid('P2','#ff4444',p1Bottom+8,p2Char,'p2m',(i)=>{p2Char=i;});
 
-  const elemY=p2Y+cardH+20;
+  const elemY=p2Bottom+6;
   X.font='bold 10px Consolas,monospace';X.textAlign='center';
   X.fillStyle='#4488ff';X.fillText('P1 ELEMENT',W/4+10,elemY);
   drawElementPickerMobile(10,elemY+8,p1Elem,'p1em',(i)=>{p1Elem=i;});
