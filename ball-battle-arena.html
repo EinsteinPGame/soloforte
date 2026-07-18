@@ -1402,17 +1402,7 @@ function updateRelicThrow(f,enemy,dt){
   }
   // Auto-face enemy constantly during camo
   f.weaponAngle=angle(f,enemy);
-  // Auto-throw constantly during camo — fire every 15 frames
-  if(battleTime%15<1&&enemy.alive){
-    // Find strongest available weapon
-    const best=f.throwWeapons.filter(tw=>tw.available).sort((a,b)=>b.dmgMult-a.dmgMult)[0];
-    if(best){
-      const idx=f.throwWeapons.indexOf(best);
-      f.throwActiveIdx=idx;
-      const chaos=getChaosLevel(f);
-      attackThrow(f,enemy,chaos);
-    }
-  }
+  // Normal attack cycle handles throwing during camo — no machine gun override
   // Rush to pick up embedded weapons
   f.throwEmbedded.forEach(emb=>{
     if(!emb.active)return;
@@ -1575,8 +1565,8 @@ function updateBattle(dt){
         // Melee swing with available weapon (less damage than ranged)
         if(f.attackTimer<=0){
           const meleeW=avail.sort((a,b)=>{
-            // For melee: stinger best, agaou second, punkblade worst
-            const order={fang:3,agaou:2,punk:1};
+            // For melee: agaou (fists) best, fang second, punkblade worst
+            const order={agaou:3,fang:2,punk:1};
             return (order[b.id]||0)-(order[a.id]||0);
           })[0];
           const meleeDmg=f.atk*meleeW.dmgMult*0.6;
@@ -1591,7 +1581,8 @@ function updateBattle(dt){
     }
 
     // Weapon attack — PLS fires on interval only, others need facing
-    if(!f.specialActive||f.char.id==='gorilla'){
+    // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'){
       if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
       if(f.attackTimer<=0){
         // PLS fires purely on interval — projectile aims toward enemy
