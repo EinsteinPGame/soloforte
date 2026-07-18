@@ -19,7 +19,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v6.1 — Staff PLS + Sound Overhaul + Bigger Effects + Proportional Weapons
+// BALL BATTLE ARENA v7.0 — Full Polish Pass: Effects, Sounds, UI, Character Theming
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -102,6 +102,14 @@ const SFX={
   slamImpact(){this._tone(30,0.4,'sine',0.45);this._tone(60,0.3,'sine',0.35,0.03);this._noise(0.3,0.3);this._tone(150,0.15,'sawtooth',0.2,0.1);this._tone(200,0.1,'square',0.15,0.15)},
   // Adam Smasher = WARNING siren
   warning(){this._tone(800,0.15,'square',0.18);this._tone(600,0.15,'square',0.15,0.15);this._tone(800,0.12,'square',0.18,0.3)},
+  // Enhanced sounds for polish pass
+  heavyHit(){this._tone(120,0.2,'sine',0.3);this._tone(60,0.25,'sine',0.25,0.02);this._noise(0.15,0.2);this._tone(250,0.08,'sawtooth',0.12,0.04)},
+  critSlash(){this._tone(1400,0.04,'sawtooth',0.25);this._tone(2200,0.03,'sawtooth',0.15,0.01);this._tone(800,0.08,'square',0.18,0.02);this._noise(0.06,0.12)},
+  megaExplosion(){this._tone(30,0.5,'sine',0.5);this._tone(50,0.4,'sine',0.4,0.02);this._tone(80,0.3,'sine',0.3,0.05);this._noise(0.35,0.3);this._tone(150,0.2,'sawtooth',0.2,0.1);this._tone(250,0.1,'square',0.15,0.15)},
+  judgementCut(){this._tone(2000,0.02,'sawtooth',0.3);this._tone(1500,0.04,'sawtooth',0.25,0.02);this._tone(800,0.08,'triangle',0.2,0.04);[400,600,800,1000,1200].forEach((f,i)=>this._tone(f,0.06,'sawtooth',0.12,0.06+i*0.02))},
+  rebeccaFury(){this._tone(80,0.15,'sine',0.35);this._tone(160,0.1,'sine',0.25,0.02);this._noise(0.12,0.2);[300,500,700].forEach((f,i)=>this._tone(f,0.08,'square',0.15,0.05+i*0.04))},
+  comboHit(){this._tone(500,0.04,'sine',0.12);this._tone(700,0.03,'triangle',0.1,0.02)},
+  deathExplosion(){this._tone(40,0.6,'sine',0.45);this._tone(80,0.4,'sine',0.35,0.05);this._noise(0.4,0.3);[120,200,300].forEach((f,i)=>this._tone(f,0.2,'sawtooth',0.15,0.1+i*0.08))},
 };
 
 // ============================================================
@@ -157,20 +165,20 @@ const CHARS=[
     specialName:'Optical Camo Activated',
   },
   {
-    id:'katana',name:'Katana',color:'#ff6644',
-    desc:'Deflect blade. Counter-attacker.',
-    playstyle:'Deflect & Counter',
+    id:'katana',name:'Yamato',color:'#4466cc',
+    desc:'Vergil\'s blade. Deflect & counter.',
+    playstyle:'Judgement Cut',
     stats:{hp:460,atk:20,speed:3.8,range:85,def:7,crit:18},
     baseAtkInterval:35,relicChargeRate:0.5,
-    specialName:'Katana Relic Activated',
+    specialName:'JUDGEMENT CUT END',
   },
   {
-    id:'berserk',name:'Berserk',color:'#dd2222',
-    desc:'Shotgun blast. Rage tank.',
-    playstyle:'Spread & Rage',
+    id:'berserk',name:'Rebecca',color:'#ff55aa',
+    desc:'Edgerunner shotgun. Rage mode.',
+    playstyle:'Guts & Glory',
     stats:{hp:480,atk:14,speed:3.0,range:140,def:8,crit:8},
     baseAtkInterval:140,relicChargeRate:0.4,
-    specialName:'Berserk Mode Activated',
+    specialName:'REBECCA\'S FURY',
   },
   {
     id:'smasher',name:'Adam Smasher',color:'#cc4444',
@@ -277,6 +285,10 @@ let sandyAfterimages=[]; // {x,y,radius,rotation,color,life,maxLife} — speed a
 let sandyOrbs=[]; // {owner,angle,dmg} — sandy+electric rotating orbs
 let iceWalls=[]; // {x,y,angle,life,maxLife,owner} — katana+ice walls behind enemy
 let smasherWarnings=[]; // {x,y,radius,life,maxLife} — red warning zones before slam
+let hitFreezeTimer=0; // freeze frames on big hits
+let screenFlashColor='';let screenFlashTimer=0; // full-screen flash on impacts
+let damageBarDecay=[]; // {fighter, oldHP, timer} — white bar that drops after damage
+let comboCounter={}; // {side: {count, timer}} — hit combo display
 let gameMode='1v1'; // '1v1' or 'boss'
 let bossChar=0; // index of boss char for boss mode p1/p2 team select
 let teamChar1=0,teamChar2=1; // team chars for boss mode
@@ -306,16 +318,35 @@ function spawnDmgNum(x,y,val,color,isCrit){dmgNums.push({x,y,val:typeof val==='s
 function addLog(msg){battleLog.unshift(msg);if(battleLog.length>6)battleLog.pop()}
 function spawnSparks(x,y,color,count){for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2;spawnParticle(x,y,color,Math.cos(a)*(2+Math.random()*3),Math.sin(a)*(2+Math.random()*3),10+rand(0,10),1+Math.random()*2)}}
 function spawnExplosion(x,y,radius,color,dmg,owner,target){
-  const bigR=radius*1.6; // explosions are MUCH bigger
-  explosions.push({x,y,radius:0,maxRadius:bigR,color,life:30,maxLife:30,dmg,owner,target,hit:false});
-  SFX.explode();
-  spawnBurst(x,y,color,35,10);
-  spawnBurst(x,y,'#ffcc00',20,8);
-  spawnBurst(x,y,'#ffffff',12,5);
-  spawnBurst(x,y,'#ff8800',15,6);
-  // Shockwave ring particles
-  for(let i=0;i<16;i++){const a=Math.PI*2*i/16;spawnParticle(x,y,color,Math.cos(a)*6,Math.sin(a)*6,18,4);}
-  shakeTimer=Math.max(shakeTimer,15);shakeAmt=Math.max(shakeAmt,bigR/4);
+  const bigR=radius*1.8; // explosions are MASSIVE
+  explosions.push({x,y,radius:0,maxRadius:bigR,color,life:35,maxLife:35,dmg,owner,target,hit:false});
+  SFX.megaExplosion();
+  spawnBurst(x,y,color,45,12);
+  spawnBurst(x,y,'#ffcc00',25,9);
+  spawnBurst(x,y,'#ffffff',18,7);
+  spawnBurst(x,y,'#ff8800',20,8);
+  // Double shockwave rings
+  for(let i=0;i<20;i++){const a=Math.PI*2*i/20;spawnParticle(x,y,color,Math.cos(a)*7,Math.sin(a)*7,22,5);}
+  for(let i=0;i<12;i++){const a=Math.PI*2*i/12;spawnParticle(x,y,'#ffaa00',Math.cos(a)*5,Math.sin(a)*5,16,3);}
+  // Second delayed shockwave
+  explosions.push({x,y,radius:0,maxRadius:bigR*0.7,color:'#ffcc00',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  shakeTimer=Math.max(shakeTimer,18);shakeAmt=Math.max(shakeAmt,bigR/3);
+  triggerScreenFlash(color,8);triggerHitFreeze(3);
+}
+
+function triggerScreenFlash(color,duration){screenFlashColor=color;screenFlashTimer=duration||12;}
+function triggerHitFreeze(frames){hitFreezeTimer=Math.max(hitFreezeTimer,frames||3);}
+function trackDamageBar(f,oldHP){damageBarDecay.push({fighter:f,oldHP,timer:30});}
+function addCombo(side){if(!comboCounter[side])comboCounter[side]={count:0,timer:0};comboCounter[side].count++;comboCounter[side].timer=90;}
+// Enhanced burst with glow ring
+function spawnImpact(x,y,color,intensity){
+  const count=Math.floor(12*intensity);
+  spawnBurst(x,y,color,count,3+intensity*3);
+  spawnBurst(x,y,'#ffffff',Math.floor(count/3),2+intensity*2);
+  if(intensity>1.5){
+    // Shockwave ring
+    for(let i=0;i<12;i++){const a=Math.PI*2*i/12;spawnParticle(x,y,color,Math.cos(a)*4*intensity,Math.sin(a)*4*intensity,16,3);}
+  }
 }
 
 function showRelicText(text,color){
@@ -326,8 +357,9 @@ function showRelicText(text,color){
     SFX.relicActivate();SFX.special();
     return;
   }
-  relicText=text;relicTextTimer=120;relicTextColor=color;
+  relicText=text;relicTextTimer=150;relicTextColor=color;
   SFX.relicActivate();
+  triggerScreenFlash(color,12);triggerHitFreeze(6);
 }
 
 // ============================================================
@@ -679,9 +711,11 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     defender.speed=defender.baseSpeed+defender.berserkSpeedBoost;
   }
 
-  if(isCrit){SFX.crit();spawnBurst(defender.x,defender.y,'#ffff00',12,4);addLog((attacker.side===0?'P1':'P2')+' CRIT! '+Math.round(dmg));}
+  if(isCrit){SFX.critSlash();spawnImpact(defender.x,defender.y,'#ffff00',2);addLog((attacker.side===0?'P1':'P2')+' CRIT! '+Math.round(dmg));triggerHitFreeze(4);triggerScreenFlash('#ffff00',8);}
   spawnDmgNum(defender.x+rand(-15,15),defender.y-defender.radius-10,dmg,isCrit?'#ffff00':'#fff',isCrit);
-  spawnBurst(defender.x,defender.y,defender.char.color,4,2);
+  spawnImpact(defender.x,defender.y,attacker.char.color,dmg>30?1.5:0.8);
+  addCombo(attacker.side);
+  trackDamageBar(defender,defender.hp+dmg);
 
   if(attacker.side===0){battleStats.p1Hits++;battleStats.p1Dmg+=dmg;if(isCrit)battleStats.p1Crits++;}
   else{battleStats.p2Hits++;battleStats.p2Dmg+=dmg;if(isCrit)battleStats.p2Crits++;}
@@ -689,10 +723,22 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   attacker.specialBar=Math.min(attacker.specialMax,attacker.specialBar+(6+Math.random()*2)*(attacker.char.relicChargeRate||1));
   defender.specialBar=Math.min(defender.specialMax,defender.specialBar+(2+Math.random())*(defender.char.relicChargeRate||1));
 
-  if(dmg>20){shakeTimer=Math.max(shakeTimer,6);shakeAmt=Math.max(shakeAmt,dmg>40?6:3);}
+  if(dmg>20){shakeTimer=Math.max(shakeTimer,6);shakeAmt=Math.max(shakeAmt,dmg>40?8:4);}
+  if(dmg>50){SFX.heavyHit();triggerHitFreeze(3);triggerScreenFlash(attacker.char.color,6);}
+  if(dmg>80){triggerHitFreeze(5);triggerScreenFlash('#ffffff',10);}
 
   if(defender.hp<=0){
-    defender.hp=0;defender.alive=false;defender.deathAnim=60;
+    defender.hp=0;defender.alive=false;defender.deathAnim=90;
+    // Dramatic death explosion
+    SFX.deathExplosion();
+    triggerHitFreeze(8);triggerScreenFlash('#ffffff',15);
+    shakeTimer=25;shakeAmt=16;
+    spawnImpact(defender.x,defender.y,defender.char.color,3);
+    spawnImpact(defender.x,defender.y,'#ffcc00',2);
+    // Death particle ring
+    for(let i=0;i<24;i++){const a=Math.PI*2*i/24;spawnParticle(defender.x,defender.y,defender.char.color,Math.cos(a)*6,Math.sin(a)*6,40,4);}
+    for(let i=0;i<16;i++){const a=Math.PI*2*i/16;spawnParticle(defender.x,defender.y,'#ffffff',Math.cos(a)*4,Math.sin(a)*4,25,3);}
+    explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:120,color:defender.char.color,life:30,maxLife:30,dmg:0,owner:null,target:null,hit:true});
     checkVictory(attacker);
   }
   return dmg;
@@ -1506,7 +1552,8 @@ function relicKatana(f,enemy){
     explosions.push({x:f.x,y:f.y,radius:0,maxRadius:50+r*25,color:'#ff6644',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
   }
   shakeTimer=20;shakeAmt=12;
-  addLog((f.side===0?'P1':'P2')+' KATANA RELIC — slow advance!');
+  SFX.judgementCut();
+  addLog((f.side===0?'P1':'P2')+' JUDGEMENT CUT END!');
 }
 
 function relicBerserk(f,enemy){
@@ -1523,7 +1570,8 @@ function relicBerserk(f,enemy){
     explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*25,color:'#dd2222',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
   }
   shakeTimer=25;shakeAmt=14;
-  addLog((f.side===0?'P1':'P2')+' BERSERK MODE!');
+  SFX.rebeccaFury();
+  addLog((f.side===0?'P1':'P2')+' REBECCA\'S FURY!');
 }
 
 function relicSmasher(f,enemy){
@@ -1860,7 +1908,9 @@ function updateRelicKatana(f,enemy,dt){
       if(f.katanaRushDeflects>0){
         spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'x'+mult.toFixed(1)+'!','#ffcc00',true);
       }
-      addLog((f.side===0?'P1':'P2')+' KATANA FINISH!');
+      SFX.judgementCut();
+      triggerScreenFlash('#4466cc',15);
+      addLog((f.side===0?'P1':'P2')+' JUDGEMENT CUT!');
       // Bounce away after slash
       const ka=angle(enemy,f);
       f.vx=Math.cos(ka)*8;f.vy=Math.sin(ka)*8;
@@ -1879,7 +1929,7 @@ function updateRelicBerserk(f,enemy,dt){
   if(f.specialTimer<=0){
     f.berserkInvincible=false;
     f.speed=f.baseSpeed+f.berserkSpeedBoost;
-    addLog((f.side===0?'P1':'P2')+' Berserk Mode ended');
+    addLog((f.side===0?'P1':'P2')+' Rebecca\'s Fury ended');
     spawnBurst(f.x,f.y,'#dd2222',10,4);
   }
 }
@@ -3594,13 +3644,13 @@ function drawKatanaWeapon(r,ext,flash,f){
   // Handle/tsuka — wrapped grip
   X.fillStyle='#1a1a22';X.fillRect(r-8,-5,16,10);
   X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-5,16,10);
-  // Wrapping lines
-  X.strokeStyle='#ff6644';X.lineWidth=0.8;
+  // Wrapping lines — dark blue/silver for Yamato
+  X.strokeStyle='#4466cc';X.lineWidth=0.8;
   for(let i=0;i<4;i++){X.beginPath();X.moveTo(r-6+i*4,-5);X.lineTo(r-4+i*4,5);X.stroke();}
-  // Tsuba (guard) — oval crossguard
+  // Tsuba (guard) — oval crossguard, gold accent
   X.beginPath();X.ellipse(r+8,0,4,10,0,0,Math.PI*2);
-  X.fillStyle='#444';X.fill();X.strokeStyle='#666';X.lineWidth=1;X.stroke();
-  X.fillStyle='#ff6644';X.fillRect(r+6,-1,4,2); // accent
+  X.fillStyle='#554';X.fill();X.strokeStyle='#887';X.lineWidth=1;X.stroke();
+  X.fillStyle='#ccaa44';X.fillRect(r+6,-1,4,2); // gold accent
 
   // Blade — curved katana profile, single edge
   const bx=r+12;
@@ -3628,26 +3678,26 @@ function drawKatanaWeapon(r,ext,flash,f){
   X.quadraticCurveTo(bx+bladeLen*0.5,3.5,bx+bladeLen*0.65,2);
   X.quadraticCurveTo(bx+bladeLen*0.8,3,bx+bladeLen*0.95,0.5);
   X.stroke();
-  // Cutting edge glow
-  X.strokeStyle=flash?'rgba(255,100,60,0.9)':'rgba(255,80,50,0.3)';
+  // Cutting edge glow — blue/purple Yamato energy
+  X.strokeStyle=flash?'rgba(80,100,255,0.9)':'rgba(68,102,204,0.4)';
   X.lineWidth=flash?2.5:1;
   X.beginPath();X.moveTo(bx+2,3);
   X.quadraticCurveTo(bx+bladeLen*0.3,5.5,bx+bladeLen*0.6,5);
   X.quadraticCurveTo(bx+bladeLen*0.85,3,bx+bladeLen+1,0.5);
   X.stroke();
-  if(flash){X.shadowColor='#ff6040';X.shadowBlur=8;X.stroke();X.shadowBlur=0;}
+  if(flash){X.shadowColor='#4466cc';X.shadowBlur=10;X.stroke();X.shadowBlur=0;}
 
-  // Deflect stance glow — shows katana is always ready
+  // Deflect stance glow — blue Yamato readiness
   if(f&&!f.katanaDashing&&!f.katanaRushing){
     const pulse=Math.sin(battleTime*0.08)*3;
-    X.strokeStyle='rgba(255,204,0,'+(0.15+Math.sin(battleTime*0.1)*0.1)+')';
+    X.strokeStyle='rgba(68,102,204,'+(0.2+Math.sin(battleTime*0.1)*0.1)+')';
     X.lineWidth=3+pulse*0.3;
     X.beginPath();X.arc(bx+bladeLen*0.5,0,bladeLen*0.35+pulse,Math.PI*0.7,Math.PI*1.3);X.stroke();
   }
-  // Relic rush — intense orange aura around blade
+  // Relic rush — intense blue/purple aura (Judgement Cut End)
   if(f&&f.katanaRushing){
-    X.shadowColor='#ff6644';X.shadowBlur=20;
-    X.strokeStyle='rgba(255,102,68,0.6)';X.lineWidth=4;
+    X.shadowColor='#4466cc';X.shadowBlur=25;
+    X.strokeStyle='rgba(68,102,204,0.7)';X.lineWidth=4;
     X.beginPath();X.moveTo(bx+2,3);
     X.quadraticCurveTo(bx+bladeLen*0.5,8,bx+bladeLen+2,0);
     X.stroke();X.shadowBlur=0;
@@ -3667,8 +3717,8 @@ function drawBerserkWeapon(r,ext,flash,f){
   // Arm/forearm
   X.fillStyle='#2a2a30';X.fillRect(r-8,-8,16,16);
   X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-8,16,16);
-  // Red accent
-  X.fillStyle='rgba(255,30,30,0.6)';X.fillRect(r-6,-8,12,2);X.fillRect(r-6,6,12,2);
+  // Pink accent (Rebecca's style)
+  X.fillStyle='rgba(255,85,170,0.7)';X.fillRect(r-6,-8,12,2);X.fillRect(r-6,6,12,2);
 
   // Shotgun body — blocky, double barrel
   const bx=r+6;
@@ -3686,10 +3736,10 @@ function drawBerserkWeapon(r,ext,flash,f){
   X.strokeStyle='#444';X.lineWidth=0.8;
   X.beginPath();X.arc(muzzX,-3.5,4,0,Math.PI*2);X.stroke();
   X.beginPath();X.arc(muzzX,3.5,4,0,Math.PI*2);X.stroke();
-  // Red LED strips
-  X.fillStyle=flash?'rgba(255,50,50,1)':'rgba(255,30,30,0.5)';
+  // Pink LED strips (Rebecca)
+  X.fillStyle=flash?'rgba(255,85,170,1)':'rgba(255,55,140,0.6)';
   X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);
-  if(flash){X.shadowColor='#ff2020';X.shadowBlur=8;X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);X.shadowBlur=0;}
+  if(flash){X.shadowColor='#ff55aa';X.shadowBlur=10;X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);X.shadowBlur=0;}
   // Barrel segments
   X.strokeStyle='#2a2a35';X.lineWidth=0.8;
   [0.3,0.55,0.8].forEach(p=>{X.beginPath();X.moveTo(bx+gunLen*p,-10);X.lineTo(bx+gunLen*p,10);X.stroke();});
@@ -4027,7 +4077,7 @@ function drawTitle(){
   addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
   addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamElem1=0;teamElem2=0;bossElem=0;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v6.3 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v7.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -4300,6 +4350,40 @@ function startBattle(){
   } else {
     fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
     addLog('Battle Start!');addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
+  }
+}
+
+function drawHPBar(bx,by,bw,bh,f,reverse){
+  // Background
+  X.fillStyle='#1a1a1a';X.fillRect(bx,by,bw,bh);
+  // Damage decay (white ghost bar)
+  const decays=damageBarDecay.filter(d=>d.fighter===f);
+  decays.forEach(d=>{
+    const oldR=Math.max(0,d.oldHP/f.maxHp);
+    const alpha=d.timer/30;
+    X.globalAlpha=alpha*0.6;
+    X.fillStyle='#cc4444';
+    if(reverse)X.fillRect(bx+bw*(1-oldR),by,bw*oldR,bh);
+    else X.fillRect(bx,by,bw*oldR,bh);
+    X.globalAlpha=1;
+  });
+  // Current HP
+  const r=Math.max(0,f.hp/f.maxHp);
+  const hpColor=r>0.6?'#44bb44':r>0.3?'#ccaa00':'#cc3333';
+  // Gradient HP bar
+  const hg=X.createLinearGradient(bx,by,bx,by+bh);
+  hg.addColorStop(0,lighten(hpColor,30));hg.addColorStop(0.5,hpColor);hg.addColorStop(1,darken(hpColor,20));
+  X.fillStyle=hg;
+  if(reverse)X.fillRect(bx+bw*(1-r),by,bw*r,bh);
+  else X.fillRect(bx,by,bw*r,bh);
+  // Border
+  X.strokeStyle='#666';X.lineWidth=1.5;X.strokeRect(bx,by,bw,bh);
+  // Low HP pulse
+  if(r<0.25&&r>0){
+    const pulse=Math.sin(battleTime*0.15)*0.3+0.3;
+    X.fillStyle='rgba(255,50,50,'+pulse+')';
+    if(reverse)X.fillRect(bx+bw*(1-r),by,bw*r,bh);
+    else X.fillRect(bx,by,bw*r,bh);
   }
 }
 
@@ -4586,18 +4670,45 @@ function drawBattle(){
   // Damage numbers
   dmgNums.forEach(d=>{const a=Math.max(0,d.life/50);X.globalAlpha=a;X.font=(d.isCrit?'bold 18':'bold 14')+'px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle=d.color;X.shadowColor=d.color;X.shadowBlur=d.isCrit?8:0;X.fillText(d.val,d.x,d.y);X.shadowBlur=0;X.globalAlpha=1;});
 
-  // Death anim
-  fighters.forEach(f=>{if(!f.alive&&f.deathAnim>0){f.deathAnim-=battleSpeed;if(f.deathAnim%5<2)spawnBurst(f.x+rand(-20,20),f.y+rand(-20,20),f.char.color,3,3);}});
+  // Death anim — continuous particle shower
+  fighters.forEach(f=>{if(!f.alive&&f.deathAnim>0){
+    f.deathAnim-=battleSpeed;
+    if(f.deathAnim%3<2){
+      spawnBurst(f.x+rand(-30,30),f.y+rand(-30,30),f.char.color,4,4);
+      spawnParticle(f.x+rand(-20,20),f.y+rand(-20,20),pick(['#ffcc00','#ffffff',f.char.color]),rand(-3,3),rand(-4,-1),20,3);
+    }
+    // Expanding fade ring
+    if(f.deathAnim>60){
+      const ringR=(90-f.deathAnim)*3;
+      X.globalAlpha=(f.deathAnim-60)/30*0.3;
+      X.beginPath();X.arc(f.x,f.y,ringR,0,Math.PI*2);
+      X.strokeStyle=f.char.color;X.lineWidth=4;X.stroke();
+      X.globalAlpha=1;
+    }
+  }});
 
-  // Relic activation text
+  // Relic activation text — BIG dramatic display
   if(relicTextTimer>0){
-    const a=Math.min(1,relicTextTimer/30);
+    const a=Math.min(1,relicTextTimer/40);
     X.globalAlpha=a;
-    X.font='bold '+(isMobile?'18':'24')+'px Consolas,Courier New,monospace';
+    // Background darkening stripe
+    X.fillStyle='rgba(0,0,0,'+a*0.5+')';
+    X.fillRect(0,ARENA.y+ARENA.h/2-30,W,60);
+    // Main text — large
+    X.font='bold '+(isMobile?'22':'32')+'px Consolas,Courier New,monospace';
     X.textAlign='center';X.textBaseline='middle';
-    X.shadowColor=relicTextColor;X.shadowBlur=15;
+    X.shadowColor=relicTextColor;X.shadowBlur=25;
     X.fillStyle=relicTextColor;
     X.fillText(relicText,W/2,ARENA.y+ARENA.h/2);
+    // Outline text for readability
+    X.strokeStyle='#000';X.lineWidth=3;
+    X.strokeText(relicText,W/2,ARENA.y+ARENA.h/2);
+    X.fillText(relicText,W/2,ARENA.y+ARENA.h/2);
+    // Accent lines
+    const lw=isMobile?80:150;
+    X.strokeStyle=relicTextColor;X.lineWidth=2;X.globalAlpha=a*0.6;
+    X.beginPath();X.moveTo(W/2-lw,ARENA.y+ARENA.h/2+18);X.lineTo(W/2+lw,ARENA.y+ARENA.h/2+18);X.stroke();
+    X.beginPath();X.moveTo(W/2-lw,ARENA.y+ARENA.h/2-18);X.lineTo(W/2+lw,ARENA.y+ARENA.h/2-18);X.stroke();
     X.shadowBlur=0;X.globalAlpha=1;
   }
 
@@ -4624,7 +4735,34 @@ function drawBattle(){
     }
   }
 
+  // Screen flash overlay
+  if(screenFlashTimer>0){
+    const fa=screenFlashTimer/15;
+    X.globalAlpha=Math.min(0.4,fa*0.4);
+    X.fillStyle=screenFlashColor||'#ffffff';
+    X.fillRect(0,0,W,H);
+    X.globalAlpha=1;
+  }
+
   X.restore();
+
+  // Combo counter display
+  Object.keys(comboCounter).forEach(side=>{
+    const cc=comboCounter[side];
+    if(cc.count>=3){
+      const cx=side==='0'?(isMobile?60:100):(isMobile?W-60:W-100);
+      const cy=ARENA.y+40;
+      const scale=Math.min(1,cc.timer/60);
+      X.globalAlpha=scale;
+      X.font='bold '+(isMobile?'16':'22')+'px Consolas,monospace';
+      X.textAlign='center';
+      X.fillStyle=cc.count>=10?'#ff4444':cc.count>=5?'#ffcc00':'#ffffff';
+      X.shadowColor=X.fillStyle;X.shadowBlur=10;
+      X.fillText(cc.count+' HIT',cx,cy);
+      if(cc.count>=5){X.font='bold '+(isMobile?'10':'13')+'px Consolas,monospace';X.fillStyle='#ffaa00';X.fillText('COMBO!',cx,cy+18);}
+      X.shadowBlur=0;X.globalAlpha=1;
+    }
+  });
 
   // Berserk+Sandy simultaneous ult: half screen red + half screen blue
   {
@@ -4676,19 +4814,16 @@ function drawBattle(){
   } else {
     const barW=isMobile?150:300;
     const p1bx=isMobile?10:40;
-    X.fillStyle='#222';X.fillRect(p1bx,barY,barW,barH);
-    const p1r=Math.max(0,f1.hp/f1.maxHp);
-    X.fillStyle=p1r>0.6?'#44bb44':p1r>0.3?'#ccaa00':'#cc3333';
-    X.fillRect(p1bx,barY,barW*p1r,barH);X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(p1bx,barY,barW,barH);
+    // P1 HP bar with damage decay
+    drawHPBar(p1bx,barY,barW,barH,f1,false);
     X.font='bold 11px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(f1.hp)+'/'+f1.maxHp,p1bx+4,barY+12);
+    // P1 name + mini weapon icon
     X.fillStyle=f1.char.color;X.fillText(f1.char.name,p1bx,barY-3);
     if(f1.elem.id!=='none'){X.fillStyle=f1.elementActive?f1.elem.color:f1.elem.color+'66';X.fillText('['+f1.elem.name+']',p1bx+barW-60,barY-3);}
 
     const p2bx=isMobile?W-10-barW:W-40-barW;
-    X.fillStyle='#222';X.fillRect(p2bx,barY,barW,barH);
-    const p2r=Math.max(0,f2.hp/f2.maxHp);
-    X.fillStyle=p2r>0.6?'#44bb44':p2r>0.3?'#ccaa00':'#cc3333';
-    X.fillRect(p2bx+barW*(1-p2r),barY,barW*p2r,barH);X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(p2bx,barY,barW,barH);
+    // P2 HP bar with damage decay
+    drawHPBar(p2bx,barY,barW,barH,f2,true);
     X.font='bold 11px Consolas,monospace';X.textAlign='right';X.fillStyle='#fff';X.fillText(Math.ceil(f2.hp)+'/'+f2.maxHp,p2bx+barW-4,barY+12);
     X.fillStyle=f2.char.color;X.fillText(f2.char.name,p2bx+barW,barY-3);
     if(f2.elem.id!=='none'){X.fillStyle=f2.elementActive?f2.elem.color:f2.elem.color+'66';X.textAlign='left';X.fillText('['+f2.elem.name+']',p2bx,barY-3);}
@@ -4737,12 +4872,20 @@ function drawBattle(){
     X.fillStyle='rgba(200,200,200,'+(1-i*0.2)+')';X.fillText(battleLog[i],ARENA.x+8,logY+10+i*12);
   }
 
-  // Victory overlay
+  // Victory overlay — dramatic
   if(battleOver&&winner){
-    if(Math.random()<0.3)spawnBurst(winner.x+rand(-30,30),winner.y+rand(-30,30),winner.char.color,3,4);
-    X.save();X.font='bold '+(isMobile?'24':'36')+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-    X.shadowColor=winner.char.color;X.shadowBlur=20;X.fillStyle=winner.char.color;
-    X.fillText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);X.shadowBlur=0;
+    if(Math.random()<0.4)spawnBurst(winner.x+rand(-40,40),winner.y+rand(-40,40),winner.char.color,4,5);
+    if(Math.random()<0.15)spawnBurst(rand(ARENA.x,ARENA.x+ARENA.w),rand(ARENA.y,ARENA.y+ARENA.h),pick(['#ffcc00','#ffffff',winner.char.color]),6,4);
+    X.save();
+    // Dark overlay
+    X.fillStyle='rgba(0,0,0,0.4)';X.fillRect(0,ARENA.y,W,ARENA.h);
+    // Winner text
+    X.font='bold '+(isMobile?'28':'42')+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
+    X.shadowColor=winner.char.color;X.shadowBlur=30;X.fillStyle=winner.char.color;
+    X.fillText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
+    X.strokeStyle='#000';X.lineWidth=3;X.strokeText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
+    X.fillText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
+    X.shadowBlur=0;
     addBtn('result',W/2-80,ARENA.y+ARENA.h/2+10,160,40,'Continue','#7b68ee',()=>{screen='result';});
     X.restore();
   }
@@ -4937,7 +5080,16 @@ function loop(time){
     case 'title':drawTitle();break;
     case 'select':drawSelect();break;
     case 'bossSelect':drawBossSelect();break;
-    case 'battle':for(let i=0;i<battleSpeed;i++)updateBattle(1);battleRealFrames++;drawBattle();break;
+    case 'battle':
+      if(hitFreezeTimer>0){hitFreezeTimer--;} else {for(let i=0;i<battleSpeed;i++)updateBattle(1);}
+      battleRealFrames++;drawBattle();
+      // Combo timer decay
+      Object.keys(comboCounter).forEach(s=>{if(comboCounter[s].timer>0){comboCounter[s].timer--;if(comboCounter[s].timer<=0)comboCounter[s].count=0;}});
+      // Damage bar decay
+      for(let i=damageBarDecay.length-1;i>=0;i--){damageBarDecay[i].timer--;if(damageBarDecay[i].timer<=0)damageBarDecay.splice(i,1);}
+      // Screen flash decay
+      if(screenFlashTimer>0)screenFlashTimer--;
+      break;
     case 'result':drawResult();break;
   }
   X.restore();
