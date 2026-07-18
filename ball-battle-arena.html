@@ -19,7 +19,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.1 — PC/Mobile Parity, Adaptive Roster, Victory/Defeat Polish
+// BALL BATTLE ARENA v7.2 — Gojo Boss, Smasher Gatling Gun, Boss Selection
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -111,6 +111,16 @@ const SFX={
   rebeccaFury(){this._tone(80,0.15,'sine',0.35);this._tone(160,0.1,'sine',0.25,0.02);this._noise(0.12,0.2);[300,500,700].forEach((f,i)=>this._tone(f,0.08,'square',0.15,0.05+i*0.04))},
   comboHit(){this._tone(500,0.04,'sine',0.12);this._tone(700,0.03,'triangle',0.1,0.02)},
   deathExplosion(){this._tone(40,0.6,'sine',0.45);this._tone(80,0.4,'sine',0.35,0.05);this._noise(0.4,0.3);[120,200,300].forEach((f,i)=>this._tone(f,0.2,'sawtooth',0.15,0.1+i*0.08))},
+  // Gojo — Red (repulsion) blast
+  gojoRed(){this._tone(300,0.15,'sine',0.25);this._tone(150,0.2,'sine',0.2,0.03);this._noise(0.1,0.15);this._tone(500,0.08,'square',0.1,0.06)},
+  // Gojo — Blue (attraction) pull
+  gojoBlue(){this._tone(800,0.12,'sine',0.2);this._tone(600,0.15,'triangle',0.18,0.04);this._tone(1000,0.08,'sine',0.12,0.08)},
+  // Gojo — Hollow Purple beam
+  gojoPurple(){this._tone(200,0.3,'sawtooth',0.3);this._tone(400,0.25,'sine',0.25,0.05);this._tone(100,0.35,'sine',0.2,0.1);this._noise(0.25,0.2);[600,800,1000].forEach((f,i)=>this._tone(f,0.1,'square',0.12,0.15+i*0.04))},
+  // Gojo — Domain Expansion activation
+  gojoDomain(){[200,400,600,800,1000,1200].forEach((f,i)=>this._tone(f,0.25,'sine',0.2,i*0.08));this._noise(0.3,0.15);this._tone(100,0.5,'sine',0.3,0.5)},
+  // Gojo — Revival float up
+  gojoRevive(){this._tone(400,0.2,'sine',0.2);this._tone(600,0.2,'sine',0.18,0.15);this._tone(800,0.2,'sine',0.15,0.3);this._tone(1000,0.3,'sine',0.2,0.45);this._tone(1200,0.2,'triangle',0.15,0.6)},
 };
 
 // ============================================================
@@ -249,6 +259,10 @@ const COMBO_EFFECTS={
   'smasher_electric':'Shorter rocket + landing delays',
   'smasher_toxic':'Rapid hits within 0.75s = 50% bonus',
   'smasher_cryo':'Ice shrapnel after explosions',
+  'gojo_fire':'Red & Blue effects amplified (bigger radius)',
+  'gojo_electric':'Attacks charge much faster, less damage',
+  'gojo_toxic':'Attacks charge slower, more damage',
+  'gojo_cryo':'Purple activates more often, charges faster',
 };
 
 // ============================================================
@@ -300,7 +314,7 @@ let screenFlashColor='';let screenFlashTimer=0; // full-screen flash on impacts
 let damageBarDecay=[]; // {fighter, oldHP, timer} — white bar that drops after damage
 let comboCounter={}; // {side: {count, timer}} — hit combo display
 let gameMode='1v1'; // '1v1' or 'boss'
-let bossChar=0; // index of boss char for boss mode p1/p2 team select
+let bossChar=CHARS.findIndex(c=>c.id==='smasher'); // selected boss for boss mode
 let teamChar1=0,teamChar2=1; // team chars for boss mode
 let teamElem1=0,teamElem2=0,bossElem=0; // elements
 
@@ -389,6 +403,8 @@ function getAttackInterval(f){
   if(f.char.id==='katana')return Math.max(20,base/(1+chaos*0.1));
   // Berserk: fixed interval like PLS — scaling affects pellets/spread, not fire rate
   if(f.char.id==='berserk')return base;
+  // Gojo: chaos = faster attack charge (his main scaling)
+  if(f.char.id==='gojo')return Math.max(15,base/(1+chaos*0.4));
   return Math.max(4, base/(1+chaos*0.5));
 }
 
@@ -494,6 +510,25 @@ function createFighter(charIdx,elemIdx,side){
     smasherSlamWarning:0, // warning display timer
     smasherLastHitTime:0, // for toxic rapid-hit tracking
     smasherRapidHitCount:0, // toxic double damage counter
+    // Gojo state
+    gojoInfinityCharges:ch.id==='gojo'?9:0, // absorbs 9 hits before breaking
+    gojoInfinityMax:9,
+    gojoInfinityRegenCD:0, // regen timer
+    gojoAttackMode:'red', // alternates 'red' and 'blue'
+    gojoSpinTarget:null, // target being spun around gojo
+    gojoSpinAngle:0, // current spin angle
+    gojoSpinTimer:0, // how long they've been spinning
+    gojoAwakened:false, // enters awakened state after first death
+    gojoRevived:false, // has already revived once
+    gojoReviveTimer:0, // revival animation timer
+    gojoReviving:false, // currently in revival animation
+    gojoDomainActive:false, // domain expansion active
+    gojoDomainTimer:0, // domain duration
+    gojoDomainChargeTimer:0, // charging purple during domain
+    gojoDomainBg:false, // show void background
+    gojoPurpleChance:0, // chance for 200% purple on normal attacks (awakened)
+    _gojoPurpleWarning:0, // relic warning timer
+    _gojoPurpleAngle:0, // relic aim direction
   };
 }
 
@@ -645,6 +680,21 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     spawnBurst(defender.x,defender.y,'#4488ff',8,4);
     return 0;
   }
+  // Gojo Infinity — absorbs attacks, deals 0 damage. Specials bypass.
+  if(defender.char.id==='gojo'&&defender.gojoInfinityCharges>0
+    &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
+    &&!(attacker.specialActive)){
+    defender.gojoInfinityCharges--;
+    spawnDmgNum(defender.x,defender.y-defender.radius-15,'INFINITY','#8888ff',true);
+    spawnBurst(defender.x,defender.y,'#8888ff',10,4);
+    spawnBurst(defender.x,defender.y,'#ffffff',5,2);
+    // Attacks slow down and deflect away visually
+    const ka=angle(defender,attacker);
+    attacker.vx+=Math.cos(ka)*3;attacker.vy+=Math.sin(ka)*3;
+    defender.specialBar=Math.min(defender.specialMax,defender.specialBar+3*(defender.char.relicChargeRate||1));
+    return 0;
+  }
+
   // Katana deflect — deflects from ALL directions. Only specials bypass.
   // No deflect during counter-dash (unless relic rushing). After counter-dash: 1s of 80% dmg reduction.
   if(defender.char.id==='katana'
@@ -738,6 +788,19 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(dmg>80){triggerHitFreeze(5);triggerScreenFlash('#ffffff',10);}
 
   if(defender.hp<=0){
+    // Gojo revival — first death triggers awakened state
+    if(defender.char.id==='gojo'&&!defender.gojoRevived){
+      defender.hp=1;defender.gojoRevived=true;defender.gojoReviving=true;defender.gojoReviveTimer=120;
+      defender.stunTimer=0;defender.freezeTimer=0;defender.captureTimer=0;
+      SFX.gojoRevive();
+      showRelicText('I ALONE AM THE HONOURED ONE',defender.char.color);
+      spawnBurst(defender.x,defender.y,'#8888ff',40,10);
+      spawnBurst(defender.x,defender.y,'#ffffff',25,7);
+      for(let r=0;r<3;r++){explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:60+r*25,color:'#5577ff',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});}
+      shakeTimer=25;shakeAmt=14;triggerScreenFlash('#5577ff',15);
+      addLog('GOJO REVIVES!');
+      return dmg;
+    }
     defender.hp=0;defender.alive=false;defender.deathAnim=90;
     // Dramatic death explosion
     SFX.deathExplosion();
@@ -783,7 +846,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -812,6 +875,7 @@ function performWeaponAttack(f,enemy){
     case 'katana':attackKatana(f,enemy,chaos);break;
     case 'berserk':attackBerserk(f,enemy,chaos);break;
     case 'smasher':attackSmasher(f,enemy,chaos);break;
+    case 'gojo':attackGojo(f,enemy,chaos);break;
   }
 }
 
@@ -1097,6 +1161,104 @@ function attackSmasher(f,enemy,chaos){
   f.weaponExtend=0.5;
   // Warning sound
   SFX.warning();
+}
+
+function attackGojo(f,enemy,chaos){
+  // Gojo alternates Red (repulsion) and Blue (attraction)
+  // Element modifiers
+  let chargeMult=1,dmgMult=1,radiusMult=1;
+  if(f.elementActive){
+    if(f.elem.id==='fire')radiusMult=1.5;
+    if(f.elem.id==='electric'){chargeMult=0.6;dmgMult=0.7;}
+    if(f.elem.id==='toxic'){chargeMult=1.4;dmgMult=1.4;}
+    if(f.elem.id==='cryo'){}// handled in purple chance below
+  }
+  const d=dist(f,enemy);
+  // Awakened: chance for 200% Purple on normal attacks
+  let purpleChance=f.gojoAwakened?0.15:0;
+  if(f.elementActive&&f.elem.id==='cryo')purpleChance+=0.1;
+  if(purpleChance>0&&Math.random()<purpleChance){
+    // 200% Purple — fires a beam
+    SFX.gojoPurple();
+    const ba=angle(f,enemy);
+    const beamDmg=f.atk*2*dmgMult;
+    projectiles.push({
+      x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+      vx:Math.cos(ba)*10,vy:Math.sin(ba)*10,
+      owner:f,target:null,color:'#9944ff',
+      life:60,radius:14,dmg:beamDmg,
+      explosive:false,homing:false,isGojoPurple:true,
+    });
+    spawnBurst(f.x,f.y,'#9944ff',20,6);
+    spawnBurst(f.x,f.y,'#cc88ff',12,4);
+    spawnDmgNum(f.x,f.y-f.radius-25,'PURPLE!','#9944ff',true);
+    shakeTimer=10;shakeAmt=6;
+    f.gojoAttackMode='red';
+    return;
+  }
+  if(f.gojoAttackMode==='red'){
+    // RED — Reversal: close-range repulsion blast, knocks enemies back
+    SFX.gojoRed();
+    const effectRange=(120+chaos*8)*radiusMult;
+    f.weaponFlash=12;
+    // Red burst visual
+    spawnBurst(f.x,f.y,'#ff4444',18,6);
+    spawnBurst(f.x,f.y,'#ff8866',12,4);
+    // Damage + knockback all enemies in range
+    fighters.forEach(e=>{
+      if(e.side===f.side||!e.alive)return;
+      const ed=dist(f,e);
+      if(ed<effectRange){
+        const redDmg=f.atk*(0.8+chaos*0.1)*dmgMult;
+        dealDamage(f,e,redDmg);
+        // Knockback
+        const ka=angle(f,e);
+        const kb=6+chaos*0.5;
+        e.vx+=Math.cos(ka)*kb;e.vy+=Math.sin(ka)*kb;
+        spawnBurst(e.x,e.y,'#ff4444',8,3);
+      }
+    });
+    // Visual: expanding red ring
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:effectRange,color:'#ff4444',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
+    shakeTimer=6;shakeAmt=4;
+    f.gojoAttackMode='blue';
+  } else {
+    // BLUE — Lapse: pulls enemies toward Gojo
+    SFX.gojoBlue();
+    const pullRange=(160+chaos*10)*radiusMult;
+    f.weaponFlash=12;
+    spawnBurst(f.x,f.y,'#4488ff',18,6);
+    spawnBurst(f.x,f.y,'#6688cc',12,4);
+    fighters.forEach(e=>{
+      if(e.side===f.side||!e.alive)return;
+      const ed=dist(f,e);
+      if(ed<pullRange){
+        const blueDmg=f.atk*(0.5+chaos*0.08)*dmgMult;
+        dealDamage(f,e,blueDmg);
+        // Pull toward Gojo
+        const pa=angle(e,f);
+        const ps=5+chaos*0.4;
+        e.vx+=Math.cos(pa)*ps;e.vy+=Math.sin(pa)*ps;
+        spawnBurst(e.x,e.y,'#4488ff',6,3);
+        // If pulled to center (very close), start spinning
+        if(ed<f.radius+e.radius+20&&!f.gojoSpinTarget){
+          f.gojoSpinTarget=e;
+          f.gojoSpinAngle=angle(f,e);
+          f.gojoSpinTimer=90; // 1.5 seconds of spinning
+          addLog('GOJO SPIN!');
+        }
+      }
+    });
+    // Visual: blue pull ring (inward particles)
+    for(let i=0;i<16;i++){
+      const pa=Math.PI*2*i/16;
+      const pr=pullRange*0.8;
+      spawnParticle(f.x+Math.cos(pa)*pr,f.y+Math.sin(pa)*pr,'#4488ff',
+        Math.cos(pa+Math.PI)*4,Math.sin(pa+Math.PI)*4,18,3);
+    }
+    shakeTimer=5;shakeAmt=3;
+    f.gojoAttackMode='red';
+  }
 }
 
 // ============================================================
@@ -1443,6 +1605,7 @@ function useSpecial(f,enemy){
     case 'katana':relicKatana(f,enemy);break;
     case 'berserk':relicBerserk(f,enemy);break;
     case 'smasher':relicSmasher(f,enemy);break;
+    case 'gojo':relicGojo(f,enemy);break;
   }
 }
 
@@ -1584,6 +1747,45 @@ function relicBerserk(f,enemy){
   shakeTimer=25;shakeAmt=14;
   SFX.rebeccaFury();
   addLog((f.side===0?'P1':'P2')+' Relic Activated!');
+}
+
+function relicGojo(f,enemy){
+  if(f.gojoAwakened&&!f.gojoDomainActive){
+    // Awakened Relic: DOMAIN EXPANSION — INFINITE VOID
+    // "NAH I'D WIN" → freeze all, void background, charge purple, fire
+    f.specialTimer=360; // ~6 seconds
+    f.gojoDomainActive=true;
+    f.gojoDomainTimer=360;
+    f.gojoDomainChargeTimer=240; // charge for 4 sec, then fires
+    f.gojoDomainBg=true;
+    showRelicText('NAH I\'D WIN',f.char.color);
+    SFX.gojoDomain();
+    // Freeze ALL other fighters
+    fighters.forEach(other=>{
+      if(other&&other!==f){
+        other.stunTimer=300; // frozen during domain
+        other.sandyTimeScale=0.05; // nearly stopped
+      }
+    });
+    spawnBurst(f.x,f.y,'#5577ff',60,15);
+    spawnBurst(f.x,f.y,'#ffffff',40,10);
+    spawnBurst(f.x,f.y,'#9944ff',30,8);
+    for(let r=0;r<4;r++){explosions.push({x:f.x,y:f.y,radius:0,maxRadius:80+r*30,color:'#5577ff',life:25,maxLife:25,dmg:0,owner:null,target:null,hit:true});}
+    shakeTimer=30;shakeAmt=18;
+    triggerScreenFlash('#5577ff',20);
+    addLog('DOMAIN EXPANSION: INFINITE VOID!');
+  } else {
+    // Normal Relic: Hollow Purple — warning line, then thick straight beam
+    f.specialTimer=180;
+    f._gojoPurpleWarning=50; // 50 frame warning before firing
+    f._gojoPurpleAngle=angle(f,enemy);
+    SFX.warning();
+    spawnBurst(f.x,f.y,'#9944ff',15,5);
+    spawnBurst(f.x,f.y,'#ff4444',10,4);
+    spawnBurst(f.x,f.y,'#4488ff',10,4);
+    shakeTimer=10;shakeAmt=6;
+    addLog((f.side===0?'P1':'P2')+' HOLLOW PURPLE CHARGING!');
+  }
 }
 
 function relicSmasher(f,enemy){
@@ -1946,6 +2148,100 @@ function updateRelicBerserk(f,enemy,dt){
   }
 }
 
+function updateRelicGojo(f,enemy,dt){
+  // Normal relic: Hollow Purple warning → fire
+  if(f._gojoPurpleWarning>0){
+    f._gojoPurpleWarning-=dt;
+    f.vx=0;f.vy=0; // freeze during charge
+    // Warning line particles
+    if(battleTime%3<1){
+      const wa=f._gojoPurpleAngle;
+      spawnParticle(f.x+Math.cos(wa)*f.radius,f.y+Math.sin(wa)*f.radius,'#9944ff',Math.cos(wa)*2,Math.sin(wa)*2,10,2);
+    }
+    if(f._gojoPurpleWarning<=0){
+      // FIRE Hollow Purple
+      const ba=f._gojoPurpleAngle;
+      SFX.gojoPurple();
+      const beamDmg=f.atk*3.5;
+      for(let i=-1;i<=1;i++){
+        const spreadAngle=ba+i*0.08;
+        projectiles.push({
+          x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+          vx:Math.cos(spreadAngle)*12,vy:Math.sin(spreadAngle)*12,
+          owner:f,target:null,color:'#9944ff',
+          life:80,radius:16,dmg:beamDmg,
+          explosive:false,homing:false,isGojoPurple:true,
+        });
+      }
+      spawnBurst(f.x,f.y,'#9944ff',35,10);
+      spawnBurst(f.x,f.y,'#ff4444',20,7);
+      spawnBurst(f.x,f.y,'#4488ff',20,7);
+      shakeTimer=20;shakeAmt=12;
+      triggerScreenFlash('#9944ff',12);triggerHitFreeze(6);
+      addLog('HOLLOW PURPLE!');
+    }
+  }
+  if(f.gojoDomainActive){
+    // Domain Expansion: Infinite Void
+    f.gojoDomainTimer-=dt;
+    f.gojoDomainChargeTimer-=dt;
+    // Keep all fighters frozen during domain
+    fighters.forEach(other=>{
+      if(other&&other!==f&&other.alive){
+        other.stunTimer=Math.max(other.stunTimer,20);
+        other.sandyTimeScale=0.05;
+      }
+    });
+    // Gojo floats and charges
+    f.vx=0;f.vy=0;
+    // Charging particles
+    if(battleTime%3<1){
+      const pa=Math.random()*Math.PI*2;
+      const pd=80+Math.random()*60;
+      spawnParticle(f.x+Math.cos(pa)*pd,f.y+Math.sin(pa)*pd,'#9944ff',
+        Math.cos(pa+Math.PI)*3,Math.sin(pa+Math.PI)*3,20,3);
+    }
+    // Geometric shapes in background (drawn in drawBattle)
+    // Fire Purple when charge done
+    if(f.gojoDomainChargeTimer<=0&&f.gojoDomainChargeTimer>-10){
+      // Massive Hollow Purple beam at all enemies
+      SFX.gojoPurple();SFX.megaExplosion();
+      fighters.forEach(e=>{
+        if(e.side===f.side||!e.alive)return;
+        const ba=angle(f,e);
+        const beamDmg=f.atk*4;
+        for(let i=-1;i<=1;i++){
+          projectiles.push({
+            x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+            vx:Math.cos(ba+i*0.06)*14,vy:Math.sin(ba+i*0.06)*14,
+            owner:f,target:null,color:'#9944ff',
+            life:80,radius:18,dmg:beamDmg,
+            explosive:false,homing:false,isGojoPurple:true,
+          });
+        }
+        spawnBurst(f.x,f.y,'#9944ff',40,12);
+      });
+      shakeTimer=25;shakeAmt=16;
+      triggerScreenFlash('#9944ff',15);triggerHitFreeze(8);
+      addLog('INFINITE VOID PURPLE!');
+    }
+    // End domain
+    if(f.gojoDomainTimer<=0){
+      f.gojoDomainActive=false;
+      f.gojoDomainBg=false;
+      // Unfreeze all
+      fighters.forEach(other=>{
+        if(other&&other!==f){
+          other.stunTimer=Math.min(other.stunTimer,10);
+          other.sandyTimeScale=1;
+        }
+      });
+      addLog('Domain collapsed');
+      spawnBurst(f.x,f.y,'#5577ff',15,5);
+    }
+  }
+}
+
 function updateRelicSmasher(f,enemy,dt){
   // Phase 1: Sandevistan-like speed boost (first ~5 sec) — multi-color afterimages
   if(!f.smasherAirborne){
@@ -2168,6 +2464,7 @@ function updateBattle(dt){
         case 'katana':updateRelicKatana(f,enemy,dt);break;
         case 'berserk':updateRelicBerserk(f,enemy,dt);break;
         case 'smasher':updateRelicSmasher(f,enemy,dt);break;
+        case 'gojo':updateRelicGojo(f,enemy,dt);break;
       }
     }
 
@@ -2297,6 +2594,30 @@ function updateBattle(dt){
         if(battleTime-f.smasherLastHitTime>45)f.smasherRapidHitCount=0;
       }
       // Triangle warning countdown → fire giant rockets when done
+      // GATLING GUN: secondary rapid-fire while charging rockets
+      if(!f._gatlingCD)f._gatlingCD=0;
+      if(f._gatlingCD>0)f._gatlingCD-=dt;
+      if(f.smasherWarning>0||(!f.specialActive&&f._gatlingCD<=0&&battleTime%25<dt)){
+        // Fire gatling bursts — small fast bullets aimed at closest enemy
+        if(f._gatlingCD<=0){
+          f._gatlingCD=12; // rapid fire rate
+          const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
+          if(enemies.length>0){
+            const target=enemies.reduce((a,b)=>dist(f,a)<dist(f,b)?a:b);
+            const ga=angle(f,target)+(Math.random()-0.5)*0.3;
+            projectiles.push({
+              x:f.x+Math.cos(ga)*f.radius,y:f.y+Math.sin(ga)*f.radius,
+              vx:Math.cos(ga)*10,vy:Math.sin(ga)*10,
+              owner:f,target:null,color:'#ffaa44',
+              life:35,radius:3,dmg:f.atk*0.3,
+              explosive:false,homing:false,isGatling:true,
+            });
+            // Small muzzle flash
+            spawnParticle(f.x+Math.cos(ga)*f.radius,f.y+Math.sin(ga)*f.radius,'#ffaa44',0,0,5,2);
+            if(battleTime%24<dt)SFX.hit(); // occasional sound
+          }
+        }
+      }
       if(f.smasherWarning>0){
         f.smasherWarning-=dt;
         f.weaponAngle=f.smasherWarningAngle; // lock aim during warning
@@ -2341,12 +2662,91 @@ function updateBattle(dt){
       }
     }
 
+    // Gojo per-frame: infinity regen, spin mechanic, revival, chaos scaling
+    if(f.char.id==='gojo'){
+      // Infinity regen — slow passive regen
+      if(f.gojoInfinityCharges<f.gojoInfinityMax){
+        f.gojoInfinityRegenCD-=dt;
+        if(f.gojoInfinityRegenCD<=0){
+          f.gojoInfinityCharges=Math.min(f.gojoInfinityMax,f.gojoInfinityCharges+1);
+          f.gojoInfinityRegenCD=f.gojoAwakened?120:180; // faster regen in awakened
+          spawnParticle(f.x+rand(-10,10),f.y+rand(-10,10),'#8888ff',0,-1,15,2);
+        }
+      }
+      // Awakened: less infinity charges
+      if(f.gojoAwakened&&f.gojoInfinityMax===9){
+        f.gojoInfinityMax=5;
+        f.gojoInfinityCharges=Math.min(f.gojoInfinityCharges,5);
+      }
+      // Spin mechanic — enemy spins around Gojo taking damage
+      if(f.gojoSpinTarget&&f.gojoSpinTarget.alive&&f.gojoSpinTimer>0){
+        const t=f.gojoSpinTarget;
+        f.gojoSpinTimer-=dt;
+        f.gojoSpinAngle+=0.12*dt; // spin speed increases slightly
+        const spinR=f.radius+t.radius+5;
+        t.x=f.x+Math.cos(f.gojoSpinAngle)*spinR;
+        t.y=f.y+Math.sin(f.gojoSpinAngle)*spinR;
+        t.vx=0;t.vy=0;
+        t.captureTimer=Math.max(t.captureTimer,5);
+        // Spin damage ticks
+        if(battleTime%8<dt){
+          const spinDmg=f.atk*0.3;
+          dealDamage(f,t,spinDmg,false);
+          spawnBurst(t.x,t.y,'#9944ff',4,2);
+        }
+        // Launch at end
+        if(f.gojoSpinTimer<=0){
+          const launchAngle=f.gojoSpinAngle;
+          const launchSpeed=12;
+          t.vx=Math.cos(launchAngle)*launchSpeed;
+          t.vy=Math.sin(launchAngle)*launchSpeed;
+          t.captureTimer=0;
+          dealDamage(f,t,f.atk*1.5,true);
+          spawnBurst(t.x,t.y,'#ff4444',15,6);
+          SFX.punch();
+          shakeTimer=10;shakeAmt=8;
+          addLog('GOJO LAUNCH!');
+          f.gojoSpinTarget=null;
+        }
+      } else {
+        f.gojoSpinTarget=null;f.gojoSpinTimer=0;
+      }
+      // Revival animation — float up, HP refill
+      if(f.gojoReviving){
+        f.gojoReviveTimer-=dt;
+        f.vx=0;f.vy=-0.5; // float up
+        f.hp=Math.min(f.maxHp,f.hp+f.maxHp/90*dt); // refill over ~1.5 sec
+        // Blue particles swirling
+        if(battleTime%2<1){
+          const pa=battleTime*0.15+Math.random()*Math.PI*2;
+          spawnParticle(f.x+Math.cos(pa)*50,f.y+Math.sin(pa)*50,'#5577ff',
+            Math.cos(pa+Math.PI)*2,Math.sin(pa+Math.PI)*2,15,3);
+        }
+        if(f.gojoReviveTimer<=0){
+          f.gojoReviving=false;
+          f.gojoAwakened=true;
+          f.hp=f.maxHp;
+          f.gojoPurpleChance=0.15;
+          // Boost stats for awakened
+          f.atk=Math.round(f.baseAtk*1.2);
+          f.speed=f.baseSpeed*1.15;
+          spawnBurst(f.x,f.y,'#5577ff',30,8);
+          spawnBurst(f.x,f.y,'#ffffff',20,6);
+          shakeTimer=15;shakeAmt=10;
+          SFX.relicActivate();
+          addLog('GOJO AWAKENED!');
+        }
+      }
+      // Chaos scaling: faster attack charge time
+    }
+
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'){
-      // Smasher: skip attacks while airborne
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'){
+      // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
+      else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
       else if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
       else if(f.attackTimer<=0){
         // PLS fires purely on interval — projectile aims toward enemy
@@ -2356,7 +2756,7 @@ function updateBattle(dt){
         if(f.char.id==='throw'&&!f.throwWeapons[f.throwActiveIdx].available){/* wait */}
         else if(f.char.id==='berserk'&&f.berserkReloadTimer>0){/* reloading */}
         else if(f.char.id==='katana'&&f.katanaDashing){/* mid counter-dash */}
-        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||isWeaponFacingEnemy(f,enemy)){
+        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -2883,6 +3283,58 @@ function drawBall(f){
     X.restore();
   }
 
+  // Gojo face — white hair, blue eyes
+  if(f.char.id==='gojo'){
+    X.save();
+    // White spiky hair on top
+    const hx=f.x,hy=f.y-f.radius*0.3;
+    X.fillStyle=f.gojoAwakened?'#eeeeff':'#ffffff';
+    // Hair spikes
+    for(let i=-3;i<=3;i++){
+      const sx=hx+i*f.radius*0.13;
+      const baseY=f.y-f.radius*0.55;
+      const tipY=baseY-f.radius*(0.35+Math.abs(i)*0.05);
+      const spikeW=f.radius*0.12;
+      X.beginPath();
+      X.moveTo(sx-spikeW,baseY);
+      X.lineTo(sx,tipY);
+      X.lineTo(sx+spikeW,baseY);
+      X.closePath();X.fill();
+    }
+    // Hair base band
+    X.beginPath();
+    X.ellipse(hx,f.y-f.radius*0.5,f.radius*0.55,f.radius*0.15,0,Math.PI,0);
+    X.fill();
+    // Blue eyes
+    const eyeGlow=f.gojoAwakened||f.specialActive;
+    X.beginPath();X.arc(f.x-f.radius*0.18,f.y-f.radius*0.1,f.radius*0.08,0,Math.PI*2);
+    X.fillStyle=eyeGlow?'#4488ff':'#3366cc';X.fill();
+    if(eyeGlow){X.shadowColor='#4488ff';X.shadowBlur=8;X.fill();X.shadowBlur=0;}
+    X.beginPath();X.arc(f.x+f.radius*0.18,f.y-f.radius*0.1,f.radius*0.08,0,Math.PI*2);
+    X.fillStyle=eyeGlow?'#4488ff':'#3366cc';X.fill();
+    if(eyeGlow){X.shadowColor='#4488ff';X.shadowBlur=8;X.fill();X.shadowBlur=0;}
+    // Slight smile
+    X.strokeStyle='#aaa';X.lineWidth=1;
+    X.beginPath();X.arc(f.x,f.y+f.radius*0.1,f.radius*0.15,0.1,Math.PI-0.1);X.stroke();
+    // Infinity aura
+    if(f.gojoInfinityCharges>0){
+      const pulse=Math.sin(battleTime*0.08)*3;
+      X.beginPath();X.arc(f.x,f.y,f.radius+4+pulse,0,Math.PI*2);
+      const ig=X.createRadialGradient(f.x,f.y,f.radius,f.x,f.y,f.radius+8+pulse);
+      ig.addColorStop(0,'rgba(100,120,255,0.3)');ig.addColorStop(1,'rgba(100,120,255,0)');
+      X.fillStyle=ig;X.fill();
+    }
+    // Awakened glow
+    if(f.gojoAwakened){
+      const pulse=Math.sin(battleTime*0.1)*5;
+      X.beginPath();X.arc(f.x,f.y,f.radius+8+pulse,0,Math.PI*2);
+      const ag=X.createRadialGradient(f.x,f.y,f.radius,f.x,f.y,f.radius+12+pulse);
+      ag.addColorStop(0,'rgba(80,100,255,0.25)');ag.addColorStop(1,'rgba(150,70,255,0)');
+      X.fillStyle=ag;X.fill();
+    }
+    X.restore();
+  }
+
   // HP text in center
   X.font='bold 13px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
   X.strokeStyle='#000';X.lineWidth=3;
@@ -2921,6 +3373,47 @@ function drawBall(f){
     X.font='bold 16px Consolas,monospace';X.fillStyle='#ff4444';X.textAlign='center';
     X.fillText('!',f.x+Math.cos(wa)*50,f.y+Math.sin(wa)*50);
     X.restore();
+  }
+
+  // Gojo Hollow Purple warning line
+  if(f.char.id==='gojo'&&f._gojoPurpleWarning>0){
+    const wa=f._gojoPurpleAngle;
+    const lineLen=500;
+    const flashAlpha=0.2+Math.sin(battleTime*0.4)*0.15;
+    X.save();
+    // Thick purple warning line
+    X.globalAlpha=flashAlpha;
+    X.strokeStyle='#9944ff';X.lineWidth=20;
+    X.beginPath();X.moveTo(f.x,f.y);
+    X.lineTo(f.x+Math.cos(wa)*lineLen,f.y+Math.sin(wa)*lineLen);X.stroke();
+    // Inner bright line
+    X.globalAlpha=flashAlpha+0.2;
+    X.strokeStyle='#cc88ff';X.lineWidth=6;
+    X.beginPath();X.moveTo(f.x,f.y);
+    X.lineTo(f.x+Math.cos(wa)*lineLen,f.y+Math.sin(wa)*lineLen);X.stroke();
+    // Warning text
+    X.globalAlpha=1;
+    X.font='bold 14px Consolas,monospace';X.fillStyle='#9944ff';X.textAlign='center';
+    X.fillText('HOLLOW PURPLE',f.x+Math.cos(wa)*70,f.y+Math.sin(wa)*70-15);
+    X.restore();
+  }
+  // Gojo Domain Expansion charging visual
+  if(f.char.id==='gojo'&&f.gojoDomainActive&&f.gojoDomainChargeTimer>0){
+    X.save();
+    const pulse=Math.sin(battleTime*0.15)*5;
+    X.beginPath();X.arc(f.x,f.y,60+pulse,0,Math.PI*2);
+    X.strokeStyle='rgba(150,100,255,0.5)';X.lineWidth=3;X.stroke();
+    const chargeR=1-f.gojoDomainChargeTimer/240;
+    X.font='bold 12px Consolas,monospace';X.fillStyle='#cc88ff';X.textAlign='center';
+    X.fillText(Math.round(chargeR*100)+'%',f.x,f.y-f.radius-20);
+    X.restore();
+  }
+  // Gojo Infinity shield display
+  if(f.char.id==='gojo'&&f.gojoInfinityCharges>0&&!f.gojoReviving){
+    const infY=f.y+f.radius+20;
+    X.font='bold 7px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#8888ff';
+    X.fillText('INF '+f.gojoInfinityCharges+'/'+f.gojoInfinityMax,f.x,infY);
   }
 
   // Bleed icon
@@ -2989,6 +3482,11 @@ function drawBall(f){
       const rocketDmg=Math.round(f.atk*(1.8+chaos*0.2));
       X.fillText('RKT:'+rocketDmg+' BOSS',f.x,statY);
       break;}
+    case 'gojo':{
+      const infTxt=f.gojoInfinityCharges+'/'+f.gojoInfinityMax;
+      const state=f.gojoAwakened?'AWK':'BOSS';
+      X.fillText('INF:'+infTxt+' '+state,f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -3017,8 +3515,65 @@ function drawWeapon(f){
     case 'katana':drawKatanaWeapon(r,ext,flash,f);break;
     case 'berserk':drawBerserkWeapon(r,ext,flash,f);break;
     case 'smasher':drawSmasherWeapon(r,ext,flash,f);break;
+    case 'gojo':drawGojoWeapon(r,ext,flash,f);break;
   }
   X.restore();
+}
+
+function drawGojoWeapon(r,ext,flash,f){
+  // Gojo has no physical weapon — draws Red/Blue orbs orbiting
+  const t=battleTime*0.06;
+  // Red orb (left)
+  const rx=r*0.8,ry=0;
+  X.save();
+  X.rotate(-f.weaponAngle); // counter-rotate to stay absolute
+  const redX=Math.cos(t)*r*1.3;
+  const redY=Math.sin(t)*r*0.6;
+  X.beginPath();X.arc(redX,redY,8,0,Math.PI*2);
+  const rg=X.createRadialGradient(redX,redY,2,redX,redY,8);
+  rg.addColorStop(0,'#ff6666');rg.addColorStop(1,'#cc2222');
+  X.fillStyle=rg;X.fill();
+  if(flash||f.gojoAttackMode==='red'){X.shadowColor='#ff2222';X.shadowBlur=12;X.fill();X.shadowBlur=0;}
+  // Blue orb (opposite)
+  const blueX=Math.cos(t+Math.PI)*r*1.3;
+  const blueY=Math.sin(t+Math.PI)*r*0.6;
+  X.beginPath();X.arc(blueX,blueY,8,0,Math.PI*2);
+  const bg=X.createRadialGradient(blueX,blueY,2,blueX,blueY,8);
+  bg.addColorStop(0,'#6688ff');bg.addColorStop(1,'#2244cc');
+  X.fillStyle=bg;X.fill();
+  if(flash||f.gojoAttackMode==='blue'){X.shadowColor='#2244ff';X.shadowBlur=12;X.fill();X.shadowBlur=0;}
+  // Purple orb (awakened, center front)
+  if(f.gojoAwakened){
+    const px=r+10,py=Math.sin(t*1.5)*5;
+    X.beginPath();X.arc(px,py,6,0,Math.PI*2);
+    const pg=X.createRadialGradient(px,py,1,px,py,6);
+    pg.addColorStop(0,'#cc88ff');pg.addColorStop(1,'#6622cc');
+    X.fillStyle=pg;X.fill();
+    X.shadowColor='#9944ff';X.shadowBlur=8;X.fill();X.shadowBlur=0;
+  }
+  X.restore();
+  // Relic active glow
+  if(f&&f.specialActive){
+    X.save();X.rotate(-f.weaponAngle);
+    const pulse=Math.sin(battleTime*0.12)*8;
+    X.beginPath();X.arc(0,0,f.radius+12+pulse,0,Math.PI*2);
+    const ag=X.createRadialGradient(0,0,f.radius,0,0,f.radius+15+pulse);
+    ag.addColorStop(0,'rgba(100,70,255,0.4)');ag.addColorStop(1,'rgba(100,70,255,0)');
+    X.fillStyle=ag;X.fill();
+    if(f.gojoDomainActive){
+      // Domain visual: geometric hexagon pattern
+      X.strokeStyle='rgba(150,100,255,0.4)';X.lineWidth=1;
+      for(let i=0;i<6;i++){
+        const ha=battleTime*0.02+i*Math.PI/3;
+        const hr=f.radius+20+pulse;
+        X.beginPath();
+        X.moveTo(Math.cos(ha)*hr,Math.sin(ha)*hr);
+        X.lineTo(Math.cos(ha+Math.PI/3)*hr,Math.sin(ha+Math.PI/3)*hr);
+        X.stroke();
+      }
+    }
+    X.restore();
+  }
 }
 
 function drawMantisBlades(r,ext,flash,f){
@@ -4044,6 +4599,20 @@ function drawMiniWeapon(cx,cy,charId,size){
       // Scope
       X.beginPath();X.arc(6,-10,1.5,0,Math.PI*2);X.fillStyle='#cc0000';X.fill();
       break;
+    case 'gojo':
+      // Red orb
+      X.beginPath();X.arc(-6,-3,4,0,Math.PI*2);
+      X.fillStyle='#cc2222';X.fill();
+      X.shadowColor='#ff2222';X.shadowBlur=4;X.fill();X.shadowBlur=0;
+      // Blue orb
+      X.beginPath();X.arc(6,3,4,0,Math.PI*2);
+      X.fillStyle='#2244cc';X.fill();
+      X.shadowColor='#2244ff';X.shadowBlur=4;X.fill();X.shadowBlur=0;
+      // Purple center
+      X.beginPath();X.arc(14,0,3,0,Math.PI*2);
+      X.fillStyle='#9944ff';X.fill();
+      X.shadowColor='#9944ff';X.shadowBlur=3;X.fill();X.shadowBlur=0;
+      break;
   }
   X.restore();
 }
@@ -4087,9 +4656,9 @@ function drawTitle(){
 
   const btnW=200,btnH=50;
   addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
-  addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamElem1=0;teamElem2=0;bossElem=0;});
+  addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamElem1=0;teamElem2=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v7.1 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v7.2 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -4379,17 +4948,16 @@ function startBattle(){
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   if(gameMode==='boss'){
-    const smasherIdx=CHARS.findIndex(c=>c.id==='smasher');
     // Boss is side 1 (enemy), team is side 0
     const t1=createFighter(teamChar1,teamElem1,0);
     const t2=createFighter(teamChar2,teamElem2,0);
-    const boss=createFighter(smasherIdx,bossElem,1);
+    const boss=createFighter(bossChar,bossElem,1);
     // Position team on left, boss on right
     t1.y=ARENA.y+ARENA.h*0.35;
     t2.y=ARENA.y+ARENA.h*0.65;
     boss.radius=55; // Boss is bigger
     fighters=[t1,t2,boss];
-    addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' vs ADAM SMASHER');
+    addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' vs '+CHARS[bossChar].name);
   } else {
     fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
     addLog('Battle Start!');addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
@@ -4438,7 +5006,40 @@ function drawBattle(){
   X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
 
   // Arena
-  drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.fillStyle='#0d0d25';X.fill();X.strokeStyle='#1a1a4a';X.lineWidth=2;X.stroke();
+  // Gojo Domain Expansion: Infinite Void background
+  const gojoF=fighters.find(f=>f.char.id==='gojo'&&f.gojoDomainBg);
+  drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);
+  if(gojoF){
+    // Dark void with geometric shapes — Gojo's domain
+    X.fillStyle='#050510';X.fill();
+    X.save();
+    drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.clip();
+    // Geometric triangles/lines — deterministic positions
+    X.strokeStyle='rgba(100,80,200,0.15)';X.lineWidth=1;
+    for(let i=0;i<15;i++){
+      const gx=ARENA.x+((i*137+50)%ARENA.w);
+      const gy=ARENA.y+((i*97+30)%ARENA.h);
+      const gs=25+i*2;
+      X.beginPath();
+      for(let j=0;j<3;j++){
+        const ga=battleTime*0.01+j*Math.PI*2/3+i;
+        const px=gx+Math.cos(ga)*gs,py=gy+Math.sin(ga)*gs;
+        j===0?X.moveTo(px,py):X.lineTo(px,py);
+      }
+      X.closePath();X.stroke();
+    }
+    // Floating dots
+    for(let i=0;i<30;i++){
+      const dx=ARENA.x+(battleTime*0.3+i*37)%ARENA.w;
+      const dy=ARENA.y+(battleTime*0.2+i*53)%ARENA.h;
+      X.beginPath();X.arc(dx,dy,1.5,0,Math.PI*2);
+      X.fillStyle='rgba(150,100,255,0.2)';X.fill();
+    }
+    X.restore();
+    X.strokeStyle='#4433aa';X.lineWidth=2;X.stroke();
+  } else {
+    X.fillStyle='#0d0d25';X.fill();X.strokeStyle='#1a1a4a';X.lineWidth=2;X.stroke();
+  }
   X.strokeStyle='#12122a';X.lineWidth=1;
   for(let i=ARENA.x+40;i<ARENA.x+ARENA.w;i+=40){X.beginPath();X.moveTo(i,ARENA.y);X.lineTo(i,ARENA.y+ARENA.h);X.stroke();}
   for(let i=ARENA.y+40;i<ARENA.y+ARENA.h;i+=40){X.beginPath();X.moveTo(ARENA.x,i);X.lineTo(ARENA.x+ARENA.w,i);X.stroke();}
@@ -4975,6 +5576,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'katana':statLine='DEF:'+(f.katanaDeflectCount||0);break;
     case 'berserk':statLine='x'+Math.floor(6+chaos*0.8)+' Spread:'+Math.round(Math.max(15,60-chaos*4))+'%';break;
     case 'smasher':statLine='RKT:'+Math.round(f.atk*(1.8+chaos*0.2))+' BOSS';break;
+    case 'gojo':statLine='INF:'+f.gojoInfinityCharges+'/'+f.gojoInfinityMax+(f.gojoAwakened?' AWK':' BOSS');break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
@@ -5001,7 +5603,7 @@ function drawBossSelect(){
   const cols=Math.min(n,Math.max(2,Math.min(maxCols,Math.ceil(Math.sqrt(n)))));
   const rows=Math.ceil(n/cols);
   const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
-  const bottomSpace=isMobile?180:220;
+  const bottomSpace=isMobile?240:280;
   const cardH=Math.min(Math.floor(((H-55-bottomSpace)-(rows-1)*gapY)/rows),isMobile?75:130);
   const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
@@ -5058,16 +5660,30 @@ function drawBossSelect(){
     drawElementPicker(W/2-130,bossElemY+8,bossElem,'beb',(i)=>{bossElem=i;});
   }
 
-  // Boss preview
+  // Boss selection — show all bosses
+  const bosses=CHARS.filter(c=>c.isBoss);
   const bossPreviewY=bossElemY-30;
-  if(!isMobile){
-    const smasherChar=CHARS.find(c=>c.id==='smasher');
-    X.font='bold 12px Consolas,monospace';X.fillStyle='#cc4444';X.textAlign='right';
-    X.fillText('VS ADAM SMASHER',W-60,bossPreviewY);
-    X.font='9px Consolas,monospace';X.fillStyle='#888';
-    X.fillText('HP:'+smasherChar.stats.hp+' ATK:'+smasherChar.stats.atk+' DEF:'+smasherChar.stats.def,W-60,bossPreviewY+14);
-    drawBallPreview(W-30,bossPreviewY-5,18,smasherChar);
-  }
+  const bossSelY=bossElemY+(isMobile?40:50);
+  X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
+  X.fillStyle='#cc4444';X.fillText('SELECT BOSS',W/2,bossSelY);
+  const bossCardW=isMobile?90:120;
+  const bossTotalW=bosses.length*bossCardW+(bosses.length-1)*10;
+  const bossStartX=(W-bossTotalW)/2;
+  bosses.forEach((bch,bi)=>{
+    const bIdx=CHARS.indexOf(bch);
+    const bx=bossStartX+bi*(bossCardW+10);
+    const by=bossSelY+8;
+    const isSel=bossChar===bIdx;
+    drawRoundRect(bx,by,bossCardW,isMobile?45:55,6);
+    X.fillStyle=isSel?'#221122':'#111128';X.fill();
+    X.strokeStyle=isSel?bch.color:bch.color+'66';X.lineWidth=isSel?3:1.5;X.stroke();
+    const ballR=isMobile?10:14;
+    drawBallPreview(bx+bossCardW/2,by+(isMobile?16:20),ballR,bch);
+    X.font='bold '+(isMobile?'8':'9')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
+    X.fillText(bch.name,bx+bossCardW/2,by+(isMobile?32:40));
+    if(!isMobile){X.font='7px Consolas,monospace';X.fillStyle='#888';X.fillText('HP:'+bch.stats.hp,bx+bossCardW/2,by+50);}
+    addBtn('boss_sel_'+bi,bx,by,bossCardW,isMobile?45:55,'','transparent',()=>{bossChar=bIdx;});
+  });
 
   // Battle button
   const bBtnY=isMobile?H-50:H-65;
