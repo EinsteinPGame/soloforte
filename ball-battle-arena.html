@@ -426,6 +426,7 @@ function createFighter(charIdx,elemIdx,side){
     sandyOrbAngle:0,
     // Katana state
     katanaDeflectCD:0, // cooldown after counter-dash
+    katanaPostDashTimer:0, // frames remaining of 80% dmg reduction after counter-dash
     katanaDashing:false, // mid counter-dash
     katanaDashTarget:null,
     katanaDeflectCount:0, // charges relic
@@ -602,13 +603,13 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     return 0;
   }
   // Katana deflect — deflects from ALL directions. Only specials bypass.
-  // No deflect during counter-dash (unless relic rushing). First 1s (60 frames): 80% damage reduction instead.
+  // No deflect during counter-dash (unless relic rushing). After counter-dash: 1s of 80% dmg reduction.
   if(defender.char.id==='katana'
     &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
     &&!(attacker.specialActive)
     &&(!defender.katanaDashing||defender.katanaRushing)){
-    // Early battle (first 60 frames / 1 second): 80% damage reduction, no full deflect
-    if(battleTime<60){
+    // Post counter-dash cooldown (1 second): 80% damage reduction, no full deflect
+    if(defender.katanaPostDashTimer>0){
       const isCrit=canCrit&&Math.random()*100<attacker.crit;
       let earlyDmg=baseDmg*(isCrit?2:1);
       const actualDef=Math.max(0,defender.def-defender.defReduction);
@@ -2172,6 +2173,7 @@ function updateBattle(dt){
     if(f.char.id==='katana'){
       if(f.katanaDeflecting>0)f.katanaDeflecting-=dt;
       if(f.katanaDeflectCD>0)f.katanaDeflectCD-=dt;
+      if(f.katanaPostDashTimer>0)f.katanaPostDashTimer-=dt;
       // Counter-dash: weaker mantis-blade-like rush → single slash → bounce back
       if(f.katanaDashing&&f.katanaDashTarget&&f.katanaDashTarget.alive){
         const t=f.katanaDashTarget;
@@ -2186,6 +2188,7 @@ function updateBattle(dt){
         if(d<f.radius+t.radius+15){
           // Hit! Single slash like weaker mantis finisher
           f.katanaDashing=false;
+          f.katanaPostDashTimer=60; // 1 second of 80% dmg reduction after counter-dash
           dealDamage(f,t,f.atk*1.8,true);
           SFX.katanaSlash();
           // Slash visual burst
@@ -2201,7 +2204,7 @@ function updateBattle(dt){
           const ka=angle(t,f);
           f.vx=Math.cos(ka)*7;f.vy=Math.sin(ka)*7;
         }
-      } else if(f.katanaDashing){f.katanaDashing=false;}
+      } else if(f.katanaDashing){f.katanaDashing=false;f.katanaPostDashTimer=60;}
       // During relic rush, deflect CD resets constantly
       if(f.katanaRushing)f.katanaDeflectCD=0;
     }
