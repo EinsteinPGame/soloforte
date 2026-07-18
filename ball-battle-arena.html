@@ -132,8 +132,8 @@ const CHARS=[
     id:'sandy',name:'Sandevistan',color:'#4488ff',
     desc:'Unarmed speedster. Body collision = Damage.',
     playstyle:'Speed & Dodge',
-    stats:{hp:380,atk:15,speed:7.5,range:55,def:4,crit:16},
-    baseAtkInterval:18,relicChargeRate:1.0,
+    stats:{hp:350,atk:13,speed:7.0,range:55,def:3,crit:14},
+    baseAtkInterval:20,relicChargeRate:1.0,
     specialName:'Sandevistan Activated',
   },
 ];
@@ -321,7 +321,7 @@ function createFighter(charIdx,elemIdx,side){
     relicWhipSpinTimer:0,
     relicHomingShots:0,relicLockTarget:null,relicChargeTimer:0,
     // Sandevistan state
-    dodgeChance:ch.id==='sandy'?0.03:0,
+    dodgeChance:ch.id==='sandy'?0.02:0,
     sandyActive:false,sandyTimer:0,sandyDodgeBoost:0,
     sandyTimeScale:1, // 1=normal, 0.2-0.3=slowed by enemy sandy
     // Status effects
@@ -578,7 +578,7 @@ function attackMantis(f,enemy,chaos){
   const facing=isWeaponFacingEnemy(f,enemy);
 
   SFX.slash();
-  if(facing&&d<effectiveRange){
+  if(d<effectiveRange){
     const dmg=dealDamage(f,enemy,f.atk);
     const bleedChance=0.10+chaos*0.02;
     if(Math.random()<bleedChance&&dmg>0){
@@ -640,10 +640,10 @@ function attackGorilla(f,enemy,chaos){
     spawnWallCrack(f.x,f.y,f); // ground crack at slam point
     shakeTimer=18;shakeAmt=12;
   } else {
-    // Left/right heavy punch — only hits if facing enemy
+    // Left/right heavy punch
     SFX.punch();
     const kbMult2=f.gorillaKnockbackMult||1;
-    if(facing&&d<effectiveRange){
+    if(d<effectiveRange){
       dealDamage(f,enemy,f.atk);
       const ka=angle(f,enemy);
       enemy.vx+=Math.cos(ka)*3*kbMult2;
@@ -661,7 +661,7 @@ function attackMonowire(f,enemy,chaos){
   const facing=isWeaponFacingEnemy(f,enemy);
 
   SFX.whip();
-  if(facing&&d<effectiveRange){
+  if(d<effectiveRange){
     dealDamage(f,enemy,f.atk);
     let captureChance=0.30+chaos*0.04;
     const captureDuration=90+chaos*15;
@@ -683,10 +683,10 @@ function attackMonowire(f,enemy,chaos){
 }
 
 function attackPLS(f,enemy,chaos){
-  // Staff launches energy orb in weapon's current facing direction
+  // Staff launches energy orb toward enemy (fires on interval, not facing)
   f.weaponExtend=0.6;
   f.weaponFlash=12;
-  const a=f.weaponAngle+(Math.random()-0.5)*0.12;
+  const a=angle(f,enemy)+(Math.random()-0.5)*0.2;
   const speed=6+chaos*0.6;
   const explosionRadius=f.plsExplosionRadius+chaos*10;
 
@@ -719,7 +719,7 @@ function attackSandy(f,enemy,chaos){
   const spdDmg=f.atk*(0.5+spd*0.3)+chaos*2;
 
   SFX.punch();
-  if(facing&&d<effectiveRange){
+  if(d<effectiveRange){
     dealDamage(f,enemy,spdDmg);
     // Bounce away after hitting — prevents stunlock
     const ka=angle(enemy,f);
@@ -740,8 +740,8 @@ function attackSandy(f,enemy,chaos){
     spawnSparks(f.x+Math.cos(f.weaponAngle)*f.radius,f.y+Math.sin(f.weaponAngle)*f.radius,'#4488ff',3);
   }
 
-  // Kerenzikov dodge scaling — increases with hits, caps at 25-30%
-  f.dodgeChance=Math.min(0.22,0.03+f.totalHits*0.0025);
+  // Kerenzikov dodge scaling — increases with hits, caps lower
+  f.dodgeChance=Math.min(0.18,0.02+f.totalHits*0.002);
 }
 
 // ============================================================
@@ -1065,7 +1065,7 @@ function relicSandy(f,enemy){
   f.specialTimer=360; // ~6 seconds
   f.sandyActive=true;
   f.sandyTimer=360;
-  f.sandyDodgeBoost=0.22; // +22% dodge
+  f.sandyDodgeBoost=0.18; // +18% dodge
   // Slow enemy
   enemy.sandyTimeScale=0.25; // 75% slow
   // Speed boost
@@ -1383,13 +1383,16 @@ function updateBattle(dt){
       }
     }
 
-    // Weapon attack — only when weapon spins to face enemy AND cooldown ready
+    // Weapon attack — PLS fires on interval only, others need facing
     if(!f.specialActive||f.char.id==='gorilla'){
       if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
-      // Attack when: cooldown ready + weapon naturally faces the enemy
-      if(f.attackTimer<=0&&isWeaponFacingEnemy(f,enemy)){
-        f.attackTimer=getAttackInterval(f);
-        performWeaponAttack(f,enemy);
+      if(f.attackTimer<=0){
+        // PLS fires purely on interval — projectile aims toward enemy
+        // Others need weapon to face enemy
+        if(f.char.id==='pls'||isWeaponFacingEnemy(f,enemy)){
+          f.attackTimer=getAttackInterval(f);
+          performWeaponAttack(f,enemy);
+        }
       }
     }
 
