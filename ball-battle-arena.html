@@ -601,51 +601,38 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     spawnBurst(defender.x,defender.y,'#4488ff',8,4);
     return 0;
   }
-  // Katana deflect — weapon must face attacker (unless relic rush = deflect everything)
-  // Specials/relics bypass deflect entirely
-  if(defender.char.id==='katana'&&!defender.katanaDashing&&defender.katanaDeflectCD<=0
+  // Katana deflect — ALWAYS deflects from ALL directions. Only specials bypass.
+  if(defender.char.id==='katana'
     &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
     &&!(attacker.specialActive)){
-    const toAttacker=angle(defender,attacker);
-    let aDiff=defender.weaponAngle-toAttacker;
-    while(aDiff>Math.PI)aDiff-=Math.PI*2;while(aDiff<-Math.PI)aDiff+=Math.PI*2;
-    // Katana deflects from ALL directions — no angle check needed
-    const canDeflect=true;
-    if(canDeflect){
-      if(battleTime<120&&!defender.katanaRushing){
-        baseDmg*=0.5; // early battle: 50% reduction only
-      } else {
-        // Full deflect — no damage, counter-dash
-        SFX.katanaDeflect();
-        defender.katanaDeflecting=30; // 30 frame deflect pose
-        spawnBurst(defender.x+Math.cos(defender.weaponAngle)*defender.radius,
-          defender.y+Math.sin(defender.weaponAngle)*defender.radius,'#ffcc00',20,7);
-        spawnSparks(defender.x+Math.cos(defender.weaponAngle)*defender.radius,
-          defender.y+Math.sin(defender.weaponAngle)*defender.radius,'#ffffff',12);
-        spawnDmgNum(defender.x,defender.y-defender.radius-25,'DEFLECTED','#ffcc00',true);
-        shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
-        defender.specialBar=Math.min(defender.specialMax,defender.specialBar+12*(defender.char.relicChargeRate||1));
-        defender.katanaDeflectCount++;
-        if(!defender.katanaRushing){
-          defender.katanaDashing=true;
-          defender.katanaDashTarget=attacker;
-          defender.katanaDeflectCD=35;
-        }
-        if(defender.elementActive&&defender.elem.id==='fire'){
-          spawnExplosion(attacker.x,attacker.y,40,'#ff4400',defender.atk*0.5,defender,attacker);
-          attacker.hp-=defender.atk*0.5;attacker.hitFlash=8;
-          if(attacker.hp<=0){attacker.hp=0;attacker.alive=false;attacker.deathAnim=60;checkVictory(defender);}
-        }
-        if(defender.elementActive&&defender.elem.id==='cryo'){
-          const behindAngle=angle(defender,attacker);
-          iceWalls.push({x:attacker.x+Math.cos(behindAngle)*60,y:attacker.y+Math.sin(behindAngle)*60,
-            angle:behindAngle,life:120,maxLife:120,owner:defender});
-          SFX.freeze();
-        }
-        if(defender.katanaRushing)defender.katanaRushDeflects++;
-        return 0;
-      }
+    // Full deflect — no damage, counter-dash (no cooldown, no angle check, no early-battle penalty)
+    SFX.katanaDeflect();
+    defender.katanaDeflecting=40; // 40 frame deflect pose — very obvious
+    // Big golden burst on defender
+    spawnBurst(defender.x,defender.y,'#ffcc00',25,8);
+    spawnBurst(defender.x,defender.y,'#ffffff',15,5);
+    spawnSparks(defender.x,defender.y,'#ffcc00',15);
+    spawnDmgNum(defender.x,defender.y-defender.radius-25,'DEFLECTED','#ffcc00',true);
+    shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
+    defender.specialBar=Math.min(defender.specialMax,defender.specialBar+12*(defender.char.relicChargeRate||1));
+    defender.katanaDeflectCount++;
+    if(!defender.katanaRushing&&!defender.katanaDashing){
+      defender.katanaDashing=true;
+      defender.katanaDashTarget=attacker;
     }
+    if(defender.elementActive&&defender.elem.id==='fire'){
+      spawnExplosion(attacker.x,attacker.y,40,'#ff4400',defender.atk*0.5,defender,attacker);
+      attacker.hp-=defender.atk*0.5;attacker.hitFlash=8;
+      if(attacker.hp<=0){attacker.hp=0;attacker.alive=false;attacker.deathAnim=60;checkVictory(defender);}
+    }
+    if(defender.elementActive&&defender.elem.id==='cryo'){
+      const behindAngle=angle(defender,attacker);
+      iceWalls.push({x:attacker.x+Math.cos(behindAngle)*60,y:attacker.y+Math.sin(behindAngle)*60,
+        angle:behindAngle,life:120,maxLife:120,owner:defender});
+      SFX.freeze();
+    }
+    if(defender.katanaRushing)defender.katanaRushDeflects++;
+    return 0;
   }
   // Berserk invincible during relic
   if(defender.berserkInvincible){
