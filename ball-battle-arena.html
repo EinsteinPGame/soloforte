@@ -169,7 +169,7 @@ const CHARS=[
     desc:'Shotgun blast. Rage tank.',
     playstyle:'Spread & Rage',
     stats:{hp:480,atk:14,speed:3.0,range:140,def:8,crit:8},
-    baseAtkInterval:140,relicChargeRate:1.0,
+    baseAtkInterval:140,relicChargeRate:0.4,
     specialName:'Berserk Mode Activated',
   },
   {
@@ -345,6 +345,8 @@ function getAttackInterval(f){
   const base=f.char.baseAtkInterval;
   // Katana: minimal scaling — stays at roughly base interval
   if(f.char.id==='katana')return Math.max(20,base/(1+chaos*0.1));
+  // Berserk: fixed interval like PLS — scaling affects pellets/spread, not fire rate
+  if(f.char.id==='berserk')return base;
   return Math.max(4, base/(1+chaos*0.5));
 }
 
@@ -430,6 +432,7 @@ function createFighter(charIdx,elemIdx,side){
     katanaRushDeflects:0, // relic: deflects during rush = more final damage
     katanaRushing:false, // relic rush state
     katanaRushTimer:0,
+    katanaDeflecting:0, // visual timer for deflect pose (frames remaining)
     // Berserk state
     berserkReloadTimer:0, // shell reload cooldown
     berserkSpeedBoost:0, // speed gain from taking damage
@@ -438,6 +441,9 @@ function createFighter(charIdx,elemIdx,side){
     // Adam Smasher state
     smasherRocketDelay:0, // delay before rocket fires
     smasherRocketTarget:null, // where rocket is aimed
+    smasherWarning:0, // triangle warning timer before rockets
+    smasherWarningAngle:0, // angle of warning cone
+    smasherWarningReady:false, // rockets fire when warning ends
     smasherAirborne:false, // in air during slam
     smasherSlamTarget:null, // {x,y} landing target
     smasherSlamTimer:0, // timer for air → slam
@@ -607,12 +613,13 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       } else {
         // Full deflect — no damage, counter-dash
         SFX.katanaDeflect();
+        defender.katanaDeflecting=30; // 30 frame deflect pose
         spawnBurst(defender.x+Math.cos(defender.weaponAngle)*defender.radius,
-          defender.y+Math.sin(defender.weaponAngle)*defender.radius,'#ffcc00',15,5);
+          defender.y+Math.sin(defender.weaponAngle)*defender.radius,'#ffcc00',20,7);
         spawnSparks(defender.x+Math.cos(defender.weaponAngle)*defender.radius,
-          defender.y+Math.sin(defender.weaponAngle)*defender.radius,'#ffffff',8);
-        spawnDmgNum(defender.x,defender.y-defender.radius-15,'DEFLECT','#ffcc00',true);
-        shakeTimer=Math.max(shakeTimer,6);shakeAmt=Math.max(shakeAmt,4);
+          defender.y+Math.sin(defender.weaponAngle)*defender.radius,'#ffffff',12);
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'DEFLECTED','#ffcc00',true);
+        shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
         defender.specialBar=Math.min(defender.specialMax,defender.specialBar+12*(defender.char.relicChargeRate||1));
         defender.katanaDeflectCount++;
         if(!defender.katanaRushing){
@@ -991,8 +998,8 @@ function attackBerserk(f,enemy,chaos){
       x:f.x+Math.cos(baseAngle)*f.radius,
       y:f.y+Math.sin(baseAngle)*f.radius,
       vx:Math.cos(a)*s,vy:Math.sin(a)*s,
-      owner:f,target:enemy,color:'#dd2222',
-      life:pelletLife,radius:5,dmg:pelletDmg,
+      owner:f,target:enemy,color:'#ff3333',
+      life:pelletLife,radius:7,dmg:pelletDmg,
       explosive:false,explosionRadius:0,homing:false,
       isShotgunPellet:true,
     });
@@ -1009,38 +1016,20 @@ function attackBerserk(f,enemy,chaos){
 }
 
 function attackSmasher(f,enemy,chaos){
-  // Adam Smasher — ROCKETS: cone area blast with delay before firing
-  f.weaponExtend=1;f.weaponFlash=15;
-  SFX.rocketLaunch();
+  // Adam Smasher — triangle warning cone → then fires giant NON-HOMING rockets
+  // If already in warning phase, don't start another
+  if(f.smasherWarning>0)return;
   const baseAngle=angle(f,enemy);
-  let rocketDelay=Math.max(15, 45-chaos*3); // shorter delay at higher chaos
-  // Electric element: shorter delays
-  if(f.elementActive&&f.elem.id==='electric')rocketDelay*=0.6;
-  const rocketDmg=f.atk*(1.2+chaos*0.15);
-  const rocketSpeed=6+chaos*0.3;
-  // Fire 1-2 rockets (more at higher chaos)
-  const rocketCount=chaos>4?2:1;
-  for(let r=0;r<rocketCount;r++){
-    const spreadAngle=baseAngle+(r-0.5)*0.3*rocketCount;
-    projectiles.push({
-      x:f.x+Math.cos(baseAngle)*f.radius,
-      y:f.y+Math.sin(baseAngle)*f.radius,
-      vx:Math.cos(spreadAngle)*rocketSpeed,vy:Math.sin(spreadAngle)*rocketSpeed,
-      owner:f,target:enemy,color:'#ff4444',
-      life:60,radius:8,dmg:rocketDmg,
-      explosive:true,explosionRadius:55+chaos*5,homing:true,homingStrength:0.06,
-      isRocket:true,
-    });
-  }
-  spawnBurst(f.x+Math.cos(baseAngle)*f.radius,f.y+Math.sin(baseAngle)*f.radius,'#ff6644',15,6);
-  spawnBurst(f.x+Math.cos(baseAngle)*f.radius,f.y+Math.sin(baseAngle)*f.radius,'#ffaa44',10,4);
-  shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
-  // Fire element: leave fire zone at launch point
-  if(f.elementActive&&f.elem.id==='fire'){
-    fireZones.push({x:f.x+Math.cos(baseAngle)*f.radius*2,y:f.y+Math.sin(baseAngle)*f.radius*2,
-      radius:35,life:180,maxLife:180,owner:f,dmg:f.atk*0.08});
-  }
-  // Cryo element: ice shrapnel after rocket explodes (handled in projectile hit)
+  // Start triangle warning — delay before rockets fire
+  let warningDuration=Math.max(25, 50-chaos*3);
+  if(f.elementActive&&f.elem.id==='electric')warningDuration*=0.6;
+  f.smasherWarning=warningDuration;
+  f.smasherWarningAngle=baseAngle;
+  f.smasherWarningReady=true;
+  f.weaponAngle=baseAngle;
+  f.weaponExtend=0.5;
+  // Warning sound
+  SFX.warning();
 }
 
 // ============================================================
@@ -1485,15 +1474,15 @@ function relicThrow(f,enemy){
 }
 
 function relicKatana(f,enemy){
-  // Katana Relic: rushes at enemy slowly while deflecting; deflects = more final damage
+  // Katana Relic: slow mantis-blade-like approach → single devastating slash at end
   f.specialTimer=300; // ~5 seconds
   f.katanaRushing=true;
   f.katanaRushTimer=300;
   f.katanaRushDeflects=0;
   f.katanaDeflectCD=0; // reset deflect cooldown for relic
-  // Slow approach — move toward enemy
+  // Slow approach — move toward enemy (slower than mantis)
   const a=angle(f,enemy);
-  f.vx=Math.cos(a)*1.5;f.vy=Math.sin(a)*1.5;
+  f.vx=Math.cos(a)*1.2;f.vy=Math.sin(a)*1.2;
   // Big activation burst — orange/gold
   spawnBurst(f.x,f.y,'#ff6644',40,10);
   spawnBurst(f.x,f.y,'#ffcc00',25,7);
@@ -1502,6 +1491,7 @@ function relicKatana(f,enemy){
     explosions.push({x:f.x,y:f.y,radius:0,maxRadius:50+r*25,color:'#ff6644',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
   }
   shakeTimer=20;shakeAmt=12;
+  addLog((f.side===0?'P1':'P2')+' KATANA RELIC — slow advance!');
 }
 
 function relicBerserk(f,enemy){
@@ -1795,48 +1785,53 @@ function updateRelicThrow(f,enemy,dt){
 
 function updateRelicKatana(f,enemy,dt){
   f.katanaRushTimer-=dt;
-  // Slow steady approach toward enemy while deflecting
+  const d=enemy.alive?dist(f,enemy):999;
+  // Slow steady approach toward enemy while deflecting (like slow mantis blade)
   if(enemy.alive){
     const a=angle(f,enemy);
-    const rushSpeed=f.elementActive&&f.elem.id==='electric'?2.5:1.5; // lightning = faster rush
-    f.vx=lerp(f.vx,Math.cos(a)*rushSpeed,0.1);
-    f.vy=lerp(f.vy,Math.sin(a)*rushSpeed,0.1);
-    // Face enemy
+    const rushSpeed=f.elementActive&&f.elem.id==='electric'?2.2:1.2; // lightning = faster rush
+    f.vx=lerp(f.vx,Math.cos(a)*rushSpeed,0.08);
+    f.vy=lerp(f.vy,Math.sin(a)*rushSpeed,0.08);
+    // Face enemy with blade forward
     f.weaponAngle=a;
     f.weaponExtend=0.8;
-    // Deflect glow trail
+    // Deflect glow trail — ominous slow approach
     if(battleTime%3<1){
       spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#ff6644',0,0,12,2);
       spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#ffcc00',0,0,8,1.5);
     }
+    // Blade charge glow intensifies as closer
+    if(d<150&&battleTime%2<1){
+      spawnParticle(f.x+rand(-5,5),f.y+rand(-5,5),'#ffffff',0,-0.5,10,1.5);
+    }
   }
-  // End rush — deliver multiplied slash
-  if(f.katanaRushTimer<=0||!enemy.alive){
+  // Deliver single slash when close enough OR timer runs out
+  if((d<f.radius+enemy.radius+25&&enemy.alive)||f.katanaRushTimer<=0||!enemy.alive){
     f.katanaRushing=false;
     if(enemy.alive){
-      // Final slash — damage multiplied by deflects during rush
-      const baseDmg=f.atk*3;
-      const mult=1+f.katanaRushDeflects*0.8; // each deflect = +80% more damage
+      // Single devastating slash — like mantis blade finisher but slower build-up
+      const baseDmg=f.atk*4; // big single hit
+      const mult=1+f.katanaRushDeflects*0.8; // bonus from deflects during rush
       const totalDmg=baseDmg*mult;
       dealDamage(f,enemy,totalDmg,true);
       SFX.katanaSlash();SFX.crit();
-      // MASSIVE slash visual
-      spawnBurst(enemy.x,enemy.y,'#ff6644',35,10);
-      spawnBurst(enemy.x,enemy.y,'#ffcc00',20,7);
-      spawnBurst(enemy.x,enemy.y,'#ffffff',12,5);
-      // X-slash
+      // MASSIVE X-slash visual (like mantis blade special)
+      spawnBurst(enemy.x,enemy.y,'#ff6644',40,12);
+      spawnBurst(enemy.x,enemy.y,'#ffcc00',25,8);
+      spawnBurst(enemy.x,enemy.y,'#ffffff',15,5);
+      // X-slash lines
       for(let i=0;i<20;i++){
         const t=i/20;
-        spawnParticle(lerp(enemy.x-50,enemy.x+50,t),lerp(enemy.y-50,enemy.y+50,t),'#ff6644',0,0,18,2);
-        spawnParticle(lerp(enemy.x+50,enemy.x-50,t),lerp(enemy.y-50,enemy.y+50,t),'#ff6644',0,0,18,2);
+        spawnParticle(lerp(enemy.x-60,enemy.x+60,t),lerp(enemy.y-60,enemy.y+60,t),'#ff6644',0,0,20,2.5);
+        spawnParticle(lerp(enemy.x+60,enemy.x-60,t),lerp(enemy.y-60,enemy.y+60,t),'#ff6644',0,0,20,2.5);
       }
-      explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:90,color:'#ff6644',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
-      shakeTimer=25;shakeAmt=16;
+      explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:100,color:'#ff6644',life:25,maxLife:25,dmg:0,owner:null,target:null,hit:true});
+      shakeTimer=30;shakeAmt=18;
       if(f.katanaRushDeflects>0){
         spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'x'+mult.toFixed(1)+'!','#ffcc00',true);
-        addLog((f.side===0?'P1':'P2')+' KATANA FINISH! '+f.katanaRushDeflects+' deflects = x'+mult.toFixed(1));
       }
-      // Bounce away
+      addLog((f.side===0?'P1':'P2')+' KATANA FINISH!');
+      // Bounce away after slash
       const ka=angle(enemy,f);
       f.vx=Math.cos(ka)*8;f.vy=Math.sin(ka)*8;
     }
@@ -2132,27 +2127,36 @@ function updateBattle(dt){
       }
     }
 
-    // Katana per-frame: deflect CD, counter-dash, rush deflect CD reset
+    // Katana per-frame: deflect CD, deflect pose timer, counter-dash, rush deflect CD reset
     if(f.char.id==='katana'){
+      if(f.katanaDeflecting>0)f.katanaDeflecting-=dt;
       if(f.katanaDeflectCD>0)f.katanaDeflectCD-=dt;
-      // Counter-dash: rush to enemy, slash, return to pose
+      // Counter-dash: weaker mantis-blade-like rush → single slash → bounce back
       if(f.katanaDashing&&f.katanaDashTarget&&f.katanaDashTarget.alive){
         const t=f.katanaDashTarget;
         const d=dist(f,t);
         const a=angle(f,t);
-        // Accelerate toward enemy
-        f.vx=Math.cos(a)*12;f.vy=Math.sin(a)*12;
+        // Rush toward enemy (like mantis blade dash)
+        f.vx=Math.cos(a)*10;f.vy=Math.sin(a)*10;
         f.weaponAngle=a;f.weaponExtend=1;f.weaponFlash=5;
-        // Trail
-        spawnParticle(f.x,f.y,'#ff6644',-f.vx*0.2,-f.vy*0.2,10,2);
+        // Orange trail behind (like mantis blade trail)
+        spawnParticle(f.x,f.y,'#ff6644',-f.vx*0.15,-f.vy*0.15,12,2.5);
+        spawnParticle(f.x,f.y,'#ffcc00',-f.vx*0.1,-f.vy*0.1,8,1.5);
         if(d<f.radius+t.radius+15){
-          // Hit! Slash and bounce away
+          // Hit! Single slash like weaker mantis finisher
           f.katanaDashing=false;
-          dealDamage(f,t,f.atk*1.5,true);
+          dealDamage(f,t,f.atk*1.8,true);
           SFX.katanaSlash();
-          spawnBurst(t.x,t.y,'#ff6644',12,5);
-          spawnBurst(t.x,t.y,'#ffcc00',8,3);
-          shakeTimer=8;shakeAmt=5;
+          // Slash visual burst
+          spawnBurst(t.x,t.y,'#ff6644',18,6);
+          spawnBurst(t.x,t.y,'#ffcc00',10,4);
+          // Slash lines (mini X like mantis)
+          for(let i=0;i<8;i++){
+            const st=i/8;
+            spawnParticle(lerp(t.x-25,t.x+25,st),lerp(t.y-25,t.y+25,st),'#ff6644',0,0,12,2);
+          }
+          shakeTimer=10;shakeAmt=6;
+          // Bounce away
           const ka=angle(t,f);
           f.vx=Math.cos(ka)*7;f.vy=Math.sin(ka)*7;
         }
@@ -2174,13 +2178,55 @@ function updateBattle(dt){
       }
     }
 
-    // Smasher per-frame: toxic rapid-hit tracking, airborne skip
+    // Smasher per-frame: warning cone countdown → fire rockets, toxic tracking, airborne
     if(f.char.id==='smasher'){
       // Smasher Sandy immunity during relic
       if(f._smasherSandyImmune)f.sandyTimeScale=1;
       // Toxic element: track rapid hits for bonus damage
       if(f.elementActive&&f.elem.id==='toxic'){
-        if(battleTime-f.smasherLastHitTime>45)f.smasherRapidHitCount=0; // reset after 0.75 sec gap
+        if(battleTime-f.smasherLastHitTime>45)f.smasherRapidHitCount=0;
+      }
+      // Triangle warning countdown → fire giant rockets when done
+      if(f.smasherWarning>0){
+        f.smasherWarning-=dt;
+        f.weaponAngle=f.smasherWarningAngle; // lock aim during warning
+        // Warning flash particles
+        if(battleTime%4<1){
+          const wa=f.smasherWarningAngle;
+          spawnParticle(f.x+Math.cos(wa)*f.radius,f.y+Math.sin(wa)*f.radius,'#ff4444',Math.cos(wa)*2,Math.sin(wa)*2,10,2);
+        }
+        if(f.smasherWarning<=0&&f.smasherWarningReady){
+          f.smasherWarningReady=false;
+          // FIRE giant non-homing rockets
+          const chaos=getChaosLevel(f);
+          const ba=f.smasherWarningAngle;
+          SFX.rocketLaunch();
+          f.weaponExtend=1;f.weaponFlash=15;
+          const rocketDmg=f.atk*(1.8+chaos*0.2); // huge damage
+          const rocketSpeed=8+chaos*0.4;
+          const rocketCount=chaos>4?3:2;
+          const spread=0.25; // cone spread
+          for(let r=0;r<rocketCount;r++){
+            const spreadAngle=ba+(r-(rocketCount-1)/2)*spread;
+            projectiles.push({
+              x:f.x+Math.cos(ba)*f.radius,
+              y:f.y+Math.sin(ba)*f.radius,
+              vx:Math.cos(spreadAngle)*rocketSpeed,vy:Math.sin(spreadAngle)*rocketSpeed,
+              owner:f,target:null,color:'#ff4444',
+              life:80,radius:12,dmg:rocketDmg, // bigger radius
+              explosive:true,explosionRadius:70+chaos*5,homing:false, // NON-homing
+              isRocket:true,
+            });
+          }
+          spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ff6644',20,8);
+          spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ffaa44',12,5);
+          shakeTimer=Math.max(shakeTimer,12);shakeAmt=Math.max(shakeAmt,8);
+          // Fire element: fire zones
+          if(f.elementActive&&f.elem.id==='fire'){
+            fireZones.push({x:f.x+Math.cos(ba)*f.radius*2,y:f.y+Math.sin(ba)*f.radius*2,
+              radius:40,life:180,maxLife:180,owner:f,dmg:f.atk*0.1});
+          }
+        }
       }
     }
 
@@ -2736,6 +2782,36 @@ function drawBall(f){
   // Draw weapon (drawWeapon dispatches to drawSandy for Sandy's special effect)
   drawWeapon(f);
 
+  // Adam Smasher: triangle warning cone before rockets fire
+  if(f.char.id==='smasher'&&f.smasherWarning>0){
+    const wa=f.smasherWarningAngle;
+    const coneLen=200; // long warning cone
+    const coneSpread=0.35; // half-angle of cone
+    const flashAlpha=0.15+Math.sin(battleTime*0.4)*0.15; // pulsing flash
+    // Triangle cone fill
+    X.save();
+    X.globalAlpha=flashAlpha;
+    X.beginPath();
+    X.moveTo(f.x,f.y);
+    X.lineTo(f.x+Math.cos(wa-coneSpread)*coneLen,f.y+Math.sin(wa-coneSpread)*coneLen);
+    X.lineTo(f.x+Math.cos(wa+coneSpread)*coneLen,f.y+Math.sin(wa+coneSpread)*coneLen);
+    X.closePath();
+    X.fillStyle='#ff2222';X.fill();
+    X.globalAlpha=0.5+Math.sin(battleTime*0.5)*0.3;
+    // Triangle outline — bright red warning
+    X.strokeStyle='#ff4444';X.lineWidth=3;X.stroke();
+    // Inner lines for effect
+    X.strokeStyle='#ffaa44';X.lineWidth=1;
+    X.beginPath();
+    X.moveTo(f.x,f.y);X.lineTo(f.x+Math.cos(wa)*coneLen*0.9,f.y+Math.sin(wa)*coneLen*0.9);
+    X.stroke();
+    X.globalAlpha=1;
+    // Warning "!" text
+    X.font='bold 16px Consolas,monospace';X.fillStyle='#ff4444';X.textAlign='center';
+    X.fillText('!',f.x+Math.cos(wa)*50,f.y+Math.sin(wa)*50);
+    X.restore();
+  }
+
   // Bleed icon
   if(f.bleedIcon&&f.bleedTimer>0){
     const bx=f.x+f.radius+5,by=f.y-f.radius-5;
@@ -2753,10 +2829,10 @@ function drawBall(f){
   X.strokeStyle='#333';X.lineWidth=0.5;X.strokeRect(spX,spY,spW,spH);
   if(spR>=1){X.font='bold 7px Consolas,monospace';X.fillStyle='#ffcc00';X.textAlign='center';X.fillText('RELIC',f.x,spY+spH+8);}
 
-  // Character-specific scaling stats (Earclak style)
+  // Character-specific scaling stats — bigger font for readability
   const chaos=getChaosLevel(f);
   const statY=spY+spH+(spR>=1?17:8);
-  X.font='bold 7px Consolas,monospace';X.textAlign='center';
+  X.font='bold 9px Consolas,monospace';X.textAlign='center';
   X.fillStyle=chaos>4?'#ff4444':chaos>2?'#ffaa00':'#aaa';
   switch(f.char.id){
     case 'mantis':{
@@ -2785,8 +2861,21 @@ function drawBall(f){
       const dodgePct=Math.round((f.dodgeChance+f.sandyDodgeBoost)*100);
       X.fillText('Spd:'+minSpd+'-'+maxSpd+' Dodge:'+dodgePct+'%',f.x,statY);
       break;}
+    case 'throw':{
+      const avl=f.throwWeapons?f.throwWeapons.filter(tw=>tw.available).length:0;
+      X.fillText('WPN:'+avl+'/3',f.x,statY);
+      break;}
+    case 'katana':{
+      const defCount=f.katanaDeflectCount||0;
+      X.fillText('DEF:'+defCount,f.x,statY);
+      break;}
+    case 'berserk':{
+      const pellets=Math.floor(6+chaos*0.8);
+      const spreadPct=Math.round(Math.max(15,60-chaos*4));
+      X.fillText('x'+pellets+' Spread:'+spreadPct+'%',f.x,statY);
+      break;}
     case 'smasher':{
-      const rocketDmg=Math.round(f.atk*(1.2+chaos*0.15));
+      const rocketDmg=Math.round(f.atk*(1.8+chaos*0.2));
       X.fillText('RKT:'+rocketDmg+' BOSS',f.x,statY);
       break;}
   }
@@ -3409,6 +3498,50 @@ function drawThrowWeapon(r,ext,flash,f){
 
 function drawKatanaWeapon(r,ext,flash,f){
   const bladeLen=62;
+  const isDeflecting=f&&f.katanaDeflecting>0;
+
+  // === DEFLECT POSE: blade held sideways in front, golden shield glow ===
+  if(isDeflecting){
+    // Blade rotated 90deg — held horizontally as a shield
+    X.save();
+    X.rotate(-Math.PI/2); // blade perpendicular to facing
+    // Handle
+    X.fillStyle='#1a1a22';X.fillRect(r-8,-5,16,10);
+    X.strokeStyle='#ff6644';X.lineWidth=0.8;
+    for(let i=0;i<4;i++){X.beginPath();X.moveTo(r-6+i*4,-5);X.lineTo(r-4+i*4,5);X.stroke();}
+    // Guard
+    X.beginPath();X.ellipse(r+8,0,4,10,0,0,Math.PI*2);
+    X.fillStyle='#444';X.fill();X.strokeStyle='#666';X.lineWidth=1;X.stroke();
+    // Blade with golden deflect glow
+    const bx=r+12;
+    X.beginPath();X.moveTo(bx,-4);
+    X.quadraticCurveTo(bx+bladeLen*0.3,-5,bx+bladeLen*0.6,-4);
+    X.quadraticCurveTo(bx+bladeLen*0.85,-2.5,bx+bladeLen,0);
+    X.lineTo(bx+bladeLen+2,0.5);
+    X.quadraticCurveTo(bx+bladeLen*0.8,5,bx+bladeLen*0.5,5.5);
+    X.quadraticCurveTo(bx+bladeLen*0.2,5,bx,3);
+    X.closePath();
+    // Golden steel during deflect
+    const bg=X.createLinearGradient(bx,-5,bx+bladeLen,0);
+    bg.addColorStop(0,'#aa8833');bg.addColorStop(0.3,'#ffdd66');bg.addColorStop(0.5,'#ffffaa');
+    bg.addColorStop(0.7,'#ffdd66');bg.addColorStop(1,'#aa8833');
+    X.fillStyle=bg;X.fill();
+    X.shadowColor='#ffcc00';X.shadowBlur=15;
+    X.strokeStyle='#ffcc00';X.lineWidth=2;X.stroke();
+    X.shadowBlur=0;
+    X.restore();
+    // Golden shield arc in front
+    const pulse=Math.sin(battleTime*0.2)*4;
+    X.strokeStyle='rgba(255,204,0,0.7)';X.lineWidth=4+pulse*0.3;
+    X.shadowColor='#ffcc00';X.shadowBlur=12;
+    X.beginPath();X.arc(r+20,0,30+pulse,-Math.PI*0.6,Math.PI*0.6);X.stroke();
+    X.shadowBlur=0;
+    // Inner arc
+    X.strokeStyle='rgba(255,255,200,0.4)';X.lineWidth=2;
+    X.beginPath();X.arc(r+20,0,22+pulse,-Math.PI*0.4,Math.PI*0.4);X.stroke();
+    return; // skip normal blade draw
+  }
+
   // Handle/tsuka — wrapped grip
   X.fillStyle='#1a1a22';X.fillRect(r-8,-5,16,10);
   X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-5,16,10);
@@ -4594,7 +4727,7 @@ function drawFighterInfo(f,px,py,maxW,align){
 
   // Character-specific scaling stats (Earclak style)
   const chaos=getChaosLevel(f);
-  X.font='10px Consolas,monospace';X.textAlign=isL?'left':'right';
+  X.font='bold 11px Consolas,monospace';X.textAlign=isL?'left':'right';
   X.fillStyle=chaos>4?'#ff4444':chaos>2?'#ffaa00':chaos>0.5?'#888':'#444';
   let statLine='';
   switch(f.char.id){
@@ -4603,8 +4736,10 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'monowire':statLine='Cap:'+Math.round((0.30+chaos*0.04)*100)+'% Hack:40%';break;
     case 'pls':statLine='Exp:'+Math.round(f.plsExplosionRadius+chaos*10)+' DMG:'+Math.round((1+chaos*0.12)*100)+'%';break;
     case 'sandy':statLine='Spd:'+(f.baseSpeed*0.6).toFixed(1)+'-'+(f.baseSpeed*(1+chaos*0.15)).toFixed(1)+' Dodge:'+Math.round((f.dodgeChance+f.sandyDodgeBoost)*100)+'%';break;
-    case 'throw':const avl=f.throwWeapons.filter(tw=>tw.available).length;const cur=f.throwWeapons[f.throwActiveIdx];statLine=(cur?cur.name:'---')+' '+avl+'/3';break;
-    case 'smasher':statLine='RKT:'+Math.round(f.atk*(1.2+chaos*0.15))+' BOSS';break;
+    case 'throw':{const avl=f.throwWeapons.filter(tw=>tw.available).length;const cur=f.throwWeapons[f.throwActiveIdx];statLine=(cur?cur.name:'---')+' '+avl+'/3';break;}
+    case 'katana':statLine='DEF:'+(f.katanaDeflectCount||0);break;
+    case 'berserk':statLine='x'+Math.floor(6+chaos*0.8)+' Spread:'+Math.round(Math.max(15,60-chaos*4))+'%';break;
+    case 'smasher':statLine='RKT:'+Math.round(f.atk*(1.8+chaos*0.2))+' BOSS';break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
