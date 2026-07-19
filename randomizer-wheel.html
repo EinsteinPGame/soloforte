@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Randomizer Wheel - SoloForte AI</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0a1a;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .header {
+      text-align: center;
+      padding: 20px 20px 10px;
+      width: 100%;
+      background: linear-gradient(180deg, #12122a 0%, #0a0a1a 100%);
+    }
+    .header h1 { font-size: 1.8rem; color: #7b68ee; margin-bottom: 4px; }
+    .header p { color: #888; font-size: 0.85rem; }
+    .main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 16px 30px;
+      width: 100%;
+      max-width: 600px;
+    }
+    .wheel-container {
+      position: relative;
+      width: 300px;
+      height: 300px;
+    }
+    @media (min-width: 500px) {
+      .wheel-container { width: 380px; height: 380px; }
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      box-shadow: 0 0 30px rgba(123, 104, 238, 0.3);
+    }
+    .pointer {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 14px solid transparent;
+      border-right: 14px solid transparent;
+      border-top: 28px solid #ff4444;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+      z-index: 10;
+    }
+    .result-box {
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: #ffcc00;
+      text-align: center;
+      min-height: 36px;
+      padding: 8px;
+      text-shadow: 0 0 10px rgba(255,204,0,0.5);
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn:active { transform: scale(0.95); }
+    .btn-spin { background: #7b68ee; color: #fff; font-size: 1.1rem; }
+    .btn-spin:hover { background: #8b7cf8; }
+    .btn-spin:disabled { background: #444; cursor: not-allowed; }
+    .btn-shuffle { background: #ff8833; color: #fff; }
+    .btn-shuffle:hover { background: #ffa055; }
+    .btn-clear { background: #444; color: #ccc; }
+    .btn-clear:hover { background: #555; }
+    .input-section {
+      width: 100%;
+    }
+    .input-section label {
+      display: block;
+      color: #aaa;
+      font-size: 0.85rem;
+      margin-bottom: 6px;
+    }
+    textarea {
+      width: 100%;
+      height: 140px;
+      background: #12122a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-family: 'Consolas', monospace;
+      font-size: 0.9rem;
+      padding: 12px;
+      resize: vertical;
+    }
+    textarea:focus { outline: none; border-color: #7b68ee; }
+    textarea::placeholder { color: #555; }
+    .entry-count {
+      text-align: right;
+      font-size: 0.75rem;
+      color: #666;
+      margin-top: 4px;
+    }
+    .history {
+      width: 100%;
+      margin-top: 8px;
+    }
+    .history h3 { color: #888; font-size: 0.85rem; margin-bottom: 6px; }
+    .history-list {
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .history-list li {
+      background: #151528;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.8rem;
+      color: #aaa;
+    }
+    .home-link {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      color: #7b68ee;
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .home-link:hover { color: #fff; }
+  </style>
+</head>
+<body>
+  <a href="index.html" class="home-link">← Home</a>
+  <div class="header">
+    <h1>Randomizer Wheel</h1>
+    <p>Add entries, spin to pick a random one!</p>
+  </div>
+  <div class="main">
+    <div class="wheel-container">
+      <div class="pointer"></div>
+      <canvas id="wheel"></canvas>
+    </div>
+    <div class="result-box" id="result"></div>
+    <div class="controls">
+      <button class="btn btn-spin" id="spinBtn" onclick="spin()">SPIN!</button>
+      <button class="btn btn-shuffle" onclick="shuffleEntries()">Shuffle</button>
+      <button class="btn btn-clear" onclick="clearAll()">Clear</button>
+    </div>
+    <div class="input-section">
+      <label>Enter items (one per line) — paste from anywhere!</label>
+      <textarea id="entries" placeholder="Pizza&#10;Burger&#10;Sushi&#10;Tacos&#10;Ramen" oninput="updateWheel()"></textarea>
+      <div class="entry-count" id="entryCount">0 entries</div>
+    </div>
+    <div class="history" id="historySection" style="display:none">
+      <h3>Recent Results</h3>
+      <ul class="history-list" id="historyList"></ul>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('wheel');
+    const ctx = canvas.getContext('2d');
+    const COLORS = [
+      '#ff4444','#ff8833','#ffcc00','#33cc66','#4488ff',
+      '#7b68ee','#cc66ff','#ff55aa','#00cccc','#88cc44',
+      '#ff6644','#44aaff','#ee5599','#66ddaa','#ddaa33',
+      '#aa44cc','#33bbcc','#ff7777','#55bb55','#cc8844',
+    ];
+    let entries = [];
+    let spinning = false;
+    let currentAngle = 0;
+    let spinVelocity = 0;
+    let history = [];
+
+    function resize() {
+      const container = canvas.parentElement;
+      const size = container.clientWidth;
+      canvas.width = size * 2;
+      canvas.height = size * 2;
+      drawWheel();
+    }
+    window.addEventListener('resize', resize);
+
+    function getEntries() {
+      const text = document.getElementById('entries').value;
+      return text.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+    }
+
+    function updateWheel() {
+      entries = getEntries();
+      document.getElementById('entryCount').textContent = entries.length + ' entr' + (entries.length === 1 ? 'y' : 'ies');
+      if (!spinning) drawWheel();
+    }
+
+    function drawWheel() {
+      const w = canvas.width, h = canvas.height;
+      const cx = w / 2, cy = h / 2, r = Math.min(cx, cy) - 4;
+      ctx.clearRect(0, 0, w, h);
+
+      if (entries.length === 0) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = '#151528';
+        ctx.fill();
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.fillStyle = '#555';
+        ctx.font = 'bold ' + (r * 0.12) + 'px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Add entries below', cx, cy);
+        return;
+      }
+
+      const n = entries.length;
+      const sliceAngle = (Math.PI * 2) / n;
+
+      entries.forEach((entry, i) => {
+        const startAngle = currentAngle + i * sliceAngle;
+        const endAngle = startAngle + sliceAngle;
+
+        // Slice
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, r, startAngle, endAngle);
+        ctx.closePath();
+        ctx.fillStyle = COLORS[i % COLORS.length];
+        ctx.fill();
+        ctx.strokeStyle = '#0a0a1a';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Text
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(startAngle + sliceAngle / 2);
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        const maxLen = n > 12 ? 8 : n > 6 ? 12 : 18;
+        const label = entry.length > maxLen ? entry.slice(0, maxLen - 1) + '…' : entry;
+        const fontSize = Math.min(r * 0.1, n < 5 ? 28 : n < 10 ? 20 : n < 16 ? 14 : 10);
+        ctx.font = 'bold ' + fontSize + 'px Consolas, monospace';
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = 'rgba(0,0,0,0.6)';
+        ctx.shadowBlur = 4;
+        ctx.fillText(label, r - 12, 0);
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      });
+
+      // Center circle
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.12, 0, Math.PI * 2);
+      ctx.fillStyle = '#0a0a1a';
+      ctx.fill();
+      ctx.strokeStyle = '#7b68ee';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    function spin() {
+      entries = getEntries();
+      if (entries.length < 2) {
+        document.getElementById('result').textContent = 'Need at least 2 entries!';
+        document.getElementById('result').style.color = '#ff4444';
+        return;
+      }
+      if (spinning) return;
+      spinning = true;
+      document.getElementById('spinBtn').disabled = true;
+      document.getElementById('result').textContent = '';
+      document.getElementById('result').style.color = '#ffcc00';
+
+      // Random velocity: 15-25 radians/sec initial, decays over ~4-6 seconds
+      spinVelocity = 0.3 + Math.random() * 0.2;
+      const friction = 0.985 + Math.random() * 0.005;
+
+      function animate() {
+        currentAngle += spinVelocity;
+        spinVelocity *= friction;
+        drawWheel();
+
+        if (spinVelocity > 0.002) {
+          requestAnimationFrame(animate);
+        } else {
+          // Determine winner
+          spinning = false;
+          document.getElementById('spinBtn').disabled = false;
+          spinVelocity = 0;
+
+          const n = entries.length;
+          const sliceAngle = (Math.PI * 2) / n;
+          // Pointer is at top (angle = -PI/2 = 3PI/2)
+          const pointerAngle = (Math.PI * 2 - (currentAngle % (Math.PI * 2)) + Math.PI * 1.5) % (Math.PI * 2);
+          const winnerIdx = Math.floor(pointerAngle / sliceAngle) % n;
+          const winner = entries[winnerIdx];
+
+          document.getElementById('result').textContent = winner;
+          document.getElementById('result').style.color = '#ffcc00';
+
+          // Add to history
+          history.unshift(winner);
+          if (history.length > 10) history.pop();
+          updateHistory();
+        }
+      }
+      requestAnimationFrame(animate);
+    }
+
+    function shuffleEntries() {
+      entries = getEntries();
+      if (entries.length < 2) return;
+      // Fisher-Yates shuffle
+      for (let i = entries.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [entries[i], entries[j]] = [entries[j], entries[i]];
+      }
+      document.getElementById('entries').value = entries.join('\n');
+      updateWheel();
+    }
+
+    function clearAll() {
+      document.getElementById('entries').value = '';
+      document.getElementById('result').textContent = '';
+      history = [];
+      updateHistory();
+      updateWheel();
+    }
+
+    function updateHistory() {
+      const section = document.getElementById('historySection');
+      const list = document.getElementById('historyList');
+      if (history.length === 0) {
+        section.style.display = 'none';
+        return;
+      }
+      section.style.display = 'block';
+      list.innerHTML = history.map((h, i) =>
+        '<li>' + (i + 1) + '. ' + h.replace(/</g, '&lt;') + '</li>'
+      ).join('');
+    }
+
+    // Init
+    resize();
+    updateWheel();
+
+    // Allow paste to work naturally in textarea
+    document.getElementById('entries').addEventListener('paste', () => {
+      setTimeout(updateWheel, 50);
+    });
+  </script>
+  <script src="auth.js"></script>
+</body>
+</html>
