@@ -8069,33 +8069,60 @@ function drawBattle(){
   const gojoF=fighters.find(f=>f.char.id==='gojo'&&f.gojoDomainBg);
   drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);
   if(gojoF){
-    // Dark void with geometric shapes — Gojo's domain
-    X.fillStyle='#050510';X.fill();
+    // INFINITE VOID — deep cosmic void with intense geometric distortion
+    X.fillStyle='#020008';X.fill();
     X.save();
     drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.clip();
-    // Geometric triangles/lines — deterministic positions
-    X.strokeStyle='rgba(100,80,200,0.15)';X.lineWidth=1;
-    for(let i=0;i<15;i++){
-      const gx=ARENA.x+((i*137+50)%ARENA.w);
-      const gy=ARENA.y+((i*97+30)%ARENA.h);
-      const gs=25+i*2;
+    const acx=ARENA.x+ARENA.w/2,acy=ARENA.y+ARENA.h/2;
+    // Concentric void rings pulsing outward from Gojo's position
+    const gx=gojoF.x,gy=gojoF.y;
+    const pulse=Math.sin(battleTime*0.05)*0.3+0.7;
+    for(let ring=0;ring<8;ring++){
+      const rr=30+ring*45+(battleTime*0.5)%45;
+      X.strokeStyle=`rgba(85,60,180,${0.15*pulse*(1-ring/8)})`;X.lineWidth=1.5;
+      X.beginPath();X.arc(gx,gy,rr,0,Math.PI*2);X.stroke();
+    }
+    // Geometric triangles/lines — rotating slowly
+    X.strokeStyle='rgba(100,80,200,0.2)';X.lineWidth=1;
+    for(let i=0;i<20;i++){
+      const gxx=ARENA.x+((i*137+50)%ARENA.w);
+      const gyy=ARENA.y+((i*97+30)%ARENA.h);
+      const gs=20+i*3;
       X.beginPath();
-      for(let j=0;j<3;j++){
-        const ga=battleTime*0.01+j*Math.PI*2/3+i;
-        const px=gx+Math.cos(ga)*gs,py=gy+Math.sin(ga)*gs;
+      for(let j=0;j<(i%2===0?3:4);j++){
+        const sides=i%2===0?3:4;
+        const ga=battleTime*0.015+j*Math.PI*2/sides+i*0.7;
+        const px=gxx+Math.cos(ga)*gs,py=gyy+Math.sin(ga)*gs;
         j===0?X.moveTo(px,py):X.lineTo(px,py);
       }
       X.closePath();X.stroke();
     }
-    // Floating dots
-    for(let i=0;i<30;i++){
-      const dx=ARENA.x+(battleTime*0.3+i*37)%ARENA.w;
-      const dy=ARENA.y+(battleTime*0.2+i*53)%ARENA.h;
-      X.beginPath();X.arc(dx,dy,1.5,0,Math.PI*2);
-      X.fillStyle='rgba(150,100,255,0.2)';X.fill();
+    // Floating void particles — larger, brighter
+    for(let i=0;i<50;i++){
+      const dx=ARENA.x+(battleTime*0.4+i*31)%ARENA.w;
+      const dy=ARENA.y+(battleTime*0.25+i*47)%ARENA.h;
+      const sz=1+Math.sin(battleTime*0.05+i)*0.8;
+      X.beginPath();X.arc(dx,dy,sz,0,Math.PI*2);
+      X.fillStyle=i%3===0?'rgba(180,120,255,0.35)':'rgba(100,80,220,0.2)';X.fill();
+    }
+    // Radial void gradient from Gojo — darker at edges
+    const vg=X.createRadialGradient(gx,gy,0,gx,gy,300);
+    vg.addColorStop(0,'rgba(80,50,180,0.08)');vg.addColorStop(0.5,'rgba(40,20,100,0.05)');vg.addColorStop(1,'rgba(0,0,0,0.15)');
+    X.fillStyle=vg;X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+    // Cross lines through center for depth
+    X.strokeStyle='rgba(120,80,255,0.08)';X.lineWidth=1;
+    for(let i=0;i<6;i++){
+      const la=battleTime*0.008+i*Math.PI/3;
+      X.beginPath();X.moveTo(gx+Math.cos(la)*400,gy+Math.sin(la)*400);
+      X.lineTo(gx-Math.cos(la)*400,gy-Math.sin(la)*400);X.stroke();
     }
     X.restore();
-    X.strokeStyle='#4433aa';X.lineWidth=2;X.stroke();
+    X.strokeStyle='#5533cc';X.lineWidth=3;X.stroke();
+    // Outer glow on arena border during domain
+    X.shadowColor='#5533cc';X.shadowBlur=15;
+    X.strokeStyle='rgba(85,51,204,0.5)';X.lineWidth=2;
+    drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.stroke();
+    X.shadowBlur=0;
   } else {
     X.fillStyle='#0d0d25';X.fill();X.strokeStyle='#1a1a4a';X.lineWidth=2;X.stroke();
   }
