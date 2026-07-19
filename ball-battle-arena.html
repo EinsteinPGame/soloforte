@@ -1390,63 +1390,27 @@ function attackChoso(f,enemy,chaos){
     }
     return;
   }
-  // Normal: Piercing Blood — Choso pauses to aim, fires a stationary ray beam
-  f.weaponFlash=12;
-  SFX.chosoPiercing();
-  const ba=angle(f,enemy);
-  // Freeze Choso in place while firing
+  // Normal: Piercing Blood — Choso pauses to charge, then fires a ray beam
+  f.chosoCharging=true;
+  f.chosoChargeTimer=20; // ~0.33s charge delay before firing
+  f.chosoPiercingFreeze=45; // freeze for charge + fire (~0.75s total)
   f.vx=0;f.vy=0;
-  f.chosoPiercingFreeze=25; // freeze for ~0.4s
-  const beamDmg=f.atk*(1.0+chaos*0.1);
-  // Ray beam: travels fast in straight line, no homing
-  const beamSpeed=12+chaos*0.5;
-  projectiles.push({
-    x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
-    vx:Math.cos(ba)*beamSpeed,vy:Math.sin(ba)*beamSpeed,
-    owner:f,target:null,color:'#cc0000',
-    life:60,radius:14+chaos,dmg:beamDmg,
-    explosive:false,homing:false,
-    isChosoPiercing:true,
-  });
-  spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#cc0000',10,4);
-  spawnBurst(f.x,f.y,'#8b0000',6,3);
-  f.chosoBloodHits++;
-  // Fire element: Blood Meteorite side projectiles
-  if(f.elementActive&&f.elem.id==='fire'){
-    [-0.4,0.4].forEach(spread=>{
-      projectiles.push({
-        x:f.x+Math.cos(ba+spread)*f.radius,y:f.y+Math.sin(ba+spread)*f.radius,
-        vx:Math.cos(ba+spread)*(beamSpeed*0.8),vy:Math.sin(ba+spread)*(beamSpeed*0.8),
-        owner:f,target:null,color:'#880000',
-        life:70,radius:8,dmg:beamDmg*0.5,
-        explosive:false,homing:false,
-      });
-    });
-    spawnBurst(f.x,f.y,'#ff4400',6,3);
-  }
-  // Poison element: 5 blood hits = poison stack
-  if(f.elementActive&&f.elem.id==='toxic'&&f.chosoBloodHits>=5){
-    f.chosoBloodHits=0;
-    if(enemy.alive){
-      enemy.burnTimer=Math.max(enemy.burnTimer,180);
-      enemy.burnDmg=Math.max(enemy.burnDmg,f.atk*0.15);
-      spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'BLOOD POISON','#aa44cc',false);
-      spawnBurst(enemy.x,enemy.y,'#aa44cc',8,3);
-    }
-  }
-  shakeTimer=3;shakeAmt=2;
+  f.weaponFlash=20;
+  f._piercingTarget=enemy; // remember target for when beam fires
+  f._piercingChaos=chaos;
+  spawnBurst(f.x,f.y,'#8b0000',10,4);
+  spawnDmgNum(f.x,f.y-f.radius-20,'CHARGING...','#cc0000',false);
+  // Beam fires after charge delay (handled in updateRelicChoso)
 }
 
 function chosoDetonateOrb(f,orb,enemy,chaos){
   if(!orb.alive)return;
   orb.alive=false;
   const dmg=f.atk*(0.8+chaos*0.08);
-  // Bigger explosion at orb position + chain visual
-  explosions.push({x:orb.x,y:orb.y,radius:0,maxRadius:80,color:'#cc0000',life:22,maxLife:22,dmg:dmg,owner:f,target:null,hit:false});
-  explosions.push({x:orb.x,y:orb.y,radius:0,maxRadius:55,color:'#ff4444',life:18,maxLife:18,dmg:0,owner:null,target:null,hit:true});
-  spawnBurst(orb.x,orb.y,'#cc0000',25,7);
-  spawnBurst(orb.x,orb.y,'#ff4444',18,6);
-  spawnBurst(orb.x,orb.y,'#ff8888',10,4);
+  // Big explosion at orb position
+  explosions.push({x:orb.x,y:orb.y,radius:0,maxRadius:70,color:'#cc0000',life:20,maxLife:20,dmg:dmg,owner:f,target:null,hit:false});
+  spawnBurst(orb.x,orb.y,'#cc0000',20,6);
+  spawnBurst(orb.x,orb.y,'#ff4444',12,4);
   SFX.chosoSupernova();
   shakeTimer=Math.max(shakeTimer,4);shakeAmt=Math.max(shakeAmt,4);
   // Ice element: spawn rotating buzzsaw at orb position
@@ -2079,9 +2043,9 @@ function relicChoso(f,enemy){
   // Stat buffs: +30% atk, +40% speed, +20% dmg reduction
   f.atk=Math.round(f.baseAtk*1.3);
   f.speed=f.baseSpeed*1.4;
-  // Spawn 20 blood orbs across arena
+  // Spawn 30 blood orbs across arena
   f.chosoOrbs=[];
-  for(let i=0;i<20;i++){
+  for(let i=0;i<30;i++){
     f.chosoOrbs.push({
       x:ARENA.x+30+Math.random()*(ARENA.w-60),
       y:ARENA.y+30+Math.random()*(ARENA.h-60),
@@ -2122,7 +2086,7 @@ function relicToji(f,enemy){
   f.tojiDmgTakenDebuff=false;
   // Create triangle centered on enemy position
   const cx=enemy.x,cy=enemy.y;
-  const triRadius=200; // size of triangle (enlarged)
+  const triRadius=Math.min(ARENA.w,ARENA.h)*0.32; // ~1/3 of arena
   const baseAngle=Math.random()*Math.PI*2;
   f.tojiTriPoints=[];
   for(let i=0;i<3;i++){
@@ -2667,10 +2631,61 @@ function updateRelicSmasher(f,enemy,dt){
 }
 
 function updateRelicChoso(f,enemy,dt){
-  // Piercing Blood freeze (Choso stays in place while beam fires)
+  // Piercing Blood freeze (Choso stays in place while charging/firing)
   if(f.chosoPiercingFreeze>0){
     f.chosoPiercingFreeze-=dt;
     f.vx=0;f.vy=0;
+  }
+  // Piercing Blood charge delay — fire beam when charge completes
+  if(f.chosoCharging){
+    f.chosoChargeTimer-=dt;
+    // Charging particles
+    if(battleTime%2<1)spawnParticle(f.x+rand(-10,10),f.y+rand(-10,10),'#cc0000',0,-1.5,8,2);
+    if(f.chosoChargeTimer<=0){
+      f.chosoCharging=false;
+      const target=f._piercingTarget||enemy;
+      const chaos=f._piercingChaos||0;
+      SFX.chosoPiercing();
+      const ba=angle(f,target);
+      const beamDmg=f.atk*(1.0+chaos*0.1);
+      const beamSpeed=12+chaos*0.5;
+      projectiles.push({
+        x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+        vx:Math.cos(ba)*beamSpeed,vy:Math.sin(ba)*beamSpeed,
+        owner:f,target:null,color:'#cc0000',
+        life:60,radius:14+chaos,dmg:beamDmg,
+        explosive:false,homing:false,
+        isChosoPiercing:true,
+      });
+      spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#cc0000',12,5);
+      spawnBurst(f.x,f.y,'#8b0000',8,4);
+      f.chosoBloodHits++;
+      f.weaponFlash=12;
+      shakeTimer=3;shakeAmt=2;
+      // Fire element: Blood Meteorite side projectiles
+      if(f.elementActive&&f.elem.id==='fire'){
+        [-0.4,0.4].forEach(spread=>{
+          projectiles.push({
+            x:f.x+Math.cos(ba+spread)*f.radius,y:f.y+Math.sin(ba+spread)*f.radius,
+            vx:Math.cos(ba+spread)*(beamSpeed*0.8),vy:Math.sin(ba+spread)*(beamSpeed*0.8),
+            owner:f,target:null,color:'#880000',
+            life:70,radius:8,dmg:beamDmg*0.5,
+            explosive:false,homing:false,
+          });
+        });
+        spawnBurst(f.x,f.y,'#ff4400',6,3);
+      }
+      // Poison element: 5 blood hits = poison stack
+      if(f.elementActive&&f.elem.id==='toxic'&&f.chosoBloodHits>=5){
+        f.chosoBloodHits=0;
+        if(enemy.alive){
+          enemy.burnTimer=Math.max(enemy.burnTimer,180);
+          enemy.burnDmg=Math.max(enemy.burnDmg,f.atk*0.15);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'BLOOD POISON','#aa44cc',false);
+          spawnBurst(enemy.x,enemy.y,'#aa44cc',8,3);
+        }
+      }
+    }
   }
   // Blood Edge melee timer
   if(f.chosoBloodEdge){
