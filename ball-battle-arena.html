@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.0.1 — Choso nerf, Mechamaru nerf, scaling boost, Katana nerf+ice fix, Sandy buff, Ryu hair weapon
+// BALL BATTLE ARENA v8.0.2 — Ryu blast rework, Gojo single purple, Choso orb fix, boss ult charge nerf
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -1023,7 +1023,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker.side===0){battleStats.p1Hits++;battleStats.p1Dmg+=dmg;if(isCrit)battleStats.p1Crits++;}
   else{battleStats.p2Hits++;battleStats.p2Dmg+=dmg;if(isCrit)battleStats.p2Crits++;}
 
-  attacker.specialBar=Math.min(attacker.specialMax,attacker.specialBar+(6+Math.random()*2)*(attacker.char.relicChargeRate||1));
+  const atkChargeRate=attacker.char.isBoss?0.15:1; // bosses charge ults much slower from dealing damage
+  attacker.specialBar=Math.min(attacker.specialMax,attacker.specialBar+(6+Math.random()*2)*(attacker.char.relicChargeRate||1)*atkChargeRate);
   defender.specialBar=Math.min(defender.specialMax,defender.specialBar+(2+Math.random())*(defender.char.relicChargeRate||1));
 
   if(dmg>20){shakeTimer=Math.max(shakeTimer,6);shakeAmt=Math.max(shakeAmt,dmg>40?8:4);}
@@ -1109,7 +1110,7 @@ function performWeaponAttack(f,enemy){
   if(f.chosoPiercingFreeze>0)return; // Choso frozen while firing beam
   if(f.mechaMouthBlastActive)return; // Mechamaru frozen while firing mouth blast
   if(f.kashimoAmberActive)return; // Kashimo frozen during AMBER
-  if(f.ryuBeamActive)return; // Ryu frozen during DESSERT IS SERVED beam
+  // Ryu special is fire-and-forget, no freeze needed
   if(f.kashimoDartPhase!=='idle')return; // Kashimo in dart rush sequence
   // Monowire+electric: short circuit makes attacks miss sometimes
   if(f.missChance>0&&Math.random()<f.missChance){
@@ -1548,9 +1549,12 @@ function attackChoso(f,enemy,chaos){
       shakeTimer=5;shakeAmt=3;
     }
     // Check if near any blood orbs — detonate on melee hit (generous range)
+    // Orbs detonate if near Choso OR near the enemy being hit
     f.chosoOrbs.forEach(orb=>{
       if(!orb.alive)return;
-      if(dist(f,orb)<meleeRange+40){
+      const nearChoso=dist(f,orb)<meleeRange+60;
+      const nearEnemy=enemy.alive&&dist(enemy,orb)<meleeRange+60;
+      if(nearChoso||nearEnemy){
         spawnDmgNum(orb.x,orb.y-15,'BLOOD DETONATION','#ff4444',false);
         chosoDetonateOrb(f,orb,enemy,chaos);
       }
@@ -1895,12 +1899,36 @@ function attackNanami(f,enemy,chaos){
   }
 }
 
+function ryuSpawnSplits(p){
+  // Ryu special blast splits into homing beams in all directions
+  SFX.ryuSplit();
+  const count=p.ryuSplitCount||6;
+  const splitDmg=p.ryuSplitDmg||p.dmg*0.5;
+  const tracking=p.ryuSplitTrack; // ice element: splits track
+  // Find nearest enemy for tracking splits
+  let splitTarget=null;
+  fighters.forEach(f=>{if(f&&f.alive&&f.side!==p.owner.side)splitTarget=f;});
+  for(let si=0;si<count;si++){
+    const sa=(si/count)*Math.PI*2+rand(-0.15,0.15);
+    projectiles.push({
+      x:p.x,y:p.y,
+      vx:Math.cos(sa)*5,vy:Math.sin(sa)*5,
+      owner:p.owner,target:tracking?splitTarget:null,color:'#ff8844',
+      life:80,radius:7,dmg:splitDmg,
+      explosive:false,homing:tracking,homingStr:tracking?0.04:0,isRyuSplit:true,
+    });
+  }
+  spawnBurst(p.x,p.y,'#ff8844',25,8);
+  spawnBurst(p.x,p.y,'#ffcc00',15,5);
+  spawnDmgNum(p.x,p.y-20,'SPLIT!','#ff8844',true);
+  shakeTimer=8;shakeAmt=6;
+  addLog('Blast splits into '+count+' beams!');
+}
+
 function attackRyu(f,enemy,chaos){
-  // Pompadour cannon blasts (ranged) OR shockwave rings (close)
-  if(f.ryuBeamActive)return; // frozen during beam
+  // Pompadour cannon blasts — fires in weapon direction at intervals (no auto-aim)
   const d=dist(f,enemy);
-  const closeRange=f.radius+enemy.radius+60;
-  const ba=angle(f,enemy);
+  const ba=f.weaponAngle; // fires wherever weapon is pointing, NOT at enemy
   // Element modifiers
   let dmgMult=1,spdMult=1,blastRadius=12+chaos*1;
   if(f.elementActive){
@@ -1908,12 +1936,11 @@ function attackRyu(f,enemy,chaos){
     if(f.elem.id==='electric')spdMult=1.5;
     if(f.elem.id==='toxic')dmgMult=1.1;
   }
-  if(d<closeRange){
+  if(d<f.radius+enemy.radius+60){
     // SHOCKWAVE RINGS — close range knockback
     SFX.ryuShockwave();
     f.weaponExtend=1;f.weaponFlash=10;
     const ringDmg=f.atk*(0.8+chaos*0.08)*dmgMult;
-    // Push ring outward
     const ringSpeed=5+chaos*0.3;
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
@@ -1926,14 +1953,12 @@ function attackRyu(f,enemy,chaos){
     spawnBurst(f.x,f.y,'#cc6633',10,4);
     spawnBurst(f.x,f.y,'#ff8844',6,3);
   } else {
-    // CANNON BLASTS — projectile with homing splits at high chaos
+    // CANNON BLASTS — fires in weapon direction at intervals
     SFX.ryuCannon();
     f.weaponExtend=1;f.weaponFlash=8;
     const cannonDmg=f.atk*(1.0+chaos*0.1)*dmgMult;
     const projSpeed=(7+chaos*0.2)*spdMult;
-    // Fire element: bigger projectile
     const projRadius=blastRadius;
-    // Main blast
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
       vx:Math.cos(ba)*projSpeed,vy:Math.sin(ba)*projSpeed,
@@ -1941,19 +1966,18 @@ function attackRyu(f,enemy,chaos){
       life:60,radius:projRadius,dmg:cannonDmg,
       explosive:true,explosionRadius:30+chaos*2,homing:false,isRyuCannon:true,
     });
-    // At higher chaos, add homing splits
+    // At higher chaos, add extra blasts (no homing — fire in spread)
     const splitCount=chaos>=3?Math.min(Math.floor(chaos/2),4):0;
     if(splitCount>0){
       for(let i=0;i<splitCount;i++){
         const sa=ba+(i-(splitCount-1)/2)*0.25;
         const splitDmg=cannonDmg*0.4;
-        const convergeFactor=f.elementActive&&f.elem.id==='toxic'?0.06:0.03;
         projectiles.push({
           x:f.x+Math.cos(sa)*f.radius,y:f.y+Math.sin(sa)*f.radius,
           vx:Math.cos(sa)*(projSpeed*0.8),vy:Math.sin(sa)*(projSpeed*0.8),
-          owner:f,target:enemy,color:'#ff8844',
+          owner:f,target:null,color:'#ff8844',
           life:45,radius:6+chaos*0.3,dmg:splitDmg,
-          explosive:false,homing:true,homingStr:convergeFactor,isRyuSplit:true,
+          explosive:false,homing:false,isRyuSplit:true,
         });
       }
     }
@@ -2700,24 +2724,32 @@ function relicNanami(f,enemy){
 }
 
 function relicRyu(f,enemy){
-  // "DESSERT IS SERVED." — laser beam; hit=big dmg; miss=splits into homing beams
-  f.specialTimer=240; // ~4 seconds total
-  f.ryuBeamActive=true;
-  f.ryuBeamAngle=angle(f,enemy);
-  f.ryuBeamTimer=120; // 2 second beam phase
-  f.ryuBeamHit=false;
-  f.ryuBeamSplit=false;
-  f.ryuIceTracking=f.elementActive&&f.elem.id==='cryo';
-  f.vx=0;f.vy=0;
+  // "DESSERT IS SERVED." — slow-moving blast that ALWAYS splits; main gimmick is split damage
+  f.specialTimer=60; // short — Ryu can move right after firing
+  const ba=f.weaponAngle; // fires in current weapon direction, no auto-aim
+  const chaos=getChaosLevel(f);
+  // Spawn slow blast projectile
+  const blastSpeed=3; // slow moving
+  let splitDmg=f.atk*(1.2+chaos*0.1); // split damage per beam
+  let directDmg=f.atk*(1.5+chaos*0.1); // moderate direct hit damage (not massive)
+  let splitCount=6+Math.floor(Math.random()*3)+Math.floor(chaos*0.5);
+  if(f.elementActive&&f.elem.id==='fire'){directDmg*=1.3;splitDmg*=1.3;}
+  if(f.elementActive&&f.elem.id==='toxic'){splitCount+=2;} // more splits
+  const trackSplit=f.elementActive&&f.elem.id==='cryo'; // ice: splits track
+  projectiles.push({
+    x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+    vx:Math.cos(ba)*blastSpeed,vy:Math.sin(ba)*blastSpeed,
+    owner:f,target:null,color:'#ff8844',
+    life:120,radius:18+chaos*1,dmg:directDmg,
+    explosive:false,homing:false,isRyuSpecialBlast:true,
+    ryuSplitCount:splitCount,ryuSplitDmg:splitDmg,ryuSplitTrack:trackSplit,
+    ryuBlastAngle:ba,
+  });
   SFX.ryuBeam();
-  spawnBurst(f.x,f.y,'#cc6633',40,12);
-  spawnBurst(f.x,f.y,'#ff8844',25,8);
-  spawnBurst(f.x,f.y,'#ffcc00',15,5);
-  for(let r=0;r<3;r++){
-    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*20,color:'#cc6633',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
-  }
-  shakeTimer=15;shakeAmt=10;
-  triggerScreenFlash('#cc6633',10);
+  spawnBurst(f.x,f.y,'#cc6633',30,10);
+  spawnBurst(f.x,f.y,'#ff8844',20,6);
+  shakeTimer=10;shakeAmt=8;
+  triggerScreenFlash('#cc6633',8);
   addLog((f.side===0?'P1':'P2')+' DESSERT IS SERVED.');
   spawnDmgNum(f.x,f.y-f.radius-30,'DESSERT IS SERVED.','#cc6633',true);
 }
@@ -3058,20 +3090,17 @@ function updateRelicGojo(f,enemy,dt){
       spawnParticle(f.x+Math.cos(wa)*f.radius,f.y+Math.sin(wa)*f.radius,'#9944ff',Math.cos(wa)*2,Math.sin(wa)*2,10,2);
     }
     if(f._gojoPurpleWarning<=0){
-      // FIRE Hollow Purple
+      // FIRE single Hollow Purple (Phase 1 — no stun/time slow)
       const ba=f._gojoPurpleAngle;
       SFX.gojoPurple();
       const beamDmg=f.atk*3.5;
-      for(let i=-2;i<=2;i++){
-        const spreadAngle=ba+i*0.1;
-        projectiles.push({
-          x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
-          vx:Math.cos(spreadAngle)*12,vy:Math.sin(spreadAngle)*12,
-          owner:f,target:null,color:'#9944ff',
-          life:80,radius:20,dmg:beamDmg,
-          explosive:false,homing:false,isGojoPurple:true,
-        });
-      }
+      projectiles.push({
+        x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+        vx:Math.cos(ba)*12,vy:Math.sin(ba)*12,
+        owner:f,target:null,color:'#9944ff',
+        life:80,radius:28,dmg:beamDmg,
+        explosive:false,homing:false,isGojoPurple:true,
+      });
       spawnBurst(f.x,f.y,'#9944ff',35,10);
       spawnBurst(f.x,f.y,'#ff4444',20,7);
       spawnBurst(f.x,f.y,'#4488ff',20,7);
@@ -3103,23 +3132,25 @@ function updateRelicGojo(f,enemy,dt){
     // Geometric shapes in background (drawn in drawBattle)
     // Fire Purple when charge done
     if(f.gojoDomainChargeTimer<=0&&f.gojoDomainChargeTimer>-10){
-      // Massive Hollow Purple beam at all enemies
+      // Single massive Hollow Purple at lowest HP enemy (Phase 2 200%)
       SFX.gojoPurple();SFX.megaExplosion();
+      let lowestHP=null;
       fighters.forEach(e=>{
         if(e.side===f.side||!e.alive)return;
-        const ba=angle(f,e);
-        const beamDmg=f.atk*4;
-        for(let i=-1;i<=1;i++){
-          projectiles.push({
-            x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
-            vx:Math.cos(ba+i*0.06)*14,vy:Math.sin(ba+i*0.06)*14,
-            owner:f,target:null,color:'#9944ff',
-            life:80,radius:18,dmg:beamDmg,
-            explosive:false,homing:false,isGojoPurple:true,
-          });
-        }
-        spawnBurst(f.x,f.y,'#9944ff',40,12);
+        if(!lowestHP||e.hp<lowestHP.hp)lowestHP=e;
       });
+      if(lowestHP){
+        const ba=angle(f,lowestHP);
+        const beamDmg=f.atk*5;
+        projectiles.push({
+          x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+          vx:Math.cos(ba)*12,vy:Math.sin(ba)*12,
+          owner:f,target:null,color:'#9944ff',
+          life:80,radius:35,dmg:beamDmg,
+          explosive:false,homing:false,isGojoPurple:true,
+        });
+      }
+      spawnBurst(f.x,f.y,'#9944ff',40,12);
       shakeTimer=25;shakeAmt=16;
       triggerScreenFlash('#9944ff',15);triggerHitFreeze(8);
       addLog('INFINITE VOID PURPLE!');
@@ -3783,91 +3814,8 @@ function updateRelicNanami(f,enemy,dt){
 }
 
 function updateRelicRyu(f,enemy,dt){
-  if(!f.ryuBeamActive)return;
-  f.ryuBeamTimer-=dt;
-  f.vx=0;f.vy=0; // frozen during beam
-  // Ice element: beam tracks enemy
-  if(f.ryuIceTracking&&enemy.alive){
-    const targetA=angle(f,enemy);
-    let diff=targetA-f.ryuBeamAngle;
-    while(diff>Math.PI)diff-=Math.PI*2;
-    while(diff<-Math.PI)diff+=Math.PI*2;
-    f.ryuBeamAngle+=diff*0.04*dt; // slow tracking
-  }
-  // Beam particles along direction
-  if(battleTime%2<1){
-    const bx=f.x+Math.cos(f.ryuBeamAngle)*40;
-    const by=f.y+Math.sin(f.ryuBeamAngle)*40;
-    spawnParticle(bx+rand(-5,5),by+rand(-5,5),'#ff8844',Math.cos(f.ryuBeamAngle)*3,Math.sin(f.ryuBeamAngle)*3,12,2);
-  }
-  // Aura particles
-  if(battleTime%4<1){
-    const a=Math.random()*Math.PI*2;
-    spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#cc6633',0,-1,10,2);
-  }
-  // Check beam hit (continuous ray test every frame)
-  if(!f.ryuBeamHit&&enemy.alive){
-    const beamLen=400;
-    const bx=f.x+Math.cos(f.ryuBeamAngle)*beamLen;
-    const by=f.y+Math.sin(f.ryuBeamAngle)*beamLen;
-    // Simple ray-circle intersection
-    const cx=enemy.x-f.x,cy=enemy.y-f.y;
-    const dx=bx-f.x,dy=by-f.y;
-    const dLen=Math.sqrt(dx*dx+dy*dy);
-    const ndx=dx/dLen,ndy=dy/dLen;
-    const proj=cx*ndx+cy*ndy;
-    if(proj>0&&proj<beamLen){
-      const closestX=f.x+ndx*proj,closestY=f.y+ndy*proj;
-      const hitDist=Math.hypot(enemy.x-closestX,enemy.y-closestY);
-      if(hitDist<enemy.radius+8){
-        // BEAM HIT — big damage
-        f.ryuBeamHit=true;
-        const chaos=getChaosLevel(f);
-        let beamDmg=f.atk*(3.5+chaos*0.2);
-        if(f.elementActive&&f.elem.id==='fire')beamDmg*=1.3;
-        dealDamage(f,enemy,beamDmg,true);
-        SFX.megaExplosion();
-        spawnBurst(enemy.x,enemy.y,'#cc6633',30,10);
-        spawnBurst(enemy.x,enemy.y,'#ffcc00',20,8);
-        spawnBurst(enemy.x,enemy.y,'#ffffff',10,5);
-        spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'DIRECT HIT!','#ffcc00',true);
-        shakeTimer=20;shakeAmt=12;
-        triggerHitFreeze(15);
-        const ka=angle(f,enemy);
-        enemy.vx+=Math.cos(ka)*10;enemy.vy+=Math.sin(ka)*10;
-      }
-    }
-  }
-  // Beam ends — if miss, split into homing beams
-  if(f.ryuBeamTimer<=0&&!f.ryuBeamSplit){
-    f.ryuBeamSplit=true;
-    if(!f.ryuBeamHit&&!f.ryuIceTracking){
-      // MISS — split into surrounding homing beams (at least 1 hits, not all)
-      SFX.ryuSplit();
-      const splitCount=5+Math.floor(Math.random()*3);
-      const chaos=getChaosLevel(f);
-      const splitDmg=f.atk*(1.2+chaos*0.1);
-      for(let i=0;i<splitCount;i++){
-        const sa=f.ryuBeamAngle+Math.PI+(i-splitCount/2)*0.4+rand(-0.1,0.1);
-        projectiles.push({
-          x:f.x+Math.cos(f.ryuBeamAngle)*80,y:f.y+Math.sin(f.ryuBeamAngle)*80,
-          vx:Math.cos(sa)*6,vy:Math.sin(sa)*6,
-          owner:f,target:enemy,color:'#ff8844',
-          life:90,radius:8,dmg:splitDmg,
-          explosive:false,homing:true,homingStr:0.04,isRyuSplit:true,
-        });
-      }
-      spawnBurst(f.x+Math.cos(f.ryuBeamAngle)*80,f.y+Math.sin(f.ryuBeamAngle)*80,'#ff8844',20,8);
-      spawnDmgNum(f.x,f.y-f.radius-25,'SPLIT!','#ff8844',false);
-      addLog('Beam splits into homing projectiles!');
-    }
-    // End beam after a short delay
-    f.ryuBeamActive=false;
-    f.specialActive=false;
-    f.specialTimer=0;
-    spawnBurst(f.x,f.y,'#cc6633',10,4);
-    addLog((f.side===0?'P1':'P2')+' Beam ended');
-  }
+  // Ryu special is fire-and-forget blast — no per-frame beam logic needed
+  // The projectile handles splitting on its own (via isRyuSpecialBlast handler)
 }
 
 // Helper: point inside triangle
@@ -4571,7 +4519,7 @@ function updateBattle(dt){
         if(f.char.id==='throw'&&!f.throwWeapons[f.throwActiveIdx].available){/* wait */}
         else if(f.char.id==='berserk'&&f.berserkReloadTimer>0){/* reloading */}
         else if(f.char.id==='katana'&&f.katanaDashing){/* mid counter-dash */}
-        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||isWeaponFacingEnemy(f,enemy)){
+        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='ryu'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -4679,6 +4627,10 @@ function updateBattle(dt){
         spawnBurst(p.target.x,p.target.y,'#cc6633',10,4);
         shakeTimer=4;shakeAmt=3;
       }
+      // Ryu Special Blast: ALWAYS split on hit (main gimmick)
+      if(p.isRyuSpecialBlast){
+        ryuSpawnSplits(p);
+      }
       // Gojo Red projectile hit: knockback enemy away from projectile direction
       if(p.isGojoRed&&p.target&&p.target.alive){
         const ka=Math.atan2(p.vy,p.vx);
@@ -4757,6 +4709,10 @@ function updateBattle(dt){
     }
 
     if(p.life<=0||wallHit){
+      // Ryu Special Blast: split even on expire/wall (always splits)
+      if(p.isRyuSpecialBlast){
+        ryuSpawnSplits(p);
+      }
       // Throwing weapon missed — embed on ground, start return cooldown
       if(p.isThrowWeapon&&p.owner){
         const tw=p.owner.throwWeapons[p.throwIdx];
@@ -5720,30 +5676,21 @@ function drawBall(f){
     X.restore();
   }
 
-  // Draw Ryu beam during DESSERT IS SERVED
-  if(f.char.id==='ryu'&&f.ryuBeamActive){
-    X.save();
-    const bx=f.x+Math.cos(f.ryuBeamAngle)*f.radius;
-    const by=f.y+Math.sin(f.ryuBeamAngle)*f.radius;
-    const beamLen=400;
-    const ex=bx+Math.cos(f.ryuBeamAngle)*beamLen;
-    const ey=by+Math.sin(f.ryuBeamAngle)*beamLen;
-    // Outer glow
-    X.strokeStyle='rgba(204,102,51,0.2)';X.lineWidth=28;
-    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
-    // Mid glow
-    X.strokeStyle='rgba(255,136,68,0.4)';X.lineWidth=16;
-    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
-    // Main beam
-    X.strokeStyle='rgba(255,170,100,0.7)';X.lineWidth=8;
-    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
-    // Core
-    X.strokeStyle='#ffcc88';X.lineWidth=3;
-    X.shadowColor='#ff8844';X.shadowBlur=15;
-    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
-    X.shadowBlur=0;
-    X.restore();
-  }
+  // Ryu special blast glow trail (drawn for isRyuSpecialBlast projectiles)
+  projectiles.forEach(p=>{
+    if(p.isRyuSpecialBlast){
+      X.save();
+      X.beginPath();X.arc(p.x,p.y,p.radius+8,0,Math.PI*2);
+      const rg=X.createRadialGradient(p.x,p.y,0,p.x,p.y,p.radius+8);
+      rg.addColorStop(0,'rgba(255,200,100,0.6)');rg.addColorStop(0.5,'rgba(255,136,68,0.3)');rg.addColorStop(1,'rgba(204,102,51,0)');
+      X.fillStyle=rg;X.fill();
+      // Core orb
+      X.beginPath();X.arc(p.x,p.y,p.radius,0,Math.PI*2);
+      X.fillStyle='#ffcc88';X.fill();
+      X.strokeStyle='#cc6633';X.lineWidth=2;X.stroke();
+      X.restore();
+    }
+  });
 
   // Draw Toji triangle arena + afterimages
   if(f.char.id==='toji'&&f.tojiTriActive){
@@ -8543,7 +8490,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'mechamaru':statLine='P'+f.mechaPhase+(f.mechaPhase===2?' ULT':'')+(f.mechaUltShield?' SHD':'')+(f.mechaPhase===3?' '+Math.ceil(f.mechaTrueFormTimer/60)+'s':'');break;
     case 'kashimo':statLine=(f.kashimoDartPhase!=='idle'?'DART ':'STAFF ')+(f.kashimoAmberUsed?'':'AMBER');break;
     case 'nanami':{const chaos=getChaosLevel(f);let cr=f.crit+chaos*1.5;if(f.nanamiOvertimeActive)cr=Math.min(90,cr+35);const cm=f.nanamiOvertimeActive?2.4:(f.elementActive&&f.elem.id==='electric'?1.4:1.8);statLine=(f.nanamiOvertimeActive?'OT ':'')+(f.nanamiIceShattered?'FIST ':'')+Math.round(cr)+'%cr '+cm.toFixed(1)+'x'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:'');break;}
-    case 'ryu':statLine=f.ryuBeamActive?'BEAM':'CANNON';break;
+    case 'ryu':statLine='CANNON';break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
