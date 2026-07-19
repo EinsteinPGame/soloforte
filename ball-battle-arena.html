@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.9.2 — polish batch: Gojo purple CD+bigger, Kashimo time-charge, crack no-slow, Nanami crit HUD, Smasher afterimage, boss elem descriptions
+// BALL BATTLE ARENA v8.0 — Ryu (16th char) + Smasher time slow + polish
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -174,6 +174,10 @@ const SFX={
   nanamiSlash(){this._tone(600,0.08,'sawtooth',0.18);this._tone(900,0.06,'triangle',0.12,0.02);this._noise(0.05,0.08)},
   nanamiRatio(){this._tone(800,0.1,'sawtooth',0.25);this._tone(1200,0.08,'square',0.18,0.02);this._tone(500,0.12,'sine',0.15,0.04);this._noise(0.06,0.12)},
   nanamiOvertime(){this._tone(300,0.2,'sine',0.25);this._tone(500,0.18,'triangle',0.2,0.05);this._tone(700,0.15,'square',0.18,0.1);this._tone(900,0.12,'triangle',0.15,0.15);this._noise(0.15,0.15)},
+  ryuCannon(){this._tone(200,0.1,'sawtooth',0.2);this._tone(400,0.08,'square',0.15,0.02);this._noise(0.08,0.1)},
+  ryuShockwave(){this._tone(150,0.15,'sine',0.25);this._tone(300,0.12,'triangle',0.18,0.03);this._noise(0.1,0.12)},
+  ryuBeam(){this._tone(100,0.3,'sawtooth',0.3);this._tone(250,0.25,'square',0.22,0.05);this._tone(500,0.2,'triangle',0.18,0.1);this._tone(800,0.15,'sine',0.12,0.15);this._noise(0.2,0.2)},
+  ryuSplit(){this._tone(600,0.08,'triangle',0.15);this._tone(900,0.06,'sine',0.1,0.02);this._noise(0.04,0.06)},
 };
 
 // ============================================================
@@ -302,6 +306,14 @@ const CHARS=[
     baseAtkInterval:38,relicChargeRate:0.85,
     specialName:"I'M WORKING OVERTIME.",
   },
+  {
+    id:'ryu',name:'Ryu',color:'#cc6633',
+    desc:'Pompadour cannon blasts. DESSERT IS SERVED laser beam.',
+    playstyle:'Cannon & Beam',
+    stats:{hp:540,atk:30,speed:3.4,range:140,def:7,crit:12},
+    baseAtkInterval:50,relicChargeRate:0.75,
+    specialName:'DESSERT IS SERVED.',
+  },
 ];
 
 // ============================================================
@@ -376,6 +388,10 @@ const COMBO_EFFECTS={
   'nanami_electric':'More base damage but lower crit multiplier',
   'nanami_toxic':'Non-crits deal bonus damage',
   'nanami_cryo':'Unwrap blade for more damage + shatter risk',
+  'ryu_fire':'More damage + bigger blasts, hair cooldown slower',
+  'ryu_electric':'Faster cannon blasts (shorter interval)',
+  'ryu_toxic':'Homing splits converge tighter on targets',
+  'ryu_cryo':'Beam turns to track until hit (no split)',
 };
 
 // ============================================================
@@ -723,6 +739,14 @@ function createFighter(charIdx,elemIdx,side){
     nanamiCritStreak:0, // consecutive crits (visual)
     nanamiIceUnwrapped:false, // cryo element: blade unwrapped
     nanamiIceShattered:false, // cryo element: cloth fists mode
+    // Ryu state
+    ryuBlastMode:'cannon', // 'cannon' (far) or 'shockwave' (close)
+    ryuBeamActive:false, // DESSERT IS SERVED beam active
+    ryuBeamAngle:0, // beam direction
+    ryuBeamTimer:0, // beam duration
+    ryuBeamHit:false, // whether beam connected
+    ryuBeamSplit:false, // whether beam already split
+    ryuIceTracking:false, // ice element: beam turns to track
   };
 }
 
@@ -1066,7 +1090,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -1077,6 +1101,7 @@ function performWeaponAttack(f,enemy){
   if(f.chosoPiercingFreeze>0)return; // Choso frozen while firing beam
   if(f.mechaMouthBlastActive)return; // Mechamaru frozen while firing mouth blast
   if(f.kashimoAmberActive)return; // Kashimo frozen during AMBER
+  if(f.ryuBeamActive)return; // Ryu frozen during DESSERT IS SERVED beam
   if(f.kashimoDartPhase!=='idle')return; // Kashimo in dart rush sequence
   // Monowire+electric: short circuit makes attacks miss sometimes
   if(f.missChance>0&&Math.random()<f.missChance){
@@ -1105,6 +1130,7 @@ function performWeaponAttack(f,enemy){
     case 'mechamaru':attackMechamaru(f,enemy,chaos);break;
     case 'kashimo':attackKashimo(f,enemy,chaos);break;
     case 'nanami':attackNanami(f,enemy,chaos);break;
+    case 'ryu':attackRyu(f,enemy,chaos);break;
   }
 }
 
@@ -1861,6 +1887,72 @@ function attackNanami(f,enemy,chaos){
   }
 }
 
+function attackRyu(f,enemy,chaos){
+  // Pompadour cannon blasts (ranged) OR shockwave rings (close)
+  if(f.ryuBeamActive)return; // frozen during beam
+  const d=dist(f,enemy);
+  const closeRange=f.radius+enemy.radius+60;
+  const ba=angle(f,enemy);
+  // Element modifiers
+  let dmgMult=1,spdMult=1,blastRadius=12+chaos*1;
+  if(f.elementActive){
+    if(f.elem.id==='fire'){dmgMult=1.4;blastRadius*=1.3;}
+    if(f.elem.id==='electric')spdMult=1.5;
+    if(f.elem.id==='toxic')dmgMult=1.1;
+  }
+  if(d<closeRange){
+    // SHOCKWAVE RINGS — close range knockback
+    SFX.ryuShockwave();
+    f.weaponExtend=1;f.weaponFlash=10;
+    const ringDmg=f.atk*(0.8+chaos*0.08)*dmgMult;
+    // Push ring outward
+    const ringSpeed=5+chaos*0.3;
+    projectiles.push({
+      x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+      vx:Math.cos(ba)*ringSpeed,vy:Math.sin(ba)*ringSpeed,
+      owner:f,target:null,color:'#cc6633',
+      life:30,radius:18+chaos*1,dmg:ringDmg,
+      explosive:false,homing:false,isRyuRing:true,
+      knockback:6+chaos*0.3,
+    });
+    spawnBurst(f.x,f.y,'#cc6633',10,4);
+    spawnBurst(f.x,f.y,'#ff8844',6,3);
+  } else {
+    // CANNON BLASTS — projectile with homing splits at high chaos
+    SFX.ryuCannon();
+    f.weaponExtend=1;f.weaponFlash=8;
+    const cannonDmg=f.atk*(1.0+chaos*0.1)*dmgMult;
+    const projSpeed=(7+chaos*0.2)*spdMult;
+    // Fire element: bigger projectile
+    const projRadius=blastRadius;
+    // Main blast
+    projectiles.push({
+      x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+      vx:Math.cos(ba)*projSpeed,vy:Math.sin(ba)*projSpeed,
+      owner:f,target:null,color:'#cc6633',
+      life:60,radius:projRadius,dmg:cannonDmg,
+      explosive:true,explosionRadius:30+chaos*2,homing:false,isRyuCannon:true,
+    });
+    // At higher chaos, add homing splits
+    const splitCount=chaos>=3?Math.min(Math.floor(chaos/2),4):0;
+    if(splitCount>0){
+      for(let i=0;i<splitCount;i++){
+        const sa=ba+(i-(splitCount-1)/2)*0.25;
+        const splitDmg=cannonDmg*0.4;
+        const convergeFactor=f.elementActive&&f.elem.id==='toxic'?0.06:0.03;
+        projectiles.push({
+          x:f.x+Math.cos(sa)*f.radius,y:f.y+Math.sin(sa)*f.radius,
+          vx:Math.cos(sa)*(projSpeed*0.8),vy:Math.sin(sa)*(projSpeed*0.8),
+          owner:f,target:enemy,color:'#ff8844',
+          life:45,radius:6+chaos*0.3,dmg:splitDmg,
+          explosive:false,homing:true,homingStr:convergeFactor,isRyuSplit:true,
+        });
+      }
+    }
+    spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ff8844',8,4);
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -2211,6 +2303,7 @@ function useSpecial(f,enemy){
     case 'mechamaru':relicMechamaru(f,enemy);break;
     case 'kashimo':relicKashimo(f,enemy);break;
     case 'nanami':relicNanami(f,enemy);break;
+    case 'ryu':relicRyu(f,enemy);break;
   }
 }
 
@@ -2596,6 +2689,29 @@ function relicNanami(f,enemy){
   shakeTimer=12;shakeAmt=8;
   addLog((f.side===0?'P1':'P2')+' OVERTIME MODE!');
   spawnDmgNum(f.x,f.y-f.radius-30,"I'M WORKING OVERTIME.",'#d4a843',true);
+}
+
+function relicRyu(f,enemy){
+  // "DESSERT IS SERVED." — laser beam; hit=big dmg; miss=splits into homing beams
+  f.specialTimer=240; // ~4 seconds total
+  f.ryuBeamActive=true;
+  f.ryuBeamAngle=angle(f,enemy);
+  f.ryuBeamTimer=120; // 2 second beam phase
+  f.ryuBeamHit=false;
+  f.ryuBeamSplit=false;
+  f.ryuIceTracking=f.elementActive&&f.elem.id==='cryo';
+  f.vx=0;f.vy=0;
+  SFX.ryuBeam();
+  spawnBurst(f.x,f.y,'#cc6633',40,12);
+  spawnBurst(f.x,f.y,'#ff8844',25,8);
+  spawnBurst(f.x,f.y,'#ffcc00',15,5);
+  for(let r=0;r<3;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*20,color:'#cc6633',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  shakeTimer=15;shakeAmt=10;
+  triggerScreenFlash('#cc6633',10);
+  addLog((f.side===0?'P1':'P2')+' DESSERT IS SERVED.');
+  spawnDmgNum(f.x,f.y-f.radius-30,'DESSERT IS SERVED.','#cc6633',true);
 }
 
 // ============================================================
@@ -3658,6 +3774,94 @@ function updateRelicNanami(f,enemy,dt){
   }
 }
 
+function updateRelicRyu(f,enemy,dt){
+  if(!f.ryuBeamActive)return;
+  f.ryuBeamTimer-=dt;
+  f.vx=0;f.vy=0; // frozen during beam
+  // Ice element: beam tracks enemy
+  if(f.ryuIceTracking&&enemy.alive){
+    const targetA=angle(f,enemy);
+    let diff=targetA-f.ryuBeamAngle;
+    while(diff>Math.PI)diff-=Math.PI*2;
+    while(diff<-Math.PI)diff+=Math.PI*2;
+    f.ryuBeamAngle+=diff*0.04*dt; // slow tracking
+  }
+  // Beam particles along direction
+  if(battleTime%2<1){
+    const bx=f.x+Math.cos(f.ryuBeamAngle)*40;
+    const by=f.y+Math.sin(f.ryuBeamAngle)*40;
+    spawnParticle(bx+rand(-5,5),by+rand(-5,5),'#ff8844',Math.cos(f.ryuBeamAngle)*3,Math.sin(f.ryuBeamAngle)*3,12,2);
+  }
+  // Aura particles
+  if(battleTime%4<1){
+    const a=Math.random()*Math.PI*2;
+    spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#cc6633',0,-1,10,2);
+  }
+  // Check beam hit (continuous ray test every frame)
+  if(!f.ryuBeamHit&&enemy.alive){
+    const beamLen=400;
+    const bx=f.x+Math.cos(f.ryuBeamAngle)*beamLen;
+    const by=f.y+Math.sin(f.ryuBeamAngle)*beamLen;
+    // Simple ray-circle intersection
+    const cx=enemy.x-f.x,cy=enemy.y-f.y;
+    const dx=bx-f.x,dy=by-f.y;
+    const dLen=Math.sqrt(dx*dx+dy*dy);
+    const ndx=dx/dLen,ndy=dy/dLen;
+    const proj=cx*ndx+cy*ndy;
+    if(proj>0&&proj<beamLen){
+      const closestX=f.x+ndx*proj,closestY=f.y+ndy*proj;
+      const hitDist=Math.hypot(enemy.x-closestX,enemy.y-closestY);
+      if(hitDist<enemy.radius+8){
+        // BEAM HIT — big damage
+        f.ryuBeamHit=true;
+        const chaos=getChaosLevel(f);
+        let beamDmg=f.atk*(3.5+chaos*0.2);
+        if(f.elementActive&&f.elem.id==='fire')beamDmg*=1.3;
+        dealDamage(f,enemy,beamDmg,true);
+        SFX.megaExplosion();
+        spawnBurst(enemy.x,enemy.y,'#cc6633',30,10);
+        spawnBurst(enemy.x,enemy.y,'#ffcc00',20,8);
+        spawnBurst(enemy.x,enemy.y,'#ffffff',10,5);
+        spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'DIRECT HIT!','#ffcc00',true);
+        shakeTimer=20;shakeAmt=12;
+        triggerHitFreeze(15);
+        const ka=angle(f,enemy);
+        enemy.vx+=Math.cos(ka)*10;enemy.vy+=Math.sin(ka)*10;
+      }
+    }
+  }
+  // Beam ends — if miss, split into homing beams
+  if(f.ryuBeamTimer<=0&&!f.ryuBeamSplit){
+    f.ryuBeamSplit=true;
+    if(!f.ryuBeamHit&&!f.ryuIceTracking){
+      // MISS — split into surrounding homing beams (at least 1 hits, not all)
+      SFX.ryuSplit();
+      const splitCount=5+Math.floor(Math.random()*3);
+      const chaos=getChaosLevel(f);
+      const splitDmg=f.atk*(1.2+chaos*0.1);
+      for(let i=0;i<splitCount;i++){
+        const sa=f.ryuBeamAngle+Math.PI+(i-splitCount/2)*0.4+rand(-0.1,0.1);
+        projectiles.push({
+          x:f.x+Math.cos(f.ryuBeamAngle)*80,y:f.y+Math.sin(f.ryuBeamAngle)*80,
+          vx:Math.cos(sa)*6,vy:Math.sin(sa)*6,
+          owner:f,target:enemy,color:'#ff8844',
+          life:90,radius:8,dmg:splitDmg,
+          explosive:false,homing:true,homingStr:0.04,isRyuSplit:true,
+        });
+      }
+      spawnBurst(f.x+Math.cos(f.ryuBeamAngle)*80,f.y+Math.sin(f.ryuBeamAngle)*80,'#ff8844',20,8);
+      spawnDmgNum(f.x,f.y-f.radius-25,'SPLIT!','#ff8844',false);
+      addLog('Beam splits into homing projectiles!');
+    }
+    // End beam after a short delay
+    f.ryuBeamActive=false;
+    f.specialActive=false;
+    f.specialTimer=0;
+    spawnBurst(f.x,f.y,'#cc6633',10,4);
+    addLog((f.side===0?'P1':'P2')+' Beam ended');
+  }
+}
+
 // Helper: point inside triangle
 function pointInTriangle(px,py,a,b,c){
   const d1=(px-b.x)*(a.y-b.y)-(a.x-b.x)*(py-b.y);
@@ -3792,6 +3996,7 @@ function updateBattle(dt){
         case 'mechamaru':updateRelicMechamaru(f,enemy,dt);break;
         case 'kashimo':updateRelicKashimo(f,enemy,dt);break;
         case 'nanami':updateRelicNanami(f,enemy,dt);break;
+        case 'ryu':updateRelicRyu(f,enemy,dt);break;
       }
     }
 
@@ -4454,6 +4659,14 @@ function updateBattle(dt){
       } else {
         dealDamage(p.owner,p.target,p.dmg);
         spawnBurst(p.target.x,p.target.y,p.color,8,3);
+      }
+      // Ryu Ring: knockback
+      if(p.isRyuRing&&p.target&&p.target.alive){
+        const ka=Math.atan2(p.vy,p.vx);
+        const kb=p.knockback||6;
+        p.target.vx+=Math.cos(ka)*kb;p.target.vy+=Math.sin(ka)*kb;
+        spawnBurst(p.target.x,p.target.y,'#cc6633',10,4);
+        shakeTimer=4;shakeAmt=3;
       }
       // Gojo Red projectile hit: knockback enemy away from projectile direction
       if(p.isGojoRed&&p.target&&p.target.alive){
@@ -5354,6 +5567,44 @@ function drawBall(f){
     X.restore();
   }
 
+  // Ryu face — pompadour hairstyle, confident grin
+  if(f.char.id==='ryu'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    // Tall pompadour — signature hair
+    X.fillStyle='#8b4513';
+    X.beginPath();
+    X.moveTo(hx-r*0.4,hy-r*0.1);
+    X.quadraticCurveTo(hx-r*0.45,hy-r*0.9,hx,hy-r*1.1);
+    X.quadraticCurveTo(hx+r*0.45,hy-r*0.9,hx+r*0.4,hy-r*0.1);
+    X.closePath();X.fill();
+    // Hair volume (darker back)
+    X.fillStyle='#6b3010';
+    X.beginPath();
+    X.moveTo(hx-r*0.35,hy-r*0.05);
+    X.quadraticCurveTo(hx-r*0.4,hy-r*0.7,hx,hy-r*0.95);
+    X.quadraticCurveTo(hx+r*0.4,hy-r*0.7,hx+r*0.35,hy-r*0.05);
+    X.closePath();X.fill();
+    // Hair shine streak
+    X.strokeStyle='#c47a30';X.lineWidth=2;
+    X.beginPath();X.moveTo(hx-r*0.1,hy-r*0.75);X.quadraticCurveTo(hx+r*0.05,hy-r*0.85,hx+r*0.15,hy-r*0.7);X.stroke();
+    // Confident narrow eyes
+    X.fillStyle='#222';
+    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.05,r*0.1,r*0.04,-0.1,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.05,r*0.1,r*0.04,0.1,0,Math.PI*2);X.fill();
+    // Cocky grin
+    X.strokeStyle='#555';X.lineWidth=1.5;
+    X.beginPath();X.arc(hx+r*0.05,hy+r*0.2,r*0.15,0.3,Math.PI-0.1);X.stroke();
+    // Beam active glow
+    if(f.ryuBeamActive){
+      const pulse=Math.sin(battleTime*0.2)*0.3+0.6;
+      X.strokeStyle=`rgba(204,102,51,${pulse})`;X.lineWidth=4;
+      X.beginPath();X.arc(hx,hy,r+8,0,Math.PI*2);X.stroke();
+      X.shadowColor='#cc6633';X.shadowBlur=15;X.stroke();X.shadowBlur=0;
+    }
+    X.restore();
+  }
+
   // Draw Kashimo homing bolt
   if(f.char.id==='kashimo'&&f.kashimoBoltActive){
     X.save();
@@ -5455,6 +5706,31 @@ function drawBall(f){
     // Bright center
     X.strokeStyle='rgba(255,180,180,0.9)';X.lineWidth=2;
     X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    X.restore();
+  }
+
+  // Draw Ryu beam during DESSERT IS SERVED
+  if(f.char.id==='ryu'&&f.ryuBeamActive){
+    X.save();
+    const bx=f.x+Math.cos(f.ryuBeamAngle)*f.radius;
+    const by=f.y+Math.sin(f.ryuBeamAngle)*f.radius;
+    const beamLen=400;
+    const ex=bx+Math.cos(f.ryuBeamAngle)*beamLen;
+    const ey=by+Math.sin(f.ryuBeamAngle)*beamLen;
+    // Outer glow
+    X.strokeStyle='rgba(204,102,51,0.2)';X.lineWidth=28;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    // Mid glow
+    X.strokeStyle='rgba(255,136,68,0.4)';X.lineWidth=16;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    // Main beam
+    X.strokeStyle='rgba(255,170,100,0.7)';X.lineWidth=8;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    // Core
+    X.strokeStyle='#ffcc88';X.lineWidth=3;
+    X.shadowColor='#ff8844';X.shadowBlur=15;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    X.shadowBlur=0;
     X.restore();
   }
 
@@ -5736,6 +6012,10 @@ function drawBall(f){
       const cm=f.nanamiOvertimeActive?2.4:(f.elementActive&&f.elem.id==='electric'?1.4:1.8);
       X.fillText(mode+' '+Math.round(cr)+'%cr '+cm.toFixed(1)+'x'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:''),f.x,statY);
       break;}
+    case 'ryu':{
+      const mode=f.ryuBeamActive?'BEAM':'CANNON';
+      X.fillText(mode,f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -5770,6 +6050,7 @@ function drawWeapon(f){
     case 'mechamaru':drawMechamaruWeapon(r,ext,flash,f);break;
     case 'kashimo':drawKashimoWeapon(r,ext,flash,f);break;
     case 'nanami':drawNanamiWeapon(r,ext,flash,f);break;
+    case 'ryu':drawRyuWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -6100,6 +6381,49 @@ function drawNanamiWeapon(r,ext,flash,f){
     X.fillStyle=f.nanamiOvertimeActive?'rgba(255,204,0,0.3)':'rgba(212,168,67,0.2)';
     X.fillRect(r+4,-6,bladeLen,12);
     X.shadowBlur=0;
+  }
+}
+
+function drawRyuWeapon(r,ext,flash,f){
+  // Pompadour cannon — fist-mounted energy cannon
+  const cannonLen=35;
+  // Arm mount
+  X.fillStyle='#8b4513';X.fillRect(r-6,-5,14,10);
+  X.strokeStyle='#6b3010';X.lineWidth=1;X.strokeRect(r-6,-5,14,10);
+  // Cannon barrel
+  const bg=X.createLinearGradient(r+8,-8,r+8,8);
+  bg.addColorStop(0,'#774422');bg.addColorStop(0.5,'#995533');bg.addColorStop(1,'#774422');
+  X.fillStyle=bg;
+  drawRoundRect(r+8,-8,cannonLen,16,3);X.fill();
+  X.strokeStyle='#553311';X.lineWidth=1;X.stroke();
+  // Muzzle opening
+  X.fillStyle='#331100';
+  X.beginPath();X.arc(r+8+cannonLen,0,5,0,Math.PI*2);X.fill();
+  X.strokeStyle='#cc6633';X.lineWidth=1;X.stroke();
+  // Energy glow inside
+  X.beginPath();X.arc(r+8+cannonLen,0,3,0,Math.PI*2);
+  X.fillStyle=flash?'#ff8844':'#663311';X.fill();
+  // Orange accent lines
+  X.fillStyle=flash?'rgba(255,136,68,1)':'rgba(204,102,51,0.5)';
+  X.fillRect(r+10,-8,cannonLen-4,1.5);X.fillRect(r+10,6.5,cannonLen-4,1.5);
+  // Muzzle flash
+  if(flash){
+    X.shadowColor='#ff8844';X.shadowBlur=15;
+    X.beginPath();X.arc(r+8+cannonLen+8,0,18,0,Math.PI*2);
+    X.fillStyle='rgba(255,136,68,0.4)';X.fill();
+    X.beginPath();X.arc(r+8+cannonLen+5,0,8,0,Math.PI*2);
+    X.fillStyle='rgba(255,200,100,0.6)';X.fill();
+    X.shadowBlur=0;
+  }
+  // Beam charging indicator during special
+  if(f&&f.ryuBeamActive){
+    const charge=1-f.ryuBeamTimer/120;
+    X.save();X.rotate(-f.weaponAngle);
+    const pulse=Math.sin(battleTime*0.2)*5+8;
+    X.strokeStyle='#ff8844';X.lineWidth=3;X.globalAlpha=0.5+charge*0.5;
+    X.beginPath();X.arc(0,0,f.radius+pulse,0,Math.PI*2);X.stroke();
+    X.globalAlpha=1;
+    X.restore();
   }
 }
 
@@ -7200,6 +7524,15 @@ function drawMiniWeapon(cx,cy,charId,size){
       // Metal tip
       X.fillStyle='#999';X.beginPath();X.moveTo(18,-1.5);X.lineTo(23,0);X.lineTo(18,1.5);X.closePath();X.fill();
       break;
+    case 'ryu':
+      // Pompadour cannon
+      X.fillStyle='#8b4513';X.fillRect(-4,-3,10,6);
+      X.fillStyle='#995533';X.fillRect(6,-5,20,10);
+      X.strokeStyle='#553311';X.lineWidth=0.5;X.strokeRect(6,-5,20,10);
+      X.fillStyle='#331100';X.beginPath();X.arc(26,0,3,0,Math.PI*2);X.fill();
+      X.fillStyle='#ff8844';X.beginPath();X.arc(26,0,1.5,0,Math.PI*2);X.fill();
+      X.shadowColor='#ff8844';X.shadowBlur=3;X.fill();X.shadowBlur=0;
+      break;
   }
   X.restore();
 }
@@ -8181,6 +8514,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'mechamaru':statLine='P'+f.mechaPhase+(f.mechaPhase===2?' ULT':'')+(f.mechaUltShield?' SHD':'')+(f.mechaPhase===3?' '+Math.ceil(f.mechaTrueFormTimer/60)+'s':'');break;
     case 'kashimo':statLine=(f.kashimoDartPhase!=='idle'?'DART ':'STAFF ')+(f.kashimoAmberUsed?'':'AMBER');break;
     case 'nanami':{const chaos=getChaosLevel(f);let cr=f.crit+chaos*1.5;if(f.nanamiOvertimeActive)cr=Math.min(90,cr+35);const cm=f.nanamiOvertimeActive?2.4:(f.elementActive&&f.elem.id==='electric'?1.4:1.8);statLine=(f.nanamiOvertimeActive?'OT ':'')+(f.nanamiIceShattered?'FIST ':'')+Math.round(cr)+'%cr '+cm.toFixed(1)+'x'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:'');break;}
+    case 'ryu':statLine=f.ryuBeamActive?'BEAM':'CANNON';break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
