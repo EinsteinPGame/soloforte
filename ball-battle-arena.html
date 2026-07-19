@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.5.3 — Toji bigger arena, Choso piercing ray + orb rework
+// BALL BATTLE ARENA v7.7 — Mechamaru 3-phase mech character
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -140,6 +140,22 @@ const SFX={
   tojiDash(){this._tone(800,0.08,'sawtooth',0.2);this._tone(400,0.06,'sine',0.15,0.02);this._noise(0.06,0.12)},
   // Toji — Chain barrier hum
   tojiChain(){this._tone(180,0.12,'square',0.15);this._tone(90,0.15,'sine',0.12,0.03)},
+  // Mechamaru — Drill arm whir
+  mechaDrill(){this._tone(200,0.12,'sawtooth',0.2);this._tone(400,0.08,'square',0.15,0.02);this._noise(0.08,0.12)},
+  // Mechamaru — Mini rocket launch
+  mechaRocket(){this._tone(150,0.15,'sawtooth',0.22);this._tone(80,0.18,'sine',0.18,0.02);this._noise(0.12,0.15)},
+  // Mechamaru — Mouth blast (huge beam)
+  mechaBlast(){this._tone(80,0.35,'sine',0.35);this._tone(160,0.25,'sawtooth',0.3,0.03);this._noise(0.25,0.25);[300,500,700].forEach((f,i)=>this._tone(f,0.12,'square',0.15,0.08+i*0.04))},
+  // Mechamaru — Ultimate Mech transformation
+  mechaUltimate(){[150,300,500,700,900,1100].forEach((f,i)=>this._tone(f,0.2,'sine',0.22,i*0.06));this._noise(0.2,0.18);this._tone(100,0.4,'sine',0.3,0.35)},
+  // Mechamaru — True Form emerge (weak, desperate)
+  mechaTrueForm(){this._tone(600,0.15,'sine',0.15);this._tone(400,0.12,'triangle',0.12,0.08);this._tone(300,0.1,'sine',0.1,0.15)},
+  // Mechamaru — Pistol shot (small, weak)
+  mechaPistol(){this._tone(800,0.04,'square',0.12);this._tone(500,0.06,'sine',0.1,0.02);this._noise(0.03,0.06)},
+  // Mechamaru — Jet booster whoosh
+  mechaJet(){this._tone(300,0.1,'sawtooth',0.15);this._noise(0.08,0.12);this._tone(150,0.08,'sine',0.1,0.03)},
+  // Mechamaru — Shield hum
+  mechaShield(){this._tone(400,0.15,'triangle',0.15);this._tone(600,0.12,'sine',0.12,0.05);this._tone(800,0.1,'triangle',0.1,0.1)},
 };
 
 // ============================================================
@@ -244,6 +260,14 @@ const CHARS=[
     baseAtkInterval:35,relicChargeRate:0.8,
     specialName:'I DON\'T NEED CURSED ENERGY.',
   },
+  {
+    id:'mechamaru',name:'Mechamaru',color:'#4a6a4a',
+    desc:'3-phase mech. Drills + rockets → Ultimate → True Form.',
+    playstyle:'Phase Shifter',
+    stats:{hp:600,atk:22,speed:3.0,range:160,def:10,crit:12},
+    baseAtkInterval:55,relicChargeRate:0.6,
+    specialName:'ULTRA CANNON MODE!',
+  },
 ];
 
 // ============================================================
@@ -306,6 +330,10 @@ const COMBO_EFFECTS={
   'toji_electric':'Weapons auto-slash during triangle (extra hits)',
   'toji_toxic':'Chain barrier deals contact damage',
   'toji_cryo':'Triangle arena compresses smaller over time',
+  'mechamaru_fire':'Rockets explode bigger, drill burn DOT',
+  'mechamaru_electric':'Jet boosters faster, shorter attack cooldown',
+  'mechamaru_toxic':'Homing missiles leave poison trails',
+  'mechamaru_cryo':'Ultimate shield lasts longer, slows on hit',
 };
 
 // ============================================================
@@ -602,6 +630,26 @@ function createFighter(charIdx,elemIdx,side){
     tojiTriShrink:0, // ice element shrink factor (0-1)
     tojiEnemyDebuff:false, // inverted spear disabled defenses
     tojiDmgTakenDebuff:false, // split soul katana +10% dmg taken
+    // Mechamaru state
+    mechaPhase:1, // 1=Normal Mech, 2=Ultimate Mech, 3=True Form
+    mechaUltUsed:false, // Ultimate Mech already used this life
+    mechaDrillSide:1, // alternates drill arms
+    mechaJetTimer:0, // jet booster dash timer
+    mechaJetAngle:0, // jet direction
+    mechaRocketCD:0, // mini rocket cooldown
+    mechaMouthBlastActive:false, // mouth blast beam firing
+    mechaMouthBlastAngle:0,
+    mechaMouthBlastTimer:0,
+    mechaMouthBlastCD:0,
+    mechaUltMissileTimer:0, // constant homing missile timer
+    mechaUltShield:false, // defense shield active
+    mechaUltShieldTimer:0,
+    mechaUltSpecialCD:0, // special cooldown in Ultimate (every 5-8s)
+    mechaUltHPDrain:0, // accumulated HP drain
+    mechaTrueFormTimer:0, // survive timer (12-15s)
+    mechaTrueFormReform:false, // about to reform
+    mechaOrigHP:0, // store original maxHP for reform
+    mechaTransitionAnim:0, // transformation animation timer
   };
 }
 
@@ -615,6 +663,7 @@ function updatePhysics(f,dt){
   if(f.stunTimer>0)spdMult=0.15;
   if(f.freezeTimer>0)spdMult=0.08;
   if(f.chosoPiercingFreeze>0)spdMult=0; // Choso frozen while aiming
+  if(f.mechaMouthBlastActive)spdMult=0; // Mechamaru frozen while firing mouth blast
   if(f.slowTimer>0)spdMult*=0.55;
   if(f.captureTimer>0)spdMult=0.05; // nearly immobile when captured
 
@@ -842,6 +891,12 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker.elementActive&&attacker.elem.id!=='none')applyElementEffect(attacker,defender);
   // Choso Flowing Red Scale: 20% damage reduction (disabled by Toji Inverted Spear)
   if(defender.chosoRedScaleActive&&!defender.tojiDmgTakenDebuff)dmg*=0.8;
+  // Mechamaru Ultimate Shield: 50% damage reduction
+  if(defender.mechaUltShield)dmg*=0.5;
+  // Mechamaru cryo+shield: slow attacker on hit
+  if(defender.mechaUltShield&&defender.elementActive&&defender.elem.id==='cryo'){
+    attacker.slowTimer=Math.max(attacker.slowTimer,60);
+  }
   // Toji Split Soul Katana: +10% damage taken
   if(defender.tojiDmgTakenDebuff)dmg*=1.1;
   defender.hp-=dmg;
@@ -937,7 +992,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -946,6 +1001,7 @@ function performWeaponAttack(f,enemy){
   if(f.captureTimer>0)return;
   if(f.stunTimer>0||f.freezeTimer>0)return;
   if(f.chosoPiercingFreeze>0)return; // Choso frozen while firing beam
+  if(f.mechaMouthBlastActive)return; // Mechamaru frozen while firing mouth blast
   // Monowire+electric: short circuit makes attacks miss sometimes
   if(f.missChance>0&&Math.random()<f.missChance){
     spawnDmgNum(f.x,f.y-f.radius-10,'MISS','#ffcc00',false);
@@ -970,6 +1026,7 @@ function performWeaponAttack(f,enemy){
     case 'gojo':attackGojo(f,enemy,chaos);break;
     case 'choso':attackChoso(f,enemy,chaos);break;
     case 'toji':attackToji(f,enemy,chaos);break;
+    case 'mechamaru':attackMechamaru(f,enemy,chaos);break;
   }
 }
 
@@ -1484,6 +1541,111 @@ function attackToji(f,enemy,chaos){
   }
 }
 
+function attackMechamaru(f,enemy,chaos){
+  // PHASE 1: Drill arms → projectiles → mini rockets
+  if(f.mechaPhase===1){
+    f.mechaDrillSide*=-1;
+    f.weaponExtend=1;f.weaponFlash=12;
+    const d=dist(f,enemy);
+    const effectiveRange=f.range+enemy.radius+chaos*5;
+    if(d<80+enemy.radius){
+      // CLOSE: Drill arm melee
+      SFX.mechaDrill();
+      const dmg=f.atk*(1.1+chaos*0.08);
+      dealDamage(f,enemy,dmg);
+      // Knockback
+      const ka=angle(f,enemy);
+      enemy.vx+=Math.cos(ka)*4;enemy.vy+=Math.sin(ka)*4;
+      spawnBurst(enemy.x,enemy.y,'#4a6a4a',10,4);
+      spawnBurst(enemy.x,enemy.y,'#888',6,3);
+      shakeTimer=4;shakeAmt=3;
+      // Fire element: drill burn
+      if(f.elementActive&&f.elem.id==='fire'){
+        enemy.burnTimer=Math.max(enemy.burnTimer,120);
+        enemy.burnDmg=Math.max(enemy.burnDmg,f.atk*0.12);
+      }
+    } else if(d<effectiveRange){
+      // MID: Fire drill projectile
+      SFX.mechaDrill();
+      const a=angle(f,enemy);
+      projectiles.push({
+        x:f.x+Math.cos(a)*f.radius,y:f.y+Math.sin(a)*f.radius,
+        vx:Math.cos(a)*6,vy:Math.sin(a)*6,
+        owner:f,target:null,color:'#6a8a6a',
+        life:60,radius:6,dmg:f.atk*(0.7+chaos*0.06),
+        explosive:false,homing:false,
+      });
+      spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#4a6a4a',6,3);
+    } else {
+      // FAR: Mini rockets (scaled by chaos)
+      if(f.mechaRocketCD<=0){
+        SFX.mechaRocket();
+        const a=angle(f,enemy);
+        const rocketCount=1+Math.floor(chaos*0.5);
+        for(let i=0;i<rocketCount;i++){
+          const spread=(i-rocketCount/2+0.5)*0.15;
+          projectiles.push({
+            x:f.x+Math.cos(a)*f.radius,y:f.y+Math.sin(a)*f.radius,
+            vx:Math.cos(a+spread)*4,vy:Math.sin(a+spread)*4,
+            owner:f,target:enemy,color:'#aa4444',
+            life:90,radius:5,dmg:f.atk*(0.5+chaos*0.04),
+            explosive:true,homing:true,isMechaRocket:true,
+          });
+        }
+        f.mechaRocketCD=40-Math.min(15,chaos*3);
+        spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#ff6644',8,4);
+        // Fire element: bigger explosion radius (applied in explosion handling)
+      }
+    }
+    // Jet booster dash (random)
+    if(f.mechaJetTimer<=0&&Math.random()<0.08){
+      f.mechaJetTimer=15;
+      f.mechaJetAngle=angle(f,enemy);
+      SFX.mechaJet();
+      spawnBurst(f.x,f.y,'#ff8844',8,4);
+    }
+  }
+  // PHASE 2: Ultimate Mech — constant homing missiles (attack is a bonus burst)
+  else if(f.mechaPhase===2){
+    f.weaponExtend=1;f.weaponFlash=12;
+    SFX.mechaRocket();
+    const a=angle(f,enemy);
+    // Burst of 3 homing missiles
+    for(let i=0;i<3;i++){
+      const spread=(i-1)*0.25;
+      projectiles.push({
+        x:f.x+Math.cos(a+spread)*f.radius,y:f.y+Math.sin(a+spread)*f.radius,
+        vx:Math.cos(a+spread)*3.5,vy:Math.sin(a+spread)*3.5,
+        owner:f,target:enemy,color:'#88aa44',
+        life:120,radius:5,dmg:f.atk*(0.4+chaos*0.03),
+        explosive:true,homing:true,isMechaRocket:true,
+      });
+    }
+    spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#88aa44',10,5);
+    // All attacks drain HP in Ultimate
+    f.hp=Math.max(1,f.hp-f.maxHp*0.01);
+    f.mechaUltHPDrain+=f.maxHp*0.01;
+    // Poison element: missiles leave trails
+    if(f.elementActive&&f.elem.id==='toxic'){
+      fireTrails.push({x:f.x,y:f.y,life:40,maxLife:40});
+    }
+  }
+  // PHASE 3: True Form — small pistol only
+  else if(f.mechaPhase===3){
+    f.weaponExtend=1;f.weaponFlash=8;
+    SFX.mechaPistol();
+    const a=angle(f,enemy);
+    projectiles.push({
+      x:f.x+Math.cos(a)*f.radius,y:f.y+Math.sin(a)*f.radius,
+      vx:Math.cos(a)*7,vy:Math.sin(a)*7,
+      owner:f,target:null,color:'#aaaaaa',
+      life:45,radius:3,dmg:f.atk*0.3,
+      explosive:false,homing:false,
+    });
+    spawnSparks(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#ffcc00',3);
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -1831,6 +1993,7 @@ function useSpecial(f,enemy){
     case 'gojo':relicGojo(f,enemy);break;
     case 'choso':relicChoso(f,enemy);break;
     case 'toji':relicToji(f,enemy);break;
+    case 'mechamaru':relicMechamaru(f,enemy);break;
   }
 }
 
@@ -2112,6 +2275,54 @@ function relicToji(f,enemy){
   shakeTimer=15;shakeAmt=10;
   triggerScreenFlash('#4444ff',8);
   addLog((f.side===0?'P1':'P2')+' HEAVENLY RESTRICTION!');
+}
+
+function relicMechamaru(f,enemy){
+  // ULTRA CANNON MODE — Phase 1 special: mouth blast (huge beam)
+  if(f.mechaPhase===1){
+    // Mouth blast — continuous wide beam for ~2s
+    f.specialTimer=180;
+    f.mechaMouthBlastActive=true;
+    f.mechaMouthBlastAngle=angle(f,enemy);
+    f.mechaMouthBlastTimer=120; // 2 seconds
+    f.mechaMouthBlastCD=0;
+    f.vx=0;f.vy=0;
+    SFX.mechaBlast();
+    spawnBurst(f.x,f.y,'#4a6a4a',40,10);
+    spawnBurst(f.x,f.y,'#ffcc00',25,8);
+    spawnBurst(f.x,f.y,'#ffffff',15,5);
+    for(let r=0;r<3;r++){
+      explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*20,color:'#4a6a4a',life:18,maxLife:18,dmg:0,owner:null,target:null,hit:true});
+    }
+    shakeTimer=12;shakeAmt=8;
+    triggerScreenFlash('#88aa44',6);
+    addLog((f.side===0?'P1':'P2')+' ULTRA CANNON!');
+  } else if(f.mechaPhase===2){
+    // Ultimate Mech special: huge blast + defense shield
+    f.specialTimer=300; // 5 seconds
+    // Huge blast at enemy position
+    SFX.megaExplosion();
+    SFX.mechaBlast();
+    if(enemy.alive){
+      const blastDmg=f.atk*3.5;
+      dealDamage(f,enemy,blastDmg,true);
+      spawnExplosion(enemy.x,enemy.y,100,'#88aa44',f.atk*1.5,f,null);
+      spawnBurst(enemy.x,enemy.y,'#ffcc00',30,10);
+      spawnBurst(enemy.x,enemy.y,'#ffffff',20,8);
+    }
+    // Activate defense shield
+    f.mechaUltShield=true;
+    f.mechaUltShieldTimer=300+(f.elementActive&&f.elem.id==='cryo'?120:0);
+    SFX.mechaShield();
+    spawnBurst(f.x,f.y,'#44aaff',30,8);
+    shakeTimer=20;shakeAmt=12;
+    triggerScreenFlash('#44aaff',8);
+    triggerHitFreeze(6);
+    addLog((f.side===0?'P1':'P2')+' ULTIMATE BLAST + SHIELD!');
+    // HP drain for special
+    f.hp=Math.max(1,f.hp-f.maxHp*0.05);
+  }
+  // Phase 3 has no special (just survive)
 }
 
 // ============================================================
@@ -2954,6 +3165,66 @@ function updateRelicToji(f,enemy,dt){
   }
 }
 
+function updateRelicMechamaru(f,enemy,dt){
+  // Phase 1 mouth blast
+  if(f.mechaMouthBlastActive){
+    f.mechaMouthBlastTimer-=dt;
+    f.vx=0;f.vy=0;
+    f.weaponFlash=10;
+    // Track toward enemy
+    const targetAngle=angle(f,enemy);
+    let diff=targetAngle-f.mechaMouthBlastAngle;
+    while(diff>Math.PI)diff-=Math.PI*2;
+    while(diff<-Math.PI)diff+=Math.PI*2;
+    f.mechaMouthBlastAngle+=diff*0.03*dt;
+    f.weaponAngle=f.mechaMouthBlastAngle;
+    // Beam hit detection
+    if(f.mechaMouthBlastCD<=0){
+      const beamLen=400;
+      const bx=f.x+Math.cos(f.mechaMouthBlastAngle)*f.radius;
+      const by=f.y+Math.sin(f.mechaMouthBlastAngle)*f.radius;
+      if(enemy.alive){
+        const ex=enemy.x-bx,ey=enemy.y-by;
+        const along=ex*Math.cos(f.mechaMouthBlastAngle)+ey*Math.sin(f.mechaMouthBlastAngle);
+        if(along>0&&along<beamLen){
+          const perp=Math.abs(-ex*Math.sin(f.mechaMouthBlastAngle)+ey*Math.cos(f.mechaMouthBlastAngle));
+          if(perp<enemy.radius+22){
+            dealDamage(f,enemy,f.atk*2.0);
+            f.mechaMouthBlastCD=10;
+            spawnBurst(enemy.x,enemy.y,'#88aa44',8,4);
+            enemy.vx+=Math.cos(f.mechaMouthBlastAngle)*4;
+            enemy.vy+=Math.sin(f.mechaMouthBlastAngle)*4;
+          }
+        }
+      }
+    }
+    if(f.mechaMouthBlastCD>0)f.mechaMouthBlastCD-=dt;
+    // Beam particles
+    if(battleTime%2<1){
+      const d=Math.random()*350;
+      spawnParticle(f.x+Math.cos(f.mechaMouthBlastAngle)*(f.radius+d),f.y+Math.sin(f.mechaMouthBlastAngle)*(f.radius+d),pick(['#4a6a4a','#88aa44','#ffcc00']),0,0,5,2);
+    }
+    if(f.mechaMouthBlastTimer<=0){
+      f.mechaMouthBlastActive=false;
+      spawnDmgNum(f.x,f.y-f.radius-20,'COOLING...','#4a6a4a',false);
+    }
+  }
+  // Phase 2 defense shield
+  if(f.mechaUltShield){
+    f.mechaUltShieldTimer-=dt;
+    // Shield aura visual
+    if(battleTime%4<1){
+      const a=Math.random()*Math.PI*2;
+      spawnParticle(f.x+Math.cos(a)*(f.radius+10),f.y+Math.sin(a)*(f.radius+10),'#44aaff',0,0,8,2);
+    }
+    if(f.mechaUltShieldTimer<=0){
+      f.mechaUltShield=false;
+      addLog((f.side===0?'P1':'P2')+' Shield expired');
+      spawnBurst(f.x,f.y,'#44aaff',8,3);
+    }
+  }
+}
+
 // Helper: point inside triangle
 function pointInTriangle(px,py,a,b,c){
   const d1=(px-b.x)*(a.y-b.y)-(a.x-b.x)*(py-b.y);
@@ -3083,12 +3354,133 @@ function updateBattle(dt){
         case 'gojo':updateRelicGojo(f,enemy,dt);break;
         case 'choso':updateRelicChoso(f,enemy,dt);break;
         case 'toji':updateRelicToji(f,enemy,dt);break;
+        case 'mechamaru':updateRelicMechamaru(f,enemy,dt);break;
       }
     }
 
     // Choso beam runs always (not just during special)
     if(f.char.id==='choso'&&(f.chosoBeamActive||f.chosoBeamCooldown>0||f.chosoPiercingFreeze>0)){
       updateChosoBeam(f,enemy,dt);
+    }
+
+    // Mechamaru per-frame: phase management, jet boosters, Ultimate missiles, True Form timer
+    if(f.char.id==='mechamaru'){
+      // Rocket cooldown
+      if(f.mechaRocketCD>0)f.mechaRocketCD-=dt;
+      // Jet booster dash
+      if(f.mechaJetTimer>0){
+        f.mechaJetTimer-=dt;
+        const jetSpd=f.mechaPhase===2?10:7;
+        f.vx=Math.cos(f.mechaJetAngle)*jetSpd;
+        f.vy=Math.sin(f.mechaJetAngle)*jetSpd;
+        // Electric element: faster jets
+        if(f.elementActive&&f.elem.id==='electric'){
+          f.vx*=1.3;f.vy*=1.3;
+        }
+        // Jet particles
+        spawnParticle(f.x-Math.cos(f.mechaJetAngle)*f.radius,f.y-Math.sin(f.mechaJetAngle)*f.radius,pick(['#ff6644','#ffcc00','#ff8844']),(-f.vx)*0.3,(-f.vy)*0.3,12,3);
+      }
+      // Mouth blast runs always (like choso beam)
+      if(f.mechaMouthBlastActive){
+        // handled in updateRelicMechamaru but need freeze
+        f.vx=0;f.vy=0;
+      }
+      // Phase 2: constant weak homing missiles (every ~30 frames)
+      if(f.mechaPhase===2&&enemy.alive){
+        f.mechaUltMissileTimer-=dt;
+        if(f.mechaUltMissileTimer<=0){
+          f.mechaUltMissileTimer=30;
+          const a=angle(f,enemy)+(Math.random()-0.5)*0.5;
+          projectiles.push({
+            x:f.x+Math.cos(a)*f.radius,y:f.y+Math.sin(a)*f.radius,
+            vx:Math.cos(a)*3,vy:Math.sin(a)*3,
+            owner:f,target:enemy,color:'#88aa44',
+            life:80,radius:4,dmg:f.atk*0.25,
+            explosive:false,homing:true,isMechaRocket:true,
+          });
+          // HP drain for constant missiles
+          f.hp=Math.max(1,f.hp-f.maxHp*0.003);
+        }
+        // Ultimate special cooldown (auto-fires every 5-8s)
+        if(f.mechaUltSpecialCD>0){
+          f.mechaUltSpecialCD-=dt;
+        } else if(f.specialBar>=f.specialMax){
+          useSpecial(f,enemy);
+          f.mechaUltSpecialCD=300+rand(0,180); // 5-8 seconds
+        }
+        // Phase 2 -> Phase 3 transition: HP hits 0 or very low
+        if(f.hp<=1&&!f.mechaTrueFormReform){
+          // Transition to True Form
+          f.mechaPhase=3;
+          f.mechaTransitionAnim=30;
+          f.mechaTrueFormTimer=720+rand(0,180); // 12-15 seconds
+          f.radius=30; // smaller ball
+          f.atk=Math.round(f.baseAtk*0.3);
+          f.speed=f.baseSpeed*1.8; // faster to dodge
+          f.def=Math.round(f.baseDef*0.5);
+          f.hp=f.maxHp*0.15;
+          f.mechaUltShield=false;
+          SFX.mechaTrueForm();
+          spawnBurst(f.x,f.y,'#888888',30,8);
+          spawnBurst(f.x,f.y,'#ffcc00',15,5);
+          triggerScreenFlash('#ffffff',6);
+          shakeTimer=12;shakeAmt=8;
+          addLog((f.side===0?'P1':'P2')+' TRUE FORM! Survive...');
+          spawnDmgNum(f.x,f.y-f.radius-30,'TRUE FORM','#ffffff',true);
+        }
+      }
+      // Phase 3: survive timer → reform to Phase 1
+      if(f.mechaPhase===3){
+        f.mechaTrueFormTimer-=dt;
+        // Desperate particles
+        if(battleTime%8<1){
+          spawnParticle(f.x+rand(-10,10),f.y+rand(-10,10),'#888',rand(-1,1),rand(-1,1),10,1);
+        }
+        if(f.mechaTrueFormTimer<=0){
+          // REFORM to Phase 1
+          f.mechaPhase=1;
+          f.mechaUltUsed=true; // can't go Ultimate again
+          f.radius=45;
+          f.atk=f.baseAtk;
+          f.speed=f.baseSpeed;
+          f.def=f.baseDef;
+          f.hp=Math.min(f.maxHp,f.maxHp*0.5); // reform at 50% HP
+          f.mechaTransitionAnim=30;
+          SFX.mechaUltimate();
+          spawnBurst(f.x,f.y,'#4a6a4a',40,10);
+          spawnBurst(f.x,f.y,'#88aa44',25,7);
+          triggerScreenFlash('#4a6a4a',6);
+          shakeTimer=15;shakeAmt=10;
+          addLog((f.side===0?'P1':'P2')+' MECH REFORMED!');
+          spawnDmgNum(f.x,f.y-f.radius-30,'REFORMED!','#4a6a4a',true);
+        }
+      }
+      // Phase 1 → Phase 2 transition: first time HP drops below 30%
+      if(f.mechaPhase===1&&!f.mechaUltUsed&&f.hp<=f.maxHp*0.3){
+        f.mechaPhase=2;
+        f.mechaTransitionAnim=30;
+        f.mechaUltMissileTimer=0;
+        f.mechaUltSpecialCD=300; // first special after 5s
+        f.radius=55; // bigger ball
+        f.atk=Math.round(f.baseAtk*1.5);
+        f.speed=f.baseSpeed*0.8; // slower but stronger
+        f.def=Math.round(f.baseDef*1.5);
+        f.hp=f.maxHp*0.7; // restore some HP
+        f.specialBar=0;
+        SFX.mechaUltimate();
+        spawnBurst(f.x,f.y,'#4a6a4a',50,12);
+        spawnBurst(f.x,f.y,'#ffcc00',30,8);
+        spawnBurst(f.x,f.y,'#ffffff',20,6);
+        for(let r=0;r<3;r++){
+          explosions.push({x:f.x,y:f.y,radius:0,maxRadius:70+r*25,color:'#4a6a4a',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+        }
+        triggerScreenFlash('#88aa44',8);
+        shakeTimer=20;shakeAmt=12;
+        addLog((f.side===0?'P1':'P2')+' ULTIMATE MECH!');
+        spawnDmgNum(f.x,f.y-f.radius-30,'ULTIMATE MECH!','#ffcc00',true);
+      }
+      // Transition animation
+      if(f.mechaTransitionAnim>0)f.mechaTransitionAnim-=dt;
     }
 
     // Throwing weapon management
@@ -4173,6 +4565,107 @@ function drawBall(f){
     X.restore();
   }
 
+  // Mechamaru face — mechanical, visor eyes, mouth cannon
+  if(f.char.id==='mechamaru'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    if(f.mechaPhase===1||f.mechaPhase===2){
+      // Mech face — armor plates + visor
+      // Top armor crest
+      X.fillStyle=f.mechaPhase===2?'#5a8a5a':'#3a5a3a';
+      X.beginPath();
+      X.moveTo(hx-r*0.4,hy-r*0.5);
+      X.lineTo(hx,hy-r*0.85);
+      X.lineTo(hx+r*0.4,hy-r*0.5);
+      X.closePath();X.fill();
+      // Visor (single bar across eyes)
+      X.fillStyle=f.mechaPhase===2?'#44ff44':'#228822';
+      X.beginPath();
+      X.moveTo(hx-r*0.35,hy-r*0.2);
+      X.lineTo(hx+r*0.35,hy-r*0.2);
+      X.lineTo(hx+r*0.3,hy-r*0.05);
+      X.lineTo(hx-r*0.3,hy-r*0.05);
+      X.closePath();X.fill();
+      X.shadowColor=f.mechaPhase===2?'#44ff44':'#00aa00';X.shadowBlur=8;X.fill();X.shadowBlur=0;
+      // Mouth cannon slit
+      X.fillStyle='#111';
+      X.fillRect(hx-r*0.15,hy+r*0.15,r*0.3,r*0.12);
+      if(f.mechaMouthBlastActive){
+        X.fillStyle='#ffcc00';X.fillRect(hx-r*0.12,hy+r*0.17,r*0.24,r*0.06);
+        X.shadowColor='#ffcc00';X.shadowBlur=10;X.fillRect(hx-r*0.12,hy+r*0.17,r*0.24,r*0.06);X.shadowBlur=0;
+      }
+      // Side armor plates
+      X.strokeStyle=f.mechaPhase===2?'#6a9a6a':'#4a6a4a';X.lineWidth=2;
+      X.beginPath();X.arc(hx,hy,r*0.9,Math.PI*0.6,Math.PI*0.9);X.stroke();
+      X.beginPath();X.arc(hx,hy,r*0.9,Math.PI*1.1,Math.PI*1.4);X.stroke();
+      // Phase 2: extra shoulder armor + glow
+      if(f.mechaPhase===2){
+        X.fillStyle='#5a8a5a';
+        X.beginPath();X.arc(hx-r*0.7,hy,r*0.18,0,Math.PI*2);X.fill();
+        X.beginPath();X.arc(hx+r*0.7,hy,r*0.18,0,Math.PI*2);X.fill();
+        // Pulsing energy glow
+        const pulse=Math.sin(battleTime*0.1)*0.3+0.7;
+        X.strokeStyle=`rgba(68,255,68,${pulse*0.4})`;X.lineWidth=3;
+        X.beginPath();X.arc(hx,hy,r+5,0,Math.PI*2);X.stroke();
+      }
+    } else {
+      // Phase 3: True Form — small, human-like, bandaged
+      // Bandage wraps
+      X.strokeStyle='#ccccaa';X.lineWidth=2;
+      X.beginPath();X.arc(hx,hy,r*0.7,-0.5,1.5);X.stroke();
+      X.beginPath();X.arc(hx,hy,r*0.5,1,3);X.stroke();
+      // Small eyes — vulnerable, human
+      X.fillStyle='#445544';
+      X.beginPath();X.arc(hx-r*0.2,hy-r*0.1,r*0.08,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(hx+r*0.2,hy-r*0.1,r*0.08,0,Math.PI*2);X.fill();
+      // Small mouth
+      X.strokeStyle='#666';X.lineWidth=1;
+      X.beginPath();X.arc(hx,hy+r*0.2,r*0.08,0.2,Math.PI-0.2);X.stroke();
+    }
+    // Shield visual
+    if(f.mechaUltShield){
+      const pulse=Math.sin(battleTime*0.08)*0.2+0.5;
+      X.strokeStyle=`rgba(68,170,255,${pulse})`;X.lineWidth=4;
+      X.beginPath();X.arc(hx,hy,r+12,0,Math.PI*2);X.stroke();
+      X.shadowColor='#44aaff';X.shadowBlur=10;X.stroke();X.shadowBlur=0;
+    }
+    // Transition animation flash
+    if(f.mechaTransitionAnim>0){
+      const alpha=f.mechaTransitionAnim/30;
+      X.fillStyle=`rgba(255,255,255,${alpha*0.5})`;
+      X.beginPath();X.arc(hx,hy,r+10,0,Math.PI*2);X.fill();
+    }
+    X.restore();
+  }
+
+  // Draw Mechamaru mouth blast beam
+  if(f.char.id==='mechamaru'&&f.mechaMouthBlastActive){
+    X.save();
+    const bx=f.x+Math.cos(f.mechaMouthBlastAngle)*f.radius;
+    const by=f.y+Math.sin(f.mechaMouthBlastAngle)*f.radius;
+    const beamLen=400;
+    const ex=bx+Math.cos(f.mechaMouthBlastAngle)*beamLen;
+    const ey=by+Math.sin(f.mechaMouthBlastAngle)*beamLen;
+    // Outer glow
+    X.strokeStyle='rgba(74,106,74,0.2)';X.lineWidth=28;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    // Mid glow
+    X.strokeStyle='rgba(136,170,68,0.4)';X.lineWidth=18;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    // Main beam
+    X.strokeStyle='rgba(170,200,68,0.7)';X.lineWidth=10;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    // Core
+    X.strokeStyle='#ccff44';X.lineWidth=4;
+    X.shadowColor='#88ff00';X.shadowBlur=15;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    X.shadowBlur=0;
+    // Bright center
+    X.strokeStyle='rgba(255,255,200,0.8)';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    X.restore();
+  }
+
   // Draw Choso continuous beam — thick and visible
   if(f.char.id==='choso'&&f.chosoBeamActive){
     X.save();
@@ -4464,6 +4957,10 @@ function drawBall(f){
       const sec=f.tojiStaffSection.toUpperCase();
       X.fillText(sec+(f.tojiTriActive?' TRI':''),f.x,statY);
       break;}
+    case 'mechamaru':{
+      const phaseName=['','MECH','ULTIMATE','TRUE FORM'][f.mechaPhase];
+      X.fillText('P'+f.mechaPhase+' '+phaseName,f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -4495,6 +4992,7 @@ function drawWeapon(f){
     case 'gojo':drawGojoWeapon(r,ext,flash,f);break;
     case 'choso':drawChosoWeapon(r,ext,flash,f);break;
     case 'toji':drawTojiWeapon(r,ext,flash,f);break;
+    case 'mechamaru':drawMechamaruWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -4660,6 +5158,65 @@ function drawTojiWeapon(r,ext,flash,f){
   X.strokeStyle='rgba(255,34,34,0.4)';X.lineWidth=2;
   X.beginPath();X.moveTo(r+4,0);X.lineTo(r+staffLen,0);X.stroke();
   X.shadowBlur=0;
+}
+
+function drawMechamaruWeapon(r,ext,flash,f){
+  if(f.mechaPhase===1||f.mechaPhase===2){
+    // Phase 1/2: Drill arm — mechanical arm with spinning drill tip
+    const armLen=f.mechaPhase===2?50:40;
+    const armW=f.mechaPhase===2?8:6;
+    // Arm housing
+    const ag=X.createLinearGradient(r-5,-armW,r-5,armW);
+    ag.addColorStop(0,'#3a5a3a');ag.addColorStop(0.5,'#4a6a4a');ag.addColorStop(1,'#3a5a3a');
+    X.fillStyle=ag;X.fillRect(r-5,-armW,armLen*0.6,armW*2);
+    X.strokeStyle='#5a8a5a';X.lineWidth=1;X.strokeRect(r-5,-armW,armLen*0.6,armW*2);
+    // Drill tip (cone shape, rotating)
+    const drillX=r-5+armLen*0.6;
+    const drillLen=armLen*0.5;
+    const drillRot=battleTime*0.2*f.mechaDrillSide;
+    X.save();X.translate(drillX,0);X.rotate(drillRot);
+    // Drill cone
+    X.beginPath();
+    X.moveTo(0,-armW);
+    X.lineTo(drillLen,0);
+    X.lineTo(0,armW);
+    X.closePath();
+    const dg=X.createLinearGradient(0,0,drillLen,0);
+    dg.addColorStop(0,'#666');dg.addColorStop(0.5,'#aaa');dg.addColorStop(1,'#888');
+    X.fillStyle=dg;X.fill();
+    X.strokeStyle='#555';X.lineWidth=0.8;X.stroke();
+    // Spiral grooves on drill
+    X.strokeStyle='#444';X.lineWidth=1;
+    for(let i=1;i<4;i++){
+      const t=i/4;
+      X.beginPath();
+      X.moveTo(drillLen*t,-armW*(1-t));
+      X.lineTo(drillLen*t+3,armW*(1-t)*0.5);
+      X.stroke();
+    }
+    X.restore();
+    // Green LED on arm
+    X.fillStyle=flash?'#44ff44':'#228822';
+    X.fillRect(r-3,-armW-1,armLen*0.5,1.5);
+    if(flash){X.shadowColor='#44ff44';X.shadowBlur=6;X.fillRect(r-3,-armW-1,armLen*0.5,1.5);X.shadowBlur=0;}
+    // Rocket pod (behind drill, small nozzles)
+    X.fillStyle='#2a3a2a';
+    X.fillRect(r-8,-armW-3,6,3);
+    X.fillRect(r-8,armW,6,3);
+    X.fillStyle='#111';
+    X.beginPath();X.arc(r-5,-armW-1.5,1.5,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(r-5,armW+1.5,1.5,0,Math.PI*2);X.fill();
+  } else {
+    // Phase 3: True Form — small pistol
+    X.fillStyle='#555';X.fillRect(r-4,-2.5,14,5);
+    X.fillStyle='#333';X.fillRect(r+10,-1.5,4,3); // barrel
+    X.fillStyle='#444';X.fillRect(r-6,-2,4,4); // grip
+    if(flash){
+      X.beginPath();X.arc(r+14,0,3,0,Math.PI*2);
+      X.fillStyle='#ffcc00';X.fill();
+      X.shadowColor='#ffcc00';X.shadowBlur=6;X.fill();X.shadowBlur=0;
+    }
+  }
 }
 
 function drawMantisBlades(r,ext,flash,f){
@@ -5720,6 +6277,20 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.arc(-2,0,2.5,0,Math.PI*2);X.fill();
       X.beginPath();X.arc(16,0,2.5,0,Math.PI*2);X.fill();
       break;
+    case 'mechamaru':
+      // Drill arm — mechanical with drill tip
+      X.fillStyle='#4a6a4a';X.fillRect(-6,-4,12,8);
+      X.strokeStyle='#5a8a5a';X.lineWidth=0.8;X.strokeRect(-6,-4,12,8);
+      // Drill cone
+      X.beginPath();X.moveTo(6,-5);X.lineTo(18,0);X.lineTo(6,5);X.closePath();
+      const mg=X.createLinearGradient(6,0,18,0);
+      mg.addColorStop(0,'#888');mg.addColorStop(1,'#aaa');
+      X.fillStyle=mg;X.fill();
+      X.strokeStyle='#555';X.lineWidth=0.5;X.stroke();
+      // Green LED
+      X.fillStyle='#44ff44';X.fillRect(-4,-4,8,1);
+      X.shadowColor='#44ff44';X.shadowBlur=3;X.fillRect(-4,-4,8,1);X.shadowBlur=0;
+      break;
   }
   X.restore();
 }
@@ -6692,6 +7263,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'gojo':statLine='INF:'+f.gojoInfinityCharges+'/'+f.gojoInfinityMax+(f.gojoAwakened?' AWK':' BOSS');break;
     case 'choso':{const mode=f.chosoBloodEdge?(f.chosoEdgeForm==='sword'?'SWORD':'DAGGER'):'BEAM';const orbs=f.chosoOrbs?f.chosoOrbs.filter(o=>o.alive).length:0;statLine=mode+(f.chosoRedScaleActive?' RDS':'')+(orbs>0?' Orb:'+orbs:'');break;}
     case 'toji':statLine=f.tojiStaffSection.toUpperCase()+(f.tojiTriActive?' TRI':'');break;
+    case 'mechamaru':statLine='P'+f.mechaPhase+(f.mechaPhase===2?' ULT':'')+(f.mechaUltShield?' SHD':'')+(f.mechaPhase===3?' '+Math.ceil(f.mechaTrueFormTimer/60)+'s':'');break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
