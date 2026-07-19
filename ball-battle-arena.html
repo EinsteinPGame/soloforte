@@ -2639,8 +2639,12 @@ function updateRelicChoso(f,enemy,dt){
   // Piercing Blood charge delay — fire beam when charge completes
   if(f.chosoCharging){
     f.chosoChargeTimer-=dt;
-    // Charging particles
-    if(battleTime%2<1)spawnParticle(f.x+rand(-10,10),f.y+rand(-10,10),'#cc0000',0,-1.5,8,2);
+    // Charging visual: blood streams converge toward Choso (not orbs)
+    if(battleTime%2<1){
+      const a=Math.random()*Math.PI*2;
+      const d=30+Math.random()*20;
+      spawnParticle(f.x+Math.cos(a)*d,f.y+Math.sin(a)*d,'#cc0000',-Math.cos(a)*2,-Math.sin(a)*2,6,3);
+    }
     if(f.chosoChargeTimer<=0){
       f.chosoCharging=false;
       const target=f._piercingTarget||enemy;
@@ -4163,18 +4167,66 @@ function drawBall(f){
     X.beginPath();
     X.moveTo(sPts[0].x,sPts[0].y);X.lineTo(sPts[1].x,sPts[1].y);
     X.lineTo(sPts[2].x,sPts[2].y);X.closePath();X.stroke();
-    // Weapon icons at each corner
-    const weaponNames=['SPEAR','KATANA','CLOUD'];
+    // Draw actual weapon shapes at each corner
     const weaponColors=['#ff4444','#ff8844','#aaaaff'];
+    const t=battleTime*0.03; // slow rotation
     sPts.forEach((p,i)=>{
-      // Weapon marker
-      X.beginPath();X.arc(p.x,p.y,8,0,Math.PI*2);
-      X.fillStyle=weaponColors[i];X.fill();
-      X.shadowColor=weaponColors[i];X.shadowBlur=6;X.fill();X.shadowBlur=0;
-      // Label
-      X.font='bold 8px Consolas,monospace';X.textAlign='center';X.textBaseline='bottom';
-      X.fillStyle=weaponColors[i];
-      X.fillText(weaponNames[i],p.x,p.y-12);
+      X.save();
+      X.translate(p.x,p.y);
+      X.rotate(t+i*0.5);
+      if(i===0){
+        // INVERTED SPEAR OF HEAVEN — long spear with pointed tip
+        X.strokeStyle='#cc3333';X.lineWidth=3;
+        X.beginPath();X.moveTo(-22,0);X.lineTo(22,0);X.stroke(); // shaft
+        X.fillStyle='#ff4444'; // spearhead
+        X.beginPath();X.moveTo(22,0);X.lineTo(14,-5);X.lineTo(14,5);X.closePath();X.fill();
+        X.fillStyle='#aa2222'; // butt
+        X.beginPath();X.arc(-22,0,3,0,Math.PI*2);X.fill();
+        X.shadowColor='#ff4444';X.shadowBlur=8;
+        X.beginPath();X.moveTo(22,0);X.lineTo(14,-5);X.lineTo(14,5);X.closePath();X.fill();
+        X.shadowBlur=0;
+      } else if(i===1){
+        // SPLIT SOUL KATANA — curved blade with guard
+        X.strokeStyle='#ff8844';X.lineWidth=2.5;
+        X.beginPath();X.moveTo(-18,0);X.quadraticCurveTo(0,-4,22,-1);X.stroke(); // blade curve
+        X.fillStyle='#ffaa44'; // blade fill
+        X.beginPath();X.moveTo(-8,-2.5);X.quadraticCurveTo(5,-5,22,-1);
+        X.lineTo(22,1);X.quadraticCurveTo(5,-1,-8,2.5);X.closePath();X.fill();
+        X.fillStyle='#886622';X.fillRect(-10,-4,4,8); // guard
+        X.fillStyle='#554411';X.fillRect(-18,-3,10,6); // handle
+        X.shadowColor='#ff8844';X.shadowBlur=6;
+        X.strokeStyle='rgba(255,136,68,0.5)';X.lineWidth=1;
+        X.beginPath();X.moveTo(-8,0);X.quadraticCurveTo(5,-3,22,-1);X.stroke();
+        X.shadowBlur=0;
+      } else {
+        // PLAYFUL CLOUD — 3-section staff, bigger, red with chain links
+        const sec=12; // section length
+        X.strokeStyle='#cc2222';X.lineWidth=5;
+        // Section 1
+        X.beginPath();X.moveTo(-sec*1.5-2,0);X.lineTo(-sec*0.5-2,0);X.stroke();
+        // Chain link 1
+        X.strokeStyle='#888';X.lineWidth=2;
+        X.beginPath();X.arc(-sec*0.5,0,3,0,Math.PI*2);X.stroke();
+        // Section 2
+        X.strokeStyle='#cc2222';X.lineWidth=5;
+        X.beginPath();X.moveTo(-sec*0.5+2,0);X.lineTo(sec*0.5-2,0);X.stroke();
+        // Chain link 2
+        X.strokeStyle='#888';X.lineWidth=2;
+        X.beginPath();X.arc(sec*0.5,0,3,0,Math.PI*2);X.stroke();
+        // Section 3
+        X.strokeStyle='#cc2222';X.lineWidth=5;
+        X.beginPath();X.moveTo(sec*0.5+2,0);X.lineTo(sec*1.5+2,0);X.stroke();
+        // End caps
+        X.fillStyle='#ff3333';
+        X.beginPath();X.arc(-sec*1.5-2,0,4,0,Math.PI*2);X.fill();
+        X.beginPath();X.arc(sec*1.5+2,0,4,0,Math.PI*2);X.fill();
+        // Red glow
+        X.shadowColor='#ff2222';X.shadowBlur=10;
+        X.strokeStyle='rgba(255,34,34,0.4)';X.lineWidth=3;
+        X.beginPath();X.moveTo(-sec*1.5-2,0);X.lineTo(sec*1.5+2,0);X.stroke();
+        X.shadowBlur=0;
+      }
+      X.restore();
     });
     // Fire element: ground burn visual
     if(f.elementActive&&f.elem.id==='fire'){
