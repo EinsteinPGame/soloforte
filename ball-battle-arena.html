@@ -1377,6 +1377,8 @@ function attackSmasher(f,enemy,chaos){
   // Adam Smasher — range-based attacks:
   // Close: cybernetic fist punch + blade slash
   // Mid/Far: heavy explosive burst projectiles with knockback (warning cone first)
+  // During ult (relic active): melee only, no stationary blast
+  if(f.specialActive&&!f._smasherRelicMelee)return;
   const d=dist(f,enemy);
   const meleeRange=f.radius+enemy.radius+35;
   if(d<meleeRange){
@@ -1401,6 +1403,7 @@ function attackSmasher(f,enemy,chaos){
     }
   } else {
     // Ranged: heavy explosive burst — warning cone then fire
+    if(f.specialActive)return; // No stationary blast during ult
     if(f.smasherWarning>0)return;
     const baseAngle=angle(f,enemy);
     let warningDuration=Math.max(30, 55-chaos*2); // scales with chaos
@@ -1425,25 +1428,25 @@ function attackGojo(f,enemy,chaos){
     if(f.elem.id==='cryo'){}// handled in purple chance below
   }
   const d=dist(f,enemy);
-  // Awakened: chance for 200% Purple on normal attacks
-  let purpleChance=f.gojoAwakened?0.15:0;
-  if(f.elementActive&&f.elem.id==='cryo')purpleChance+=0.1;
+  // Awakened: chance for Strong Purple on normal attacks (reduced frequency)
+  let purpleChance=f.gojoAwakened?0.07:0; // reduced from 0.15
+  if(f.elementActive&&f.elem.id==='cryo')purpleChance+=0.05;
   if(purpleChance>0&&Math.random()<purpleChance){
-    // 200% Purple — fires a beam
+    // Strong Purple — powerful but NOT one-shot
     SFX.gojoPurple();
     const ba=angle(f,enemy);
-    const beamDmg=f.atk*2*dmgMult;
+    const beamDmg=f.atk*1.3*dmgMult; // toned down from 2x
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
       vx:Math.cos(ba)*10,vy:Math.sin(ba)*10,
-      owner:f,target:null,color:'#9944ff',
-      life:60,radius:14,dmg:beamDmg,
+      owner:f,target:null,color:'#7722cc',
+      life:60,radius:16,dmg:beamDmg,
       explosive:false,homing:false,isGojoPurple:true,
     });
-    spawnBurst(f.x,f.y,'#9944ff',20,6);
-    spawnBurst(f.x,f.y,'#cc88ff',12,4);
-    spawnDmgNum(f.x,f.y-f.radius-25,'PURPLE!','#9944ff',true);
-    shakeTimer=10;shakeAmt=6;
+    spawnBurst(f.x,f.y,'#7722cc',20,6);
+    spawnBurst(f.x,f.y,'#aa55ff',12,4);
+    spawnDmgNum(f.x,f.y-f.radius-25,'PURPLE!','#7722cc',true);
+    shakeTimer=8;shakeAmt=5;
     f.gojoAttackMode='red';
     return;
   }
@@ -1468,20 +1471,20 @@ function attackGojo(f,enemy,chaos){
     shakeTimer=4;shakeAmt=3;
     f.gojoAttackMode='blue';
   } else {
-    // BLUE — Lapse: shoots a blue projectile that pulls enemies toward Gojo on hit
+    // BLUE — Lapse: bigger, slower orb that drifts toward enemy then pulls them to Gojo
     SFX.gojoBlue();
     f.weaponFlash=12;
     const ba=angle(f,enemy);
     const blueDmg=f.atk*(0.5+chaos*0.08)*dmgMult;
-    const projRadius=(14+chaos*1)*radiusMult;
-    const projSpeed=6+chaos*0.3;
+    const projRadius=(20+chaos*1.5)*radiusMult; // bigger orb
+    const projSpeed=3.5+chaos*0.2; // slower approach
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
       vx:Math.cos(ba)*projSpeed,vy:Math.sin(ba)*projSpeed,
       owner:f,target:null,color:'#4488ff',
-      life:90,radius:projRadius,dmg:blueDmg,
+      life:120,radius:projRadius,dmg:blueDmg,
       explosive:false,homing:false,isGojoBlue:true,
-      pullStrength:7+chaos*0.4,gojoOwner:f,
+      pullStrength:10+chaos*0.5,gojoOwner:f, // stronger pull
     });
     spawnBurst(f.x,f.y,'#4488ff',12,5);
     spawnBurst(f.x,f.y,'#6688cc',8,3);
@@ -2393,16 +2396,16 @@ function relicSmasher(f,enemy){
   f.smasherSlamWarning=0;
   f._smasherMortarCD=0; // mortar cooldown
   f._smasherMortarCount=0; // mortars fired
-  f._smasherRelicMelee=true; // enable melee during relic
-  // Multi-color activation burst
+  f._smasherRelicMelee=true; // enable melee during relic — no ranged blast
+  // Multi-color activation burst (reduced shake)
   spawnBurst(f.x,f.y,'#cc4444',50,12);
   spawnBurst(f.x,f.y,'#ff6644',35,9);
   spawnBurst(f.x,f.y,'#ffcc00',25,7);
   spawnBurst(f.x,f.y,'#4488ff',15,5);
-  for(let r=0;r<3;r++){
-    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:70+r*30,color:'#cc4444',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  for(let r=0;r<2;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*25,color:'#cc4444',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
   }
-  shakeTimer=2;shakeAmt=2;
+  shakeTimer=1;shakeAmt=1;
   SFX.warning();
   addLog((f.side===0?'P1':'P2')+' YOU\'RE NOTHING BUT MEAT!');
 }
@@ -2458,7 +2461,7 @@ function relicToji(f,enemy){
   f.tojiDmgTakenDebuff=false;
   // Create triangle centered on enemy position
   const cx=enemy.x,cy=enemy.y;
-  const triRadius=Math.min(ARENA.w,ARENA.h)*0.32; // ~1/3 of arena
+  const triRadius=Math.min(ARENA.w,ARENA.h)*0.5; // ~1/4 of arena area — much bigger
   const baseAngle=Math.random()*Math.PI*2;
   f.tojiTriPoints=[];
   for(let i=0;i<3;i++){
@@ -3165,14 +3168,14 @@ function updateChosoBeam(f,enemy,dt){
     }
     if(f.chosoBeamTimer<=0){
       f.chosoBeamActive=false;
-      f.chosoBeamCooldown=30;
+      f.chosoBeamCooldown=240+rand(0,60); // 4-5 seconds cooldown
+      f.chosoPiercingFreeze=0; // unfreeze — can move during cooldown
       spawnDmgNum(f.x,f.y-f.radius-20,'RECHARGING...','#880000',false);
     }
   }
-  // Beam cooldown
+  // Beam cooldown — Choso moves freely while waiting to fire again
   if(f.chosoBeamCooldown>0){
     f.chosoBeamCooldown-=dt;
-    f.vx=0;f.vy=0;
     if(f.chosoBeamCooldown<=0){
       f.chosoPiercingFreeze=0;
     }
@@ -3314,8 +3317,12 @@ function updateRelicToji(f,enemy,dt){
       }
     }
   }
-  // LINGER PHASE: triangle stays, traps enemies, elements apply
+  // LINGER PHASE: triangle stays, traps enemies, Toji gets buffs inside
   if(f.tojiTriPhase==='linger'){
+    // Toji buffs while triangle is active: +50% atk, +40% speed, +30% def
+    f.atk=Math.round(f.baseAtk*1.5);
+    f.speed=f.baseSpeed*1.4;
+    f.def=Math.round(f.baseDef*1.3);
     const pts=f.tojiTriPoints;
     const shrink=f.tojiTriShrink;
     // Calculate triangle center
@@ -3418,6 +3425,7 @@ function updateRelicToji(f,enemy,dt){
     f.tojiDmgTakenDebuff=false;
     f.atk=f.baseAtk;
     f.speed=f.baseSpeed;
+    f.def=f.baseDef;
     addLog('Heavenly Restriction faded');
     spawnBurst(f.x,f.y,'#2a2a3a',10,4);
   }
@@ -5101,21 +5109,21 @@ function drawBall(f){
     if(f.mechaPhase===1||f.mechaPhase===2){
       // Mech face — armor plates + visor
       // Top armor crest
-      X.fillStyle=f.mechaPhase===2?'#5a8a5a':'#3a5a3a';
+      X.fillStyle=f.mechaPhase===2?'#3a5a8a':'#3a5a3a';
       X.beginPath();
       X.moveTo(hx-r*0.4,hy-r*0.5);
       X.lineTo(hx,hy-r*0.85);
       X.lineTo(hx+r*0.4,hy-r*0.5);
       X.closePath();X.fill();
       // Visor (single bar across eyes)
-      X.fillStyle=f.mechaPhase===2?'#44ff44':'#228822';
+      X.fillStyle=f.mechaPhase===2?'#4488ff':'#228822';
       X.beginPath();
       X.moveTo(hx-r*0.35,hy-r*0.2);
       X.lineTo(hx+r*0.35,hy-r*0.2);
       X.lineTo(hx+r*0.3,hy-r*0.05);
       X.lineTo(hx-r*0.3,hy-r*0.05);
       X.closePath();X.fill();
-      X.shadowColor=f.mechaPhase===2?'#44ff44':'#00aa00';X.shadowBlur=8;X.fill();X.shadowBlur=0;
+      X.shadowColor=f.mechaPhase===2?'#4488ff':'#00aa00';X.shadowBlur=8;X.fill();X.shadowBlur=0;
       // Mouth cannon slit
       X.fillStyle='#111';
       X.fillRect(hx-r*0.15,hy+r*0.15,r*0.3,r*0.12);
@@ -5124,17 +5132,17 @@ function drawBall(f){
         X.shadowColor='#ffcc00';X.shadowBlur=10;X.fillRect(hx-r*0.12,hy+r*0.17,r*0.24,r*0.06);X.shadowBlur=0;
       }
       // Side armor plates
-      X.strokeStyle=f.mechaPhase===2?'#6a9a6a':'#4a6a4a';X.lineWidth=2;
+      X.strokeStyle=f.mechaPhase===2?'#4a6a9a':'#4a6a4a';X.lineWidth=2;
       X.beginPath();X.arc(hx,hy,r*0.9,Math.PI*0.6,Math.PI*0.9);X.stroke();
       X.beginPath();X.arc(hx,hy,r*0.9,Math.PI*1.1,Math.PI*1.4);X.stroke();
-      // Phase 2: extra shoulder armor + glow
+      // Phase 2: extra shoulder armor + blue glow (Ultimate Form)
       if(f.mechaPhase===2){
-        X.fillStyle='#5a8a5a';
+        X.fillStyle='#4a6aaa';
         X.beginPath();X.arc(hx-r*0.7,hy,r*0.18,0,Math.PI*2);X.fill();
         X.beginPath();X.arc(hx+r*0.7,hy,r*0.18,0,Math.PI*2);X.fill();
-        // Pulsing energy glow
+        // Pulsing blue energy glow
         const pulse=Math.sin(battleTime*0.1)*0.3+0.7;
-        X.strokeStyle=`rgba(68,255,68,${pulse*0.4})`;X.lineWidth=3;
+        X.strokeStyle=`rgba(68,136,255,${pulse*0.4})`;X.lineWidth=3;
         X.beginPath();X.arc(hx,hy,r+5,0,Math.PI*2);X.stroke();
       }
     } else {
@@ -5202,8 +5210,8 @@ function drawBall(f){
   if(f.char.id==='kashimo'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Spiky white-blonde hair
-    X.fillStyle='#e8d8a0';
+    // Spiky blue-white hair (defining look)
+    X.fillStyle='#7ab8e0';
     for(let i=0;i<7;i++){
       const ha=-Math.PI*0.8+i*Math.PI*0.25;
       X.beginPath();
@@ -5316,19 +5324,29 @@ function drawBall(f){
     X.restore();
   }
 
-  // Draw Kashimo orbiting staff during AMBER
+  // Draw Kashimo orbiting staff during AMBER — spins independently, detached
   if(f.char.id==='kashimo'&&f.kashimoAmberActive&&(f.kashimoAmberPhase==='orbit'||f.kashimoAmberPhase==='charge')){
     X.save();
-    const sx=f.x+Math.cos(f.kashimoStaffOrbitAngle)*60;
-    const sy=f.y+Math.sin(f.kashimoStaffOrbitAngle)*60;
-    X.translate(sx,sy);X.rotate(f.kashimoStaffOrbitAngle+Math.PI/2);
-    // Staff body
-    X.fillStyle='#8B4513';X.fillRect(-2,-18,4,36);
-    // Metal tip
-    X.fillStyle='#aaa';X.fillRect(-3,-22,6,6);
+    const orbitR=75; // wider orbit — clearly separated
+    const sx=f.x+Math.cos(f.kashimoStaffOrbitAngle)*orbitR;
+    const sy=f.y+Math.sin(f.kashimoStaffOrbitAngle)*orbitR;
+    // Staff spins on its OWN axis (fast self-rotation) independently of orbit
+    const selfSpin=battleTime*0.2;
+    X.translate(sx,sy);X.rotate(selfSpin);
+    // Staff body — bo staff shape with rounded ends
+    const sg=X.createLinearGradient(-20,0,20,0);
+    sg.addColorStop(0,'#a0703a');sg.addColorStop(0.5,'#8B4513');sg.addColorStop(1,'#6a3410');
+    X.fillStyle=sg;X.fillRect(-20,-3,40,6);
+    // Rounded ends
+    X.beginPath();X.arc(-20,0,3,0,Math.PI*2);X.fillStyle='#6a3410';X.fill();
+    X.beginPath();X.arc(20,0,3,0,Math.PI*2);X.fillStyle='#a0703a';X.fill();
+    // Metal bands
+    X.fillStyle='#888';X.fillRect(-8,-4,3,8);X.fillRect(5,-4,3,8);
     // Lightning glow
-    X.shadowColor='#ffcc00';X.shadowBlur=8;
-    X.fillStyle='#ffcc00';X.fillRect(-1,-20,2,4);X.shadowBlur=0;
+    X.shadowColor='#ffcc00';X.shadowBlur=10;
+    X.strokeStyle='#ffcc00';X.lineWidth=1;
+    X.beginPath();X.arc(0,0,22,0,Math.PI*2);X.stroke();
+    X.shadowBlur=0;
     X.restore();
   }
 
@@ -5925,35 +5943,39 @@ function drawMechamaruWeapon(r,ext,flash,f){
 }
 
 function drawKashimoWeapon(r,ext,flash,f){
-  // Staff — brown wooden with metal tip, lightning glow
+  // Staff — wooden bo staff with rounded ends (NOT a spear)
   if(f.kashimoStaffThrown||f.kashimoAmberActive)return; // staff is elsewhere
-  const staffLen=45;
-  // Shaft
-  X.fillStyle='#8B4513';
-  X.fillRect(r-5,-2.5,staffLen,5);
-  // Metal head
-  X.fillStyle=flash?'#ffcc00':'#aaaaaa';
-  X.beginPath();
-  X.moveTo(r-5+staffLen,-5);
-  X.lineTo(r-5+staffLen+12,0);
-  X.lineTo(r-5+staffLen,5);
-  X.closePath();X.fill();
+  const staffLen=50;
+  // Main shaft
+  const sg=X.createLinearGradient(r-5,-3,r-5,3);
+  sg.addColorStop(0,'#a0703a');sg.addColorStop(0.5,'#8B4513');sg.addColorStop(1,'#6a3410');
+  X.fillStyle=sg;
+  X.fillRect(r-5,-3,staffLen,6);
+  // Rounded staff tip (not pointed — it's a staff)
+  X.beginPath();X.arc(r-5+staffLen,0,3,0,Math.PI*2);
+  X.fillStyle=flash?'#ffcc00':'#a0703a';X.fill();
+  // Rounded butt end
+  X.beginPath();X.arc(r-5,0,3,0,Math.PI*2);
+  X.fillStyle='#6a3410';X.fill();
+  // Metal ring bands
+  X.fillStyle=flash?'#ffcc00':'#888';
+  X.fillRect(r-5+staffLen-6,-4,3,8);
+  X.fillRect(r-2,-4,3,8);
+  X.fillRect(r+staffLen/2-5,-4,3,8);
   // Lightning crackle on flash
   if(flash){
     X.strokeStyle='#ffcc00';X.lineWidth=1.5;
     X.shadowColor='#ffcc00';X.shadowBlur=6;
     X.beginPath();
-    X.moveTo(r-5+staffLen+12,0);
-    X.lineTo(r-5+staffLen+18,-4);
-    X.lineTo(r-5+staffLen+14,2);
-    X.lineTo(r-5+staffLen+20,0);
+    const tx=r-5+staffLen+3;
+    X.moveTo(tx,0);X.lineTo(tx+6,-4);X.lineTo(tx+3,1);X.lineTo(tx+8,0);
     X.stroke();X.shadowBlur=0;
   }
-  // Grip wrapping
+  // Grip wrapping in center
   X.strokeStyle='#5a3a1a';X.lineWidth=1;
   for(let i=0;i<4;i++){
     X.beginPath();
-    X.moveTo(r-3+i*10,-2.5);X.lineTo(r+i*10,2.5);X.stroke();
+    X.moveTo(r+8+i*8,-3);X.lineTo(r+10+i*8,3);X.stroke();
   }
 }
 
@@ -7100,10 +7122,13 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.shadowColor='#44ff44';X.shadowBlur=3;X.fillRect(-4,-4,8,1);X.shadowBlur=0;
       break;
     case 'kashimo':
-      // Staff — brown with metal tip + lightning
-      X.fillStyle='#8B4513';X.fillRect(-4,-2,20,4);
-      X.fillStyle='#aaa';
-      X.beginPath();X.moveTo(16,-4);X.lineTo(24,0);X.lineTo(16,4);X.closePath();X.fill();
+      // Bo staff — brown with metal bands + rounded ends
+      X.fillStyle='#8B4513';X.fillRect(-6,-2,28,4);
+      // Rounded ends
+      X.beginPath();X.arc(-6,0,2,0,Math.PI*2);X.fillStyle='#6a3410';X.fill();
+      X.beginPath();X.arc(22,0,2,0,Math.PI*2);X.fillStyle='#a0703a';X.fill();
+      // Metal bands
+      X.fillStyle='#888';X.fillRect(-2,-3,2,6);X.fillRect(10,-3,2,6);X.fillRect(18,-3,2,6);
       // Lightning crackle
       X.strokeStyle='#ffcc00';X.lineWidth=1;
       X.shadowColor='#ffcc00';X.shadowBlur=3;
@@ -7194,6 +7219,8 @@ function drawBallPreview(bx,by,r,ch){
 
 function drawSelectDesktop(){
   // Adaptive grid: auto-calculate cols/card size for any roster
+  // Sort display: normal chars first, bosses at bottom
+  const displayOrder=[...CHARS.keys()].sort((a,b)=>(CHARS[a].isBoss?1:0)-(CHARS[b].isBoss?1:0));
   const gapX=10,gapY=8,padX=15,headerH=60,bottomH=150;
   const availW=W-padX*2,availH=H-headerH-bottomH;
   const n=CHARS.length;
@@ -7209,8 +7236,9 @@ function drawSelectDesktop(){
   X.textAlign='left';X.fillStyle='#4488ff';X.fillText('P1 — Left click',startX,cardY-5);
   X.textAlign='right';X.fillStyle='#ff4444';X.fillText('P2 — Right click',startX+totalW,cardY-5);
 
-  CHARS.forEach((ch,i)=>{
-    const row=Math.floor(i/cols),col=i%cols;
+  displayOrder.forEach((i,di)=>{
+    const ch=CHARS[i];
+    const row=Math.floor(di/cols),col=di%cols;
     const cx=startX+col*(cardW+gapX),cy=cardY+row*(cardH+gapY);
     const isP1=p1Char===i,isP2=p2Char===i;
     drawRoundRect(cx,cy,cardW,cardH,8);
@@ -7277,8 +7305,10 @@ function drawSelectMobile(){
     X.font='bold 11px Consolas,monospace';X.textAlign='center';
     X.fillStyle=labelColor;X.fillText(label,W/2,yStart);
     const gridY=yStart+5;
-    CHARS.forEach((ch,i)=>{
-      const row=Math.floor(i/cols),col=i%cols;
+    const mobileOrder=[...CHARS.keys()].sort((a,b)=>(CHARS[a].isBoss?1:0)-(CHARS[b].isBoss?1:0));
+    mobileOrder.forEach((i,di)=>{
+      const ch=CHARS[i];
+      const row=Math.floor(di/cols),col=di%cols;
       const cx=startX+col*(cardW+gapX),cy=gridY+row*(cardH+gapY);
       const isSel=selected===i;
       drawRoundRect(cx,cy,cardW,cardH,5);
