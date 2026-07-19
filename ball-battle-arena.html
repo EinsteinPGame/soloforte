@@ -5151,6 +5151,20 @@ function drawBall(f){
   // Freeze visual
   if(f.freezeTimer>0){X.beginPath();X.arc(f.x,f.y,f.radius+4,0,Math.PI*2);X.fillStyle='rgba(119,221,255,0.4)';X.fill();X.strokeStyle='#77ddff';X.lineWidth=3;X.stroke();}
 
+  // Sandevistan time-slow visual — blue tint + clock hands on slowed fighters
+  if(f.sandyTimeScale<1&&f.char.id!=='sandy'){
+    // Blue time-distortion overlay
+    X.beginPath();X.arc(f.x,f.y,f.radius+6,0,Math.PI*2);
+    X.fillStyle='rgba(68,136,255,0.15)';X.fill();
+    X.strokeStyle='rgba(68,136,255,0.4)';X.lineWidth=2;X.stroke();
+    // Tiny spinning clock hands
+    const clockR=f.radius*0.35;
+    const slowRate=battleTime*0.03*f.sandyTimeScale; // hands move slowly
+    X.strokeStyle='rgba(180,220,255,0.6)';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(f.x,f.y-f.radius-4);X.lineTo(f.x+Math.cos(slowRate-Math.PI/2)*clockR,f.y-f.radius-4+Math.sin(slowRate-Math.PI/2)*clockR);X.stroke();
+    X.beginPath();X.moveTo(f.x,f.y-f.radius-4);X.lineTo(f.x+Math.cos(slowRate*0.4-Math.PI/2)*clockR*0.6,f.y-f.radius-4+Math.sin(slowRate*0.4-Math.PI/2)*clockR*0.6);X.stroke();
+  }
+
   // Stun stars
   if(f.stunTimer>0){const st=battleTime*0.3;for(let i=0;i<3;i++){const sa=st+i*Math.PI*2/3;X.fillStyle='#ffcc00';X.font='bold 12px Consolas,monospace';X.textAlign='center';X.fillText('*',f.x+Math.cos(sa)*20,f.y-f.radius-10+Math.sin(sa*2)*3);}}
 
@@ -8541,6 +8555,19 @@ function drawBattle(){
       X.strokeStyle=quickhackFlashColor;X.lineWidth=4;
       X.strokeRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
     }
+  }
+
+  // Sandevistan active — blue vignette + scan lines across screen
+  const activeSandy=fighters.find(f=>f&&f.alive&&f.sandyActive);
+  if(activeSandy){
+    // Blue vignette overlay
+    const vg=X.createRadialGradient(W/2,H/2,Math.min(W,H)*0.3,W/2,H/2,Math.max(W,H)*0.7);
+    vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(20,40,100,0.25)');
+    X.fillStyle=vg;X.fillRect(0,0,W,H);
+    // Horizontal scan lines (subtle)
+    X.strokeStyle='rgba(68,136,255,0.06)';X.lineWidth=1;
+    const scanOff=Math.floor(battleTime*0.5)%6;
+    for(let sy=scanOff;sy<H;sy+=6){X.beginPath();X.moveTo(0,sy);X.lineTo(W,sy);X.stroke();}
   }
 
   // Screen flash overlay
