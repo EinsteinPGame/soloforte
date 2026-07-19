@@ -441,6 +441,7 @@ function spawnDmgNum(x,y,val,color,isCrit){dmgNums.push({x,y,val:typeof val==='s
 function addLog(msg){battleLog.unshift(msg);if(battleLog.length>6)battleLog.pop()}
 function spawnSparks(x,y,color,count){for(let i=0;i<count;i++){const a=Math.random()*Math.PI*2;spawnParticle(x,y,color,Math.cos(a)*(2+Math.random()*3),Math.sin(a)*(2+Math.random()*3),10+rand(0,10),1+Math.random()*2)}}
 function spawnExplosion(x,y,radius,color,dmg,owner,target){
+  radius=radius||30; // safety default
   const bigR=radius*1.8; // explosions are MASSIVE
   explosions.push({x,y,radius:0,maxRadius:bigR,color,life:35,maxLife:35,dmg,owner,target,hit:false});
   SFX.megaExplosion();
@@ -1646,7 +1647,7 @@ function attackMechamaru(f,enemy,chaos){
               vx:Math.cos(a+spread)*4,vy:Math.sin(a+spread)*4,
               owner:f,target:null,color:'#aa4444',
               life:90,radius:5,dmg:f.atk*(0.5+chaos*0.04),
-              explosive:true,homing:false,isMechaRocket:true,
+              explosive:true,explosionRadius:40,homing:false,isMechaRocket:true,
             });
           }
           // Muzzle flash from each arm
@@ -1680,7 +1681,7 @@ function attackMechamaru(f,enemy,chaos){
         vx:Math.cos(a+spread)*3.5,vy:Math.sin(a+spread)*3.5,
         owner:f,target:null,color:'#88aa44',
         life:120,radius:5,dmg:f.atk*(0.4+chaos*0.03),
-        explosive:true,homing:false,isMechaRocket:true,
+        explosive:true,explosionRadius:40,homing:false,isMechaRocket:true,
       });
       spawnBurst(spX,spY,'#88aa44',5,3);
     }
@@ -1690,7 +1691,7 @@ function attackMechamaru(f,enemy,chaos){
       vx:Math.cos(a)*3.5,vy:Math.sin(a)*3.5,
       owner:f,target:null,color:'#88aa44',
       life:120,radius:5,dmg:f.atk*(0.4+chaos*0.03),
-      explosive:true,homing:false,isMechaRocket:true,
+      explosive:true,explosionRadius:40,homing:false,isMechaRocket:true,
     });
     // All attacks drain HP in Ultimate
     f.hp=Math.max(1,f.hp-f.maxHp*0.01);
@@ -7429,6 +7430,7 @@ function drawBattle(){
 
   // Explosions — MASSIVE, bright, dramatic with shockwave rings
   explosions.forEach(e=>{
+    if(isNaN(e.radius)||isNaN(e.maxRadius)){e.life=0;return;}
     const a=Math.max(0,e.life/e.maxLife);
     // Outer shockwave ring — thick and visible
     X.globalAlpha=a*0.5;
@@ -8037,6 +8039,7 @@ function loop(time){
     case 'select':drawSelect();break;
     case 'bossSelect':drawBossSelect();break;
     case 'battle':
+      try{
       battleAccum+=elapsed;
       while(battleAccum>=STEP_MS){
         if(hitFreezeTimer>0){hitFreezeTimer--;} else {for(let i=0;i<battleSpeed;i++)updateBattle(1);}
@@ -8047,6 +8050,7 @@ function loop(time){
         battleAccum-=STEP_MS;
       }
       drawBattle();
+      }catch(err){console.error('BBA battle error:',err);}
       break;
     case 'result':drawResult();break;
   }
