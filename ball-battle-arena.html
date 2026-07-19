@@ -2631,13 +2631,14 @@ function updateRelicSmasher(f,enemy,dt){
   }
 }
 
-function updateRelicChoso(f,enemy,dt){
-  // Piercing Blood freeze (Choso stays in place while firing)
+// Choso continuous beam — runs independently of special
+function updateChosoBeam(f,enemy,dt){
+  // Piercing Blood freeze
   if(f.chosoPiercingFreeze>0){
     f.chosoPiercingFreeze-=dt;
     f.vx=0;f.vy=0;
   }
-  // Continuous beam logic
+  // Continuous beam
   if(f.chosoBeamActive){
     f.chosoBeamTimer-=dt;
     f.vx=0;f.vy=0;
@@ -2646,33 +2647,29 @@ function updateRelicChoso(f,enemy,dt){
     let diff=targetAngle-f.chosoBeamAngle;
     while(diff>Math.PI)diff-=Math.PI*2;
     while(diff<-Math.PI)diff+=Math.PI*2;
-    const trackSpeed=0.02+(f.elementActive&&f.elem.id==='electric'?0.015:0);
+    const trackSpeed=0.025+(f.elementActive&&f.elem.id==='electric'?0.02:0);
     f.chosoBeamAngle+=diff*trackSpeed*dt;
     f.weaponAngle=f.chosoBeamAngle;
     f.weaponFlash=5;
-    // Beam hit detection: raycast from Choso along beam angle
+    // Beam hit detection — wide hitbox (beam is thick)
     if(f.chosoBeamHitCD<=0){
       const chaos=getChaosLevel(f);
-      const beamLen=400;
+      const beamLen=450;
       const bx=f.x+Math.cos(f.chosoBeamAngle)*f.radius;
       const by=f.y+Math.sin(f.chosoBeamAngle)*f.radius;
-      // Check if enemy is close to beam line
       if(enemy.alive){
         const ex=enemy.x-bx,ey=enemy.y-by;
         const along=ex*Math.cos(f.chosoBeamAngle)+ey*Math.sin(f.chosoBeamAngle);
         if(along>0&&along<beamLen){
           const perp=Math.abs(-ex*Math.sin(f.chosoBeamAngle)+ey*Math.cos(f.chosoBeamAngle));
-          if(perp<enemy.radius+10){
-            // Hit! Stronger than normal attacks
+          if(perp<enemy.radius+18){ // wide hitbox
             const beamDmg=f.atk*(1.5+chaos*0.12);
             dealDamage(f,enemy,beamDmg);
             f.chosoBloodHits++;
-            f.chosoBeamHitCD=12; // damage every ~0.2s
-            spawnBurst(enemy.x,enemy.y,'#cc0000',6,3);
-            // Knockback along beam direction
+            f.chosoBeamHitCD=12;
+            spawnBurst(enemy.x,enemy.y,'#cc0000',8,4);
             enemy.vx+=Math.cos(f.chosoBeamAngle)*3;
             enemy.vy+=Math.sin(f.chosoBeamAngle)*3;
-            // Poison element: 5 blood hits = poison stack
             if(f.elementActive&&f.elem.id==='toxic'&&f.chosoBloodHits>=5){
               f.chosoBloodHits=0;
               enemy.burnTimer=Math.max(enemy.burnTimer,180);
@@ -2686,33 +2683,34 @@ function updateRelicChoso(f,enemy,dt){
     if(f.chosoBeamHitCD>0)f.chosoBeamHitCD-=dt;
     // Beam particles along the ray
     if(battleTime%2<1){
-      const d=Math.random()*350;
+      const d=Math.random()*400;
       spawnParticle(
         f.x+Math.cos(f.chosoBeamAngle)*(f.radius+d),
         f.y+Math.sin(f.chosoBeamAngle)*(f.radius+d),
-        pick(['#cc0000','#ff2222','#880000']),0,0,4,2
+        pick(['#cc0000','#ff2222','#880000']),0,0,5,2
       );
     }
-    // Fire element: wider beam (side rays)
     if(f.elementActive&&f.elem.id==='fire'&&battleTime%8<1){
       const sideA=f.chosoBeamAngle+(Math.random()-0.5)*0.3;
       spawnParticle(f.x+Math.cos(sideA)*f.radius,f.y+Math.sin(sideA)*f.radius,'#ff4400',Math.cos(sideA)*4,Math.sin(sideA)*4,5,3);
     }
-    // End beam
     if(f.chosoBeamTimer<=0){
       f.chosoBeamActive=false;
-      f.chosoBeamCooldown=30; // ~0.5s charge before next beam
+      f.chosoBeamCooldown=30;
       spawnDmgNum(f.x,f.y-f.radius-20,'RECHARGING...','#880000',false);
     }
   }
-  // Beam cooldown (charge between beams)
+  // Beam cooldown
   if(f.chosoBeamCooldown>0){
     f.chosoBeamCooldown-=dt;
     f.vx=0;f.vy=0;
     if(f.chosoBeamCooldown<=0){
-      f.chosoPiercingFreeze=0; // unfreeze, can fire again on next attack
+      f.chosoPiercingFreeze=0;
     }
   }
+}
+
+function updateRelicChoso(f,enemy,dt){
   // Blood Edge melee timer
   if(f.chosoBloodEdge){
     f.chosoEdgeTimer-=dt;
@@ -3086,6 +3084,11 @@ function updateBattle(dt){
         case 'choso':updateRelicChoso(f,enemy,dt);break;
         case 'toji':updateRelicToji(f,enemy,dt);break;
       }
+    }
+
+    // Choso beam runs always (not just during special)
+    if(f.char.id==='choso'&&(f.chosoBeamActive||f.chosoBeamCooldown>0||f.chosoPiercingFreeze>0)){
+      updateChosoBeam(f,enemy,dt);
     }
 
     // Throwing weapon management
@@ -4170,27 +4173,30 @@ function drawBall(f){
     X.restore();
   }
 
-  // Draw Choso continuous beam
+  // Draw Choso continuous beam — thick and visible
   if(f.char.id==='choso'&&f.chosoBeamActive){
     X.save();
     const bx=f.x+Math.cos(f.chosoBeamAngle)*f.radius;
     const by=f.y+Math.sin(f.chosoBeamAngle)*f.radius;
-    const beamLen=400;
+    const beamLen=450;
     const ex=bx+Math.cos(f.chosoBeamAngle)*beamLen;
     const ey=by+Math.sin(f.chosoBeamAngle)*beamLen;
-    // Outer glow
-    X.strokeStyle='rgba(200,0,0,0.3)';X.lineWidth=16;
+    // Outer glow (very wide)
+    X.strokeStyle='rgba(180,0,0,0.2)';X.lineWidth=32;
     X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
-    // Mid beam
-    X.strokeStyle='rgba(204,0,0,0.6)';X.lineWidth=8;
+    // Mid glow
+    X.strokeStyle='rgba(200,0,0,0.4)';X.lineWidth=20;
+    X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
+    // Main beam
+    X.strokeStyle='rgba(220,0,0,0.7)';X.lineWidth=12;
     X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
     // Core beam
-    X.strokeStyle='#ff2222';X.lineWidth=4;
-    X.shadowColor='#ff0000';X.shadowBlur=12;
+    X.strokeStyle='#ff3333';X.lineWidth=6;
+    X.shadowColor='#ff0000';X.shadowBlur=18;
     X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
     X.shadowBlur=0;
     // Bright center
-    X.strokeStyle='rgba(255,150,150,0.8)';X.lineWidth=2;
+    X.strokeStyle='rgba(255,180,180,0.9)';X.lineWidth=2;
     X.beginPath();X.moveTo(bx,by);X.lineTo(ex,ey);X.stroke();
     X.restore();
   }
