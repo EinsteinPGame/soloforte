@@ -317,6 +317,7 @@ let gameMode='1v1'; // '1v1' or 'boss'
 let bossChar=CHARS.findIndex(c=>c.id==='smasher'); // selected boss for boss mode
 let teamChar1=0,teamChar2=1,teamChar3=2; // team chars for boss mode (3v1)
 let _bossSelSlot=1; // cycling slot for boss select UI
+let _bossSelPage=1; // 1=pick chars, 2=elements+boss
 let teamElem1=0,teamElem2=0,teamElem3=0,bossElem=0; // elements
 
 const ARENA={x:15,y:65,w:W-30,h:H-200};
@@ -4728,7 +4729,7 @@ function drawTitle(){
 
   const btnW=200,btnH=50;
   addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
-  addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');});
+  addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('P10 v7.2 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
@@ -5668,155 +5669,162 @@ function drawFighterInfo(f,px,py,maxW,align){
 // ============================================================
 function drawBossSelect(){
   clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
-  X.font='bold '+(isMobile?'18':'22')+'px Consolas,Courier New,monospace';
-  X.textAlign='center';X.fillStyle='#cc4444';
-  X.fillText('BOSS FIGHT — PICK YOUR TEAM',W/2,isMobile?25:30);
-  // Filter out the boss from selectable chars
-  const selectableChars=CHARS.filter(c=>!c.isBoss);
-  // Adaptive grid
-  const gapX=isMobile?5:10,gapY=isMobile?3:6,padX=isMobile?5:15;
-  const availW=W-padX*2;
-  const n=selectableChars.length;
-  const maxCols=Math.floor((availW+gapX)/((isMobile?120:115)+gapX));
-  const cols=Math.min(n,Math.max(2,Math.min(maxCols,Math.ceil(Math.sqrt(n)))));
-  const rows=Math.ceil(n/cols);
-  const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
-  const bottomSpace=isMobile?240:280;
-  const cardH=Math.min(Math.floor(((H-55-bottomSpace)-(rows-1)*gapY)/rows),isMobile?75:130);
-  const totalW=cols*cardW+(cols-1)*gapX;
-  const startX=(W-totalW)/2;
-  const gridStartY=isMobile?35:45;
-  X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
-  X.fillStyle='#4488ff';X.fillText('Click to cycle: T1 (blue) / T2 (green) / T3 (orange)',W/2,gridStartY);
-  const charGridY=gridStartY+8;
-  selectableChars.forEach((ch,i)=>{
-    const origIdx=CHARS.indexOf(ch);
-    const row=Math.floor(i/cols),col=i%cols;
-    const cx=startX+col*(cardW+gapX),cy=charGridY+row*(cardH+gapY);
-    const isT1=teamChar1===origIdx,isT2=teamChar2===origIdx,isT3=teamChar3===origIdx;
-    drawRoundRect(cx,cy,cardW,cardH,isMobile?5:8);
-    X.fillStyle=isT1?'#112244':isT2?'#113322':isT3?'#221a11':'#111128';X.fill();
-    X.strokeStyle=isT1?'#4488ff':isT2?'#33cc66':isT3?'#ff8833':ch.color+'66';X.lineWidth=isT1||isT2||isT3?3:1.5;X.stroke();
-    if(isT1){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('T1',cx+5,cy+12);}
-    if(isT2){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#33cc66';X.textAlign='center';X.fillText('T2',cx+cardW/2,cy+12);}
-    if(isT3){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#ff8833';X.textAlign='right';X.fillText('T3',cx+cardW-5,cy+12);}
-    const compact=cardH<80;
-    const ballR=isMobile?(compact?8:10):(cardH>120?22:16);
-    drawBallPreview(cx+cardW/2,cy+(isMobile?(compact?16:22):cardH>120?35:28),ballR,ch);
-    X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
-    X.fillText(ch.name.length>16?ch.name.slice(0,15)+'…':ch.name,cx+cardW/2,cy+(isMobile?(compact?30:38):cardH>120?62:50));
-    X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
-    X.fillText(ch.playstyle,cx+cardW/2,cy+(isMobile?(compact?40:48):cardH>120?74:60));
-    if(isMobile){
-      X.font='7px Consolas,monospace';X.fillStyle='#888';X.textAlign='center';
-      X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+cardW/2,cy+(compact?52:58));
-      if(!compact)X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+cardW/2,cy+68);
-    } else if(cardH>70){
-      X.font='8px Consolas,monospace';X.textAlign='left';X.fillStyle='#888';
-      X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),cx+8,cy+(cardH>120?90:74));
-      X.fillText('RNG:'+ch.stats.range+' DEF:'+ch.stats.def,cx+8,cy+(cardH>120?102:84));
-    }
-    // Click cycles through T1/T2/T3 assignment
-    addBtn('bsel_'+i,cx,cy,cardW,cardH,'','transparent',()=>{
-      if(origIdx===teamChar1){/* already T1, do nothing */}
-      else if(origIdx===teamChar2){/* already T2, do nothing */}
-      else if(origIdx===teamChar3){/* already T3, do nothing */}
-      else{
-        // Assign to first unoccupied, or cycle: replace T1→T2→T3→T1
+
+  if(_bossSelPage===1){
+    // ===== PAGE 1: PICK YOUR TEAM (characters only) =====
+    X.font='bold '+(isMobile?'18':'22')+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.fillStyle='#cc4444';
+    X.fillText('BOSS FIGHT — PICK YOUR TEAM',W/2,isMobile?25:30);
+    const selectableChars=CHARS.filter(c=>!c.isBoss);
+    const gapX=isMobile?5:10,gapY=isMobile?5:6,padX=isMobile?5:15;
+    const availW=W-padX*2;
+    const n=selectableChars.length;
+    const maxCols=Math.floor((availW+gapX)/((isMobile?120:115)+gapX));
+    const cols=Math.min(n,Math.max(2,Math.min(maxCols,Math.ceil(Math.sqrt(n)))));
+    const rows=Math.ceil(n/cols);
+    const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
+    const bottomSpace=isMobile?80:100;
+    const cardH=Math.min(Math.floor(((H-55-bottomSpace)-(rows-1)*gapY)/rows),isMobile?100:130);
+    const totalW=cols*cardW+(cols-1)*gapX;
+    const startX=(W-totalW)/2;
+    const gridStartY=isMobile?35:45;
+    X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#4488ff';X.fillText('Tap to assign: T1 (blue) / T2 (green) / T3 (orange)',W/2,gridStartY);
+    const charGridY=gridStartY+8;
+    selectableChars.forEach((ch,i)=>{
+      const origIdx=CHARS.indexOf(ch);
+      const row=Math.floor(i/cols),col=i%cols;
+      const cx=startX+col*(cardW+gapX),cy=charGridY+row*(cardH+gapY);
+      const isT1=teamChar1===origIdx,isT2=teamChar2===origIdx,isT3=teamChar3===origIdx;
+      drawRoundRect(cx,cy,cardW,cardH,isMobile?5:8);
+      X.fillStyle=isT1?'#112244':isT2?'#113322':isT3?'#221a11':'#111128';X.fill();
+      X.strokeStyle=isT1?'#4488ff':isT2?'#33cc66':isT3?'#ff8833':ch.color+'66';X.lineWidth=isT1||isT2||isT3?3:1.5;X.stroke();
+      if(isT1){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('T1',cx+5,cy+14);}
+      if(isT2){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#33cc66';X.textAlign='center';X.fillText('T2',cx+cardW/2,cy+14);}
+      if(isT3){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#ff8833';X.textAlign='right';X.fillText('T3',cx+cardW-5,cy+14);}
+      const compact=cardH<80;
+      const ballR=isMobile?(compact?9:12):(cardH>120?22:16);
+      drawBallPreview(cx+cardW/2,cy+(isMobile?(compact?20:28):cardH>120?35:28),ballR,ch);
+      X.font='bold '+(isMobile?(compact?'8':'9'):'10')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
+      X.fillText(ch.name,cx+cardW/2,cy+(isMobile?(compact?34:46):cardH>120?62:50));
+      X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
+      X.fillText(ch.playstyle,cx+cardW/2,cy+(isMobile?(compact?44:56):cardH>120?74:60));
+      if(isMobile){
+        X.font='7px Consolas,monospace';X.fillStyle='#888';X.textAlign='center';
+        X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+cardW/2,cy+(compact?54:66));
+        if(!compact)X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+cardW/2,cy+76);
+      } else if(cardH>70){
+        X.font='8px Consolas,monospace';X.textAlign='left';X.fillStyle='#888';
+        X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),cx+8,cy+(cardH>120?90:74));
+        X.fillText('RNG:'+ch.stats.range+' DEF:'+ch.stats.def,cx+8,cy+(cardH>120?102:84));
+      }
+      addBtn('bsel_'+i,cx,cy,cardW,cardH,'','transparent',()=>{
+        if(origIdx===teamChar1||origIdx===teamChar2||origIdx===teamChar3)return;
         if(!_bossSelSlot)_bossSelSlot=1;
         if(_bossSelSlot===1){teamChar1=origIdx;_bossSelSlot=2;}
         else if(_bossSelSlot===2){teamChar2=origIdx;_bossSelSlot=3;}
         else{teamChar3=origIdx;_bossSelSlot=1;}
-      }
+      });
     });
-  });
-  const gridBottom=charGridY+rows*(cardH+gapY);
-
-  if(isMobile){
-    // MOBILE LAYOUT: stack element pickers in 2 rows to avoid overlap
-    let secY=gridBottom+4;
-    // Row 1: T1 + T2 elements side by side
-    const halfW=Math.floor(W/2)-4;
-    X.font='bold 9px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#4488ff';X.fillText('T1 ELEM',halfW/2+2,secY);
-    X.fillStyle='#33cc66';X.fillText('T2 ELEM',W/2+halfW/2,secY);
-    drawElementPickerMobile(2,secY+6,teamElem1,'be1',(i)=>{teamElem1=i;});
-    drawElementPickerMobile(halfW+4,secY+6,teamElem2,'be2',(i)=>{teamElem2=i;});
-    secY+=42;
-    // Row 2: T3 element + Boss element side by side
-    X.fillStyle='#ff8833';X.fillText('T3 ELEM',halfW/2+2,secY);
-    X.fillStyle='#cc4444';X.fillText('BOSS ELEM',W/2+halfW/2,secY);
-    drawElementPickerMobile(2,secY+6,teamElem3,'be3',(i)=>{teamElem3=i;});
-    drawElementPickerMobile(halfW+4,secY+6,bossElem,'beb',(i)=>{bossElem=i;});
-    secY+=42;
-
-    // Boss selection — clear labeled section
-    X.font='bold 11px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#cc4444';X.fillText('SELECT BOSS',W/2,secY);
-    secY+=6;
-    const bosses=CHARS.filter(c=>c.isBoss);
-    const bossCardW=Math.min(130,Math.floor((W-20-(bosses.length-1)*8)/bosses.length));
-    const bossTotalW=bosses.length*bossCardW+(bosses.length-1)*8;
-    const bossStartX=(W-bossTotalW)/2;
-    bosses.forEach((bch,bi)=>{
-      const bIdx=CHARS.indexOf(bch);
-      const bx=bossStartX+bi*(bossCardW+8);
-      const by=secY;
-      const isSel=bossChar===bIdx;
-      drawRoundRect(bx,by,bossCardW,55,6);
-      X.fillStyle=isSel?'#221122':'#111128';X.fill();
-      X.strokeStyle=isSel?bch.color:bch.color+'66';X.lineWidth=isSel?3:1.5;X.stroke();
-      drawBallPreview(bx+bossCardW/2,by+18,12,bch);
-      X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
-      X.fillText(bch.name,bx+bossCardW/2,by+36);
-      X.font='7px Consolas,monospace';X.fillStyle='#888';
-      X.fillText('HP:'+bch.stats.hp,bx+bossCardW/2,by+47);
-      addBtn('boss_sel_'+bi,bx,by,bossCardW,55,'','transparent',()=>{bossChar=bIdx;});
-    });
+    // Bottom: NEXT button + Back
+    const bBtnY=isMobile?H-50:H-65;
+    addBtn('bossNext',W/2-100,bBtnY,200,isMobile?38:48,'NEXT →','#4488ff',()=>{_bossSelPage=2;});
+    addBtn('bossBack',20,bBtnY,80,isMobile?32:38,'Back','#666',()=>{screen='title';});
   } else {
-    // DESKTOP LAYOUT: element pickers in a row
-    const elemY=gridBottom+12;
-    X.font='bold 12px Consolas,monospace';X.textAlign='center';
-    const eColW=Math.floor(W/3)-10;
-    X.fillStyle='#4488ff';X.fillText('T1 ELEM',eColW/2+5,elemY);
-    X.fillStyle='#33cc66';X.fillText('T2 ELEM',W/2,elemY);
-    X.fillStyle='#ff8833';X.fillText('T3 ELEM',W-eColW/2-5,elemY);
-    drawElementPicker(5,elemY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
-    drawElementPicker(W/3+5,elemY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
-    drawElementPicker(W*2/3+5,elemY+8,teamElem3,'be3',(i)=>{teamElem3=i;});
-    // Boss element picker
-    const bossElemY=elemY+65;
-    X.fillStyle='#cc4444';X.fillText('BOSS ELEMENT',W/2,bossElemY);
-    drawElementPicker(W/2-130,bossElemY+8,bossElem,'beb',(i)=>{bossElem=i;});
+    // ===== PAGE 2: ELEMENTS + BOSS SELECTION =====
+    X.font='bold '+(isMobile?'16':'22')+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.fillStyle='#cc4444';
+    X.fillText('ELEMENTS & BOSS',W/2,isMobile?25:30);
+
+    // Show selected team summary at top
+    let sumY=isMobile?42:50;
+    X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#aaa';X.fillText('YOUR TEAM:',W/2,sumY);
+    sumY+=isMobile?14:18;
+    const teamLabels=[{idx:teamChar1,c:'#4488ff',l:'T1'},{idx:teamChar2,c:'#33cc66',l:'T2'},{idx:teamChar3,c:'#ff8833',l:'T3'}];
+    const sumCardW=isMobile?Math.floor((W-30)/3):150;
+    const sumTotalW=3*sumCardW+20;
+    const sumStartX=(W-sumTotalW)/2;
+    teamLabels.forEach((t,ti)=>{
+      const sx=sumStartX+ti*(sumCardW+10);
+      const ch=CHARS[t.idx];
+      drawRoundRect(sx,sumY,sumCardW,isMobile?40:45,5);
+      X.fillStyle='#111128';X.fill();
+      X.strokeStyle=t.c;X.lineWidth=2;X.stroke();
+      const ballR=isMobile?8:10;
+      drawBallPreview(sx+ballR+8,sumY+(isMobile?20:22),ballR,ch);
+      X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.textAlign='left';
+      X.fillStyle=t.c;X.fillText(t.l,sx+ballR*2+14,sumY+(isMobile?15:17));
+      X.fillStyle='#fff';X.fillText(ch.name.length>12?ch.name.slice(0,11)+'…':ch.name,sx+ballR*2+14,sumY+(isMobile?28:32));
+    });
+    sumY+=isMobile?50:58;
+
+    // Element pickers — one per row on mobile, 3-across on desktop
+    if(isMobile){
+      const elemRows=[
+        {label:'T1 ELEMENT',color:'#4488ff',sel:teamElem1,pfx:'be1',cb:(i)=>{teamElem1=i;},char:CHARS[teamChar1]},
+        {label:'T2 ELEMENT',color:'#33cc66',sel:teamElem2,pfx:'be2',cb:(i)=>{teamElem2=i;},char:CHARS[teamChar2]},
+        {label:'T3 ELEMENT',color:'#ff8833',sel:teamElem3,pfx:'be3',cb:(i)=>{teamElem3=i;},char:CHARS[teamChar3]},
+        {label:'BOSS ELEMENT',color:'#cc4444',sel:bossElem,pfx:'beb',cb:(i)=>{bossElem=i;},char:null},
+      ];
+      elemRows.forEach((er,ri)=>{
+        const ey=sumY+ri*48;
+        X.font='bold 10px Consolas,monospace';X.textAlign='left';
+        X.fillStyle=er.color;
+        const labelText=er.char?er.label+' ('+er.char.name+')':er.label;
+        X.fillText(labelText,10,ey);
+        // Center the element picker
+        const pickerW=5*(37+3)-3; // 5 elements
+        const pickerX=Math.floor((W-pickerW)/2);
+        drawElementPickerMobile(pickerX,ey+6,er.sel,er.pfx,er.cb);
+      });
+      sumY+=4*48+8;
+    } else {
+      X.font='bold 12px Consolas,monospace';X.textAlign='center';
+      const eColW=Math.floor(W/3)-10;
+      X.fillStyle='#4488ff';X.fillText('T1 ELEM',eColW/2+5,sumY);
+      X.fillStyle='#33cc66';X.fillText('T2 ELEM',W/2,sumY);
+      X.fillStyle='#ff8833';X.fillText('T3 ELEM',W-eColW/2-5,sumY);
+      drawElementPicker(5,sumY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
+      drawElementPicker(W/3+5,sumY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
+      drawElementPicker(W*2/3+5,sumY+8,teamElem3,'be3',(i)=>{teamElem3=i;});
+      sumY+=65;
+      X.fillStyle='#cc4444';X.fillText('BOSS ELEMENT',W/2,sumY);
+      drawElementPicker(W/2-130,sumY+8,bossElem,'beb',(i)=>{bossElem=i;});
+      sumY+=55;
+    }
 
     // Boss selection
+    X.font='bold '+(isMobile?'12':'14')+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#cc4444';X.fillText('SELECT BOSS',W/2,sumY);
+    sumY+=8;
     const bosses=CHARS.filter(c=>c.isBoss);
-    const bossSelY=bossElemY+50;
-    X.font='bold 12px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#cc4444';X.fillText('SELECT BOSS',W/2,bossSelY);
-    const bossCardW=120;
-    const bossTotalW=bosses.length*bossCardW+(bosses.length-1)*10;
+    const bossCardW=isMobile?Math.min(160,Math.floor((W-20-(bosses.length-1)*12)/bosses.length)):140;
+    const bossTotalW=bosses.length*bossCardW+(bosses.length-1)*12;
     const bossStartX=(W-bossTotalW)/2;
     bosses.forEach((bch,bi)=>{
       const bIdx=CHARS.indexOf(bch);
-      const bx=bossStartX+bi*(bossCardW+10);
-      const by=bossSelY+8;
+      const bx=bossStartX+bi*(bossCardW+12);
+      const by=sumY;
       const isSel=bossChar===bIdx;
-      drawRoundRect(bx,by,bossCardW,55,6);
+      const bCardH=isMobile?65:70;
+      drawRoundRect(bx,by,bossCardW,bCardH,6);
       X.fillStyle=isSel?'#221122':'#111128';X.fill();
       X.strokeStyle=isSel?bch.color:bch.color+'66';X.lineWidth=isSel?3:1.5;X.stroke();
-      drawBallPreview(bx+bossCardW/2,by+20,14,bch);
-      X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
-      X.fillText(bch.name,bx+bossCardW/2,by+40);
-      X.font='7px Consolas,monospace';X.fillStyle='#888';X.fillText('HP:'+bch.stats.hp,bx+bossCardW/2,by+50);
-      addBtn('boss_sel_'+bi,bx,by,bossCardW,55,'','transparent',()=>{bossChar=bIdx;});
+      const ballR=isMobile?14:16;
+      drawBallPreview(bx+bossCardW/2,by+(isMobile?22:24),ballR,bch);
+      X.font='bold '+(isMobile?'10':'11')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
+      X.fillText(bch.name,bx+bossCardW/2,by+(isMobile?44:48));
+      X.font=(isMobile?'8':'9')+'px Consolas,monospace';X.fillStyle='#888';
+      X.fillText('HP:'+bch.stats.hp+' ATK:'+bch.stats.atk,bx+bossCardW/2,by+(isMobile?56:60));
+      addBtn('boss_sel_'+bi,bx,by,bossCardW,bCardH,'','transparent',()=>{bossChar=bIdx;});
     });
-  }
 
-  // Battle button
-  const bBtnY=isMobile?H-50:H-65;
-  addBtn('bossBattle',W/2-100,bBtnY,200,isMobile?38:48,'FIGHT BOSS!','#cc4444',startBattle);
-  addBtn('bossBack',20,bBtnY,80,isMobile?32:38,'Back','#666',()=>{screen='title';});
+    // Bottom: FIGHT + Back (goes to page 1)
+    const bBtnY=isMobile?H-50:H-65;
+    addBtn('bossBattle',W/2-100,bBtnY,200,isMobile?38:48,'FIGHT BOSS!','#cc4444',startBattle);
+    addBtn('bossBack',20,bBtnY,80,isMobile?32:38,'← Back','#666',()=>{_bossSelPage=1;});
+  }
   buttons.forEach(b=>{
     if(b.id.startsWith('bsel_'))return;
     drawBtn(b);
