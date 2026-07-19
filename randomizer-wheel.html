@@ -192,6 +192,32 @@
       color: #666;
       margin-top: 4px;
     }
+    .entry-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .entry-tag {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: #151528;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 0.85rem;
+      color: #ccc;
+    }
+    .entry-tag .remove-entry {
+      cursor: pointer;
+      color: #666;
+      font-size: 0.75rem;
+      padding: 0 3px;
+      border-radius: 3px;
+      line-height: 1;
+    }
+    .entry-tag .remove-entry:hover { color: #ff4444; background: rgba(255,68,68,0.15); }
     .history {
       width: 100%;
       margin-top: 8px;
@@ -337,6 +363,7 @@
       <label>Enter items (one per line) &mdash; paste from anywhere!</label>
       <textarea id="entries" placeholder="Pizza&#10;Burger&#10;Sushi&#10;Tacos&#10;Ramen" oninput="updateWheel()"></textarea>
       <div class="entry-count" id="entryCount">0 entries</div>
+      <div class="entry-list" id="entryList"></div>
     </div>
     <div class="history" id="historySection" style="display:none">
       <h3>Recent Results</h3>
@@ -516,7 +543,31 @@
     function updateWheel() {
       entries = getEntries();
       document.getElementById('entryCount').textContent = entries.length + ' entr' + (entries.length === 1 ? 'y' : 'ies');
+      renderEntryList();
       if (!spinning) drawWheel();
+    }
+
+    function renderEntryList() {
+      const list = document.getElementById('entryList');
+      if (entries.length === 0) { list.innerHTML = ''; return; }
+      list.innerHTML = entries.map((e, i) =>
+        '<span class="entry-tag">' + e.replace(/</g, '&lt;') +
+        ' <span class="remove-entry" onclick="removeEntry(' + i + ')">✕</span></span>'
+      ).join('');
+    }
+
+    function removeEntry(idx) {
+      const textarea = document.getElementById('entries');
+      const lines = textarea.value.split('\n');
+      let count = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim().length > 0) {
+          if (count === idx) { lines.splice(i, 1); break; }
+          count++;
+        }
+      }
+      textarea.value = lines.join('\n');
+      updateWheel();
     }
 
     function drawWheel() {
