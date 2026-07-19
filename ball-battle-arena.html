@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.0.2 — Ryu blast rework, Gojo single purple, Choso orb fix, boss ult charge nerf
+// BALL BATTLE ARENA v8.0.4 — Deep polish: boss ult charge nerf, katana ice wall CD, Toji edge glide, Smasher arena glide, char select pagination, voiceline back-to-back
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -448,6 +448,7 @@ let teamChar1=0,teamChar2=1,teamChar3=2; // team chars for boss mode (3v1)
 let _bossSelSlot=1; // cycling slot for boss select UI
 let _bossSelPage=1; // 1=pick chars, 2=elements+boss
 let teamElem1=0,teamElem2=0,teamElem3=0,bossElem=0; // elements
+let selectPage=0; // pagination for character select (0-indexed)
 
 const ARENA={x:15,y:65,w:W-30,h:H-200};
 
@@ -505,9 +506,13 @@ function spawnImpact(x,y,color,intensity){
   }
 }
 
+let relicTextSub='';let relicTextSubTimer=0;let relicTextSubColor='#fff';
 function showRelicText(text,color){
   // Back-to-back detection — if both relics fire within 30 frames
   if(relicTextTimer>90){
+    // Show "BACK TO BACK!!" above, keep both relic names visible
+    relicTextSub=relicText; // previous relic text becomes sub-line
+    relicTextSubTimer=150;relicTextSubColor=relicTextColor;
     relicText='BACK TO BACK!!';relicTextTimer=150;relicTextColor='#ffcc00';
     shakeTimer=20;shakeAmt=10;
     SFX.relicActivate();SFX.special();
@@ -617,6 +622,7 @@ function createFighter(charIdx,elemIdx,side){
     // Katana state
     katanaDeflectCD:0, // cooldown after counter-dash
     katanaPostDashTimer:0, // frames remaining of 80% dmg reduction after counter-dash
+    katanaIceWallCD:0, // cooldown between ice wall spawns from deflects
     katanaDashing:false, // mid counter-dash
     katanaDashTimer:0, // timeout for dash (prevent getting stuck)
     katanaDashTarget:null,
@@ -687,6 +693,7 @@ function createFighter(charIdx,elemIdx,side){
     tojiTriPhase:'dash', // 'dash' or 'linger'
     tojiDashIdx:0, // which weapon dashing to (0=Inverted Spear,1=Split Soul,2=Playful Cloud)
     tojiDashTimer:0, // frames in current dash pause
+    tojiGlideProgress:0, // glide progress along current edge (0→1)
     tojiAfterimages:[], // {x,y,alpha} for black afterimage trail
     tojiTriShrink:0, // ice element shrink factor (0-1)
     tojiEnemyDebuff:false, // inverted spear disabled defenses
@@ -941,11 +948,12 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       spawnDmgNum(defender.x,defender.y-defender.radius-15,earlyDmg,'#ffaa00');
       spawnBurst(defender.x,defender.y,'#ffcc00',8,3);
       if(defender.hp<=0){defender.hp=0;defender.alive=false;defender.deathAnim=60;checkVictory(attacker);}
-      // Ice wall spawns even during post-dash reduced deflects
-      if(defender.elementActive&&defender.elem.id==='cryo'){
+      // Ice wall on post-dash hits: only every 3rd deflect (cooldown-based)
+      if(defender.elementActive&&defender.elem.id==='cryo'&&(defender.katanaIceWallCD||0)<=0){
         const behindAngle=angle(defender,attacker);
         iceWalls.push({x:attacker.x+Math.cos(behindAngle)*60,y:attacker.y+Math.sin(behindAngle)*60,
           angle:behindAngle,life:120,maxLife:120,owner:defender});
+        defender.katanaIceWallCD=90; // ~1.5s cooldown between ice walls
         SFX.freeze();
       }
       return earlyDmg;
@@ -971,10 +979,12 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       attacker.hp-=defender.atk*0.5;attacker.hitFlash=8;
       if(attacker.hp<=0){attacker.hp=0;attacker.alive=false;attacker.deathAnim=60;checkVictory(defender);}
     }
-    if(defender.elementActive&&defender.elem.id==='cryo'){
+    // Ice wall on full deflect: cooldown-based, not every single deflect
+    if(defender.elementActive&&defender.elem.id==='cryo'&&(defender.katanaIceWallCD||0)<=0){
       const behindAngle=angle(defender,attacker);
       iceWalls.push({x:attacker.x+Math.cos(behindAngle)*60,y:attacker.y+Math.sin(behindAngle)*60,
         angle:behindAngle,life:120,maxLife:120,owner:defender});
+      defender.katanaIceWallCD=90; // ~1.5s cooldown between ice walls
       SFX.freeze();
     }
     if(defender.katanaRushing)defender.katanaRushDeflects++;
@@ -1026,7 +1036,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker.side===0){battleStats.p1Hits++;battleStats.p1Dmg+=dmg;if(isCrit)battleStats.p1Crits++;}
   else{battleStats.p2Hits++;battleStats.p2Dmg+=dmg;if(isCrit)battleStats.p2Crits++;}
 
-  const atkChargeRate=attacker.char.isBoss?0.15:1; // bosses charge ults much slower from dealing damage
+  const atkChargeRate=attacker.char.isBoss?0.06:1; // bosses charge ults WAY slower from dealing damage
   attacker.specialBar=Math.min(attacker.specialMax,attacker.specialBar+(6+Math.random()*2)*(attacker.char.relicChargeRate||1)*atkChargeRate);
   defender.specialBar=Math.min(defender.specialMax,defender.specialBar+(2+Math.random())*(defender.char.relicChargeRate||1));
 
@@ -2595,6 +2605,7 @@ function relicToji(f,enemy){
   f.tojiTriPhase='dash';
   f.tojiDashIdx=0;
   f.tojiDashTimer=0;
+  f.tojiGlideProgress=0;
   f.tojiAfterimages=[];
   f.tojiTriShrink=0;
   f.tojiEnemyDebuff=false;
@@ -3254,11 +3265,30 @@ function updateRelicSmasher(f,enemy,dt){
       }
     }
   }
-  // Melee fists+blades when enemies are close during relic
+  // Glide along arena edge during ult — menacing patrol
+  if(!f._smasherEdgePhase)f._smasherEdgePhase=0; // 0=top,1=right,2=bottom,3=left
+  if(!f._smasherGlideT)f._smasherGlideT=0;
+  const margin=f.radius+10;
+  const edgeCorners=[
+    {x:ARENA.x+margin,y:ARENA.y+margin}, // top-left
+    {x:ARENA.x+ARENA.w-margin,y:ARENA.y+margin}, // top-right
+    {x:ARENA.x+ARENA.w-margin,y:ARENA.y+ARENA.h-margin}, // bottom-right
+    {x:ARENA.x+margin,y:ARENA.y+ARENA.h-margin}, // bottom-left
+  ];
+  const glideFrom=edgeCorners[f._smasherEdgePhase%4];
+  const glideTo=edgeCorners[(f._smasherEdgePhase+1)%4];
+  f._smasherGlideT+=0.012*dt; // glide speed
+  if(f._smasherGlideT>=1){f._smasherGlideT=0;f._smasherEdgePhase=(f._smasherEdgePhase+1)%4;}
+  const gt=Math.min(1,f._smasherGlideT);
+  f.x=lerp(glideFrom.x,glideTo.x,gt);
+  f.y=lerp(glideFrom.y,glideTo.y,gt);
+  // Afterimage trail
+  if(battleTime%3<1){if(!f.smasherAfterimages)f.smasherAfterimages=[];f.smasherAfterimages.push({x:f.x,y:f.y,alpha:0.6});}
+  // Melee fists+blades when enemies are close — BIGGER range + MORE knockback
   if(f._smasherRelicMelee){
     const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
     enemies.forEach(e=>{
-      if(dist(f,e)<f.radius+e.radius+40){
+      if(dist(f,e)<f.radius+e.radius+65){ // bigger range (was 40)
         if(!f._smasherRelicMeleeCD)f._smasherRelicMeleeCD=0;
         if(f._smasherRelicMeleeCD<=0){
           f._smasherRelicMeleeCD=25;
@@ -3266,9 +3296,9 @@ function updateRelicSmasher(f,enemy,dt){
           const fistDmg=f.atk*(1.0+chaos*0.1);
           dealDamage(f,e,fistDmg,true);
           const ka=angle(f,e);
-          e.vx+=Math.cos(ka)*(6+chaos*0.4);e.vy+=Math.sin(ka)*(6+chaos*0.4);
+          e.vx+=Math.cos(ka)*(10+chaos*0.5);e.vy+=Math.sin(ka)*(10+chaos*0.5); // more knockback (was 6)
           SFX.punch();
-          spawnBurst(e.x,e.y,'#ff4444',8,3);
+          spawnBurst(e.x,e.y,'#ff4444',12,5);
           f.weaponExtend=1;f.weaponFlash=8;
         }
       }
@@ -3434,78 +3464,84 @@ function updateRelicToji(f,enemy,dt){
     f.tojiAfterimages[i].alpha-=0.03*dt;
     if(f.tojiAfterimages[i].alpha<=0)f.tojiAfterimages.splice(i,1);
   }
-  // DASH PHASE: teleport between 3 weapon positions
+  // DASH PHASE: GLIDE along triangle edges, weapon attacks at each corner
   if(f.tojiTriPhase==='dash'){
-    f.tojiDashTimer-=dt;
     f.weaponFlash=10;
-    if(f.tojiDashTimer<=0){
+    const chaos=getChaosLevel(f);
+    // Glide progress (0→1 along current edge)
+    if(!f.tojiGlideProgress)f.tojiGlideProgress=0;
+    const glideSpeed=0.025*dt; // speed of glide along edge
+    f.tojiGlideProgress+=glideSpeed;
+    // Current edge: from point[dashIdx] toward point[(dashIdx+1)%3]
+    const fromPt=f.tojiTriPoints[f.tojiDashIdx];
+    const toPt=f.tojiTriPoints[(f.tojiDashIdx+1)%3];
+    const t=Math.min(1,f.tojiGlideProgress);
+    f.x=lerp(fromPt.x,toPt.x,t);
+    f.y=lerp(fromPt.y,toPt.y,t);
+    f.vx=0;f.vy=0;
+    // Afterimage trail while gliding
+    if(battleTime%3<1)f.tojiAfterimages.push({x:f.x,y:f.y,alpha:0.8});
+    // Speed particles
+    if(battleTime%2<1)spawnParticle(f.x,f.y,'#333355',rand(-2,2),rand(-2,2),10,2);
+    // Reached corner — trigger weapon attack
+    if(t>=1){
+      f.tojiGlideProgress=0;
       const idx=f.tojiDashIdx;
-      const chaos=getChaosLevel(f);
-      // Spawn afterimage at current position before teleporting
-      f.tojiAfterimages.push({x:f.x,y:f.y,alpha:1});
-      // Teleport to weapon position
-      const pt=f.tojiTriPoints[idx];
-      f.x=pt.x;f.y=pt.y;f.vx=0;f.vy=0;
       SFX.tojiDash();
-      spawnBurst(f.x,f.y,'#1a1a2a',15,5);
-      spawnBurst(f.x,f.y,'#333355',10,4);
-      // Each weapon does something different
+      spawnBurst(f.x,f.y,'#1a1a2a',20,6);
+      spawnBurst(f.x,f.y,'#333355',12,5);
+      const hitRange=220; // bigger range than before
       if(idx===0){
         // INVERTED SPEAR — disables defensive abilities
         const spearDmg=f.atk*(1.0+chaos*0.1);
-        if(enemy.alive&&dist(f,enemy)<180){
+        if(enemy.alive&&dist(f,enemy)<hitRange){
           dealDamage(f,enemy,spearDmg);
-          // Disable deflect/infinity/damage reduction for triangle duration
           f.tojiEnemyDebuff=true;
-          enemy.katanaDeflectCount=0; // strip deflect charges
-          enemy.gojoInfinityCharges=0; // strip infinity charges
+          enemy.katanaDeflectCount=0;
+          enemy.gojoInfinityCharges=0;
           spawnDmgNum(enemy.x,enemy.y-enemy.radius-30,'SPEAR — DEFENSES DISABLED','#ff4444',false);
-          spawnBurst(enemy.x,enemy.y,'#ff4444',12,5);
+          spawnBurst(enemy.x,enemy.y,'#ff4444',15,6);
         }
-        shakeTimer=5;shakeAmt=4;
+        shakeTimer=6;shakeAmt=5;
       } else if(idx===1){
         // SPLIT SOUL KATANA — removes dmg reduction + 10% increased dmg taken
         const katDmg=f.atk*(1.2+chaos*0.1);
-        if(enemy.alive&&dist(f,enemy)<180){
+        if(enemy.alive&&dist(f,enemy)<hitRange){
           dealDamage(f,enemy,katDmg);
           f.tojiDmgTakenDebuff=true;
           enemy.tojiDmgTakenDebuff=true;
-          enemy.defReduction=Math.max(enemy.defReduction,enemy.def*0.5); // halve effective def
+          enemy.defReduction=Math.max(enemy.defReduction,enemy.def*0.5);
           spawnDmgNum(enemy.x,enemy.y-enemy.radius-30,'SPLIT SOUL — +10% DMG TAKEN','#ff8844',false);
-          spawnBurst(enemy.x,enemy.y,'#ff8844',12,5);
+          spawnBurst(enemy.x,enemy.y,'#ff8844',15,6);
         }
-        shakeTimer=6;shakeAmt=5;
+        shakeTimer=7;shakeAmt=6;
       } else if(idx===2){
-        // PLAYFUL CLOUD — massive hit
-        const cloudDmg=f.atk*(1.8+chaos*0.15);
-        if(enemy.alive&&dist(f,enemy)<180){
+        // PLAYFUL CLOUD — massive hit + BIG knockback
+        const cloudDmg=f.atk*(2.0+chaos*0.15);
+        if(enemy.alive&&dist(f,enemy)<hitRange){
           dealDamage(f,enemy,cloudDmg);
-          // Heavy knockback toward center of triangle
-          const tcx=(f.tojiTriPoints[0].x+f.tojiTriPoints[1].x+f.tojiTriPoints[2].x)/3;
-          const tcy=(f.tojiTriPoints[0].y+f.tojiTriPoints[1].y+f.tojiTriPoints[2].y)/3;
-          const ka=Math.atan2(tcy-enemy.y,tcx-enemy.x);
-          enemy.vx+=Math.cos(ka)*8;
-          enemy.vy+=Math.sin(ka)*8;
+          // Heavy knockback AWAY from Toji (bigger + more range)
+          const ka=angle(f,enemy);
+          enemy.vx+=Math.cos(ka)*14;
+          enemy.vy+=Math.sin(ka)*14;
           spawnDmgNum(enemy.x,enemy.y-enemy.radius-30,'PLAYFUL CLOUD','#aaaaff',false);
-          spawnBurst(enemy.x,enemy.y,'#aaaaff',15,6);
-          spawnBurst(enemy.x,enemy.y,'#ffffff',10,5);
+          spawnBurst(enemy.x,enemy.y,'#aaaaff',20,8);
+          spawnBurst(enemy.x,enemy.y,'#ffffff',12,6);
+          // Explosion ring at impact
+          explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:80,color:'#aaaaff',life:18,maxLife:18,dmg:0,owner:null,target:null,hit:true});
         }
-        shakeTimer=8;shakeAmt=7;
-        triggerHitFreeze(4);
+        shakeTimer=12;shakeAmt=10;
+        triggerHitFreeze(5);
       }
       f.tojiDashIdx++;
       if(f.tojiDashIdx>=3){
-        // Dash phase complete — enter linger phase (4-5 seconds)
         f.tojiTriPhase='linger';
-        // Return Toji to triangle center
         const tcx=(f.tojiTriPoints[0].x+f.tojiTriPoints[1].x+f.tojiTriPoints[2].x)/3;
         const tcy=(f.tojiTriPoints[0].y+f.tojiTriPoints[1].y+f.tojiTriPoints[2].y)/3;
         f.tojiAfterimages.push({x:f.x,y:f.y,alpha:1});
         f.x=tcx;f.y=tcy;f.vx=0;f.vy=0;
         SFX.tojiChain();
         addLog('Chain triangle active!');
-      } else {
-        f.tojiDashTimer=25; // pause before next teleport (~0.4s)
       }
     }
   }
@@ -4311,6 +4347,7 @@ function updateBattle(dt){
       if(f.katanaDeflecting>0)f.katanaDeflecting-=dt;
       if(f.katanaDeflectCD>0)f.katanaDeflectCD-=dt;
       if(f.katanaPostDashTimer>0)f.katanaPostDashTimer-=dt;
+      if(f.katanaIceWallCD>0)f.katanaIceWallCD-=dt;
       // Counter-dash: weaker mantis-blade-like rush → single slash → bounce back
       if(f.katanaDashing&&f.katanaDashTarget&&f.katanaDashTarget.alive){
         f.katanaDashTimer-=dt;
@@ -4947,6 +4984,7 @@ function updateBattle(dt){
 
   // Relic text timer
   if(relicTextTimer>0)relicTextTimer-=dt;
+  if(relicTextSubTimer>0)relicTextSubTimer-=dt;
 
   // Update fire trails (sandy+fire)
   for(let i=fireTrails.length-1;i>=0;i--){
@@ -7636,17 +7674,23 @@ function drawBallPreview(bx,by,r,ch){
 }
 
 function drawSelectDesktop(){
-  // Adaptive grid: auto-calculate cols/card size for any roster
-  // Sort display: normal chars first, bosses at bottom
-  const displayOrder=[...CHARS.keys()].sort((a,b)=>(CHARS[a].isBoss?1:0)-(CHARS[b].isBoss?1:0));
+  // Paginated grid: fixed card size, arrows to page, bosses at bottom of EVERY page
+  const normalChars=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss);
+  const bossChars=[...CHARS.keys()].filter(i=>CHARS[i].isBoss);
   const gapX=10,gapY=8,padX=15,headerH=60,bottomH=150;
   const availW=W-padX*2,availH=H-headerH-bottomH;
-  const n=CHARS.length;
-  const maxCols=Math.floor((availW+gapX)/(115+gapX));
-  const cols=Math.min(n,Math.max(2,Math.min(maxCols,Math.ceil(Math.sqrt(n)))));
-  const rows=Math.ceil(n/cols);
-  const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
-  const cardH=Math.min(Math.floor((availH-(rows-1)*gapY)/rows),170);
+  // Fixed card size for consistency
+  const cardW=120,cardH=170;
+  const cols=Math.floor((availW+gapX)/(cardW+gapX));
+  const bossRows=Math.ceil(bossChars.length/cols); // boss rows always at bottom
+  const normalRowsPerPage=Math.max(1,Math.floor((availH-bossRows*(cardH+gapY))/(cardH+gapY)));
+  const normalsPerPage=normalRowsPerPage*cols;
+  const totalPages=Math.max(1,Math.ceil(normalChars.length/normalsPerPage));
+  selectPage=clamp(selectPage,0,totalPages-1);
+  // Slice normal chars for current page
+  const pageNormals=normalChars.slice(selectPage*normalsPerPage,(selectPage+1)*normalsPerPage);
+  const displayOrder=[...pageNormals,...bossChars];
+
   const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
   const cardY=headerH;
@@ -7684,9 +7728,27 @@ function drawSelectDesktop(){
     addBtn('p2c'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{p2Char=i;});
   });
 
-  const gridBottom=cardY+rows*(cardH+gapY);
+  // Pagination arrows
+  if(totalPages>1){
+    const arrowY=cardY+Math.ceil(displayOrder.length/cols)*(cardH+gapY)-gapY+5;
+    X.font='bold 13px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#888';X.fillText('Page '+(selectPage+1)+'/'+totalPages,W/2,arrowY+15);
+    if(selectPage>0){
+      addBtn('pgLeft',startX-5,arrowY-5,40,30,'','transparent',()=>{selectPage--;});
+      X.fillStyle='#7b68ee';X.font='bold 24px Consolas,monospace';X.textAlign='center';
+      X.fillText('\u25C0',startX+15,arrowY+16);
+    }
+    if(selectPage<totalPages-1){
+      addBtn('pgRight',startX+totalW-35,arrowY-5,40,30,'','transparent',()=>{selectPage++;});
+      X.fillStyle='#7b68ee';X.font='bold 24px Consolas,monospace';X.textAlign='center';
+      X.fillText('\u25B6',startX+totalW-15,arrowY+16);
+    }
+  }
+
+  const gridRows=Math.ceil(displayOrder.length/cols);
+  const gridBottom=cardY+gridRows*(cardH+gapY);
   const elemY=gridBottom+10;
-  const epW=Math.min(260,W/2-20); // element picker width clamped to half screen
+  const epW=Math.min(260,W/2-20);
   X.font='bold 13px Consolas,monospace';X.textAlign='center';
   X.fillStyle='#4488ff';X.fillText('P1 ELEMENT',W/4,elemY);
   drawElementPicker(W/4-epW/2,elemY+10,p1Elem,'p1e',(i)=>{p1Elem=i;});
@@ -7704,18 +7766,24 @@ function drawSelectDesktop(){
 }
 
 function drawSelectMobile(){
-  // Adaptive grid: auto-calculate for any roster size
+  // Paginated mobile grid: both P1 and P2 share same page, bosses at bottom of all pages
+  const normalChars=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss);
+  const bossChars=[...CHARS.keys()].filter(i=>CHARS[i].isBoss);
   const gapX=5,gapY=3,padX=5,headerH=42,bottomH=105;
   const availW=W-padX*2;
   const totalAvailH=H-headerH-bottomH;
   const gridGap=10;
   const singleGridH=(totalAvailH-gridGap)/2;
-  const n=CHARS.length;
   const maxCols=Math.floor((availW+gapX)/(120+gapX));
-  const cols=Math.min(n,Math.max(2,Math.min(maxCols,Math.ceil(Math.sqrt(n)))));
-  const rows=Math.ceil(n/cols);
+  const cols=Math.max(2,maxCols);
   const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
-  const cardH=Math.min(Math.floor((singleGridH-10-(rows-1)*gapY)/rows),95);
+  const cardH=65; // fixed compact card height
+  const bossRows=Math.ceil(bossChars.length/cols);
+  const normalRowsPerGrid=Math.max(1,Math.floor((singleGridH-15-bossRows*(cardH+gapY))/(cardH+gapY)));
+  const normalsPerPage=normalRowsPerGrid*cols;
+  const totalPages=Math.max(1,Math.ceil(normalChars.length/normalsPerPage));
+  selectPage=clamp(selectPage,0,totalPages-1);
+  const pageNormals=normalChars.slice(selectPage*normalsPerPage,(selectPage+1)*normalsPerPage);
   const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
 
@@ -7723,8 +7791,8 @@ function drawSelectMobile(){
     X.font='bold 11px Consolas,monospace';X.textAlign='center';
     X.fillStyle=labelColor;X.fillText(label,W/2,yStart);
     const gridY=yStart+5;
-    const mobileOrder=[...CHARS.keys()].sort((a,b)=>(CHARS[a].isBoss?1:0)-(CHARS[b].isBoss?1:0));
-    mobileOrder.forEach((i,di)=>{
+    const displayChars=[...pageNormals,...bossChars];
+    displayChars.forEach((i,di)=>{
       const ch=CHARS[i];
       const row=Math.floor(di/cols),col=di%cols;
       const cx=startX+col*(cardW+gapX),cy=gridY+row*(cardH+gapY);
@@ -7732,29 +7800,41 @@ function drawSelectMobile(){
       drawRoundRect(cx,cy,cardW,cardH,5);
       X.fillStyle=isSel?(labelColor==='#4488ff'?'#112244':'#441122'):'#111128';X.fill();
       X.strokeStyle=isSel?labelColor:ch.color+'44';X.lineWidth=isSel?2.5:1;X.stroke();
-      const compact=cardH<65;
-      drawBallPreview(cx+20,cy+(compact?18:20),compact?8:10,ch);
+      const compact=true;
+      drawBallPreview(cx+20,cy+18,8,ch);
       X.font='bold 9px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
       const shortName=ch.name.length>12?ch.name.slice(0,12):ch.name;
-      X.fillText(shortName,cx+38,cy+(compact?14:16));
-      X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+38,cy+(compact?24:27));
+      X.fillText(shortName,cx+38,cy+14);
+      X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+38,cy+24);
       X.fillStyle='#888';
-      if(compact){
-        X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+6,cy+36);
-        X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+6,cy+46);
-      } else {
-        X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk,cx+8,cy+42);
-        X.fillText('SPD:'+ch.stats.speed.toFixed(1)+' RNG:'+ch.stats.range,cx+8,cy+52);
-        X.fillText('DEF:'+ch.stats.def+' CRT:'+ch.stats.crit+'%',cx+8,cy+62);
-      }
+      X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+6,cy+36);
+      X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+6,cy+46);
       if(isSel){X.font='bold 9px Consolas,monospace';X.fillStyle=labelColor;X.textAlign='right';X.fillText(label,cx+cardW-6,cy+14);}
       addBtn(prefix+i,cx,cy,cardW,cardH,'','transparent',()=>{cb(i);});
     });
+    const rows=Math.ceil(displayChars.length/cols);
     return gridY+rows*(cardH+gapY);
   }
 
   const p1Bottom=drawCharGrid('P1','#4488ff',headerH,p1Char,'p1m',(i)=>{p1Char=i;});
   const p2Bottom=drawCharGrid('P2','#ff4444',p1Bottom+gridGap,p2Char,'p2m',(i)=>{p2Char=i;});
+
+  // Pagination arrows between the two grids
+  if(totalPages>1){
+    const arrowY=p1Bottom-8;
+    X.font='bold 10px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#888';X.fillText((selectPage+1)+'/'+totalPages,W/2,arrowY);
+    if(selectPage>0){
+      addBtn('mpgL',startX-5,arrowY-12,30,20,'','transparent',()=>{selectPage--;});
+      X.fillStyle='#7b68ee';X.font='bold 18px Consolas,monospace';X.textAlign='center';
+      X.fillText('\u25C0',startX+10,arrowY+2);
+    }
+    if(selectPage<totalPages-1){
+      addBtn('mpgR',startX+totalW-25,arrowY-12,30,20,'','transparent',()=>{selectPage++;});
+      X.fillStyle='#7b68ee';X.font='bold 18px Consolas,monospace';X.textAlign='center';
+      X.fillText('\u25B6',startX+totalW-10,arrowY+2);
+    }
+  }
 
   const elemY=p2Bottom+6;
   X.font='bold 10px Consolas,monospace';X.textAlign='center';
@@ -7763,7 +7843,6 @@ function drawSelectMobile(){
   X.fillStyle='#ff4444';X.fillText('P2 ELEMENT',W*3/4-10,elemY);
   drawElementPickerMobile(W/2+10,elemY+8,p2Elem,'p2em',(i)=>{p2Elem=i;});
 
-  // Combo effect text (parity with desktop)
   const comboY=elemY+48;
   X.font='8px Consolas,monospace';
   if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W/4+10,comboY);}
@@ -8300,18 +8379,32 @@ function drawBattle(){
     // Main text — large
     X.font='bold '+(isMobile?'22':'32')+'px Consolas,Courier New,monospace';
     X.textAlign='center';X.textBaseline='middle';
+    const mainY=ARENA.y+ARENA.h/2;
     X.shadowColor=relicTextColor;X.shadowBlur=25;
     X.fillStyle=relicTextColor;
-    X.fillText(relicText,W/2,ARENA.y+ARENA.h/2);
+    X.fillText(relicText,W/2,mainY);
     // Outline text for readability
     X.strokeStyle='#000';X.lineWidth=3;
-    X.strokeText(relicText,W/2,ARENA.y+ARENA.h/2);
-    X.fillText(relicText,W/2,ARENA.y+ARENA.h/2);
+    X.strokeText(relicText,W/2,mainY);
+    X.fillText(relicText,W/2,mainY);
+    // Sub-line (previous relic text during back-to-back)
+    if(relicTextSubTimer>0){
+      const sa=Math.min(1,relicTextSubTimer/40);
+      X.globalAlpha=sa;
+      X.font='bold '+(isMobile?'14':'20')+'px Consolas,Courier New,monospace';
+      X.shadowColor=relicTextSubColor;X.shadowBlur=15;
+      X.fillStyle=relicTextSubColor;
+      X.fillText(relicTextSub,W/2,mainY+30);
+      X.strokeStyle='#000';X.lineWidth=2;
+      X.strokeText(relicTextSub,W/2,mainY+30);
+      X.fillText(relicTextSub,W/2,mainY+30);
+      X.globalAlpha=a;
+    }
     // Accent lines
     const lw=isMobile?80:150;
     X.strokeStyle=relicTextColor;X.lineWidth=2;X.globalAlpha=a*0.6;
-    X.beginPath();X.moveTo(W/2-lw,ARENA.y+ARENA.h/2+18);X.lineTo(W/2+lw,ARENA.y+ARENA.h/2+18);X.stroke();
-    X.beginPath();X.moveTo(W/2-lw,ARENA.y+ARENA.h/2-18);X.lineTo(W/2+lw,ARENA.y+ARENA.h/2-18);X.stroke();
+    X.beginPath();X.moveTo(W/2-lw,mainY+18);X.lineTo(W/2+lw,mainY+18);X.stroke();
+    X.beginPath();X.moveTo(W/2-lw,mainY-18);X.lineTo(W/2+lw,mainY-18);X.stroke();
     X.shadowBlur=0;X.globalAlpha=1;
   }
 
