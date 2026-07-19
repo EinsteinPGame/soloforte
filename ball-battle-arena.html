@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.0.5d — Deep polish: Sandy ticking clock SFX, Mechamaru faces distinct, Sandevistan screen FX, dmg number pop, afterimage glow, title screen 2-row
+// BALL BATTLE ARENA v8.1 — Higuruma: gavel hammer (throw/swing), Domain Expansion: Deadly Sentencing (confiscate/disable/execute), 4 element combos, judge's robes face, courtroom domain bg
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -189,6 +189,11 @@ const SFX={
   ryuShockwave(){this._tone(150,0.15,'sine',0.25);this._tone(300,0.12,'triangle',0.18,0.03);this._noise(0.1,0.12)},
   ryuBeam(){this._tone(100,0.3,'sawtooth',0.3);this._tone(250,0.25,'square',0.22,0.05);this._tone(500,0.2,'triangle',0.18,0.1);this._tone(800,0.15,'sine',0.12,0.15);this._noise(0.2,0.2)},
   ryuSplit(){this._tone(600,0.08,'triangle',0.15);this._tone(900,0.06,'sine',0.1,0.02);this._noise(0.04,0.06)},
+  hammerThrow(){this._tone(250,0.08,'square',0.18);this._tone(400,0.06,'triangle',0.12,0.02);this._noise(0.05,0.06)},
+  hammerSwing(){this._tone(120,0.2,'sawtooth',0.3);this._tone(180,0.15,'square',0.22,0.04);this._noise(0.12,0.15)},
+  gaveling(){this._tone(80,0.3,'sawtooth',0.35);this._tone(200,0.25,'square',0.25,0.05);this._tone(400,0.2,'triangle',0.15,0.1);this._noise(0.15,0.25)},
+  sentencing(){this._tone(60,0.4,'sine',0.3);this._tone(150,0.35,'triangle',0.25,0.08);this._tone(300,0.3,'square',0.2,0.15);this._noise(0.2,0.3)},
+  executionerSword(){this._tone(50,0.5,'sawtooth',0.4);this._tone(100,0.4,'square',0.35,0.1);this._tone(250,0.35,'triangle',0.25,0.15);this._tone(500,0.25,'sine',0.15,0.25);this._noise(0.25,0.35)},
 };
 
 // ============================================================
@@ -325,6 +330,14 @@ const CHARS=[
     baseAtkInterval:50,relicChargeRate:0.75,
     specialName:'DESSERT IS SERVED.',
   },
+  {
+    id:'higuruma',name:'Higuruma',color:'#5a3a7a',
+    desc:'Gavel hammer: rapid small throws OR devastating big swing. Domain: Deadly Sentencing.',
+    playstyle:'Hammer & Judge',
+    stats:{hp:480,atk:28,speed:3.6,range:100,def:7,crit:15},
+    baseAtkInterval:42,relicChargeRate:0.9,
+    specialName:'DEADLY SENTENCING',
+  },
 ];
 
 // ============================================================
@@ -403,6 +416,10 @@ const COMBO_EFFECTS={
   'ryu_electric':'Faster cannon blasts (shorter interval)',
   'ryu_toxic':'Homing splits converge tighter on targets',
   'ryu_cryo':'Beam turns to track until hit (no split)',
+  'higuruma_fire':'Big hammer only — faster swing + bigger area',
+  'higuruma_electric':'Small hammers only — 20-burst rapid volley',
+  'higuruma_toxic':'Fast small + smaller large w/ knockback + more dmg',
+  'higuruma_cryo':'Stronger sentencing — deplete charge, longer disable',
 };
 
 // ============================================================
@@ -767,6 +784,17 @@ function createFighter(charIdx,elemIdx,side){
     ryuBeamHit:false, // whether beam connected
     ryuBeamSplit:false, // whether beam already split
     ryuIceTracking:false, // ice element: beam turns to track
+    // Higuruma state
+    higurumaHammerMode:'throw', // 'throw' (small hammers) or 'swing' (big hammer)
+    higurumaSwingCD:0, // cooldown for big hammer swing
+    higurumaDomainActive:false, // Domain Expansion active
+    higurumaDomainTimer:0, // domain duration
+    higurumaSentenceOutcome:null, // 'confiscate' | 'disable' | 'execute'
+    higurumaDisableTimer:0, // enemy can't attack timer
+    higurumaElecBurstCD:0, // lightning element burst cooldown
+    higurumaSwordActive:false, // Executioner Sword spawned
+    higurumaSwordTimer:0, // sword animation timer
+    higurumaSwordTarget:null, // sword target
   };
 }
 
@@ -1124,7 +1152,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -1165,6 +1193,7 @@ function performWeaponAttack(f,enemy){
     case 'kashimo':attackKashimo(f,enemy,chaos);break;
     case 'nanami':attackNanami(f,enemy,chaos);break;
     case 'ryu':attackRyu(f,enemy,chaos);break;
+    case 'higuruma':attackHiguruma(f,enemy,chaos);break;
   }
 }
 
@@ -2010,6 +2039,98 @@ function attackRyu(f,enemy,chaos){
   }
 }
 
+function attackHiguruma(f,enemy,chaos){
+  const d=dist(f,enemy);
+  const ba=f.weaponAngle;
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+
+  // Fire element: ONLY big hammer swing (faster, bigger)
+  // Electric element: ONLY small hammers (20-burst volley)
+  // Toxic: both but faster small + knockback on large
+  // Default: close=big swing, far=small throws
+
+  if(isElecElem){
+    // 20-burst rapid small hammer volley
+    if(f.higurumaElecBurstCD>0)return;
+    f.higurumaElecBurstCD=150+Math.floor(Math.random()*30); // 2.5-3s cooldown
+    SFX.hammerThrow();
+    f.weaponExtend=1;f.weaponFlash=12;
+    const count=20+Math.floor(chaos*2);
+    const dmgPer=f.atk*(0.3+chaos*0.02);
+    for(let i=0;i<count;i++){
+      const spread=(i-(count-1)/2)*0.12;
+      const sa=ba+spread+rand(-0.06,0.06);
+      const spd=6+rand(-0.5,0.5)+chaos*0.2;
+      projectiles.push({
+        x:f.x+Math.cos(sa)*(f.radius+4),y:f.y+Math.sin(sa)*(f.radius+4),
+        vx:Math.cos(sa)*spd,vy:Math.sin(sa)*spd,
+        owner:f,target:null,color:'#7a5a9a',
+        life:40+Math.floor(rand(0,10)),radius:4+chaos*0.2,dmg:dmgPer,
+        explosive:false,homing:false,isHigurumaSmallHammer:true,
+        knockback:1,
+      });
+    }
+    spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#7a5a9a',15,5);
+    addLog((f.side===0?'P1':'P2')+' HAMMER VOLLEY!');
+    spawnDmgNum(f.x,f.y-f.radius-20,'VOLLEY','#7a5a9a',false);
+  } else if(isFireElem||(d<f.radius+enemy.radius+70&&!isElecElem)){
+    // Big hammer swing — wide area, more damage
+    if(f.higurumaSwingCD>0&&!isFireElem)return;
+    f.higurumaSwingCD=isFireElem?25:40;
+    SFX.hammerSwing();
+    f.weaponExtend=1;f.weaponFlash=15;
+    const swingDmg=f.atk*(1.6+chaos*0.15)*(isFireElem?1.3:1)*(isToxicElem?1.25:1);
+    const swingRadius=isFireElem?55+chaos*4:40+chaos*3;
+    // Swing arc — hits in a cone
+    const arcAngle=isFireElem?1.2:0.9;
+    fighters.forEach(e=>{
+      if(e===f||e.side===f.side||!e.alive)return;
+      const ae=angle(f,e);
+      const de=dist(f,e);
+      let diff=ae-ba;while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+      if(de<f.radius+swingRadius&&Math.abs(diff)<arcAngle){
+        dealDamage(f,e,swingDmg,Math.random()<f.crit/100);
+        if(isToxicElem){
+          const kb=8+chaos*0.5;
+          e.vx+=Math.cos(ae)*kb;e.vy+=Math.sin(ae)*kb;
+        }
+        spawnBurst(e.x,e.y,'#5a3a7a',8,4);
+      }
+    });
+    // Swing visual — arc particles
+    for(let i=0;i<12;i++){
+      const sa=ba-arcAngle+(i/11)*arcAngle*2;
+      const sr=f.radius+swingRadius*0.8;
+      spawnParticle(f.x+Math.cos(sa)*sr,f.y+Math.sin(sa)*sr,'#8866aa',Math.cos(sa)*2,Math.sin(sa)*2,12,3);
+    }
+    shakeTimer=6;shakeAmt=4;
+    spawnBurst(f.x+Math.cos(ba)*(f.radius+20),f.y+Math.sin(ba)*(f.radius+20),'#5a3a7a',10,5);
+  } else {
+    // Small hammer throws (no homing)
+    SFX.hammerThrow();
+    f.weaponExtend=1;f.weaponFlash=8;
+    const count=Math.min(10+Math.floor(chaos*1.5),18);
+    const dmgPer=f.atk*(0.45+chaos*0.03)*(isToxicElem?1.25:1);
+    const spdBase=isToxicElem?7:5.5;
+    for(let i=0;i<count;i++){
+      const spread=(i-(count-1)/2)*0.15;
+      const sa=ba+spread+rand(-0.08,0.08);
+      const spd=spdBase+rand(-0.3,0.3)+chaos*0.15;
+      projectiles.push({
+        x:f.x+Math.cos(sa)*(f.radius+4),y:f.y+Math.sin(sa)*(f.radius+4),
+        vx:Math.cos(sa)*spd,vy:Math.sin(sa)*spd,
+        owner:f,target:null,color:'#7a5a9a',
+        life:50,radius:5+chaos*0.3,dmg:dmgPer,
+        explosive:false,homing:false,isHigurumaSmallHammer:true,
+        knockback:isToxicElem?3:1,
+      });
+    }
+    spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#7a5a9a',8,4);
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -2361,6 +2482,7 @@ function useSpecial(f,enemy){
     case 'kashimo':relicKashimo(f,enemy);break;
     case 'nanami':relicNanami(f,enemy);break;
     case 'ryu':relicRyu(f,enemy);break;
+    case 'higuruma':relicHiguruma(f,enemy);break;
   }
 }
 
@@ -2782,6 +2904,41 @@ function relicRyu(f,enemy){
   triggerScreenFlash('#cc6633',8);
   addLog((f.side===0?'P1':'P2')+' DESSERT IS SERVED.');
   spawnDmgNum(f.x,f.y-f.radius-30,'DESSERT IS SERVED.','#cc6633',true);
+}
+
+function relicHiguruma(f,enemy){
+  // "DOMAIN EXPANSION: DEADLY SENTENCING" — judge the enemy
+  f.specialTimer=240; // 4 seconds
+  f.higurumaDomainActive=true;
+  f.higurumaDomainTimer=240;
+  const isCryo=f.elementActive&&f.elem.id==='cryo';
+
+  // Roll outcome — 3 tiers
+  const roll=Math.random();
+  let outcome;
+  if(roll<0.55){
+    outcome='confiscate'; // highest chance: waste enemy special charge
+  } else if(roll<0.88){
+    outcome='disable'; // medium: enemy can't attack, only move
+  } else {
+    outcome='execute'; // lowest: Executioner Sword (massive dmg)
+  }
+  f.higurumaSentenceOutcome=outcome;
+
+  SFX.sentencing();
+  showRelicText('DEADLY SENTENCING',f.char.color);
+  // Domain background flash
+  triggerScreenFlash('#5a3a7a',15);
+  shakeTimer=20;shakeAmt=10;
+  spawnBurst(f.x,f.y,'#5a3a7a',40,12);
+  spawnBurst(f.x,f.y,'#8866aa',25,8);
+  addLog((f.side===0?'P1':'P2')+' DOMAIN EXPANSION: DEADLY SENTENCING!');
+  spawnDmgNum(f.x,f.y-f.radius-35,'DEADLY SENTENCING','#5a3a7a',true);
+
+  // Apply sentence after brief delay (handled in updateRelicHiguruma)
+  f.higurumaSwordActive=false;
+  f.higurumaSwordTimer=60; // 1s delay before sentence
+  f.higurumaSwordTarget=enemy;
 }
 
 // ============================================================
@@ -3883,6 +4040,93 @@ function updateRelicRyu(f,enemy,dt){
   // The projectile handles splitting on its own (via isRyuSpecialBlast handler)
 }
 
+function updateRelicHiguruma(f,enemy,dt){
+  if(!f.higurumaDomainActive)return;
+  f.higurumaDomainTimer-=dt;
+  const isCryo=f.elementActive&&f.elem.id==='cryo';
+  const target=f.higurumaSwordTarget||enemy;
+
+  // Domain aura particles
+  if(battleTime%4<dt){
+    const a=Math.random()*Math.PI*2;
+    spawnParticle(f.x+Math.cos(a)*60,f.y+Math.sin(a)*60,'#5a3a7a',Math.cos(a)*-2,Math.sin(a)*-2,20,3);
+    // Scales of justice particles around target
+    if(target&&target.alive){
+      const ta=Math.random()*Math.PI*2;
+      spawnParticle(target.x+Math.cos(ta)*40,target.y+Math.sin(ta)*40,'#8866aa',0,-1,15,2);
+    }
+  }
+
+  // Sentence delay countdown
+  if(f.higurumaSwordTimer>0){
+    f.higurumaSwordTimer-=dt;
+    if(f.higurumaSwordTimer<=0){
+      // Execute sentence
+      const outcome=f.higurumaSentenceOutcome;
+      if(outcome==='confiscate'){
+        // Waste enemy special charge
+        if(target&&target.alive){
+          const prevBar=target.specialBar;
+          target.specialBar=isCryo?-target.specialMax*0.3:0; // cryo: negative = must earn back extra
+          target.specialActive=false;
+          SFX.gaveling();
+          shakeTimer=10;shakeAmt=6;
+          spawnDmgNum(target.x,target.y-target.radius-25,'CONFISCATED','#ffcc00',true);
+          spawnBurst(target.x,target.y,'#ffcc00',20,6);
+          addLog((f.side===0?'P1':'P2')+' SENTENCE: CONFISCATION!');
+        }
+      } else if(outcome==='disable'){
+        // Enemy can't attack, only move
+        if(target&&target.alive){
+          const dur=isCryo?480:360+Math.floor(Math.random()*180); // 6-9s, cryo: 8s fixed
+          target.higurumaDisableTimer=dur;
+          SFX.gaveling();
+          shakeTimer=12;shakeAmt=7;
+          spawnDmgNum(target.x,target.y-target.radius-25,'DISABLED','#ff6666',true);
+          spawnBurst(target.x,target.y,'#ff4444',25,8);
+          addLog((f.side===0?'P1':'P2')+' SENTENCE: ATTACK DISABLED!');
+        }
+      } else if(outcome==='execute'){
+        // Executioner Sword — massive damage
+        f.higurumaSwordActive=true;
+        f.higurumaSwordTimer=0;
+        SFX.executionerSword();
+        shakeTimer=25;shakeAmt=14;
+        if(target&&target.alive){
+          // Damage: 10-80% of boss HP (random), scales with chaos
+          const chaos=getChaosLevel(f);
+          let pct=0.1+Math.random()*0.7; // 10-80%
+          if(isCryo)pct=Math.min(pct,0.5); // cryo: cap at 50% but no buff
+          let swordDmg=target.maxHp*pct;
+          // Cap to not instakill (leave at least 5% HP)
+          swordDmg=Math.min(swordDmg,target.hp-target.maxHp*0.05);
+          swordDmg=Math.max(swordDmg,f.atk*3); // minimum damage
+          dealDamage(f,target,swordDmg,true);
+          spawnDmgNum(target.x,target.y-target.radius-35,'EXECUTIONER SWORD','#ff0000',true);
+          spawnBurst(target.x,target.y,'#ff0000',35,10);
+          spawnBurst(target.x,target.y,'#5a3a7a',25,8);
+          spawnBurst(target.x,target.y,'#ffffff',15,5);
+          // Sword slash visual
+          for(let i=0;i<20;i++){
+            const t=i/20;
+            spawnParticle(lerp(target.x-50,target.x+50,t),lerp(target.y-50,target.y+50,t),'#ff0000',0,0,20,2);
+          }
+          explosions.push({x:target.x,y:target.y,radius:0,maxRadius:90,color:'#5a3a7a',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+          triggerScreenFlash('#ff0000',10);
+          addLog((f.side===0?'P1':'P2')+' EXECUTIONER SWORD! '+Math.round(swordDmg)+' DMG!');
+        }
+      }
+    }
+  }
+
+  // End domain
+  if(f.higurumaDomainTimer<=0){
+    f.higurumaDomainActive=false;
+    f.specialActive=false;
+    f.specialTimer=0;
+  }
+}
+
 // Helper: point inside triangle
 function pointInTriangle(px,py,a,b,c){
   const d1=(px-b.x)*(a.y-b.y)-(a.x-b.x)*(py-b.y);
@@ -3935,6 +4179,9 @@ function updateBattle(dt){
     if(f.stunTimer>0)f.stunTimer-=dt;
     if(f.slowTimer>0)f.slowTimer-=dt;
     if(f.freezeTimer>0)f.freezeTimer-=dt;
+    if(f.higurumaDisableTimer>0){f.higurumaDisableTimer-=dt;f.attackTimer=Math.max(f.attackTimer,10);}
+    if(f.higurumaSwingCD>0)f.higurumaSwingCD-=dt;
+    if(f.higurumaElecBurstCD>0)f.higurumaElecBurstCD-=dt;
     if(f.captureTimer>0){
       f.captureTimer-=dt;
       // Captured enemies take constant crush damage
@@ -4018,6 +4265,7 @@ function updateBattle(dt){
         case 'kashimo':updateRelicKashimo(f,enemy,dt);break;
         case 'nanami':updateRelicNanami(f,enemy,dt);break;
         case 'ryu':updateRelicRyu(f,enemy,dt);break;
+        case 'higuruma':updateRelicHiguruma(f,enemy,dt);break;
       }
     }
 
@@ -4595,7 +4843,7 @@ function updateBattle(dt){
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
@@ -5716,6 +5964,52 @@ function drawBall(f){
     X.restore();
   }
 
+  // Higuruma face — judge's robes, serious expression, dark hair
+  if(f.char.id==='higuruma'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    // Dark slicked-back hair
+    X.fillStyle='#1a1a2e';
+    X.beginPath();
+    X.moveTo(hx-r*0.45,hy+r*0.05);
+    X.quadraticCurveTo(hx-r*0.5,hy-r*0.6,hx-r*0.1,hy-r*0.85);
+    X.quadraticCurveTo(hx+r*0.05,hy-r*0.95,hx+r*0.15,hy-r*0.85);
+    X.quadraticCurveTo(hx+r*0.5,hy-r*0.55,hx+r*0.45,hy+r*0.05);
+    X.closePath();X.fill();
+    // Hair highlight
+    X.strokeStyle='#2a2a4e';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-r*0.2,hy-r*0.7);X.quadraticCurveTo(hx,hy-r*0.8,hx+r*0.2,hy-r*0.65);X.stroke();
+    // Serious narrow eyes
+    X.fillStyle='#222';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.05,r*0.1,r*0.035,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.05,r*0.1,r*0.035,0,0,Math.PI*2);X.fill();
+    // Eye glint
+    X.fillStyle='#444';
+    X.beginPath();X.arc(hx-r*0.14,hy-r*0.06,r*0.02,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.2,hy-r*0.06,r*0.02,0,Math.PI*2);X.fill();
+    // Stern mouth — thin line
+    X.strokeStyle='#444';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-r*0.12,hy+r*0.2);X.lineTo(hx+r*0.12,hy+r*0.2);X.stroke();
+    // Judge's collar — white V-shape at bottom
+    X.fillStyle='#e8e8e8';
+    X.beginPath();
+    X.moveTo(hx-r*0.3,hy+r*0.45);
+    X.lineTo(hx,hy+r*0.25);
+    X.lineTo(hx+r*0.3,hy+r*0.45);
+    X.lineTo(hx+r*0.25,hy+r*0.5);
+    X.lineTo(hx,hy+r*0.3);
+    X.lineTo(hx-r*0.25,hy+r*0.5);
+    X.closePath();X.fill();
+    // Domain active glow
+    if(f.higurumaDomainActive){
+      const pulse=Math.sin(battleTime*0.15)*0.3+0.5;
+      X.strokeStyle=`rgba(90,58,122,${pulse})`;X.lineWidth=4;
+      X.beginPath();X.arc(hx,hy,r+8,0,Math.PI*2);X.stroke();
+      X.shadowColor='#5a3a7a';X.shadowBlur=15;X.stroke();X.shadowBlur=0;
+    }
+    X.restore();
+  }
+
   // Draw Kashimo homing bolt
   if(f.char.id==='kashimo'&&f.kashimoBoltActive){
     X.save();
@@ -6166,6 +6460,10 @@ function drawBall(f){
       const mode=f.ryuBeamActive?'BEAM':'CANNON';
       X.fillText(mode,f.x,statY);
       break;}
+    case 'higuruma':{
+      const mode=f.higurumaDomainActive?'DOMAIN':f.higurumaSwingCD>0?'SWING':'HAMMER';
+      X.fillText(mode+(f.higurumaDisableTimer>0?' DIS':''),f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -6201,6 +6499,7 @@ function drawWeapon(f){
     case 'kashimo':drawKashimoWeapon(r,ext,flash,f);break;
     case 'nanami':drawNanamiWeapon(r,ext,flash,f);break;
     case 'ryu':drawRyuWeapon(r,ext,flash,f);break;
+    case 'higuruma':drawHigurumaWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -6589,6 +6888,54 @@ function drawRyuWeapon(r,ext,flash,f){
     X.save();X.rotate(-f.weaponAngle);
     const pulse=Math.sin(battleTime*0.2)*5+8;
     X.strokeStyle='#ff8844';X.lineWidth=3;X.globalAlpha=0.5+charge*0.5;
+    X.beginPath();X.arc(0,0,f.radius+pulse,0,Math.PI*2);X.stroke();
+    X.globalAlpha=1;
+    X.restore();
+  }
+}
+
+function drawHigurumaWeapon(r,ext,flash,f){
+  // Gavel hammer — judicial hammer weapon
+  const handleLen=35;
+  const headW=14,headH=10;
+  // Handle (dark wood)
+  const hg=X.createLinearGradient(r-4,0,r+handleLen,0);
+  hg.addColorStop(0,'#3a2a1a');hg.addColorStop(0.5,'#5a4030');hg.addColorStop(1,'#3a2a1a');
+  X.fillStyle=hg;
+  X.fillRect(r-4,-2.5,handleLen,5);
+  X.strokeStyle='#2a1a0a';X.lineWidth=0.8;X.strokeRect(r-4,-2.5,handleLen,5);
+  // Grip wrapping
+  X.strokeStyle='#8866aa';X.lineWidth=1;
+  for(let i=0;i<4;i++){
+    const gx=r+2+i*7;
+    X.beginPath();X.moveTo(gx,-3);X.lineTo(gx+3,3);X.stroke();
+  }
+  // Hammer head (rectangular, dark metal with purple tint)
+  const hx=r+handleLen;
+  const mg=X.createLinearGradient(hx-headW/2,-headH,hx+headW/2,headH);
+  mg.addColorStop(0,'#4a3a5a');mg.addColorStop(0.5,'#5a4a6a');mg.addColorStop(1,'#3a2a4a');
+  X.fillStyle=mg;
+  X.fillRect(hx-headW/2,-headH,headW,headH*2);
+  X.strokeStyle='#2a1a3a';X.lineWidth=1.5;X.strokeRect(hx-headW/2,-headH,headW,headH*2);
+  // Metal band on hammer head
+  X.fillStyle='#888';
+  X.fillRect(hx-headW/2-1,-headH-1,headW+2,2);
+  X.fillRect(hx-headW/2-1,headH-1,headW+2,2);
+  // Strike face highlight
+  X.fillStyle=flash?'#bb99dd':'#6a5a7a';
+  X.fillRect(hx+headW/2-3,-headH+2,3,headH*2-4);
+  // Flash effect
+  if(flash){
+    X.shadowColor='#8866aa';X.shadowBlur=12;
+    X.beginPath();X.arc(hx+headW/2,0,headH+4,0,Math.PI*2);
+    X.fillStyle='rgba(136,102,170,0.3)';X.fill();
+    X.shadowBlur=0;
+  }
+  // Domain active: scales of justice aura
+  if(f&&f.higurumaDomainActive){
+    X.save();X.rotate(-f.weaponAngle);
+    const pulse=Math.sin(battleTime*0.15)*5+8;
+    X.strokeStyle='#5a3a7a';X.lineWidth=3;X.globalAlpha=0.4;
     X.beginPath();X.arc(0,0,f.radius+pulse,0,Math.PI*2);X.stroke();
     X.globalAlpha=1;
     X.restore();
@@ -7701,6 +8048,13 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.fillStyle='#ff8844';X.beginPath();X.arc(26,0,1.5,0,Math.PI*2);X.fill();
       X.shadowColor='#ff8844';X.shadowBlur=3;X.fill();X.shadowBlur=0;
       break;
+    case 'higuruma':
+      // Gavel hammer mini
+      X.fillStyle='#3a2a1a';X.fillRect(-3,-2,22,4);
+      X.fillStyle='#4a3a5a';X.fillRect(19,-7,9,14);
+      X.strokeStyle='#2a1a3a';X.lineWidth=0.5;X.strokeRect(19,-7,9,14);
+      X.fillStyle='#888';X.fillRect(18,-8,11,1.5);X.fillRect(18,6.5,11,1.5);
+      break;
   }
   X.restore();
 }
@@ -7755,7 +8109,7 @@ function drawTitle(){
   addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
   addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v8.0.5 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v8.1 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -8151,10 +8505,59 @@ function drawBattle(){
   X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
 
   // Arena
-  // Gojo Domain Expansion: Infinite Void background
+  // Domain Expansion backgrounds
   const gojoF=fighters.find(f=>f.char.id==='gojo'&&f.gojoDomainBg);
+  const higurumaF=fighters.find(f=>f.char.id==='higuruma'&&f.higurumaDomainActive);
   drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);
-  if(gojoF){
+  if(higurumaF){
+    // DEADLY SENTENCING — dark courtroom with scales of justice
+    X.fillStyle='#0a0612';X.fill();
+    X.save();
+    drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.clip();
+    const hx=higurumaF.x,hy=higurumaF.y;
+    // Dark purple radial gradient
+    const dg=X.createRadialGradient(hx,hy,0,hx,hy,250);
+    dg.addColorStop(0,'rgba(90,58,122,0.15)');dg.addColorStop(0.5,'rgba(60,30,80,0.08)');dg.addColorStop(1,'rgba(0,0,0,0.2)');
+    X.fillStyle=dg;X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+    // Scales of justice — rotating balance scales
+    const scX=ARENA.x+ARENA.w/2,scY=ARENA.y+ARENA.h*0.3;
+    const tilt=Math.sin(battleTime*0.03)*0.15;
+    X.save();X.translate(scX,scY);X.rotate(tilt);
+    X.strokeStyle='rgba(200,180,220,0.25)';X.lineWidth=2;
+    // Beam
+    X.beginPath();X.moveTo(-80,0);X.lineTo(80,0);X.stroke();
+    // Pivot
+    X.beginPath();X.moveTo(0,-15);X.lineTo(-8,0);X.lineTo(8,0);X.closePath();X.fillStyle='rgba(200,180,220,0.2)';X.fill();
+    // Left pan
+    X.beginPath();X.arc(-80,20,18,0,Math.PI);X.stroke();
+    X.beginPath();X.moveTo(-80,0);X.lineTo(-80,20);X.stroke();
+    // Right pan
+    X.beginPath();X.arc(80,20,18,0,Math.PI);X.stroke();
+    X.beginPath();X.moveTo(80,0);X.lineTo(80,20);X.stroke();
+    X.restore();
+    // Floating gavel silhouettes
+    for(let i=0;i<8;i++){
+      const gx=ARENA.x+(battleTime*0.3+i*87)%ARENA.w;
+      const gy=ARENA.y+(battleTime*0.2+i*63)%ARENA.h;
+      X.fillStyle='rgba(90,58,122,0.12)';
+      X.fillRect(gx-8,gy-2,16,4);
+      X.fillRect(gx+6,gy-6,6,12);
+    }
+    // Verdict particles
+    for(let i=0;i<30;i++){
+      const px=ARENA.x+(battleTime*0.5+i*41)%ARENA.w;
+      const py=ARENA.y+(battleTime*0.35+i*53)%ARENA.h;
+      const sz=0.8+Math.sin(battleTime*0.04+i)*0.5;
+      X.beginPath();X.arc(px,py,sz,0,Math.PI*2);
+      X.fillStyle=i%3===0?'rgba(136,102,170,0.3)':'rgba(90,58,122,0.15)';X.fill();
+    }
+    X.restore();
+    X.strokeStyle='#5a3a7a';X.lineWidth=3;X.stroke();
+    X.shadowColor='#5a3a7a';X.shadowBlur=12;
+    X.strokeStyle='rgba(90,58,122,0.5)';X.lineWidth=2;
+    drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.stroke();
+    X.shadowBlur=0;
+  } else if(gojoF){
     // INFINITE VOID — deep cosmic void with intense geometric distortion
     X.fillStyle='#020008';X.fill();
     X.save();
@@ -8812,6 +9215,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'kashimo':statLine=(f.kashimoDartPhase!=='idle'?'DART ':'STAFF ')+(f.kashimoAmberUsed?'':'AMBER');break;
     case 'nanami':{const chaos=getChaosLevel(f);let cr=f.crit+chaos*1.5;if(f.nanamiOvertimeActive)cr=Math.min(90,cr+35);const cm=f.nanamiOvertimeActive?2.4:(f.elementActive&&f.elem.id==='electric'?1.4:1.8);statLine=(f.nanamiOvertimeActive?'OT ':'')+(f.nanamiIceShattered?'FIST ':'')+Math.round(cr)+'%cr '+cm.toFixed(1)+'x'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:'');break;}
     case 'ryu':statLine='CANNON';break;
+    case 'higuruma':statLine='HAMMER';break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
