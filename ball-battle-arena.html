@@ -1842,6 +1842,8 @@ function attackNanami(f,enemy,chaos){
         spawnBurst(enemy.x,enemy.y,'#ffcc00',12,5);
         spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,ratioGuaranteed?'RATIO!':'CRIT!','#ffcc00',false);
         shakeTimer=5;shakeAmt=4;
+        // Crit freeze — screen slow/pause on hit
+        triggerHitFreeze(ratioGuaranteed?45:20);
         // Fire element: crits shatter (slow enemy)
         if(f.elementActive&&f.elem.id==='fire'){
           enemy.slowTimer=Math.max(enemy.slowTimer,60);
@@ -2579,7 +2581,7 @@ function relicNanami(f,enemy){
   f.specialTimer=420;
   // Boost stats
   f.atk=Math.round(f.baseAtk*1.4);
-  f.speed=f.baseSpeed*1.3;
+  f.speed=f.baseSpeed*1.6;
   // Visual
   SFX.nanamiOvertime();
   spawnBurst(f.x,f.y,'#d4a843',30,10);
@@ -4796,15 +4798,17 @@ function drawBall(f){
   X.beginPath();X.ellipse(f.x,f.y+f.radius+8,f.radius*0.7,6,0,0,Math.PI*2);
   X.fillStyle='rgba(0,0,0,0.3)';X.fill();
 
-  // Smasher afterimage trail during ult
+  // Smasher afterimage trail during ult — multi-color like anime
   if(f.char.id==='smasher'&&f.specialActive&&f.smasherAfterimages){
-    f.smasherAfterimages.forEach(ai=>{
+    const aCols=['#cc4444','#ff6644','#ffcc00','#4488ff','#44ccff','#ff44aa'];
+    f.smasherAfterimages.forEach((ai,aidx)=>{
+      const col=aCols[aidx%aCols.length];
       X.globalAlpha=ai.alpha*0.5;
       const ag=X.createRadialGradient(ai.x,ai.y,0,ai.x,ai.y,f.radius*1.2);
-      ag.addColorStop(0,'rgba(255,68,68,0.4)');ag.addColorStop(0.5,'rgba(255,100,50,0.2)');ag.addColorStop(1,'rgba(255,50,50,0)');
+      ag.addColorStop(0,col+'66');ag.addColorStop(0.5,col+'33');ag.addColorStop(1,col+'00');
       X.fillStyle=ag;X.beginPath();X.arc(ai.x,ai.y,f.radius*1.2,0,Math.PI*2);X.fill();
       X.globalAlpha=ai.alpha*0.3;
-      X.beginPath();X.arc(ai.x,ai.y,f.radius,0,Math.PI*2);X.fillStyle=f.char.color+'88';X.fill();
+      X.beginPath();X.arc(ai.x,ai.y,f.radius,0,Math.PI*2);X.fillStyle=col+'88';X.fill();
     });
     X.globalAlpha=alpha;
   }
