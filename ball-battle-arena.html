@@ -8329,10 +8329,17 @@ function drawBattle(){
   // Sandy afterimages (ghostly speed trails)
   sandyAfterimages.forEach(ai=>{
     const a=Math.max(0,ai.life/ai.maxLife);
-    X.globalAlpha=a*0.35;
+    // Outer glow
+    X.globalAlpha=a*0.15;
+    X.beginPath();X.arc(ai.x,ai.y,ai.radius+6,0,Math.PI*2);
+    X.fillStyle='#4488ff';X.fill();
+    // Main afterimage with gradient
+    X.globalAlpha=a*0.4;
+    const ag=X.createRadialGradient(ai.x,ai.y,0,ai.x,ai.y,ai.radius);
+    ag.addColorStop(0,ai.color+'aa');ag.addColorStop(0.6,'#4488ff88');ag.addColorStop(1,'#4488ff00');
     X.beginPath();X.arc(ai.x,ai.y,ai.radius,0,Math.PI*2);
-    X.fillStyle=ai.color;X.fill();
-    X.strokeStyle='#4488ff';X.lineWidth=2;X.stroke();
+    X.fillStyle=ag;X.fill();
+    X.strokeStyle='#66aaff';X.lineWidth=1.5;X.stroke();
     X.globalAlpha=1;
   });
 
@@ -8476,7 +8483,25 @@ function drawBattle(){
   }
 
   // Damage numbers
-  dmgNums.forEach(d=>{const a=Math.max(0,d.life/50);X.globalAlpha=a;X.font=(d.isCrit?'bold 18':'bold 14')+'px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle=d.color;X.shadowColor=d.color;X.shadowBlur=d.isCrit?8:0;X.fillText(d.val,d.x,d.y);X.shadowBlur=0;X.globalAlpha=1;});
+  dmgNums.forEach(d=>{
+    const a=Math.max(0,d.life/50);
+    X.globalAlpha=a;
+    // Crit numbers scale up then shrink (pop effect)
+    let fontSize=d.isCrit?18:14;
+    if(d.isCrit){
+      const age=50-d.life;
+      if(age<8)fontSize=18+age*1.2; // scale up in first 8 frames
+      else if(age<14)fontSize=27.6-(age-8)*1.6; // shrink back
+    }
+    X.font='bold '+Math.round(fontSize)+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.fillStyle=d.color;
+    X.shadowColor=d.color;X.shadowBlur=d.isCrit?10:3;
+    // Outline for readability
+    X.strokeStyle='#000';X.lineWidth=d.isCrit?3:2;
+    X.strokeText(d.val,d.x,d.y);
+    X.fillText(d.val,d.x,d.y);
+    X.shadowBlur=0;X.globalAlpha=1;
+  });
 
   // Death anim — continuous particle shower
   fighters.forEach(f=>{if(!f.alive&&f.deathAnim>0){
