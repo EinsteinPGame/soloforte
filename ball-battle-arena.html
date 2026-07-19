@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.0.4 — Deep polish: boss ult charge nerf, katana ice wall CD, Toji edge glide, Smasher arena glide, char select pagination, voiceline back-to-back
+// BALL BATTLE ARENA v8.0.5 — Deep polish: Sandy ticking clock SFX, Mechamaru Phase 2 face distinct (antenna horns, scan line, energy veins), Phase 3 face improved
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -156,6 +156,17 @@ const SFX={
   mechaJet(){this._tone(300,0.1,'sawtooth',0.15);this._noise(0.08,0.12);this._tone(150,0.08,'sine',0.1,0.03)},
   // Mechamaru — Shield hum
   mechaShield(){this._tone(400,0.15,'triangle',0.15);this._tone(600,0.12,'sine',0.12,0.05);this._tone(800,0.1,'triangle',0.1,0.1)},
+  // Sandy — Ticking clock SFX (fast→slow during Sandevistan)
+  sandyTick(pitch){this._tone(pitch||1200,0.03,'square',0.15);this._tone((pitch||1200)*0.7,0.02,'triangle',0.1,0.015)},
+  sandyTickSequence(){
+    // Fast ticking that slows down — like time dilation
+    const ticks=[0,60,130,210,300,400,520,660,820,1000];
+    ticks.forEach((ms,i)=>{
+      const pitch=1400-i*80; // descending pitch
+      const vol=0.12+i*0.015;
+      setTimeout(()=>{this._tone(pitch,0.025,'square',vol);this._tone(pitch*0.7,0.02,'triangle',vol*0.6,0.012)},ms);
+    });
+  },
   // Kashimo — Staff strike
   kashimoStaff(){this._tone(200,0.12,'sawtooth',0.2);this._tone(100,0.15,'sine',0.15,0.02);this._noise(0.1,0.12)},
   // Kashimo — Lightning zap (random bolt)
@@ -2423,6 +2434,9 @@ function relicSandy(f,enemy){
   f.speed=f.baseSpeed*1.5;
   const spd=Math.hypot(f.vx,f.vy);
   if(spd>0){f.vx=f.vx/spd*f.speed*2;f.vy=f.vy/spd*f.speed*2;}
+  // Ticking clock SFX — time dilation effect (fast→slow)
+  SFX.sandyTickSequence();
+  f._sandyTickCD=0; // periodic tick during active
   // MASSIVE blue activation burst — very obvious
   spawnBurst(f.x,f.y,'#4488ff',50,12);
   spawnBurst(f.x,f.y,'#88bbff',35,9);
@@ -2944,6 +2958,15 @@ function updateRelicPLS(f,enemy,dt){
 
 function updateRelicSandy(f,enemy,dt){
   f.sandyTimer-=dt;
+  // Periodic ticking clock SFX — slows as Sandevistan winds down
+  if(!f._sandyTickCD)f._sandyTickCD=0;
+  f._sandyTickCD-=dt;
+  if(f._sandyTickCD<=0){
+    const ratio=f.sandyTimer/360; // 1=start, 0=end
+    const pitch=900+ratio*500; // higher pitch at start, lower as it winds down
+    SFX.sandyTick(pitch);
+    f._sandyTickCD=12+Math.floor((1-ratio)*25); // fast ticks early, slower later
+  }
   // Afterimage trail — spawn ghostly copies
   if(battleTime%3<1){
     sandyAfterimages.push({x:f.x,y:f.y,radius:f.radius,rotation:f.rotation,color:f.char.color,life:45,maxLife:45});
@@ -5406,57 +5429,97 @@ function drawBall(f){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
     if(f.mechaPhase===1||f.mechaPhase===2){
+      const isUlt=f.mechaPhase===2;
       // Mech face — armor plates + visor
-      // Top armor crest
-      X.fillStyle=f.mechaPhase===2?'#3a5a8a':'#3a5a3a';
+      // Top armor crest — Phase 2 has twin antenna horns
+      X.fillStyle=isUlt?'#3a5a8a':'#3a5a3a';
+      if(isUlt){
+        // Twin antenna horns (Ultimate Form)
+        X.beginPath();X.moveTo(hx-r*0.3,hy-r*0.5);X.lineTo(hx-r*0.15,hy-r*0.95);X.lineTo(hx,hy-r*0.55);X.closePath();X.fill();
+        X.beginPath();X.moveTo(hx+r*0.3,hy-r*0.5);X.lineTo(hx+r*0.15,hy-r*0.95);X.lineTo(hx,hy-r*0.55);X.closePath();X.fill();
+        // Antenna tips glow
+        X.fillStyle='#66aaff';X.shadowColor='#4488ff';X.shadowBlur=6;
+        X.beginPath();X.arc(hx-r*0.15,hy-r*0.95,r*0.06,0,Math.PI*2);X.fill();
+        X.beginPath();X.arc(hx+r*0.15,hy-r*0.95,r*0.06,0,Math.PI*2);X.fill();
+        X.shadowBlur=0;
+        // Forehead plate
+        X.fillStyle='#3a5a8a';
+        X.beginPath();X.moveTo(hx-r*0.35,hy-r*0.5);X.lineTo(hx,hy-r*0.65);X.lineTo(hx+r*0.35,hy-r*0.5);X.closePath();X.fill();
+      } else {
+        // Phase 1: single crest
+        X.beginPath();X.moveTo(hx-r*0.4,hy-r*0.5);X.lineTo(hx,hy-r*0.85);X.lineTo(hx+r*0.4,hy-r*0.5);X.closePath();X.fill();
+      }
+      // Visor — Phase 2 wider, brighter, with scan line
+      const vW=isUlt?0.42:0.35;const vW2=isUlt?0.38:0.3;
+      X.fillStyle=isUlt?'#4488ff':'#228822';
       X.beginPath();
-      X.moveTo(hx-r*0.4,hy-r*0.5);
-      X.lineTo(hx,hy-r*0.85);
-      X.lineTo(hx+r*0.4,hy-r*0.5);
+      X.moveTo(hx-r*vW,hy-r*0.2);X.lineTo(hx+r*vW,hy-r*0.2);
+      X.lineTo(hx+r*vW2,hy-r*0.05);X.lineTo(hx-r*vW2,hy-r*0.05);
       X.closePath();X.fill();
-      // Visor (single bar across eyes)
-      X.fillStyle=f.mechaPhase===2?'#4488ff':'#228822';
-      X.beginPath();
-      X.moveTo(hx-r*0.35,hy-r*0.2);
-      X.lineTo(hx+r*0.35,hy-r*0.2);
-      X.lineTo(hx+r*0.3,hy-r*0.05);
-      X.lineTo(hx-r*0.3,hy-r*0.05);
-      X.closePath();X.fill();
-      X.shadowColor=f.mechaPhase===2?'#4488ff':'#00aa00';X.shadowBlur=8;X.fill();X.shadowBlur=0;
-      // Mouth cannon slit
+      X.shadowColor=isUlt?'#4488ff':'#00aa00';X.shadowBlur=isUlt?12:8;X.fill();X.shadowBlur=0;
+      if(isUlt){
+        // Scan line sweeping across visor
+        const scanX=hx+Math.sin(battleTime*0.08)*r*0.3;
+        X.strokeStyle='rgba(200,230,255,0.6)';X.lineWidth=1.5;
+        X.beginPath();X.moveTo(scanX,hy-r*0.19);X.lineTo(scanX,hy-r*0.06);X.stroke();
+        // Energy lines on face (circuit pattern)
+        X.strokeStyle='rgba(68,136,255,0.5)';X.lineWidth=1;
+        X.beginPath();X.moveTo(hx-r*vW,hy-r*0.12);X.lineTo(hx-r*0.55,hy+r*0.05);X.stroke();
+        X.beginPath();X.moveTo(hx+r*vW,hy-r*0.12);X.lineTo(hx+r*0.55,hy+r*0.05);X.stroke();
+      }
+      // Mouth cannon slit — Phase 2 wider + energy glow
       X.fillStyle='#111';
-      X.fillRect(hx-r*0.15,hy+r*0.15,r*0.3,r*0.12);
+      const mw=isUlt?0.2:0.15;
+      X.fillRect(hx-r*mw,hy+r*0.15,r*mw*2,r*0.12);
       if(f.mechaMouthBlastActive){
-        X.fillStyle='#ffcc00';X.fillRect(hx-r*0.12,hy+r*0.17,r*0.24,r*0.06);
-        X.shadowColor='#ffcc00';X.shadowBlur=10;X.fillRect(hx-r*0.12,hy+r*0.17,r*0.24,r*0.06);X.shadowBlur=0;
+        X.fillStyle='#ffcc00';X.fillRect(hx-r*(mw-0.03),hy+r*0.17,r*(mw-0.03)*2,r*0.06);
+        X.shadowColor='#ffcc00';X.shadowBlur=10;X.fillRect(hx-r*(mw-0.03),hy+r*0.17,r*(mw-0.03)*2,r*0.06);X.shadowBlur=0;
+      } else if(isUlt){
+        // Subtle blue glow in mouth cannon when idle
+        X.fillStyle='rgba(68,136,255,0.3)';X.fillRect(hx-r*(mw-0.02),hy+r*0.16,r*(mw-0.02)*2,r*0.1);
       }
       // Side armor plates
-      X.strokeStyle=f.mechaPhase===2?'#4a6a9a':'#4a6a4a';X.lineWidth=2;
+      X.strokeStyle=isUlt?'#4a6a9a':'#4a6a4a';X.lineWidth=2;
       X.beginPath();X.arc(hx,hy,r*0.9,Math.PI*0.6,Math.PI*0.9);X.stroke();
       X.beginPath();X.arc(hx,hy,r*0.9,Math.PI*1.1,Math.PI*1.4);X.stroke();
-      // Phase 2: extra shoulder armor + blue glow (Ultimate Form)
-      if(f.mechaPhase===2){
+      // Phase 2: extra shoulder armor + blue glow + energy veins (Ultimate Form)
+      if(isUlt){
         X.fillStyle='#4a6aaa';
-        X.beginPath();X.arc(hx-r*0.7,hy,r*0.18,0,Math.PI*2);X.fill();
-        X.beginPath();X.arc(hx+r*0.7,hy,r*0.18,0,Math.PI*2);X.fill();
+        X.beginPath();X.arc(hx-r*0.7,hy,r*0.22,0,Math.PI*2);X.fill();
+        X.beginPath();X.arc(hx+r*0.7,hy,r*0.22,0,Math.PI*2);X.fill();
+        // Shoulder armor inner glow
+        X.fillStyle='rgba(68,136,255,0.4)';
+        X.beginPath();X.arc(hx-r*0.7,hy,r*0.1,0,Math.PI*2);X.fill();
+        X.beginPath();X.arc(hx+r*0.7,hy,r*0.1,0,Math.PI*2);X.fill();
         // Pulsing blue energy glow
         const pulse=Math.sin(battleTime*0.1)*0.3+0.7;
         X.strokeStyle=`rgba(68,136,255,${pulse*0.4})`;X.lineWidth=3;
         X.beginPath();X.arc(hx,hy,r+5,0,Math.PI*2);X.stroke();
+        // Energy veins on body
+        X.strokeStyle=`rgba(100,180,255,${pulse*0.3})`;X.lineWidth=1;
+        X.beginPath();X.moveTo(hx,hy-r*0.05);X.lineTo(hx-r*0.5,hy+r*0.4);X.stroke();
+        X.beginPath();X.moveTo(hx,hy-r*0.05);X.lineTo(hx+r*0.5,hy+r*0.4);X.stroke();
       }
     } else {
-      // Phase 3: True Form — small, human-like, bandaged
-      // Bandage wraps
-      X.strokeStyle='#ccccaa';X.lineWidth=2;
+      // Phase 3: True Form — small, human-like, bandaged, desperate
+      // Bandage wraps (more visible, layered)
+      X.strokeStyle='#ddddbb';X.lineWidth=2.5;
       X.beginPath();X.arc(hx,hy,r*0.7,-0.5,1.5);X.stroke();
       X.beginPath();X.arc(hx,hy,r*0.5,1,3);X.stroke();
-      // Small eyes — vulnerable, human
-      X.fillStyle='#445544';
-      X.beginPath();X.arc(hx-r*0.2,hy-r*0.1,r*0.08,0,Math.PI*2);X.fill();
-      X.beginPath();X.arc(hx+r*0.2,hy-r*0.1,r*0.08,0,Math.PI*2);X.fill();
-      // Small mouth
+      X.beginPath();X.arc(hx,hy,r*0.6,2,4.5);X.stroke();
+      X.strokeStyle='#bbbb99';X.lineWidth=1.5;
+      X.beginPath();X.arc(hx,hy,r*0.75,0.5,2.2);X.stroke();
+      // Small eyes — visible, determined, with dark circles
+      X.fillStyle='#334433';
+      X.beginPath();X.arc(hx-r*0.2,hy-r*0.1,r*0.1,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(hx+r*0.2,hy-r*0.1,r*0.1,0,Math.PI*2);X.fill();
+      // Eye highlights (white dots — shows life/determination)
+      X.fillStyle='#aaffaa';
+      X.beginPath();X.arc(hx-r*0.18,hy-r*0.12,r*0.04,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(hx+r*0.22,hy-r*0.12,r*0.04,0,Math.PI*2);X.fill();
+      // Small mouth — grimacing
       X.strokeStyle='#666';X.lineWidth=1;
-      X.beginPath();X.arc(hx,hy+r*0.2,r*0.08,0.2,Math.PI-0.2);X.stroke();
+      X.beginPath();X.arc(hx,hy+r*0.2,r*0.1,0.3,Math.PI-0.3);X.stroke();
     }
     // Second drill arm (opposite side of weapon arm) — Phase 1 & 2 only
     if(f.mechaPhase===1||f.mechaPhase===2){
