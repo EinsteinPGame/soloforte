@@ -549,11 +549,11 @@ function calculateArrivals(code, line, directionIndex, now) {
   const seed = hashCode(code + directionIndex);
 
   // Time-anchored schedule: trains depart terminus at regular intervals
-  // Travel time to this station based on position (approx 2 min per station)
+  // Travel time to this station based on position (~1.3 min per station avg incl dwell)
   const posRatio = totalStations > 1 ? stationIdx / (totalStations - 1) : 0;
   const travelTimeMin = directionIndex === 0
-    ? posRatio * totalStations * 2      // direction A: travel from A terminus
-    : (1 - posRatio) * totalStations * 2; // direction B: from B terminus
+    ? posRatio * totalStations * 1.3      // direction A: travel from A terminus
+    : (1 - posRatio) * totalStations * 1.3; // direction B: from B terminus
 
   // Average frequency for this period
   const avgFreq = (minFreq + maxFreq) / 2;
@@ -568,9 +568,9 @@ function calculateArrivals(code, line, directionIndex, now) {
   const timeSinceStart = nowMinutes - serviceStart;
   if (timeSinceStart < 0) return [];
 
-  // How far into the current interval are we?
+  // How far into the current interval are we? (positive modulo to avoid negative results)
   const adjustedTime = timeSinceStart - travelTimeMin;
-  const elapsed = adjustedTime % avgFreq;
+  const elapsed = ((adjustedTime % avgFreq) + avgFreq) % avgFreq; // always positive
   const firstArrival = avgFreq - elapsed; // minutes until next train
 
   const arrivals = [];
