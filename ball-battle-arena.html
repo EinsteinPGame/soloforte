@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.8 — Kashimo (14th char) + Mechamaru dual arms fix
+// BALL BATTLE ARENA v7.9 — Nanami (15th char) + bandage blade + Overtime special
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -170,6 +170,10 @@ const SFX={
   kashimoAmber(){this._tone(150,0.3,'sine',0.3);this._tone(300,0.25,'triangle',0.2,0.05);this._tone(60,0.35,'sine',0.25,0.1);this._noise(0.2,0.3)},
   // Kashimo — AMBER flood
   kashimoFlood(){this._tone(80,0.4,'sine',0.35);this._tone(200,0.3,'sawtooth',0.25,0.05);this._tone(400,0.2,'square',0.2,0.1);this._noise(0.25,0.35)},
+  // Nanami — bandage blade, methodical slashes
+  nanamiSlash(){this._tone(600,0.08,'sawtooth',0.18);this._tone(900,0.06,'triangle',0.12,0.02);this._noise(0.05,0.08)},
+  nanamiRatio(){this._tone(800,0.1,'sawtooth',0.25);this._tone(1200,0.08,'square',0.18,0.02);this._tone(500,0.12,'sine',0.15,0.04);this._noise(0.06,0.12)},
+  nanamiOvertime(){this._tone(300,0.2,'sine',0.25);this._tone(500,0.18,'triangle',0.2,0.05);this._tone(700,0.15,'square',0.18,0.1);this._tone(900,0.12,'triangle',0.15,0.15);this._noise(0.15,0.15)},
 };
 
 // ============================================================
@@ -290,6 +294,14 @@ const CHARS=[
     baseAtkInterval:38,relicChargeRate:0.9,
     specialName:'MYTHICAL BEAST AMBER',
   },
+  {
+    id:'nanami',name:'Nanami',color:'#d4a843',
+    desc:'Bandage blade. Ratio technique — very high crit rate.',
+    playstyle:'Crit & Ratio',
+    stats:{hp:520,atk:26,speed:3.8,range:90,def:8,crit:30},
+    baseAtkInterval:38,relicChargeRate:0.85,
+    specialName:"I'M WORKING OVERTIME.",
+  },
 ];
 
 // ============================================================
@@ -360,6 +372,10 @@ const COMBO_EFFECTS={
   'kashimo_electric':'All electricity damage way more powerful',
   'kashimo_toxic':'Staff deals contact damage during orbit + rush',
   'kashimo_cryo':'Staff rushes enemies after Amber ult',
+  'nanami_fire':'Crits shatter — slow enemies on critical hit',
+  'nanami_electric':'More base damage but lower crit multiplier',
+  'nanami_toxic':'Non-crits deal bonus damage',
+  'nanami_cryo':'Unwrap blade for more damage + shatter risk',
 };
 
 // ============================================================
@@ -698,6 +714,13 @@ function createFighter(charIdx,elemIdx,side){
     kashimoAmberTimer:0, // amber charge timer (4-5s = 240-300 frames)
     kashimoAmberPhase:'orbit', // orbit → charge → flood → done
     kashimoStaffOrbitAngle:0, // staff orbit angle during amber
+    // Nanami state
+    nanamiRatioStacks:0, // hit counter — guaranteed crit every 7 hits
+    nanamiOvertimeActive:false, // "I'M WORKING OVERTIME." special
+    nanamiOvertimeTimer:0,
+    nanamiCritStreak:0, // consecutive crits (visual)
+    nanamiIceUnwrapped:false, // cryo element: blade unwrapped
+    nanamiIceShattered:false, // cryo element: cloth fists mode
   };
 }
 
@@ -1041,7 +1064,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -1079,6 +1102,7 @@ function performWeaponAttack(f,enemy){
     case 'toji':attackToji(f,enemy,chaos);break;
     case 'mechamaru':attackMechamaru(f,enemy,chaos);break;
     case 'kashimo':attackKashimo(f,enemy,chaos);break;
+    case 'nanami':attackNanami(f,enemy,chaos);break;
   }
 }
 
@@ -1746,6 +1770,88 @@ function attackKashimo(f,enemy,chaos){
   }
 }
 
+function attackNanami(f,enemy,chaos){
+  // Bandage blade slash — methodical, very high crit rate
+  f.weaponExtend=1;f.weaponFlash=12;
+  SFX.nanamiSlash();
+  const d=dist(f,enemy);
+  const effectiveRange=f.range+enemy.radius+chaos*4;
+  if(d<effectiveRange){
+    f.nanamiRatioStacks=(f.nanamiRatioStacks||0)+1;
+    const ratioGuaranteed=f.nanamiRatioStacks%7===0;
+
+    // Crit calculation — very high base, scales with chaos
+    let critChance=f.crit/100+chaos*0.015;
+    if(f.nanamiOvertimeActive)critChance=Math.min(0.9,critChance+0.35);
+    if(ratioGuaranteed)critChance=1;
+
+    const isCrit=Math.random()<critChance;
+    let dmgMult=1;
+    let critMult=1.8;
+    if(f.nanamiOvertimeActive)critMult=2.4;
+    // Electric element: more base dmg, less crit mult
+    if(f.elementActive&&f.elem.id==='electric'){dmgMult=1.25;critMult=1.4;}
+
+    let baseDmg=f.atk*dmgMult;
+    if(isCrit)baseDmg*=critMult;
+
+    // Cryo element: unwrap blade
+    if(f.elementActive&&f.elem.id==='cryo'){
+      if(!f.nanamiIceShattered){
+        if(!f.nanamiIceUnwrapped){
+          f.nanamiIceUnwrapped=true;
+          spawnDmgNum(f.x,f.y-f.radius-20,'UNWRAPPED','#77ddff',false);
+          spawnBurst(f.x,f.y,'#77ddff',10,4);
+        }
+        baseDmg*=1.35;
+        // 8% shatter risk per hit
+        if(Math.random()<0.08){
+          f.nanamiIceShattered=true;
+          f.nanamiIceUnwrapped=false;
+          spawnDmgNum(f.x,f.y-f.radius-20,'SHATTERED!','#ff4444',true);
+          spawnBurst(f.x,f.y,'#77ddff',15,5);
+          SFX.freeze();
+        }
+      } else {
+        baseDmg*=0.5; // cloth fists — reduced dmg
+      }
+    }
+
+    // Toxic element: non-crits deal bonus damage
+    if(!isCrit&&f.elementActive&&f.elem.id==='toxic'){
+      baseDmg*=1.3;
+      spawnBurst(enemy.x,enemy.y,'#aa44cc',4,2);
+    }
+
+    const dealt=dealDamage(f,enemy,baseDmg,false); // canCrit=false — already handled
+
+    if(dealt>0){
+      const ka=angle(f,enemy);
+      enemy.vx+=Math.cos(ka)*2;enemy.vy+=Math.sin(ka)*2;
+
+      if(isCrit){
+        f.nanamiCritStreak=(f.nanamiCritStreak||0)+1;
+        SFX.crit();
+        spawnBurst(enemy.x,enemy.y,'#ffcc00',12,5);
+        spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,ratioGuaranteed?'RATIO!':'CRIT!','#ffcc00',false);
+        shakeTimer=5;shakeAmt=4;
+        // Fire element: crits shatter (slow enemy)
+        if(f.elementActive&&f.elem.id==='fire'){
+          enemy.slowTimer=Math.max(enemy.slowTimer,60);
+          spawnBurst(enemy.x,enemy.y,'#ff4400',6,3);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-35,'SHATTER','#ff4400',false);
+        }
+      } else {
+        f.nanamiCritStreak=0;
+      }
+      spawnBurst(enemy.x,enemy.y,isCrit?'#ffcc00':'#d4a843',8,4);
+    }
+  } else {
+    // Whiff
+    spawnSparks(f.x+Math.cos(f.weaponAngle)*f.radius,f.y+Math.sin(f.weaponAngle)*f.radius,'#d4a843',3);
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -2095,6 +2201,7 @@ function useSpecial(f,enemy){
     case 'toji':relicToji(f,enemy);break;
     case 'mechamaru':relicMechamaru(f,enemy);break;
     case 'kashimo':relicKashimo(f,enemy);break;
+    case 'nanami':relicNanami(f,enemy);break;
   }
 }
 
@@ -2456,6 +2563,24 @@ function relicKashimo(f,enemy){
     }
     addLog((f.side===0?'P1':'P2')+' LIGHTNING BURST!');
   }
+}
+
+function relicNanami(f,enemy){
+  // "I'M WORKING OVERTIME." — massive crit + damage buff, rapid slashes
+  f.nanamiOvertimeActive=true;
+  f.nanamiOvertimeTimer=420; // 7 seconds
+  f.specialTimer=420;
+  // Boost stats
+  f.atk=Math.round(f.baseAtk*1.4);
+  f.speed=f.baseSpeed*1.3;
+  // Visual
+  SFX.nanamiOvertime();
+  spawnBurst(f.x,f.y,'#d4a843',30,10);
+  spawnBurst(f.x,f.y,'#ffcc00',20,7);
+  triggerScreenFlash('#d4a843',8);
+  shakeTimer=12;shakeAmt=8;
+  addLog((f.side===0?'P1':'P2')+' OVERTIME MODE!');
+  spawnDmgNum(f.x,f.y-f.radius-30,"I'M WORKING OVERTIME.",'#d4a843',true);
 }
 
 // ============================================================
@@ -3460,6 +3585,37 @@ function updateRelicKashimo(f,enemy,dt){
   }
 }
 
+function updateRelicNanami(f,enemy,dt){
+  if(!f.nanamiOvertimeActive)return;
+  f.nanamiOvertimeTimer-=dt;
+  f.weaponFlash=5;
+  // Overtime aura particles
+  if(battleTime%3<1){
+    const a=Math.random()*Math.PI*2;
+    spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,pick(['#d4a843','#ffcc00','#fff']),Math.cos(a)*(-1),Math.sin(a)*(-1),10,2);
+  }
+  // Rapid attacks during overtime — halve attack timer
+  if(f.attackTimer>10)f.attackTimer=10;
+
+  if(f.nanamiOvertimeTimer<=0){
+    f.nanamiOvertimeActive=false;
+    f.specialActive=false;
+    f.specialTimer=0;
+    f.atk=f.baseAtk;
+    f.speed=f.baseSpeed;
+    // Re-apply element stat boosts if active
+    if(f.elementActive){
+      switch(f.elem.id){
+        case 'fire':f.atk=f.baseAtk*1.3;break;
+        case 'electric':f.speed=f.baseSpeed*1.2;f.crit=f.crit;break;
+        case 'toxic':f.atk=f.baseAtk*1.15;break;
+      }
+    }
+    spawnBurst(f.x,f.y,'#d4a843',15,5);
+    addLog((f.side===0?'P1':'P2')+' Overtime ended');
+  }
+}
+
 // Helper: point inside triangle
 function pointInTriangle(px,py,a,b,c){
   const d1=(px-b.x)*(a.y-b.y)-(a.x-b.x)*(py-b.y);
@@ -3591,6 +3747,7 @@ function updateBattle(dt){
         case 'toji':updateRelicToji(f,enemy,dt);break;
         case 'mechamaru':updateRelicMechamaru(f,enemy,dt);break;
         case 'kashimo':updateRelicKashimo(f,enemy,dt);break;
+        case 'nanami':updateRelicNanami(f,enemy,dt);break;
       }
     }
 
@@ -5085,6 +5242,58 @@ function drawBall(f){
     X.restore();
   }
 
+  // Nanami face
+  if(f.char.id==='nanami'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    // Short blonde hair — neat, professional
+    X.fillStyle='#c8a84a';
+    X.beginPath();
+    X.arc(hx,hy-r*0.15,r*0.55,Math.PI*1.1,Math.PI*1.9);
+    X.fill();
+    // Side hair
+    X.fillRect(hx-r*0.45,hy-r*0.4,r*0.1,r*0.35);
+    X.fillRect(hx+r*0.35,hy-r*0.4,r*0.1,r*0.35);
+    // Rectangular sunglasses
+    X.fillStyle='#111';
+    X.fillRect(hx-r*0.38,hy-r*0.22,r*0.3,r*0.12);
+    X.fillRect(hx+r*0.08,hy-r*0.22,r*0.3,r*0.12);
+    // Sunglasses bridge
+    X.strokeStyle='#333';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-r*0.08,hy-r*0.16);X.lineTo(hx+r*0.08,hy-r*0.16);X.stroke();
+    // Sunglasses frame
+    X.strokeStyle='#444';X.lineWidth=1;
+    X.strokeRect(hx-r*0.38,hy-r*0.22,r*0.3,r*0.12);
+    X.strokeRect(hx+r*0.08,hy-r*0.22,r*0.3,r*0.12);
+    // Stern mouth
+    X.strokeStyle='#444';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-r*0.1,hy+r*0.22);X.lineTo(hx+r*0.1,hy+r*0.22);X.stroke();
+    // Tie knot (golden)
+    X.fillStyle='#d4a843';
+    X.beginPath();
+    X.moveTo(hx,hy+r*0.32);
+    X.lineTo(hx-r*0.06,hy+r*0.42);
+    X.lineTo(hx,hy+r*0.39);
+    X.lineTo(hx+r*0.06,hy+r*0.42);
+    X.closePath();X.fill();
+    // Overtime aura
+    if(f.nanamiOvertimeActive){
+      const pulse=Math.sin(battleTime*0.15)*0.3+0.6;
+      X.strokeStyle=`rgba(212,168,67,${pulse})`;X.lineWidth=4;
+      X.beginPath();X.arc(hx,hy,r+8,0,Math.PI*2);X.stroke();
+      X.shadowColor='#d4a843';X.shadowBlur=15;X.stroke();X.shadowBlur=0;
+    }
+    // Crit streak visual — golden sparks around ball
+    if(f.nanamiCritStreak>=3){
+      for(let i=0;i<f.nanamiCritStreak;i++){
+        const sa=battleTime*0.08+i*Math.PI*2/Math.max(3,f.nanamiCritStreak);
+        X.fillStyle='#ffcc00';
+        X.beginPath();X.arc(hx+Math.cos(sa)*(r+5),hy+Math.sin(sa)*(r+5),2,0,Math.PI*2);X.fill();
+      }
+    }
+    X.restore();
+  }
+
   // Draw Kashimo homing bolt
   if(f.char.id==='kashimo'&&f.kashimoBoltActive){
     X.save();
@@ -5450,6 +5659,11 @@ function drawBall(f){
       const mode=f.kashimoAmberActive?'AMBER':f.kashimoDartPhase!=='idle'?'DART':'STAFF';
       X.fillText(mode+(f.kashimoAmberUsed?'':' ⚡'),f.x,statY);
       break;}
+    case 'nanami':{
+      const mode=f.nanamiOvertimeActive?'OVERTIME':'BLADE';
+      const rs=f.nanamiRatioStacks%7;
+      X.fillText(mode+' R:'+rs+'/7'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:''),f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -5483,6 +5697,7 @@ function drawWeapon(f){
     case 'toji':drawTojiWeapon(r,ext,flash,f);break;
     case 'mechamaru':drawMechamaruWeapon(r,ext,flash,f);break;
     case 'kashimo':drawKashimoWeapon(r,ext,flash,f);break;
+    case 'nanami':drawNanamiWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -5739,6 +5954,76 @@ function drawKashimoWeapon(r,ext,flash,f){
   for(let i=0;i<4;i++){
     X.beginPath();
     X.moveTo(r-3+i*10,-2.5);X.lineTo(r+i*10,2.5);X.stroke();
+  }
+}
+
+function drawNanamiWeapon(r,ext,flash,f){
+  // Bandage blade — blunt sword wrapped in cloth
+  const bladeLen=40;
+  const isShattered=f.nanamiIceShattered;
+  const isUnwrapped=f.nanamiIceUnwrapped;
+
+  if(isShattered){
+    // Cloth fists — just cloth wrapping on hand
+    X.fillStyle='#e8dcc0';
+    X.fillRect(r-3,-4,15,8);
+    X.strokeStyle='#c8b898';X.lineWidth=0.8;
+    for(let i=0;i<3;i++){X.beginPath();X.moveTo(r+i*4,-4);X.lineTo(r+2+i*4,4);X.stroke();}
+    return;
+  }
+
+  // Handle/grip
+  X.fillStyle='#3a3028';
+  X.fillRect(r-8,-3,12,6);
+  X.strokeStyle='#555';X.lineWidth=0.5;X.strokeRect(r-8,-3,12,6);
+
+  if(isUnwrapped){
+    // Revealed cleaver blade — metallic
+    X.beginPath();
+    X.moveTo(r+4,-7);
+    X.lineTo(r+4+bladeLen,-4);
+    X.lineTo(r+4+bladeLen+5,0);
+    X.lineTo(r+4+bladeLen,4);
+    X.lineTo(r+4,7);
+    X.closePath();
+    const bg=X.createLinearGradient(r+4,0,r+4+bladeLen,0);
+    bg.addColorStop(0,'#889');bg.addColorStop(0.5,'#ccd');bg.addColorStop(1,'#778');
+    X.fillStyle=bg;X.fill();
+    X.strokeStyle='#556';X.lineWidth=0.8;X.stroke();
+    // Ice crystals on blade
+    X.fillStyle='rgba(119,221,255,0.4)';
+    for(let i=0;i<3;i++){
+      X.beginPath();X.arc(r+10+i*12,(i%2?-2:2),2,0,Math.PI*2);X.fill();
+    }
+  } else {
+    // Bandage-wrapped blade
+    X.beginPath();
+    X.moveTo(r+4,-5);
+    X.lineTo(r+4+bladeLen,-3);
+    X.lineTo(r+4+bladeLen+4,0);
+    X.lineTo(r+4+bladeLen,3);
+    X.lineTo(r+4,5);
+    X.closePath();
+    X.fillStyle='#e8dcc0';X.fill();
+    X.strokeStyle='#c8b898';X.lineWidth=0.8;X.stroke();
+    // Bandage wrap lines
+    X.strokeStyle='#b8a878';X.lineWidth=0.8;
+    for(let i=0;i<6;i++){
+      const wx=r+6+i*7;
+      X.beginPath();X.moveTo(wx,-5);X.lineTo(wx+3,5);X.stroke();
+    }
+    // Tip peeking through bandages
+    X.fillStyle='#999';
+    X.beginPath();X.moveTo(r+4+bladeLen,-2);X.lineTo(r+4+bladeLen+4,0);X.lineTo(r+4+bladeLen,2);X.closePath();X.fill();
+  }
+
+  // Flash glow (brighter during overtime)
+  if(flash){
+    X.shadowColor=f.nanamiOvertimeActive?'#ffcc00':'#d4a843';
+    X.shadowBlur=8;
+    X.fillStyle=f.nanamiOvertimeActive?'rgba(255,204,0,0.3)':'rgba(212,168,67,0.2)';
+    X.fillRect(r+4,-6,bladeLen,12);
+    X.shadowBlur=0;
   }
 }
 
@@ -6825,6 +7110,17 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.moveTo(24,0);X.lineTo(28,-3);X.lineTo(26,1);X.lineTo(30,0);X.stroke();
       X.shadowBlur=0;
       break;
+    case 'nanami':
+      // Bandage-wrapped blade
+      X.fillStyle='#3a3028';X.fillRect(-8,-3,8,6);
+      X.beginPath();X.moveTo(0,-4);X.lineTo(20,-2);X.lineTo(23,0);X.lineTo(20,2);X.lineTo(0,4);X.closePath();
+      X.fillStyle='#e8dcc0';X.fill();X.strokeStyle='#c8b898';X.lineWidth=0.5;X.stroke();
+      // Bandage wrap lines
+      X.strokeStyle='#b8a878';X.lineWidth=0.5;
+      for(let i=0;i<4;i++){X.beginPath();X.moveTo(2+i*5,-4);X.lineTo(4+i*5,4);X.stroke();}
+      // Metal tip
+      X.fillStyle='#999';X.beginPath();X.moveTo(18,-1.5);X.lineTo(23,0);X.lineTo(18,1.5);X.closePath();X.fill();
+      break;
   }
   X.restore();
 }
@@ -7800,6 +8096,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'toji':statLine=f.tojiStaffSection.toUpperCase()+(f.tojiTriActive?' TRI':'');break;
     case 'mechamaru':statLine='P'+f.mechaPhase+(f.mechaPhase===2?' ULT':'')+(f.mechaUltShield?' SHD':'')+(f.mechaPhase===3?' '+Math.ceil(f.mechaTrueFormTimer/60)+'s':'');break;
     case 'kashimo':statLine=(f.kashimoDartPhase!=='idle'?'DART ':'STAFF ')+(f.kashimoAmberUsed?'':'AMBER');break;
+    case 'nanami':statLine='R:'+(f.nanamiRatioStacks%7)+'/7'+(f.nanamiOvertimeActive?' OT':'')+(f.nanamiIceShattered?' FIST':'')+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:'');break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
