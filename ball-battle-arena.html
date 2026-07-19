@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.7 — Mechamaru 3-phase mech character
+// BALL BATTLE ARENA v7.7.1 — Remove throw melee mode + Mechamaru non-homing rockets
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -526,9 +526,9 @@ function createFighter(charIdx,elemIdx,side){
     sandyActive:false,sandyTimer:0,sandyDodgeBoost:0,_bodyHitCD:0,
     // Throwing weapon state
     throwWeapons:[
-      {id:'agaou',name:'AGAOU',color:'#ff44ff',dmgMult:1.1,missCD:540,returnCD:0,available:true,melee:false},
-      {id:'fang',name:'FANG',color:'#ffaa00',dmgMult:1.3,missCD:360,returnCD:0,available:true,melee:true},
-      {id:'punk',name:'PUNKBLADE',color:'#66ffcc',dmgMult:0.5,missCD:75,returnCD:0,available:true,melee:false},
+      {id:'agaou',name:'AGAOU',color:'#ff44ff',dmgMult:1.1,missCD:540,returnCD:0,available:true},
+      {id:'fang',name:'FANG',color:'#ffaa00',dmgMult:1.3,missCD:360,returnCD:0,available:true},
+      {id:'punk',name:'PUNKBLADE',color:'#66ffcc',dmgMult:0.5,missCD:75,returnCD:0,available:true},
     ],
     throwActiveIdx:0,throwSwitchCD:0,throwCamoActive:false,throwCamoTimer:0,
     throwEmbedded:[],
@@ -1587,9 +1587,9 @@ function attackMechamaru(f,enemy,chaos){
           projectiles.push({
             x:f.x+Math.cos(a)*f.radius,y:f.y+Math.sin(a)*f.radius,
             vx:Math.cos(a+spread)*4,vy:Math.sin(a+spread)*4,
-            owner:f,target:enemy,color:'#aa4444',
+            owner:f,target:null,color:'#aa4444',
             life:90,radius:5,dmg:f.atk*(0.5+chaos*0.04),
-            explosive:true,homing:true,isMechaRocket:true,
+            explosive:true,homing:false,isMechaRocket:true,
           });
         }
         f.mechaRocketCD=40-Math.min(15,chaos*3);
@@ -1610,15 +1610,15 @@ function attackMechamaru(f,enemy,chaos){
     f.weaponExtend=1;f.weaponFlash=12;
     SFX.mechaRocket();
     const a=angle(f,enemy);
-    // Burst of 3 homing missiles
+    // Burst of 3 missiles (shoot and move on)
     for(let i=0;i<3;i++){
       const spread=(i-1)*0.25;
       projectiles.push({
         x:f.x+Math.cos(a+spread)*f.radius,y:f.y+Math.sin(a+spread)*f.radius,
         vx:Math.cos(a+spread)*3.5,vy:Math.sin(a+spread)*3.5,
-        owner:f,target:enemy,color:'#88aa44',
+        owner:f,target:null,color:'#88aa44',
         life:120,radius:5,dmg:f.atk*(0.4+chaos*0.03),
-        explosive:true,homing:true,isMechaRocket:true,
+        explosive:true,homing:false,isMechaRocket:true,
       });
     }
     spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#88aa44',10,5);
@@ -3385,7 +3385,7 @@ function updateBattle(dt){
         // handled in updateRelicMechamaru but need freeze
         f.vx=0;f.vy=0;
       }
-      // Phase 2: constant weak homing missiles (every ~30 frames)
+      // Phase 2: constant weak missiles (every ~30 frames, shoot and move on)
       if(f.mechaPhase===2&&enemy.alive){
         f.mechaUltMissileTimer-=dt;
         if(f.mechaUltMissileTimer<=0){
@@ -3394,9 +3394,9 @@ function updateBattle(dt){
           projectiles.push({
             x:f.x+Math.cos(a)*f.radius,y:f.y+Math.sin(a)*f.radius,
             vx:Math.cos(a)*3,vy:Math.sin(a)*3,
-            owner:f,target:enemy,color:'#88aa44',
+            owner:f,target:null,color:'#88aa44',
             life:80,radius:4,dmg:f.atk*0.25,
-            explosive:false,homing:true,isMechaRocket:true,
+            explosive:false,homing:false,isMechaRocket:true,
           });
           // HP drain for constant missiles
           f.hp=Math.max(1,f.hp-f.maxHp*0.003);
@@ -3525,25 +3525,6 @@ function updateBattle(dt){
           }
         }
       });
-      // Melee when enemy is close — use strongest available
-      const d=dist(f,enemy);
-      if(d<f.radius+enemy.radius+30&&avail.length>0&&!f.specialActive){
-        // Melee swing with available weapon (less damage than ranged)
-        if(f.attackTimer<=0){
-          const meleeW=avail.sort((a,b)=>{
-            // For melee: agaou (fists) best, fang second, punkblade worst
-            const order={agaou:3,fang:2,punk:1};
-            return (order[b.id]||0)-(order[a.id]||0);
-          })[0];
-          const meleeDmg=f.atk*meleeW.dmgMult*0.6;
-          dealDamage(f,enemy,meleeDmg);
-          f.attackTimer=getAttackInterval(f)*0.8;
-          f.weaponFlash=12;f.weaponExtend=1;
-          SFX.slash();
-          spawnBurst(enemy.x,enemy.y,meleeW.color,6,3);
-          shakeTimer=5;shakeAmt=3;
-        }
-      }
     }
 
     // Katana per-frame: deflect CD, deflect pose timer, counter-dash, rush deflect CD reset
