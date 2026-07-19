@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.4 — Choso (JJK Blood Manipulation), Voiceline Updates
+// BALL BATTLE ARENA v7.5 — Toji (JJK Heavenly Restriction), Playful Cloud 3-Section Staff
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -130,6 +130,16 @@ const SFX={
   chosoRedScale(){[250,400,550,700,850].forEach((f,i)=>this._tone(f,0.18,'sine',0.2,i*0.06));this._noise(0.15,0.15);this._tone(150,0.3,'sine',0.25,0.3)},
   // Choso — Supernova orb explosion
   chosoSupernova(){this._tone(60,0.3,'sine',0.35);this._tone(120,0.2,'sine',0.25,0.03);this._noise(0.2,0.22);this._tone(250,0.1,'sawtooth',0.15,0.08)},
+  // Toji — Playful Cloud staff hit (heavy thud)
+  tojiStaff(){this._tone(100,0.15,'sine',0.3);this._tone(200,0.08,'sawtooth',0.2,0.02);this._noise(0.1,0.18)},
+  // Toji — Heavy knockback slam
+  tojiKnockback(){this._tone(60,0.2,'sine',0.35);this._noise(0.15,0.22);this._tone(150,0.1,'sawtooth',0.2,0.05)},
+  // Toji — Heavenly Restriction activation
+  tojiHeavenly(){[100,200,350,500,700].forEach((f,i)=>this._tone(f,0.2,'sine',0.25,i*0.08));this._noise(0.25,0.2);this._tone(80,0.35,'sine',0.3,0.4)},
+  // Toji — Teleport dash (whoosh)
+  tojiDash(){this._tone(800,0.08,'sawtooth',0.2);this._tone(400,0.06,'sine',0.15,0.02);this._noise(0.06,0.12)},
+  // Toji — Chain barrier hum
+  tojiChain(){this._tone(180,0.12,'square',0.15);this._tone(90,0.15,'sine',0.12,0.03)},
 };
 
 // ============================================================
@@ -226,6 +236,14 @@ const CHARS=[
     baseAtkInterval:65,relicChargeRate:0.9,
     specialName:'FLOWING SUPERNOVA!',
   },
+  {
+    id:'toji',name:'Toji',color:'#2a2a3a',
+    desc:'Playful Cloud. 3-section staff assassin.',
+    playstyle:'Staff & Assassin',
+    stats:{hp:500,atk:30,speed:5.5,range:95,def:6,crit:20},
+    baseAtkInterval:35,relicChargeRate:0.8,
+    specialName:'HEAVENLY RESTRICTION!',
+  },
 ];
 
 // ============================================================
@@ -284,6 +302,10 @@ const COMBO_EFFECTS={
   'choso_electric':'Piercing Blood tracks much faster',
   'choso_toxic':'5 blood hits = poison stack (DOT)',
   'choso_cryo':'Supernova orbs spawn buzzsaws on explode',
+  'toji_fire':'Ground inside triangle burns enemies',
+  'toji_electric':'Weapons auto-slash during triangle (extra hits)',
+  'toji_toxic':'Chain barrier deals contact damage',
+  'toji_cryo':'Triangle arena compresses smaller over time',
 };
 
 // ============================================================
@@ -564,6 +586,18 @@ function createFighter(charIdx,elemIdx,side){
     chosoBloodEdge:false, // melee mode during special
     chosoEdgeForm:'sword', // 'sword' or 'dagger'
     chosoEdgeTimer:0, // melee form duration (7s = 420 frames)
+    // Toji state
+    tojiStaffSection:'close', // last section used (visual feedback)
+    tojiTriActive:false, // triangle arena active
+    tojiTriTimer:0, // triangle total duration
+    tojiTriPoints:[], // 3 corner positions [{x,y}]
+    tojiTriPhase:'dash', // 'dash' or 'linger'
+    tojiDashIdx:0, // which weapon dashing to (0=Inverted Spear,1=Split Soul,2=Playful Cloud)
+    tojiDashTimer:0, // frames in current dash pause
+    tojiAfterimages:[], // {x,y,alpha} for black afterimage trail
+    tojiTriShrink:0, // ice element shrink factor (0-1)
+    tojiEnemyDebuff:false, // inverted spear disabled defenses
+    tojiDmgTakenDebuff:false, // split soul katana +10% dmg taken
   };
 }
 
@@ -720,7 +754,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   // Gojo Infinity — absorbs attacks, deals 0 damage. Specials bypass.
   if(defender.char.id==='gojo'&&defender.gojoInfinityCharges>0
     &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
-    &&!(attacker.specialActive)){
+    &&!(attacker.specialActive)
+    &&!defender.tojiEnemyDebuff){
     defender.gojoInfinityCharges--;
     spawnDmgNum(defender.x,defender.y-defender.radius-15,'INFINITY','#8888ff',true);
     spawnBurst(defender.x,defender.y,'#8888ff',10,4);
@@ -737,7 +772,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(defender.char.id==='katana'
     &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
     &&!(attacker.specialActive)
-    &&(!defender.katanaDashing||defender.katanaRushing)){
+    &&(!defender.katanaDashing||defender.katanaRushing)
+    &&!defender.tojiEnemyDebuff){
     // Post counter-dash cooldown (1 second): 80% damage reduction, no full deflect
     if(defender.katanaPostDashTimer>0){
       const isCrit=canCrit&&Math.random()*100<attacker.crit;
@@ -799,8 +835,10 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker.char.id!=='katana')dmg*=(1+chaos*0.15);
 
   if(attacker.elementActive&&attacker.elem.id!=='none')applyElementEffect(attacker,defender);
-  // Choso Flowing Red Scale: 20% damage reduction
-  if(defender.chosoRedScaleActive)dmg*=0.8;
+  // Choso Flowing Red Scale: 20% damage reduction (disabled by Toji Inverted Spear)
+  if(defender.chosoRedScaleActive&&!defender.tojiDmgTakenDebuff)dmg*=0.8;
+  // Toji Split Soul Katana: +10% damage taken
+  if(defender.tojiDmgTakenDebuff)dmg*=1.1;
   defender.hp-=dmg;
   defender.hitFlash=8;
   attacker.totalHits++;
@@ -925,6 +963,7 @@ function performWeaponAttack(f,enemy){
     case 'smasher':attackSmasher(f,enemy,chaos);break;
     case 'gojo':attackGojo(f,enemy,chaos);break;
     case 'choso':attackChoso(f,enemy,chaos);break;
+    case 'toji':attackToji(f,enemy,chaos);break;
   }
 }
 
@@ -1414,6 +1453,63 @@ function chosoDetonateOrb(f,orb,enemy,chaos){
   }
 }
 
+function attackToji(f,enemy,chaos){
+  // 3-section staff — distance determines hit type
+  f.weaponExtend=1;f.weaponFlash=12;
+  const d=dist(f,enemy);
+  const closeRange=60+chaos*3;
+  const midRange=95+chaos*5;
+  const farRange=130+chaos*5;
+  SFX.tojiStaff();
+  if(d<closeRange+enemy.radius){
+    // CLOSE: knockback hit — smacks enemy away hard
+    f.tojiStaffSection='close';
+    const dmg=f.atk*(1.2+chaos*0.1);
+    dealDamage(f,enemy,dmg);
+    // Heavy knockback
+    const ka=angle(f,enemy);
+    enemy.vx+=Math.cos(ka)*12;
+    enemy.vy+=Math.sin(ka)*12;
+    SFX.tojiKnockback();
+    spawnBurst(enemy.x,enemy.y,'#aaaacc',15,5);
+    spawnBurst(enemy.x,enemy.y,'#666688',10,4);
+    shakeTimer=6;shakeAmt=5;
+    addLog((f.side===0?'P1':'P2')+' KNOCKBACK!');
+  } else if(d<midRange+enemy.radius){
+    // MID: sweep — catches and carries enemy in an arc
+    f.tojiStaffSection='mid';
+    const dmg=f.atk*(1.0+chaos*0.08);
+    dealDamage(f,enemy,dmg);
+    // Carry enemy in sweep arc (push perpendicular to angle + forward)
+    const ka=angle(f,enemy);
+    const perpAngle=ka+Math.PI/2;
+    enemy.vx+=Math.cos(perpAngle)*6+Math.cos(ka)*4;
+    enemy.vy+=Math.sin(perpAngle)*6+Math.sin(ka)*4;
+    spawnBurst(enemy.x,enemy.y,'#8888aa',12,4);
+    shakeTimer=4;shakeAmt=3;
+  } else if(d<farRange+enemy.radius){
+    // FAR: jab — precise tip hit, drives into wall
+    f.tojiStaffSection='far';
+    const dmg=f.atk*(1.4+chaos*0.12);
+    dealDamage(f,enemy,dmg);
+    // Drive toward nearest wall
+    const ka=angle(f,enemy);
+    enemy.vx+=Math.cos(ka)*15;
+    enemy.vy+=Math.sin(ka)*15;
+    spawnBurst(enemy.x,enemy.y,'#ccccdd',10,5);
+    spawnBurst(enemy.x,enemy.y,'#aaaacc',8,4);
+    shakeTimer=7;shakeAmt=6;
+    addLog((f.side===0?'P1':'P2')+' WALL DRIVE!');
+  } else {
+    // Out of range — dash closer (Toji is melee focused)
+    f.tojiStaffSection='close';
+    const ka=angle(f,enemy);
+    f.vx+=Math.cos(ka)*3;
+    f.vy+=Math.sin(ka)*3;
+    spawnBurst(f.x,f.y,'#2a2a3a',5,3);
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -1760,6 +1856,7 @@ function useSpecial(f,enemy){
     case 'smasher':relicSmasher(f,enemy);break;
     case 'gojo':relicGojo(f,enemy);break;
     case 'choso':relicChoso(f,enemy);break;
+    case 'toji':relicToji(f,enemy);break;
   }
 }
 
@@ -1999,6 +2096,48 @@ function relicChoso(f,enemy){
   }
   shakeTimer=15;shakeAmt=8;
   addLog((f.side===0?'P1':'P2')+' FLOWING RED SCALE! ('+f.chosoEdgeForm.toUpperCase()+')');
+}
+
+function relicToji(f,enemy){
+  // HEAVENLY RESTRICTION — triangle arena with 3 weapons
+  // Total: ~2s dash phase + 4.5s linger = ~6.5s total
+  f.specialTimer=390; // ~6.5 seconds
+  f.tojiTriActive=true;
+  f.tojiTriTimer=390;
+  f.tojiTriPhase='dash';
+  f.tojiDashIdx=0;
+  f.tojiDashTimer=0;
+  f.tojiAfterimages=[];
+  f.tojiTriShrink=0;
+  f.tojiEnemyDebuff=false;
+  f.tojiDmgTakenDebuff=false;
+  // Create triangle centered on enemy position
+  const cx=enemy.x,cy=enemy.y;
+  const triRadius=120; // size of triangle
+  const baseAngle=Math.random()*Math.PI*2;
+  f.tojiTriPoints=[];
+  for(let i=0;i<3;i++){
+    const a=baseAngle+i*Math.PI*2/3;
+    f.tojiTriPoints.push({
+      x:Math.max(ARENA.x+20,Math.min(ARENA.x+ARENA.w-20,cx+Math.cos(a)*triRadius)),
+      y:Math.max(ARENA.y+20,Math.min(ARENA.y+ARENA.h-20,cy+Math.sin(a)*triRadius)),
+    });
+  }
+  // Teleport Toji to first weapon position (Inverted Spear)
+  f.tojiAfterimages.push({x:f.x,y:f.y,alpha:1}); // afterimage at old position
+  f.x=f.tojiTriPoints[0].x;
+  f.y=f.tojiTriPoints[0].y;
+  f.vx=0;f.vy=0;
+  SFX.tojiHeavenly();
+  spawnBurst(f.x,f.y,'#2a2a3a',50,12);
+  spawnBurst(f.x,f.y,'#4444ff',30,8);
+  spawnBurst(f.x,f.y,'#ffffff',20,6);
+  for(let r=0;r<3;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:80+r*25,color:'#2a2a3a',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  shakeTimer=15;shakeAmt=10;
+  triggerScreenFlash('#4444ff',8);
+  addLog((f.side===0?'P1':'P2')+' HEAVENLY RESTRICTION!');
 }
 
 // ============================================================
@@ -2570,6 +2709,211 @@ function updateRelicChoso(f,enemy,dt){
   // Draw orb pulsing (visual update is in drawBall, but keep orbs alive check here)
 }
 
+function updateRelicToji(f,enemy,dt){
+  if(!f.tojiTriActive)return;
+  f.tojiTriTimer-=dt;
+  // Fade afterimages
+  for(let i=f.tojiAfterimages.length-1;i>=0;i--){
+    f.tojiAfterimages[i].alpha-=0.03*dt;
+    if(f.tojiAfterimages[i].alpha<=0)f.tojiAfterimages.splice(i,1);
+  }
+  // DASH PHASE: teleport between 3 weapon positions
+  if(f.tojiTriPhase==='dash'){
+    f.tojiDashTimer-=dt;
+    f.weaponFlash=10;
+    if(f.tojiDashTimer<=0){
+      const idx=f.tojiDashIdx;
+      const chaos=getChaosLevel(f);
+      // Spawn afterimage at current position before teleporting
+      f.tojiAfterimages.push({x:f.x,y:f.y,alpha:1});
+      // Teleport to weapon position
+      const pt=f.tojiTriPoints[idx];
+      f.x=pt.x;f.y=pt.y;f.vx=0;f.vy=0;
+      SFX.tojiDash();
+      spawnBurst(f.x,f.y,'#1a1a2a',15,5);
+      spawnBurst(f.x,f.y,'#333355',10,4);
+      // Each weapon does something different
+      if(idx===0){
+        // INVERTED SPEAR — disables defensive abilities
+        const spearDmg=f.atk*(1.0+chaos*0.1);
+        if(enemy.alive&&dist(f,enemy)<180){
+          dealDamage(f,enemy,spearDmg);
+          // Disable deflect/infinity/damage reduction for triangle duration
+          f.tojiEnemyDebuff=true;
+          enemy.katanaDeflectCount=0; // strip deflect charges
+          enemy.gojoInfinityCharges=0; // strip infinity charges
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-30,'SPEAR — DEFENSES DISABLED','#ff4444',false);
+          spawnBurst(enemy.x,enemy.y,'#ff4444',12,5);
+        }
+        shakeTimer=5;shakeAmt=4;
+      } else if(idx===1){
+        // SPLIT SOUL KATANA — removes dmg reduction + 10% increased dmg taken
+        const katDmg=f.atk*(1.2+chaos*0.1);
+        if(enemy.alive&&dist(f,enemy)<180){
+          dealDamage(f,enemy,katDmg);
+          f.tojiDmgTakenDebuff=true;
+          enemy.tojiDmgTakenDebuff=true;
+          enemy.defReduction=Math.max(enemy.defReduction,enemy.def*0.5); // halve effective def
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-30,'SPLIT SOUL — +10% DMG TAKEN','#ff8844',false);
+          spawnBurst(enemy.x,enemy.y,'#ff8844',12,5);
+        }
+        shakeTimer=6;shakeAmt=5;
+      } else if(idx===2){
+        // PLAYFUL CLOUD — massive hit
+        const cloudDmg=f.atk*(1.8+chaos*0.15);
+        if(enemy.alive&&dist(f,enemy)<180){
+          dealDamage(f,enemy,cloudDmg);
+          // Heavy knockback toward center of triangle
+          const tcx=(f.tojiTriPoints[0].x+f.tojiTriPoints[1].x+f.tojiTriPoints[2].x)/3;
+          const tcy=(f.tojiTriPoints[0].y+f.tojiTriPoints[1].y+f.tojiTriPoints[2].y)/3;
+          const ka=Math.atan2(tcy-enemy.y,tcx-enemy.x);
+          enemy.vx+=Math.cos(ka)*8;
+          enemy.vy+=Math.sin(ka)*8;
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-30,'PLAYFUL CLOUD','#aaaaff',false);
+          spawnBurst(enemy.x,enemy.y,'#aaaaff',15,6);
+          spawnBurst(enemy.x,enemy.y,'#ffffff',10,5);
+        }
+        shakeTimer=8;shakeAmt=7;
+        triggerHitFreeze(4);
+      }
+      f.tojiDashIdx++;
+      if(f.tojiDashIdx>=3){
+        // Dash phase complete — enter linger phase (4-5 seconds)
+        f.tojiTriPhase='linger';
+        // Return Toji to triangle center
+        const tcx=(f.tojiTriPoints[0].x+f.tojiTriPoints[1].x+f.tojiTriPoints[2].x)/3;
+        const tcy=(f.tojiTriPoints[0].y+f.tojiTriPoints[1].y+f.tojiTriPoints[2].y)/3;
+        f.tojiAfterimages.push({x:f.x,y:f.y,alpha:1});
+        f.x=tcx;f.y=tcy;f.vx=0;f.vy=0;
+        SFX.tojiChain();
+        addLog('Chain triangle active!');
+      } else {
+        f.tojiDashTimer=25; // pause before next teleport (~0.4s)
+      }
+    }
+  }
+  // LINGER PHASE: triangle stays, traps enemies, elements apply
+  if(f.tojiTriPhase==='linger'){
+    const pts=f.tojiTriPoints;
+    const shrink=f.tojiTriShrink;
+    // Calculate triangle center
+    const tcx=(pts[0].x+pts[1].x+pts[2].x)/3;
+    const tcy=(pts[0].y+pts[1].y+pts[2].y)/3;
+    // Shrunk points (for ice element)
+    const sPts=pts.map(p=>({
+      x:p.x+(tcx-p.x)*shrink,
+      y:p.y+(tcy-p.y)*shrink,
+    }));
+    // Check if enemy is inside triangle — keep them trapped
+    if(enemy.alive){
+      const inside=pointInTriangle(enemy.x,enemy.y,sPts[0],sPts[1],sPts[2]);
+      // Push enemy back inside if they try to leave
+      if(!inside){
+        const ka=Math.atan2(tcy-enemy.y,tcx-enemy.x);
+        enemy.vx+=Math.cos(ka)*2;
+        enemy.vy+=Math.sin(ka)*2;
+      }
+      // Element effects inside triangle
+      if(f.elementActive){
+        const elem=f.elem.id;
+        if(elem==='fire'&&battleTime%10<1){
+          // Fire: ground burns
+          if(inside||dist(enemy,{x:tcx,y:tcy})<150){
+            const fireDmg=f.atk*0.12;
+            dealDamage(f,enemy,fireDmg,false);
+            spawnBurst(enemy.x,enemy.y,'#ff4400',4,2);
+            spawnParticle(enemy.x+rand(-20,20),enemy.y+rand(-10,10),'#ff4400',0,-2,15,3);
+          }
+        }
+        if(elem==='electric'&&battleTime%20<1){
+          // Lightning: weapons auto-slash (extra damage)
+          const autoSlashDmg=f.atk*0.3;
+          if(dist(enemy,{x:tcx,y:tcy})<180){
+            dealDamage(f,enemy,autoSlashDmg,false);
+            // Visual: slash lines from each weapon point
+            sPts.forEach(p=>{
+              spawnBurst(p.x,p.y,'#ffcc00',6,3);
+              spawnParticle(p.x,p.y,'#ffcc00',rand(-3,3),rand(-3,3),10,2);
+            });
+            spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'AUTO-SLASH','#ffcc00',false);
+          }
+        }
+        if(elem==='toxic'){
+          // Poison: chain barrier deals contact damage
+          for(let i=0;i<3;i++){
+            const p1=sPts[i],p2=sPts[(i+1)%3];
+            const edgeDist=pointToSegDist(enemy.x,enemy.y,p1.x,p1.y,p2.x,p2.y);
+            if(edgeDist<enemy.radius+15&&battleTime%8<1){
+              const chainDmg=f.atk*0.15;
+              dealDamage(f,enemy,chainDmg,false);
+              spawnBurst(enemy.x,enemy.y,'#aa44cc',5,2);
+              spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'CHAIN BURN','#aa44cc',false);
+              break;
+            }
+          }
+        }
+        if(elem==='cryo'){
+          // Ice: triangle compresses smaller over time
+          f.tojiTriShrink=Math.min(0.6,f.tojiTriShrink+0.001*dt);
+          // Ice particles on chain
+          if(battleTime%6<1){
+            const ri=Math.floor(Math.random()*3);
+            const p1=sPts[ri],p2=sPts[(ri+1)%3];
+            const t=Math.random();
+            spawnParticle(p1.x+(p2.x-p1.x)*t,p1.y+(p2.y-p1.y)*t,'#77ddff',0,-1,12,2);
+          }
+        }
+      }
+    }
+    // Chain visual particles
+    if(battleTime%4<1){
+      const ri=Math.floor(Math.random()*3);
+      const p1=sPts[ri],p2=sPts[(ri+1)%3];
+      const t=Math.random();
+      spawnParticle(p1.x+(p2.x-p1.x)*t,p1.y+(p2.y-p1.y)*t,'#888899',0,0,10,1.5);
+    }
+  }
+  // Timer expired — end triangle
+  if(f.tojiTriTimer<=0){
+    f.tojiTriActive=false;
+    f.tojiTriPhase='dash';
+    f.tojiDashIdx=0;
+    f.tojiAfterimages=[];
+    f.tojiTriShrink=0;
+    // Remove debuffs from enemy
+    if(enemy.alive){
+      enemy.tojiDmgTakenDebuff=false;
+      enemy.defReduction=0;
+    }
+    f.tojiEnemyDebuff=false;
+    f.tojiDmgTakenDebuff=false;
+    f.atk=f.baseAtk;
+    f.speed=f.baseSpeed;
+    addLog('Heavenly Restriction faded');
+    spawnBurst(f.x,f.y,'#2a2a3a',10,4);
+  }
+}
+
+// Helper: point inside triangle
+function pointInTriangle(px,py,a,b,c){
+  const d1=(px-b.x)*(a.y-b.y)-(a.x-b.x)*(py-b.y);
+  const d2=(px-c.x)*(b.y-c.y)-(b.x-c.x)*(py-c.y);
+  const d3=(px-a.x)*(c.y-a.y)-(c.x-a.x)*(py-a.y);
+  const hasNeg=(d1<0)||(d2<0)||(d3<0);
+  const hasPos=(d1>0)||(d2>0)||(d3>0);
+  return !(hasNeg&&hasPos);
+}
+
+// Helper: distance from point to line segment
+function pointToSegDist(px,py,x1,y1,x2,y2){
+  const dx=x2-x1,dy=y2-y1;
+  const lenSq=dx*dx+dy*dy;
+  if(lenSq===0)return Math.hypot(px-x1,py-y1);
+  let t=((px-x1)*dx+(py-y1)*dy)/lenSq;
+  t=Math.max(0,Math.min(1,t));
+  return Math.hypot(px-(x1+t*dx),py-(y1+t*dy));
+}
+
 // ============================================================
 // BATTLE UPDATE
 // ============================================================
@@ -2678,6 +3022,7 @@ function updateBattle(dt){
         case 'smasher':updateRelicSmasher(f,enemy,dt);break;
         case 'gojo':updateRelicGojo(f,enemy,dt);break;
         case 'choso':updateRelicChoso(f,enemy,dt);break;
+        case 'toji':updateRelicToji(f,enemy,dt);break;
       }
     }
 
@@ -3715,6 +4060,108 @@ function drawBall(f){
     });
   }
 
+  // Toji face — dark messy hair, lip scar, sharp eyes
+  if(f.char.id==='toji'){
+    X.save();
+    const hx=f.x,hy=f.y;
+    // Dark messy hair — short, spiky, unkempt
+    X.fillStyle='#1a1a22';
+    // Hair base
+    X.beginPath();
+    X.ellipse(hx,hy-f.radius*0.35,f.radius*0.65,f.radius*0.3,0,Math.PI,0);
+    X.fill();
+    // Messy spikes — short aggressive
+    const spks=[{x:-0.3,y:-0.7,w:0.1},{x:-0.15,y:-0.8,w:0.09},{x:0.0,y:-0.75,w:0.1},{x:0.15,y:-0.85,w:0.09},{x:0.3,y:-0.65,w:0.1}];
+    spks.forEach(s=>{
+      X.beginPath();
+      X.moveTo(hx+s.x*f.radius-s.w*f.radius,hy-f.radius*0.4);
+      X.lineTo(hx+s.x*f.radius,hy+s.y*f.radius);
+      X.lineTo(hx+s.x*f.radius+s.w*f.radius,hy-f.radius*0.4);
+      X.closePath();X.fill();
+    });
+    // Side strands
+    X.beginPath();
+    X.moveTo(hx-f.radius*0.55,hy-f.radius*0.4);
+    X.quadraticCurveTo(hx-f.radius*0.65,hy-f.radius*0.1,hx-f.radius*0.5,hy+f.radius*0.05);
+    X.lineTo(hx-f.radius*0.4,hy-f.radius*0.1);
+    X.closePath();X.fill();
+    X.beginPath();
+    X.moveTo(hx+f.radius*0.55,hy-f.radius*0.4);
+    X.quadraticCurveTo(hx+f.radius*0.6,hy-f.radius*0.1,hx+f.radius*0.45,hy+f.radius*0.05);
+    X.lineTo(hx+f.radius*0.35,hy-f.radius*0.1);
+    X.closePath();X.fill();
+    // Sharp, narrow eyes — assassin look
+    X.fillStyle=f.tojiTriActive?'#88ff88':'#334433';
+    X.beginPath();X.ellipse(hx-f.radius*0.18,hy-f.radius*0.1,f.radius*0.08,f.radius*0.04,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+f.radius*0.18,hy-f.radius*0.1,f.radius*0.08,f.radius*0.04,0,0,Math.PI*2);X.fill();
+    if(f.tojiTriActive){X.shadowColor='#00ff00';X.shadowBlur=6;
+      X.beginPath();X.ellipse(hx-f.radius*0.18,hy-f.radius*0.1,f.radius*0.08,f.radius*0.04,0,0,Math.PI*2);X.fill();
+      X.beginPath();X.ellipse(hx+f.radius*0.18,hy-f.radius*0.1,f.radius*0.08,f.radius*0.04,0,0,Math.PI*2);X.fill();
+      X.shadowBlur=0;
+    }
+    // Lip scar — distinctive vertical scar on right side of lip
+    X.strokeStyle='#665555';X.lineWidth=2;
+    X.beginPath();X.moveTo(hx+f.radius*0.1,hy+f.radius*0.15);X.lineTo(hx+f.radius*0.12,hy+f.radius*0.3);X.stroke();
+    // Slight smirk
+    X.strokeStyle='#555';X.lineWidth=1;
+    X.beginPath();X.arc(hx,hy+f.radius*0.15,f.radius*0.12,0.2,Math.PI-0.4);X.stroke();
+    X.restore();
+  }
+
+  // Draw Toji triangle arena + afterimages
+  if(f.char.id==='toji'&&f.tojiTriActive){
+    X.save();
+    const pts=f.tojiTriPoints;
+    const tcx=(pts[0].x+pts[1].x+pts[2].x)/3;
+    const tcy=(pts[0].y+pts[1].y+pts[2].y)/3;
+    const shrink=f.tojiTriShrink;
+    const sPts=pts.map(p=>({x:p.x+(tcx-p.x)*shrink,y:p.y+(tcy-p.y)*shrink}));
+    // Chain barrier lines
+    X.strokeStyle='#888899';X.lineWidth=3;X.setLineDash([6,4]);
+    X.beginPath();
+    X.moveTo(sPts[0].x,sPts[0].y);X.lineTo(sPts[1].x,sPts[1].y);
+    X.lineTo(sPts[2].x,sPts[2].y);X.closePath();X.stroke();
+    X.setLineDash([]);
+    // Chain glow
+    X.strokeStyle='rgba(136,136,153,0.3)';X.lineWidth=8;
+    X.beginPath();
+    X.moveTo(sPts[0].x,sPts[0].y);X.lineTo(sPts[1].x,sPts[1].y);
+    X.lineTo(sPts[2].x,sPts[2].y);X.closePath();X.stroke();
+    // Weapon icons at each corner
+    const weaponNames=['SPEAR','KATANA','CLOUD'];
+    const weaponColors=['#ff4444','#ff8844','#aaaaff'];
+    sPts.forEach((p,i)=>{
+      // Weapon marker
+      X.beginPath();X.arc(p.x,p.y,8,0,Math.PI*2);
+      X.fillStyle=weaponColors[i];X.fill();
+      X.shadowColor=weaponColors[i];X.shadowBlur=6;X.fill();X.shadowBlur=0;
+      // Label
+      X.font='bold 8px Consolas,monospace';X.textAlign='center';X.textBaseline='bottom';
+      X.fillStyle=weaponColors[i];
+      X.fillText(weaponNames[i],p.x,p.y-12);
+    });
+    // Fire element: ground burn visual
+    if(f.elementActive&&f.elem.id==='fire'){
+      X.fillStyle='rgba(255,68,0,0.08)';
+      X.beginPath();X.moveTo(sPts[0].x,sPts[0].y);X.lineTo(sPts[1].x,sPts[1].y);
+      X.lineTo(sPts[2].x,sPts[2].y);X.closePath();X.fill();
+    }
+    // Poison element: purple chain glow
+    if(f.elementActive&&f.elem.id==='toxic'){
+      X.strokeStyle='rgba(170,68,204,0.4)';X.lineWidth=5;
+      X.beginPath();X.moveTo(sPts[0].x,sPts[0].y);X.lineTo(sPts[1].x,sPts[1].y);
+      X.lineTo(sPts[2].x,sPts[2].y);X.closePath();X.stroke();
+    }
+    X.restore();
+  }
+  // Draw Toji afterimages (black silhouettes)
+  if(f.char.id==='toji'&&f.tojiAfterimages.length>0){
+    f.tojiAfterimages.forEach(ai=>{
+      X.beginPath();X.arc(ai.x,ai.y,f.radius*0.9,0,Math.PI*2);
+      X.fillStyle='rgba(20,20,30,'+ai.alpha*0.6+')';X.fill();
+    });
+  }
+
   // HP text in center
   X.font='bold 13px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
   X.strokeStyle='#000';X.lineWidth=3;
@@ -3872,6 +4319,10 @@ function drawBall(f){
       const orbs=f.chosoOrbs?f.chosoOrbs.filter(o=>o.alive).length:0;
       X.fillText(mode+(f.chosoRedScaleActive?' RDS':'')+(orbs>0?' Orb:'+orbs:''),f.x,statY);
       break;}
+    case 'toji':{
+      const sec=f.tojiStaffSection.toUpperCase();
+      X.fillText(sec+(f.tojiTriActive?' TRI':''),f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -3902,6 +4353,7 @@ function drawWeapon(f){
     case 'smasher':drawSmasherWeapon(r,ext,flash,f);break;
     case 'gojo':drawGojoWeapon(r,ext,flash,f);break;
     case 'choso':drawChosoWeapon(r,ext,flash,f);break;
+    case 'toji':drawTojiWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -4006,6 +4458,43 @@ function drawChosoWeapon(r,ext,flash,f){
       cg.addColorStop(0,'#ff4444');cg.addColorStop(1,'rgba(139,0,0,0)');
       X.fillStyle=cg;X.fill();
     }
+  }
+}
+
+function drawTojiWeapon(r,ext,flash,f){
+  // Playful Cloud — 3-section staff
+  const staffLen=55;
+  const sectW=3.5;
+  const segLen=staffLen/3;
+  // Staff handle (grip)
+  X.fillStyle='#8a7b60';X.fillRect(r-8,-3,12,6);
+  // Three staff sections with joints
+  const sg=X.createLinearGradient(r+4,0,r+staffLen,0);
+  sg.addColorStop(0,'#c8b896');sg.addColorStop(0.3,'#a89878');sg.addColorStop(0.6,'#c8b896');sg.addColorStop(1,'#a89878');
+  // Section 1 (close)
+  X.fillStyle=sg;
+  X.fillRect(r+4,-sectW,segLen,sectW*2);
+  // Joint 1
+  X.fillStyle='#666';
+  X.beginPath();X.arc(r+4+segLen,0,sectW+1,0,Math.PI*2);X.fill();
+  // Section 2 (mid)
+  X.fillStyle=sg;
+  X.fillRect(r+4+segLen+2,-sectW,segLen,sectW*2);
+  // Joint 2
+  X.fillStyle='#666';
+  X.beginPath();X.arc(r+4+segLen*2+2,0,sectW+1,0,Math.PI*2);X.fill();
+  // Section 3 (far — tip)
+  X.fillStyle=sg;
+  X.fillRect(r+4+segLen*2+4,-sectW,segLen-2,sectW*2);
+  // Tip cap
+  X.fillStyle='#888';
+  X.beginPath();X.arc(r+staffLen+2,0,sectW+0.5,0,Math.PI*2);X.fill();
+  // Flash glow
+  if(flash){
+    X.shadowColor='#aaaaff';X.shadowBlur=8;
+    X.strokeStyle='rgba(170,170,255,0.5)';X.lineWidth=2;
+    X.beginPath();X.moveTo(r+4,0);X.lineTo(r+staffLen+2,0);X.stroke();
+    X.shadowBlur=0;
   }
 }
 
@@ -5057,6 +5546,15 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.arc(-8,-4,3,0,Math.PI*2);X.fillStyle='#cc0000';X.fill();
       X.beginPath();X.arc(-8,4,3,0,Math.PI*2);X.fillStyle='#880000';X.fill();
       break;
+    case 'toji':
+      // 3-section staff — small horizontal rod with 2 joints
+      X.fillStyle='#c8b896';X.fillRect(-2,-2,18,4);
+      X.fillStyle='#666';
+      X.beginPath();X.arc(4,0,2.5,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(10,0,2.5,0,Math.PI*2);X.fill();
+      X.fillStyle='#888';
+      X.beginPath();X.arc(16,0,2,0,Math.PI*2);X.fill();
+      break;
   }
   X.restore();
 }
@@ -6028,6 +6526,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'smasher':statLine='RKT:'+Math.round(f.atk*(1.8+chaos*0.2))+' BOSS';break;
     case 'gojo':statLine='INF:'+f.gojoInfinityCharges+'/'+f.gojoInfinityMax+(f.gojoAwakened?' AWK':' BOSS');break;
     case 'choso':{const mode=f.chosoBloodEdge?(f.chosoEdgeForm==='sword'?'SWORD':'DAGGER'):'BEAM';const orbs=f.chosoOrbs?f.chosoOrbs.filter(o=>o.alive).length:0;statLine=mode+(f.chosoRedScaleActive?' RDS':'')+(orbs>0?' Orb:'+orbs:'');break;}
+    case 'toji':statLine=f.tojiStaffSection.toUpperCase()+(f.tojiTriActive?' TRI':'');break;
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
