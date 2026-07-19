@@ -721,7 +721,7 @@ function renderStations() {
       .sort((a, b) => a.code.localeCompare(b.code));
 
     html += `<div class="station-card${isExpanded ? ' expanded' : ''}" data-station="${station.name}">`;
-    html += `<div class="station-header" onclick="toggleStation(${JSON.stringify(station.name)})">`;
+    html += `<div class="station-header" data-toggle="${station.name.replace(/"/g,'&quot;')}">`;
     html += `<div class="station-codes">`;
     for (const c of codes) {
       const lineClass = c.line;
@@ -792,6 +792,24 @@ function toggleStation(name) {
   renderStations();
 }
 
+// Event delegation for station taps — works reliably on mobile
+stationListEl.addEventListener('click', (e) => {
+  const header = e.target.closest('[data-toggle]');
+  if (header) toggleStation(header.dataset.toggle);
+});
+// Touchend for instant mobile response (no 300ms click delay)
+let touchMoved = false;
+stationListEl.addEventListener('touchstart', () => { touchMoved = false; }, { passive: true });
+stationListEl.addEventListener('touchmove', () => { touchMoved = true; }, { passive: true });
+stationListEl.addEventListener('touchend', (e) => {
+  if (touchMoved) return;
+  const header = e.target.closest('[data-toggle]');
+  if (header) {
+    e.preventDefault(); // prevent subsequent click
+    toggleStation(header.dataset.toggle);
+  }
+});
+
 // ═══════════════════════════════════════
 // Clock & Updates
 // ═══════════════════════════════════════
@@ -834,7 +852,9 @@ function updateCountdowns() {
   });
 
   if (needsRerender && expandedStation) {
-    renderStations();
+    // Debounce re-render to avoid interrupting user taps
+    clearTimeout(updateCountdowns._timer);
+    updateCountdowns._timer = setTimeout(renderStations, 2000);
   }
 }
 
