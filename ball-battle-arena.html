@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.3 — 3v1 Boss Mode, Gojo Nerfs, Red/Blue Projectiles, Sandy Fix
+// BALL BATTLE ARENA v7.4 — Choso (JJK Blood Manipulation), Voiceline Updates
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -122,6 +122,14 @@ const SFX={
   gojoDomain(){[200,400,600,800,1000,1200].forEach((f,i)=>this._tone(f,0.25,'sine',0.2,i*0.08));this._noise(0.3,0.15);this._tone(100,0.5,'sine',0.3,0.5)},
   // Gojo — Revival float up
   gojoRevive(){this._tone(400,0.2,'sine',0.2);this._tone(600,0.2,'sine',0.18,0.15);this._tone(800,0.2,'sine',0.15,0.3);this._tone(1000,0.3,'sine',0.2,0.45);this._tone(1200,0.2,'triangle',0.15,0.6)},
+  // Choso — Piercing Blood charge + fire
+  chosoPiercing(){this._tone(150,0.2,'sawtooth',0.25);this._tone(300,0.15,'sine',0.2,0.05);this._noise(0.15,0.18);this._tone(500,0.12,'square',0.15,0.1)},
+  // Choso — Blood Edge melee slash
+  chosoSlash(){this._tone(800,0.06,'sawtooth',0.22);this._tone(1200,0.04,'sawtooth',0.15,0.01);this._tone(400,0.08,'sine',0.12,0.02);this._noise(0.04,0.08)},
+  // Choso — Flowing Red Scale activation
+  chosoRedScale(){[250,400,550,700,850].forEach((f,i)=>this._tone(f,0.18,'sine',0.2,i*0.06));this._noise(0.15,0.15);this._tone(150,0.3,'sine',0.25,0.3)},
+  // Choso — Supernova orb explosion
+  chosoSupernova(){this._tone(60,0.3,'sine',0.35);this._tone(120,0.2,'sine',0.25,0.03);this._noise(0.2,0.22);this._tone(250,0.1,'sawtooth',0.15,0.08)},
 };
 
 // ============================================================
@@ -166,7 +174,7 @@ const CHARS=[
     playstyle:'Speed & Dodge',
     stats:{hp:420,atk:16,speed:7.2,range:60,def:4,crit:16},
     baseAtkInterval:20,relicChargeRate:1.0,
-    specialName:'Sandevistan Activated',
+    specialName:'SANDEVISTAN',
   },
   {
     id:'throw',name:'Throwing Weapons',color:'#cc66ff',
@@ -174,7 +182,7 @@ const CHARS=[
     playstyle:'Range & Precision',
     stats:{hp:420,atk:22,speed:3.4,range:195,def:5,crit:16},
     baseAtkInterval:70,relicChargeRate:0.85,
-    specialName:'Optical Camo Activated',
+    specialName:'OPTICAL CAMO!',
   },
   {
     id:'katana',name:'Katana',color:'#4466cc',
@@ -182,7 +190,7 @@ const CHARS=[
     playstyle:'Deflect & Counter',
     stats:{hp:540,atk:24,speed:4.0,range:90,def:9,crit:20},
     baseAtkInterval:35,relicChargeRate:0.5,
-    specialName:'Relic Activated',
+    specialName:'DEFLECT RUSH!',
   },
   {
     id:'berserk',name:'Berserk',color:'#ff55aa',
@@ -190,7 +198,7 @@ const CHARS=[
     playstyle:'Shotgun Rage',
     stats:{hp:560,atk:17,speed:3.2,range:145,def:10,crit:10},
     baseAtkInterval:140,relicChargeRate:0.4,
-    specialName:'Relic Activated',
+    specialName:'BERSERK!',
   },
   {
     id:'smasher',name:'Adam Smasher',color:'#cc4444',
@@ -209,6 +217,14 @@ const CHARS=[
     baseAtkInterval:80,relicChargeRate:0.6,
     specialName:'I ALONE AM THE HONOURED ONE',
     isBoss:true,
+  },
+  {
+    id:'choso',name:'Choso',color:'#8b0000',
+    desc:'Blood Manipulation. Piercing beam + melee switch.',
+    playstyle:'Blood & Burst',
+    stats:{hp:540,atk:26,speed:3.8,range:170,def:7,crit:16},
+    baseAtkInterval:65,relicChargeRate:0.9,
+    specialName:'FLOWING SUPERNOVA!',
   },
 ];
 
@@ -264,6 +280,10 @@ const COMBO_EFFECTS={
   'gojo_electric':'Attacks charge much faster, less damage',
   'gojo_toxic':'Attacks charge slower, more damage',
   'gojo_cryo':'Purple activates more often, charges faster',
+  'choso_fire':'Blood Meteorite side projectiles for extra range',
+  'choso_electric':'Piercing Blood tracks much faster',
+  'choso_toxic':'5 blood hits = poison stack (DOT)',
+  'choso_cryo':'Supernova orbs spawn buzzsaws on explode',
 };
 
 // ============================================================
@@ -534,6 +554,16 @@ function createFighter(charIdx,elemIdx,side){
     gojoPurpleChance:0, // chance for 200% purple on normal attacks (awakened)
     _gojoPurpleWarning:0, // relic warning timer
     _gojoPurpleAngle:0, // relic aim direction
+    // Choso state
+    chosoCharging:false, // charging piercing blood
+    chosoChargeTimer:0, // frames of charge before firing
+    chosoBloodHits:0, // track hits for poison element
+    chosoRedScaleActive:false, // flowing red scale buff
+    chosoRedScaleTimer:0, // buff duration
+    chosoOrbs:[], // {x,y,alive} — blood orbs around arena
+    chosoBloodEdge:false, // melee mode during special
+    chosoEdgeForm:'sword', // 'sword' or 'dagger'
+    chosoEdgeTimer:0, // melee form duration (7s = 420 frames)
   };
 }
 
@@ -769,6 +799,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker.char.id!=='katana')dmg*=(1+chaos*0.15);
 
   if(attacker.elementActive&&attacker.elem.id!=='none')applyElementEffect(attacker,defender);
+  // Choso Flowing Red Scale: 20% damage reduction
+  if(defender.chosoRedScaleActive)dmg*=0.8;
   defender.hp-=dmg;
   defender.hitFlash=8;
   attacker.totalHits++;
@@ -892,6 +924,7 @@ function performWeaponAttack(f,enemy){
     case 'berserk':attackBerserk(f,enemy,chaos);break;
     case 'smasher':attackSmasher(f,enemy,chaos);break;
     case 'gojo':attackGojo(f,enemy,chaos);break;
+    case 'choso':attackChoso(f,enemy,chaos);break;
   }
 }
 
@@ -1279,6 +1312,108 @@ function attackGojo(f,enemy,chaos){
   }
 }
 
+function attackChoso(f,enemy,chaos){
+  // During Blood Edge (special melee mode): slash with weapon
+  if(f.chosoBloodEdge){
+    f.weaponExtend=1;f.weaponFlash=12;
+    const d=dist(f,enemy);
+    const isSword=f.chosoEdgeForm==='sword';
+    const meleeRange=isSword?(100+chaos*5):(70+chaos*3);
+    const meleeDmg=isSword?f.atk*(1.3+chaos*0.1):f.atk*(0.9+chaos*0.08);
+    SFX.chosoSlash();
+    if(d<meleeRange+enemy.radius){
+      dealDamage(f,enemy,meleeDmg);
+      f.chosoBloodHits++;
+      spawnBurst(enemy.x,enemy.y,'#8b0000',10,4);
+      spawnBurst(enemy.x,enemy.y,'#cc0000',6,3);
+      shakeTimer=5;shakeAmt=3;
+    }
+    // Check if near any blood orbs — detonate on melee hit
+    f.chosoOrbs.forEach(orb=>{
+      if(!orb.alive)return;
+      if(dist(f,orb)<meleeRange+20){
+        chosoDetonateOrb(f,orb,enemy,chaos);
+      }
+    });
+    // Poison element: 5 blood hits = poison stack
+    if(f.elementActive&&f.elem.id==='toxic'&&f.chosoBloodHits>=5){
+      f.chosoBloodHits=0;
+      if(enemy.alive){
+        enemy.burnTimer=Math.max(enemy.burnTimer,180);
+        enemy.burnDmg=Math.max(enemy.burnDmg,f.atk*0.15);
+        spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'BLOOD POISON','#aa44cc',false);
+        spawnBurst(enemy.x,enemy.y,'#aa44cc',8,3);
+      }
+    }
+    return;
+  }
+  // Normal: Piercing Blood — charge briefly, fire thick blood beam
+  f.weaponFlash=12;
+  SFX.chosoPiercing();
+  const ba=angle(f,enemy);
+  const beamSpeed=5+chaos*0.3;
+  let trackSpeed=0.008+chaos*0.001; // slow homing
+  if(f.elementActive&&f.elem.id==='electric')trackSpeed=0.03+chaos*0.002; // lightning: much faster tracking
+  const beamDmg=f.atk*(1.0+chaos*0.1);
+  projectiles.push({
+    x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+    vx:Math.cos(ba)*beamSpeed,vy:Math.sin(ba)*beamSpeed,
+    owner:f,target:enemy,color:'#cc0000',
+    life:100,radius:12+chaos,dmg:beamDmg,
+    explosive:false,homing:true,homingStrength:trackSpeed,
+    isChosoPiercing:true,
+  });
+  spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#cc0000',10,4);
+  spawnBurst(f.x,f.y,'#8b0000',6,3);
+  f.chosoBloodHits++;
+  // Fire element: Blood Meteorite side projectiles
+  if(f.elementActive&&f.elem.id==='fire'){
+    [-0.4,0.4].forEach(spread=>{
+      projectiles.push({
+        x:f.x+Math.cos(ba+spread)*f.radius,y:f.y+Math.sin(ba+spread)*f.radius,
+        vx:Math.cos(ba+spread)*(beamSpeed*0.8),vy:Math.sin(ba+spread)*(beamSpeed*0.8),
+        owner:f,target:null,color:'#880000',
+        life:70,radius:8,dmg:beamDmg*0.5,
+        explosive:false,homing:false,
+      });
+    });
+    spawnBurst(f.x,f.y,'#ff4400',6,3);
+  }
+  // Poison element: 5 blood hits = poison stack
+  if(f.elementActive&&f.elem.id==='toxic'&&f.chosoBloodHits>=5){
+    f.chosoBloodHits=0;
+    if(enemy.alive){
+      enemy.burnTimer=Math.max(enemy.burnTimer,180);
+      enemy.burnDmg=Math.max(enemy.burnDmg,f.atk*0.15);
+      spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'BLOOD POISON','#aa44cc',false);
+      spawnBurst(enemy.x,enemy.y,'#aa44cc',8,3);
+    }
+  }
+  shakeTimer=3;shakeAmt=2;
+}
+
+function chosoDetonateOrb(f,orb,enemy,chaos){
+  if(!orb.alive)return;
+  orb.alive=false;
+  const dmg=f.atk*(0.8+chaos*0.08);
+  // Explosion at orb position
+  explosions.push({x:orb.x,y:orb.y,radius:0,maxRadius:50,color:'#cc0000',life:18,maxLife:18,dmg:dmg,owner:f,target:null,hit:false});
+  spawnBurst(orb.x,orb.y,'#cc0000',15,5);
+  spawnBurst(orb.x,orb.y,'#ff4444',10,4);
+  SFX.chosoSupernova();
+  // Ice element: spawn rotating buzzsaw at orb position
+  if(f.elementActive&&f.elem.id==='cryo'){
+    const sawAngle=Math.random()*Math.PI*2;
+    projectiles.push({
+      x:orb.x,y:orb.y,
+      vx:Math.cos(sawAngle)*3,vy:Math.sin(sawAngle)*3,
+      owner:f,target:null,color:'#77ddff',
+      life:90,radius:14,dmg:f.atk*0.4,
+      explosive:false,homing:false,isChosoBuzzsaw:true,
+    });
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -1624,6 +1759,7 @@ function useSpecial(f,enemy){
     case 'berserk':relicBerserk(f,enemy);break;
     case 'smasher':relicSmasher(f,enemy);break;
     case 'gojo':relicGojo(f,enemy);break;
+    case 'choso':relicChoso(f,enemy);break;
   }
 }
 
@@ -1827,6 +1963,42 @@ function relicSmasher(f,enemy){
   shakeTimer=2;shakeAmt=2;
   SFX.warning();
   addLog((f.side===0?'P1':'P2')+' YOU\'RE NOTHING BUT MEAT!');
+}
+
+function relicChoso(f,enemy){
+  // FLOWING RED SCALE: buff stats + spawn blood orbs + switch to Blood Edge melee
+  f.specialTimer=480; // ~8 seconds total
+  f.chosoRedScaleActive=true;
+  f.chosoRedScaleTimer=480;
+  // Stat buffs: +30% atk, +40% speed, +20% dmg reduction
+  f.atk=Math.round(f.baseAtk*1.3);
+  f.speed=f.baseSpeed*1.4;
+  // Spawn 20 blood orbs across arena
+  f.chosoOrbs=[];
+  for(let i=0;i<20;i++){
+    f.chosoOrbs.push({
+      x:ARENA.x+30+Math.random()*(ARENA.w-60),
+      y:ARENA.y+30+Math.random()*(ARENA.h-60),
+      alive:true,
+    });
+  }
+  // Switch to Blood Edge melee after a brief delay
+  f.chosoBloodEdge=true;
+  f.chosoEdgeForm=Math.random()<0.5?'sword':'dagger';
+  f.chosoEdgeTimer=420; // 7 seconds
+  // Dagger = more speed + turn speed
+  if(f.chosoEdgeForm==='dagger'){
+    f.speed=f.baseSpeed*1.7;
+  }
+  SFX.chosoRedScale();
+  spawnBurst(f.x,f.y,'#8b0000',40,10);
+  spawnBurst(f.x,f.y,'#cc0000',30,8);
+  spawnBurst(f.x,f.y,'#ff4444',20,6);
+  for(let r=0;r<3;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60+r*25,color:'#8b0000',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  shakeTimer=15;shakeAmt=8;
+  addLog((f.side===0?'P1':'P2')+' FLOWING RED SCALE! ('+f.chosoEdgeForm.toUpperCase()+')');
 }
 
 // ============================================================
@@ -2346,6 +2518,58 @@ function updateRelicSmasher(f,enemy,dt){
   }
 }
 
+function updateRelicChoso(f,enemy,dt){
+  // Blood Edge melee timer
+  if(f.chosoBloodEdge){
+    f.chosoEdgeTimer-=dt;
+    // Blood aura particles
+    if(battleTime%3<1){
+      spawnParticle(f.x+rand(-15,15),f.y+rand(-15,15),pick(['#8b0000','#cc0000','#ff4444']),0,-1,12,2);
+    }
+    // Dagger form: slightly boost speed continuously
+    if(f.chosoEdgeForm==='dagger'){
+      const spd=Math.hypot(f.vx,f.vy);
+      if(spd>0.5){
+        const a=Math.atan2(f.vy,f.vx);
+        f.vx+=Math.cos(a)*0.15;f.vy+=Math.sin(a)*0.15;
+      }
+    }
+    if(f.chosoEdgeTimer<=0){
+      // Blood Edge ends — detonate ALL remaining orbs simultaneously (Supernova Compress)
+      f.chosoBloodEdge=false;
+      const chaos=getChaosLevel(f);
+      let orbsDetonated=0;
+      f.chosoOrbs.forEach(orb=>{
+        if(orb.alive){
+          chosoDetonateOrb(f,orb,enemy,chaos);
+          orbsDetonated++;
+        }
+      });
+      if(orbsDetonated>0){
+        SFX.megaExplosion();
+        shakeTimer=15;shakeAmt=10;
+        triggerScreenFlash('#cc0000',10);triggerHitFreeze(5);
+        addLog('SUPERNOVA COMPRESS! ('+orbsDetonated+' orbs)');
+      }
+    }
+  }
+  // Flowing Red Scale buff duration
+  if(f.chosoRedScaleActive){
+    f.chosoRedScaleTimer-=dt;
+    // Damage reduction during Red Scale: take 20% less
+    // (applied in dealDamage via a check)
+    if(f.chosoRedScaleTimer<=0){
+      f.chosoRedScaleActive=false;
+      f.atk=f.baseAtk;
+      f.speed=f.baseSpeed;
+      f.chosoBloodEdge=false;
+      addLog((f.side===0?'P1':'P2')+' Red Scale faded');
+      spawnBurst(f.x,f.y,'#8b0000',8,4);
+    }
+  }
+  // Draw orb pulsing (visual update is in drawBall, but keep orbs alive check here)
+}
+
 // ============================================================
 // BATTLE UPDATE
 // ============================================================
@@ -2453,6 +2677,7 @@ function updateBattle(dt){
         case 'berserk':updateRelicBerserk(f,enemy,dt);break;
         case 'smasher':updateRelicSmasher(f,enemy,dt);break;
         case 'gojo':updateRelicGojo(f,enemy,dt);break;
+        case 'choso':updateRelicChoso(f,enemy,dt);break;
       }
     }
 
@@ -2875,6 +3100,19 @@ function updateBattle(dt){
           addLog('GOJO SPIN!');
         }
         shakeTimer=5;shakeAmt=3;
+      }
+      // Choso Piercing Blood: track blood hits for poison stacking
+      if(p.isChosoPiercing&&p.owner){
+        p.owner.chosoBloodHits++;
+        if(p.owner.elementActive&&p.owner.elem.id==='toxic'&&p.owner.chosoBloodHits>=5){
+          p.owner.chosoBloodHits=0;
+          if(p.target&&p.target.alive){
+            p.target.burnTimer=Math.max(p.target.burnTimer,180);
+            p.target.burnDmg=Math.max(p.target.burnDmg,p.owner.atk*0.15);
+            spawnDmgNum(p.target.x,p.target.y-p.target.radius-25,'BLOOD POISON','#aa44cc',false);
+            spawnBurst(p.target.x,p.target.y,'#aa44cc',8,3);
+          }
+        }
       }
       // Throwing weapon on hit: return instantly
       if(p.isThrowWeapon&&p.owner){
@@ -3406,6 +3644,77 @@ function drawBall(f){
     X.restore();
   }
 
+  // Choso face — dark hair, blood marks on face
+  if(f.char.id==='choso'){
+    X.save();
+    const hx=f.x,hy=f.y;
+    // Dark messy hair — two-toned (dark brown/black, tied up in bun)
+    X.fillStyle='#1a1010';
+    // Hair base
+    X.beginPath();
+    X.ellipse(hx,hy-f.radius*0.4,f.radius*0.7,f.radius*0.3,0,Math.PI,0);
+    X.fill();
+    // Side strands
+    X.beginPath();
+    X.moveTo(hx-f.radius*0.6,hy-f.radius*0.45);
+    X.quadraticCurveTo(hx-f.radius*0.75,hy-f.radius*0.1,hx-f.radius*0.6,hy+f.radius*0.05);
+    X.lineTo(hx-f.radius*0.45,hy-f.radius*0.15);
+    X.closePath();X.fill();
+    X.beginPath();
+    X.moveTo(hx+f.radius*0.6,hy-f.radius*0.45);
+    X.quadraticCurveTo(hx+f.radius*0.7,hy-f.radius*0.1,hx+f.radius*0.55,hy+f.radius*0.05);
+    X.lineTo(hx+f.radius*0.4,hy-f.radius*0.15);
+    X.closePath();X.fill();
+    // Top bun/tied section
+    X.beginPath();
+    X.arc(hx,hy-f.radius*0.7,f.radius*0.2,0,Math.PI*2);
+    X.fill();
+    // Messy front fringe strands
+    X.strokeStyle='#1a1010';X.lineWidth=2.5;
+    X.beginPath();X.moveTo(hx-f.radius*0.15,hy-f.radius*0.5);
+    X.quadraticCurveTo(hx-f.radius*0.2,hy-f.radius*0.2,hx-f.radius*0.1,hy-f.radius*0.05);X.stroke();
+    X.beginPath();X.moveTo(hx+f.radius*0.1,hy-f.radius*0.52);
+    X.quadraticCurveTo(hx+f.radius*0.15,hy-f.radius*0.25,hx+f.radius*0.05,hy-f.radius*0.02);X.stroke();
+    // Blood marks on face — distinctive marks from the anime (dark red lines on nose bridge and cheeks)
+    X.strokeStyle=f.chosoRedScaleActive?'#ff2222':'#8b0000';
+    X.lineWidth=2;
+    // Nose bridge mark — thick vertical line
+    X.beginPath();X.moveTo(hx,hy-f.radius*0.2);X.lineTo(hx,hy+f.radius*0.1);X.stroke();
+    // Cheek marks — horizontal dashes under eyes
+    X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-f.radius*0.35,hy-f.radius*0.05);X.lineTo(hx-f.radius*0.15,hy-f.radius*0.05);X.stroke();
+    X.beginPath();X.moveTo(hx+f.radius*0.15,hy-f.radius*0.05);X.lineTo(hx+f.radius*0.35,hy-f.radius*0.05);X.stroke();
+    // Eyes — dark, determined
+    X.beginPath();X.arc(hx-f.radius*0.18,hy-f.radius*0.12,f.radius*0.07,0,Math.PI*2);
+    X.fillStyle=f.chosoRedScaleActive?'#ff4444':'#2a0808';X.fill();
+    if(f.chosoRedScaleActive){X.shadowColor='#ff0000';X.shadowBlur=6;X.fill();X.shadowBlur=0;}
+    X.beginPath();X.arc(hx+f.radius*0.18,hy-f.radius*0.12,f.radius*0.07,0,Math.PI*2);
+    X.fillStyle=f.chosoRedScaleActive?'#ff4444':'#2a0808';X.fill();
+    if(f.chosoRedScaleActive){X.shadowColor='#ff0000';X.shadowBlur=6;X.fill();X.shadowBlur=0;}
+    // Red Scale glow aura
+    if(f.chosoRedScaleActive){
+      const pulse=Math.sin(battleTime*0.1)*4;
+      X.beginPath();X.arc(hx,hy,f.radius+5+pulse,0,Math.PI*2);
+      const rg=X.createRadialGradient(hx,hy,f.radius,hx,hy,f.radius+10+pulse);
+      rg.addColorStop(0,'rgba(139,0,0,0.3)');rg.addColorStop(1,'rgba(139,0,0,0)');
+      X.fillStyle=rg;X.fill();
+    }
+    X.restore();
+  }
+
+  // Draw Choso blood orbs
+  if(f.char.id==='choso'&&f.chosoOrbs){
+    f.chosoOrbs.forEach(orb=>{
+      if(!orb.alive)return;
+      const pulse=Math.sin(battleTime*0.15+orb.x*0.1)*2;
+      X.beginPath();X.arc(orb.x,orb.y,6+pulse,0,Math.PI*2);
+      X.fillStyle='#cc0000';X.fill();
+      X.shadowColor='#ff0000';X.shadowBlur=8;X.fill();X.shadowBlur=0;
+      X.beginPath();X.arc(orb.x,orb.y,3+pulse*0.5,0,Math.PI*2);
+      X.fillStyle='#ff4444';X.fill();
+    });
+  }
+
   // HP text in center
   X.font='bold 13px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
   X.strokeStyle='#000';X.lineWidth=3;
@@ -3558,6 +3867,11 @@ function drawBall(f){
       const state=f.gojoAwakened?'AWK':'BOSS';
       X.fillText('INF:'+infTxt+' '+state,f.x,statY);
       break;}
+    case 'choso':{
+      const mode=f.chosoBloodEdge?(f.chosoEdgeForm==='sword'?'SWORD':'DAGGER'):'BEAM';
+      const orbs=f.chosoOrbs?f.chosoOrbs.filter(o=>o.alive).length:0;
+      X.fillText(mode+(f.chosoRedScaleActive?' RDS':'')+(orbs>0?' Orb:'+orbs:''),f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -3587,6 +3901,7 @@ function drawWeapon(f){
     case 'berserk':drawBerserkWeapon(r,ext,flash,f);break;
     case 'smasher':drawSmasherWeapon(r,ext,flash,f);break;
     case 'gojo':drawGojoWeapon(r,ext,flash,f);break;
+    case 'choso':drawChosoWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -3644,6 +3959,53 @@ function drawGojoWeapon(r,ext,flash,f){
       }
     }
     X.restore();
+  }
+}
+
+function drawChosoWeapon(r,ext,flash,f){
+  // Blood Edge melee mode: sword or dagger
+  if(f.chosoBloodEdge){
+    const isSword=f.chosoEdgeForm==='sword';
+    const bladeLen=isSword?50:32;
+    const bladeW=isSword?6:4;
+    // Blood blade — dark red, glowing
+    X.beginPath();
+    X.moveTo(r-5,-bladeW);
+    X.lineTo(r+bladeLen,0);
+    X.lineTo(r-5,bladeW);
+    X.closePath();
+    const bg=X.createLinearGradient(r-5,0,r+bladeLen,0);
+    bg.addColorStop(0,'#660000');bg.addColorStop(0.5,'#cc0000');bg.addColorStop(1,'#ff2222');
+    X.fillStyle=bg;X.fill();
+    X.strokeStyle='#880000';X.lineWidth=0.8;X.stroke();
+    // Blood drip glow
+    X.shadowColor='#ff0000';X.shadowBlur=flash?12:6;
+    X.strokeStyle='rgba(255,0,0,0.6)';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(r,0);X.lineTo(r+bladeLen-5,0);X.stroke();
+    X.shadowBlur=0;
+    // Hand area
+    X.fillStyle='#1a0808';X.fillRect(r-12,-5,10,10);
+  } else {
+    // Normal: blood beam charging visual — orbiting blood droplets
+    const t=battleTime*0.08;
+    X.save();
+    X.rotate(-f.weaponAngle);
+    for(let i=0;i<3;i++){
+      const a=t+i*Math.PI*2/3;
+      const ox=Math.cos(a)*r*0.8;
+      const oy=Math.sin(a)*r*0.5;
+      X.beginPath();X.arc(ox,oy,4,0,Math.PI*2);
+      X.fillStyle='#cc0000';X.fill();
+      X.shadowColor='#ff0000';X.shadowBlur=flash?8:4;X.fill();X.shadowBlur=0;
+    }
+    X.restore();
+    // Charging glow at front
+    if(flash){
+      X.beginPath();X.arc(r+10,0,8,0,Math.PI*2);
+      const cg=X.createRadialGradient(r+10,0,2,r+10,0,8);
+      cg.addColorStop(0,'#ff4444');cg.addColorStop(1,'rgba(139,0,0,0)');
+      X.fillStyle=cg;X.fill();
+    }
   }
 }
 
@@ -4684,6 +5046,17 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.fillStyle='#9944ff';X.fill();
       X.shadowColor='#9944ff';X.shadowBlur=3;X.fill();X.shadowBlur=0;
       break;
+    case 'choso':
+      // Blood blade — dark red sword shape
+      X.beginPath();X.moveTo(-4,-3);X.lineTo(18,0);X.lineTo(-4,3);X.closePath();
+      const cbg=X.createLinearGradient(-4,0,18,0);
+      cbg.addColorStop(0,'#660000');cbg.addColorStop(0.5,'#cc0000');cbg.addColorStop(1,'#ff2222');
+      X.fillStyle=cbg;X.fill();
+      X.shadowColor='#ff0000';X.shadowBlur=4;X.fill();X.shadowBlur=0;
+      // Blood droplets
+      X.beginPath();X.arc(-8,-4,3,0,Math.PI*2);X.fillStyle='#cc0000';X.fill();
+      X.beginPath();X.arc(-8,4,3,0,Math.PI*2);X.fillStyle='#880000';X.fill();
+      break;
   }
   X.restore();
 }
@@ -5654,6 +6027,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'berserk':statLine='x'+Math.floor(6+chaos*0.8)+' Spread:'+Math.round(Math.max(15,60-chaos*4))+'%';break;
     case 'smasher':statLine='RKT:'+Math.round(f.atk*(1.8+chaos*0.2))+' BOSS';break;
     case 'gojo':statLine='INF:'+f.gojoInfinityCharges+'/'+f.gojoInfinityMax+(f.gojoAwakened?' AWK':' BOSS');break;
+    case 'choso':{const mode=f.chosoBloodEdge?(f.chosoEdgeForm==='sword'?'SWORD':'DAGGER'):'BEAM';const orbs=f.chosoOrbs?f.chosoOrbs.filter(o=>o.alive).length:0;statLine=mode+(f.chosoRedScaleActive?' RDS':'')+(orbs>0?' Orb:'+orbs:'');break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
