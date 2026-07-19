@@ -7725,28 +7725,37 @@ function drawTitle(){
 
   X.font=(isMobile?'13':'16')+'px Consolas,Courier New,monospace';
   X.fillStyle='#888';
-  X.fillText('Cyberpunk Combat',W/2,titleY+65);
+  X.fillText('16 Fighters // 4 Elements',W/2,titleY+65);
 
   const t=Date.now()*0.002;
-  const charSpacing=Math.min(isMobile?72:90,Math.floor((W-80)/CHARS.length));
-  const charOffset=(CHARS.length-1)/2;
-  CHARS.forEach((ch,i)=>{
-    const bx=W/2+(i-charOffset)*charSpacing;
-    const by=titleY+130+Math.sin(t+i)*10;
-    const br=isMobile?28:32;
-    const g=X.createRadialGradient(bx-br*0.2,by-br*0.2,br*0.1,bx,by,br);
-    g.addColorStop(0,lighten(ch.color,40));g.addColorStop(1,ch.color);
-    X.beginPath();X.arc(bx,by,br,0,Math.PI*2);X.fillStyle=g;X.fill();
-    X.strokeStyle=darken(ch.color,20);X.lineWidth=1.5;X.stroke();
-    X.beginPath();X.arc(bx-br*0.25,by-br*0.25,br*0.15,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.3)';X.fill();
-    drawMiniWeapon(bx+br+4,by,ch.id,br*1.2);
-  });
+  // Two rows of characters for 16+ roster
+  const charsPerRow=Math.ceil(CHARS.length/2);
+  const br=isMobile?18:22;
+  const charSpacing=Math.min(isMobile?50:60,Math.floor((W-60)/charsPerRow));
+  for(let row=0;row<2;row++){
+    const startIdx=row*charsPerRow;
+    const endIdx=Math.min(startIdx+charsPerRow,CHARS.length);
+    const rowCount=endIdx-startIdx;
+    const rowOffset=(rowCount-1)/2;
+    for(let i=startIdx;i<endIdx;i++){
+      const ch=CHARS[i];
+      const ci=i-startIdx;
+      const bx=W/2+(ci-rowOffset)*charSpacing;
+      const by=titleY+110+row*55+Math.sin(t+i*0.7)*8;
+      const g=X.createRadialGradient(bx-br*0.2,by-br*0.2,br*0.1,bx,by,br);
+      g.addColorStop(0,lighten(ch.color,40));g.addColorStop(1,ch.color);
+      X.beginPath();X.arc(bx,by,br,0,Math.PI*2);X.fillStyle=g;X.fill();
+      X.strokeStyle=darken(ch.color,20);X.lineWidth=1.5;X.stroke();
+      X.beginPath();X.arc(bx-br*0.25,by-br*0.25,br*0.15,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.3)';X.fill();
+      drawMiniWeapon(bx+br+2,by,ch.id,br*1);
+    }
+  }
 
   const btnW=200,btnH=50;
-  addBtn('start',W/2-btnW/2,titleY+190,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
-  addBtn('boss',W/2-btnW/2,titleY+250,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
+  addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
+  addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v7.2 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v8.0.5 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
