@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.9 — Nanami (15th char) + bandage blade + Overtime special
+// BALL BATTLE ARENA v7.9.2 — polish batch: Gojo purple CD+bigger, Kashimo time-charge, crack no-slow, Nanami crit HUD, Smasher afterimage, boss elem descriptions
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -291,7 +291,7 @@ const CHARS=[
     desc:'Lightning staff. MYTHICAL BEAST AMBER one-time ultimate.',
     playstyle:'Staff & Lightning',
     stats:{hp:520,atk:28,speed:4.2,range:85,def:7,crit:18},
-    baseAtkInterval:38,relicChargeRate:0.9,
+    baseAtkInterval:38,relicChargeRate:0.1,
     specialName:'MYTHICAL BEAST AMBER',
   },
   {
@@ -621,6 +621,7 @@ function createFighter(charIdx,elemIdx,side){
     smasherWarningAngle:0, // angle of warning cone
     smasherWarningReady:false, // rockets fire when warning ends
     smasherAirborne:false, // in air during slam
+    smasherAfterimages:[], // afterimage trail during ult {x,y,alpha}
     smasherSlamTarget:null, // {x,y} landing target
     smasherSlamTimer:0, // timer for air → slam
     smasherSlamWarning:0, // warning display timer
@@ -645,6 +646,7 @@ function createFighter(charIdx,elemIdx,side){
     gojoDomainChargeTimer:0, // charging purple during domain
     gojoDomainBg:false, // show void background
     gojoPurpleChance:0, // chance for 200% purple on normal attacks (awakened)
+    gojoPurpleCD:0, // cooldown between purple shots (prevents spam at high chaos)
     _gojoPurpleWarning:0, // relic warning timer
     _gojoPurpleAngle:0, // relic aim direction
     // Choso state
@@ -1428,23 +1430,25 @@ function attackGojo(f,enemy,chaos){
     if(f.elem.id==='cryo'){}// handled in purple chance below
   }
   const d=dist(f,enemy);
-  // Awakened: chance for Strong Purple on normal attacks (reduced frequency)
+  // Awakened: chance for Strong Purple on normal attacks (reduced frequency + cooldown)
   let purpleChance=f.gojoAwakened?0.07:0; // reduced from 0.15
   if(f.elementActive&&f.elem.id==='cryo')purpleChance+=0.05;
-  if(purpleChance>0&&Math.random()<purpleChance){
-    // Strong Purple — powerful but NOT one-shot
+  if(purpleChance>0&&f.gojoPurpleCD<=0&&Math.random()<purpleChance){
+    // Strong Purple — powerful but NOT one-shot, bigger projectile
+    f.gojoPurpleCD=180; // 3 second cooldown between purples
     SFX.gojoPurple();
     const ba=angle(f,enemy);
     const beamDmg=f.atk*1.3*dmgMult; // toned down from 2x
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
-      vx:Math.cos(ba)*10,vy:Math.sin(ba)*10,
+      vx:Math.cos(ba)*8,vy:Math.sin(ba)*8,
       owner:f,target:null,color:'#7722cc',
-      life:60,radius:16,dmg:beamDmg,
+      life:80,radius:24,dmg:beamDmg,
       explosive:false,homing:false,isGojoPurple:true,
     });
-    spawnBurst(f.x,f.y,'#7722cc',20,6);
-    spawnBurst(f.x,f.y,'#aa55ff',12,4);
+    spawnBurst(f.x,f.y,'#7722cc',25,8);
+    spawnBurst(f.x,f.y,'#aa55ff',18,6);
+    spawnBurst(f.x,f.y,'#cc88ff',10,4);
     spawnDmgNum(f.x,f.y-f.radius-25,'PURPLE!','#7722cc',true);
     shakeTimer=8;shakeAmt=5;
     f.gojoAttackMode='red';
@@ -3009,10 +3013,20 @@ function updateRelicSmasher(f,enemy,dt){
   // Mortar barrage from back-mounted artillery + melee fists when close
   if(!f._smasherMortarCD)f._smasherMortarCD=0;
   f._smasherMortarCD-=dt;
-  // Colorful relic aura particles
+  // Colorful relic aura particles + afterimage trail
   if(battleTime%3<1){
     const colors=['#cc4444','#ff6644','#ffcc00'];
     spawnParticle(f.x+rand(-15,15),f.y+rand(-15,15),pick(colors),0,-1,12,2);
+  }
+  // Spawn afterimage every 4 frames
+  if(battleTime%4<1){
+    if(!f.smasherAfterimages)f.smasherAfterimages=[];
+    f.smasherAfterimages.push({x:f.x,y:f.y,alpha:0.6});
+  }
+  // Fade afterimages
+  for(let i=(f.smasherAfterimages||[]).length-1;i>=0;i--){
+    f.smasherAfterimages[i].alpha-=0.02*dt;
+    if(f.smasherAfterimages[i].alpha<=0)f.smasherAfterimages.splice(i,1);
   }
   // Fire mortar rounds at enemy positions periodically
   if(f._smasherMortarCD<=0){
@@ -3732,6 +3746,8 @@ function updateBattle(dt){
 
     // Special bar passive fill (slow time-based + attack bonus is the main driver)
     f.specialBar=Math.min(f.specialMax,f.specialBar+0.025*(f.char.relicChargeRate||1)*dt);
+    // Kashimo: time-based charge (~25 seconds), combat contributes minimally
+    if(f.char.id==='kashimo')f.specialBar=Math.min(f.specialMax,f.specialBar+0.067*dt);
 
     // Check if should use relic special
     if(f.specialBar>=f.specialMax&&!f.specialActive&&enemy.alive){
@@ -4227,6 +4243,8 @@ function updateBattle(dt){
 
     // Gojo per-frame: infinity regen, spin mechanic, revival, chaos scaling
     if(f.char.id==='gojo'){
+      // Purple cooldown tick
+      if(f.gojoPurpleCD>0)f.gojoPurpleCD-=dt;
       // Infinity regen — slow passive regen
       if(f.gojoInfinityCharges<f.gojoInfinityMax){
         f.gojoInfinityRegenCD-=dt;
@@ -4694,7 +4712,6 @@ function updateBattle(dt){
           f.hp-=crackDmg;f.hitFlash=4;
           spawnDmgNum(f.x+rand(-10,10),f.y-f.radius-10,crackDmg,'#ffaa00',false);
           spawnParticle(f.x,f.y+f.radius,'#ffaa00',0,-2,10,2);
-          f.slowTimer=Math.max(f.slowTimer,20);
           wc.dmgCooldown=25;
           if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(wc.owner);}
         }
@@ -4778,6 +4795,19 @@ function drawBall(f){
   // Shadow
   X.beginPath();X.ellipse(f.x,f.y+f.radius+8,f.radius*0.7,6,0,0,Math.PI*2);
   X.fillStyle='rgba(0,0,0,0.3)';X.fill();
+
+  // Smasher afterimage trail during ult
+  if(f.char.id==='smasher'&&f.specialActive&&f.smasherAfterimages){
+    f.smasherAfterimages.forEach(ai=>{
+      X.globalAlpha=ai.alpha*0.5;
+      const ag=X.createRadialGradient(ai.x,ai.y,0,ai.x,ai.y,f.radius*1.2);
+      ag.addColorStop(0,'rgba(255,68,68,0.4)');ag.addColorStop(0.5,'rgba(255,100,50,0.2)');ag.addColorStop(1,'rgba(255,50,50,0)');
+      X.fillStyle=ag;X.beginPath();X.arc(ai.x,ai.y,f.radius*1.2,0,Math.PI*2);X.fill();
+      X.globalAlpha=ai.alpha*0.3;
+      X.beginPath();X.arc(ai.x,ai.y,f.radius,0,Math.PI*2);X.fillStyle=f.char.color+'88';X.fill();
+    });
+    X.globalAlpha=alpha;
+  }
 
   // Element aura
   if(f.elementActive){
@@ -5679,8 +5709,10 @@ function drawBall(f){
       break;}
     case 'nanami':{
       const mode=f.nanamiOvertimeActive?'OVERTIME':'BLADE';
-      const rs=f.nanamiRatioStacks%7;
-      X.fillText(mode+' R:'+rs+'/7'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:''),f.x,statY);
+      const chaos=getChaosLevel(f);
+      let cr=f.crit+chaos*1.5;if(f.nanamiOvertimeActive)cr=Math.min(90,cr+35);
+      const cm=f.nanamiOvertimeActive?2.4:(f.elementActive&&f.elem.id==='electric'?1.4:1.8);
+      X.fillText(mode+' '+Math.round(cr)+'%cr '+cm.toFixed(1)+'x'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:''),f.x,statY);
       break;}
   }
 
@@ -8126,7 +8158,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'toji':statLine=f.tojiStaffSection.toUpperCase()+(f.tojiTriActive?' TRI':'');break;
     case 'mechamaru':statLine='P'+f.mechaPhase+(f.mechaPhase===2?' ULT':'')+(f.mechaUltShield?' SHD':'')+(f.mechaPhase===3?' '+Math.ceil(f.mechaTrueFormTimer/60)+'s':'');break;
     case 'kashimo':statLine=(f.kashimoDartPhase!=='idle'?'DART ':'STAFF ')+(f.kashimoAmberUsed?'':'AMBER');break;
-    case 'nanami':statLine='R:'+(f.nanamiRatioStacks%7)+'/7'+(f.nanamiOvertimeActive?' OT':'')+(f.nanamiIceShattered?' FIST':'')+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:'');break;
+    case 'nanami':{const chaos=getChaosLevel(f);let cr=f.crit+chaos*1.5;if(f.nanamiOvertimeActive)cr=Math.min(90,cr+35);const cm=f.nanamiOvertimeActive?2.4:(f.elementActive&&f.elem.id==='electric'?1.4:1.8);statLine=(f.nanamiOvertimeActive?'OT ':'')+(f.nanamiIceShattered?'FIST ':'')+Math.round(cr)+'%cr '+cm.toFixed(1)+'x'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:'');break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
@@ -8267,15 +8299,22 @@ function drawBossSelect(){
         {label:'BOSS ELEMENT',color:'#cc4444',sel:bossElem,pfx:'beb',cb:(i)=>{bossElem=i;},char:CHARS[bossChar]},
       ];
       elemRows.forEach((er,ri)=>{
-        const ey=sumY+ri*48;
+        const ey=sumY+ri*60;
         X.font='bold 10px Consolas,monospace';X.textAlign='left';
         X.fillStyle=er.color;
         X.fillText(er.label+' ('+er.char.name+')',10,ey);
         const pickerW=5*(37+3)-3;
         const pickerX=Math.floor((W-pickerW)/2);
         drawElementPickerMobile(pickerX,ey+6,er.sel,er.pfx,er.cb);
+        // Show element effect description
+        const selElem=ELEMENTS[er.sel];
+        if(selElem&&selElem.id!=='none'){
+          const key=er.char.id+'_'+selElem.id;
+          const desc=COMBO_EFFECTS[key]||'';
+          if(desc){X.font='8px Consolas,monospace';X.textAlign='center';X.fillStyle=selElem.color+'cc';X.fillText(desc,W/2,ey+48);}
+        }
       });
-      sumY+=4*48+8;
+      sumY+=4*60+8;
     } else {
       X.font='bold 12px Consolas,monospace';X.textAlign='center';
       const eColW=Math.floor(W/3)-10;
@@ -8285,10 +8324,31 @@ function drawBossSelect(){
       drawElementPicker(5,sumY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
       drawElementPicker(W/3+5,sumY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
       drawElementPicker(W*2/3+5,sumY+8,teamElem3,'be3',(i)=>{teamElem3=i;});
-      sumY+=65;
-      X.fillStyle='#cc4444';X.fillText('BOSS ELEMENT ('+CHARS[bossChar].name+')',W/2,sumY);
+      // Element effect descriptions for team
+      sumY+=58;
+      const teamElems=[{idx:teamChar1,sel:teamElem1,c:'#4488ff'},{idx:teamChar2,sel:teamElem2,c:'#33cc66'},{idx:teamChar3,sel:teamElem3,c:'#ff8833'}];
+      X.font='10px Consolas,monospace';
+      teamElems.forEach((te,ti)=>{
+        const selElem=ELEMENTS[te.sel];
+        if(selElem&&selElem.id!=='none'){
+          const key=CHARS[te.idx].id+'_'+selElem.id;
+          const desc=COMBO_EFFECTS[key]||'';
+          if(desc){X.textAlign='center';X.fillStyle=selElem.color+'cc';X.fillText(desc,eColW/2+5+ti*(W/3),sumY);}
+        }
+      });
+      sumY+=20;
+      X.font='bold 12px Consolas,monospace';
+      X.fillStyle='#cc4444';X.textAlign='center';X.fillText('BOSS ELEMENT ('+CHARS[bossChar].name+')',W/2,sumY);
       drawElementPicker(W/2-130,sumY+8,bossElem,'beb',(i)=>{bossElem=i;});
-      sumY+=55;
+      // Boss element description
+      sumY+=58;
+      const bossEl=ELEMENTS[bossElem];
+      if(bossEl&&bossEl.id!=='none'){
+        const bKey=CHARS[bossChar].id+'_'+bossEl.id;
+        const bDesc=COMBO_EFFECTS[bKey]||'';
+        if(bDesc){X.font='10px Consolas,monospace';X.textAlign='center';X.fillStyle=bossEl.color+'cc';X.fillText(bDesc,W/2,sumY);}
+      }
+      sumY+=15;
     }
 
     // Bottom: FIGHT + Back (goes to page 1)
