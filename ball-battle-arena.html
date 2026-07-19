@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v7.5 — Toji (JJK Heavenly Restriction), Playful Cloud 3-Section Staff
+// BALL BATTLE ARENA v7.5.3 — Toji bigger arena, Choso piercing ray + orb rework
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -579,6 +579,7 @@ function createFighter(charIdx,elemIdx,side){
     // Choso state
     chosoCharging:false, // charging piercing blood
     chosoChargeTimer:0, // frames of charge before firing
+    chosoPiercingFreeze:0, // freeze in place while firing piercing blood
     chosoBloodHits:0, // track hits for poison element
     chosoRedScaleActive:false, // flowing red scale buff
     chosoRedScaleTimer:0, // buff duration
@@ -610,6 +611,7 @@ function updatePhysics(f,dt){
   if(f.sandyTimeScale<1)spdMult*=f.sandyTimeScale; // Sandevistan slow
   if(f.stunTimer>0)spdMult=0.15;
   if(f.freezeTimer>0)spdMult=0.08;
+  if(f.chosoPiercingFreeze>0)spdMult=0; // Choso frozen while aiming
   if(f.slowTimer>0)spdMult*=0.55;
   if(f.captureTimer>0)spdMult=0.05; // nearly immobile when captured
 
@@ -940,6 +942,7 @@ function performWeaponAttack(f,enemy){
   if(!f.alive||!enemy.alive)return;
   if(f.captureTimer>0)return;
   if(f.stunTimer>0||f.freezeTimer>0)return;
+  if(f.chosoPiercingFreeze>0)return; // Choso frozen while firing beam
   // Monowire+electric: short circuit makes attacks miss sometimes
   if(f.missChance>0&&Math.random()<f.missChance){
     spawnDmgNum(f.x,f.y-f.radius-10,'MISS','#ffcc00',false);
@@ -1367,10 +1370,11 @@ function attackChoso(f,enemy,chaos){
       spawnBurst(enemy.x,enemy.y,'#cc0000',6,3);
       shakeTimer=5;shakeAmt=3;
     }
-    // Check if near any blood orbs — detonate on melee hit
+    // Check if near any blood orbs — detonate on melee hit (generous range)
     f.chosoOrbs.forEach(orb=>{
       if(!orb.alive)return;
-      if(dist(f,orb)<meleeRange+20){
+      if(dist(f,orb)<meleeRange+40){
+        spawnDmgNum(orb.x,orb.y-15,'BLOOD DETONATION','#ff4444',false);
         chosoDetonateOrb(f,orb,enemy,chaos);
       }
     });
@@ -1386,20 +1390,22 @@ function attackChoso(f,enemy,chaos){
     }
     return;
   }
-  // Normal: Piercing Blood — charge briefly, fire thick blood beam
+  // Normal: Piercing Blood — Choso pauses to aim, fires a stationary ray beam
   f.weaponFlash=12;
   SFX.chosoPiercing();
   const ba=angle(f,enemy);
-  const beamSpeed=5+chaos*0.3;
-  let trackSpeed=0.008+chaos*0.001; // slow homing
-  if(f.elementActive&&f.elem.id==='electric')trackSpeed=0.03+chaos*0.002; // lightning: much faster tracking
+  // Freeze Choso in place while firing
+  f.vx=0;f.vy=0;
+  f.chosoPiercingFreeze=25; // freeze for ~0.4s
   const beamDmg=f.atk*(1.0+chaos*0.1);
+  // Ray beam: travels fast in straight line, no homing
+  const beamSpeed=12+chaos*0.5;
   projectiles.push({
     x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
     vx:Math.cos(ba)*beamSpeed,vy:Math.sin(ba)*beamSpeed,
-    owner:f,target:enemy,color:'#cc0000',
-    life:100,radius:12+chaos,dmg:beamDmg,
-    explosive:false,homing:true,homingStrength:trackSpeed,
+    owner:f,target:null,color:'#cc0000',
+    life:60,radius:14+chaos,dmg:beamDmg,
+    explosive:false,homing:false,
     isChosoPiercing:true,
   });
   spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#cc0000',10,4);
@@ -1435,11 +1441,14 @@ function chosoDetonateOrb(f,orb,enemy,chaos){
   if(!orb.alive)return;
   orb.alive=false;
   const dmg=f.atk*(0.8+chaos*0.08);
-  // Explosion at orb position
-  explosions.push({x:orb.x,y:orb.y,radius:0,maxRadius:50,color:'#cc0000',life:18,maxLife:18,dmg:dmg,owner:f,target:null,hit:false});
-  spawnBurst(orb.x,orb.y,'#cc0000',15,5);
-  spawnBurst(orb.x,orb.y,'#ff4444',10,4);
+  // Bigger explosion at orb position + chain visual
+  explosions.push({x:orb.x,y:orb.y,radius:0,maxRadius:80,color:'#cc0000',life:22,maxLife:22,dmg:dmg,owner:f,target:null,hit:false});
+  explosions.push({x:orb.x,y:orb.y,radius:0,maxRadius:55,color:'#ff4444',life:18,maxLife:18,dmg:0,owner:null,target:null,hit:true});
+  spawnBurst(orb.x,orb.y,'#cc0000',25,7);
+  spawnBurst(orb.x,orb.y,'#ff4444',18,6);
+  spawnBurst(orb.x,orb.y,'#ff8888',10,4);
   SFX.chosoSupernova();
+  shakeTimer=Math.max(shakeTimer,4);shakeAmt=Math.max(shakeAmt,4);
   // Ice element: spawn rotating buzzsaw at orb position
   if(f.elementActive&&f.elem.id==='cryo'){
     const sawAngle=Math.random()*Math.PI*2;
@@ -2113,7 +2122,7 @@ function relicToji(f,enemy){
   f.tojiDmgTakenDebuff=false;
   // Create triangle centered on enemy position
   const cx=enemy.x,cy=enemy.y;
-  const triRadius=120; // size of triangle
+  const triRadius=200; // size of triangle (enlarged)
   const baseAngle=Math.random()*Math.PI*2;
   f.tojiTriPoints=[];
   for(let i=0;i<3;i++){
@@ -2658,6 +2667,11 @@ function updateRelicSmasher(f,enemy,dt){
 }
 
 function updateRelicChoso(f,enemy,dt){
+  // Piercing Blood freeze (Choso stays in place while beam fires)
+  if(f.chosoPiercingFreeze>0){
+    f.chosoPiercingFreeze-=dt;
+    f.vx=0;f.vy=0;
+  }
   // Blood Edge melee timer
   if(f.chosoBloodEdge){
     f.chosoEdgeTimer-=dt;
@@ -4425,25 +4439,49 @@ function drawChosoWeapon(r,ext,flash,f){
   // Blood Edge melee mode: sword or dagger
   if(f.chosoBloodEdge){
     const isSword=f.chosoEdgeForm==='sword';
-    const bladeLen=isSword?50:32;
-    const bladeW=isSword?6:4;
-    // Blood blade — dark red, glowing
-    X.beginPath();
-    X.moveTo(r-5,-bladeW);
-    X.lineTo(r+bladeLen,0);
-    X.lineTo(r-5,bladeW);
-    X.closePath();
-    const bg=X.createLinearGradient(r-5,0,r+bladeLen,0);
-    bg.addColorStop(0,'#660000');bg.addColorStop(0.5,'#cc0000');bg.addColorStop(1,'#ff2222');
-    X.fillStyle=bg;X.fill();
-    X.strokeStyle='#880000';X.lineWidth=0.8;X.stroke();
-    // Blood drip glow
-    X.shadowColor='#ff0000';X.shadowBlur=flash?12:6;
-    X.strokeStyle='rgba(255,0,0,0.6)';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(r,0);X.lineTo(r+bladeLen-5,0);X.stroke();
-    X.shadowBlur=0;
-    // Hand area
-    X.fillStyle='#1a0808';X.fillRect(r-12,-5,10,10);
+    if(isSword){
+      // SWORD — long, wide, straight blood blade
+      const bladeLen=55,bladeW=7;
+      X.beginPath();
+      X.moveTo(r-5,-bladeW);
+      X.lineTo(r+bladeLen,-3);
+      X.lineTo(r+bladeLen+5,0);
+      X.lineTo(r+bladeLen,3);
+      X.lineTo(r-5,bladeW);
+      X.closePath();
+      const bg=X.createLinearGradient(r-5,0,r+bladeLen,0);
+      bg.addColorStop(0,'#660000');bg.addColorStop(0.5,'#cc0000');bg.addColorStop(1,'#ff2222');
+      X.fillStyle=bg;X.fill();
+      X.strokeStyle='#880000';X.lineWidth=1;X.stroke();
+      // Blood glow
+      X.shadowColor='#ff0000';X.shadowBlur=flash?14:8;
+      X.strokeStyle='rgba(255,0,0,0.6)';X.lineWidth=2;
+      X.beginPath();X.moveTo(r,0);X.lineTo(r+bladeLen,0);X.stroke();
+      X.shadowBlur=0;
+      // Cross guard
+      X.fillStyle='#440000';X.fillRect(r-6,-9,4,18);
+      // Handle
+      X.fillStyle='#1a0808';X.fillRect(r-14,-5,12,10);
+    } else {
+      // DAGGER — short, curved, fast-looking
+      const bladeLen=28,bladeW=5;
+      X.beginPath();
+      X.moveTo(r-3,-bladeW);
+      X.quadraticCurveTo(r+bladeLen*0.6,-bladeW-3,r+bladeLen,0);
+      X.quadraticCurveTo(r+bladeLen*0.6,bladeW+3,r-3,bladeW);
+      X.closePath();
+      const bg=X.createLinearGradient(r-3,0,r+bladeLen,0);
+      bg.addColorStop(0,'#880044');bg.addColorStop(0.5,'#dd2266');bg.addColorStop(1,'#ff4488');
+      X.fillStyle=bg;X.fill();
+      X.strokeStyle='#aa0033';X.lineWidth=0.8;X.stroke();
+      // Pink-red glow for dagger
+      X.shadowColor='#ff2266';X.shadowBlur=flash?12:6;
+      X.strokeStyle='rgba(255,34,102,0.6)';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(r+3,0);X.lineTo(r+bladeLen-3,0);X.stroke();
+      X.shadowBlur=0;
+      // Handle
+      X.fillStyle='#1a0808';X.fillRect(r-10,-4,8,8);
+    }
   } else {
     // Normal: blood beam charging visual — orbiting blood droplets
     const t=battleTime*0.08;
