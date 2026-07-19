@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.0 — Ryu (16th char) + Smasher time slow + polish
+// BALL BATTLE ARENA v8.0.1 — Choso nerf, Mechamaru nerf, scaling boost, Katana nerf+ice fix, Sandy buff, Ryu hair weapon
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -286,7 +286,7 @@ const CHARS=[
     id:'mechamaru',name:'Mechamaru',color:'#4a6a4a',
     desc:'3-phase mech. Drills + rockets → Ultimate → True Form.',
     playstyle:'Phase Shifter',
-    stats:{hp:600,atk:22,speed:3.0,range:160,def:10,crit:12},
+    stats:{hp:460,atk:18,speed:3.0,range:160,def:7,crit:12},
     baseAtkInterval:55,relicChargeRate:0.6,
     specialName:'ULTRA CANNON MODE!',
   },
@@ -522,7 +522,7 @@ function showRelicText(text,color){
 // CHAOS SCALING — hits + low HP = faster attacks + bigger effects
 // ============================================================
 function getChaosLevel(f){
-  const hitChaos=f.totalHits*0.015;
+  const hitChaos=f.totalHits*0.03;
   const hpRatio=1-f.hp/f.maxHp;
   const hpChaos=Math.max(0,hpRatio)*2.5;
   return Math.min(hitChaos+hpChaos,8); // cap at 8x
@@ -821,8 +821,9 @@ function updatePhysics(f,dt){
   if(spd<targetSpd*0.6){const boost=targetSpd*0.8/Math.max(spd,0.1);f.vx*=boost;f.vy*=boost;}
   else if(spd>targetSpd*1.8){const damp=targetSpd*1.4/spd;f.vx*=damp;f.vy*=damp;}
 
-  f.rotation+=f.spinSpeed*dt;
-  f.weaponAngle+=f.spinSpeed*dt;
+  const turnScale=f.sandyTimeScale<1?f.sandyTimeScale:1;
+  f.rotation+=f.spinSpeed*dt*turnScale;
+  f.weaponAngle+=f.spinSpeed*dt*turnScale;
   // Weapons always at full length — no mysterious extending/retracting
   f.weaponExtend=1;
   if(f.weaponFlash>0)f.weaponFlash-=dt;
@@ -937,6 +938,13 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       spawnDmgNum(defender.x,defender.y-defender.radius-15,earlyDmg,'#ffaa00');
       spawnBurst(defender.x,defender.y,'#ffcc00',8,3);
       if(defender.hp<=0){defender.hp=0;defender.alive=false;defender.deathAnim=60;checkVictory(attacker);}
+      // Ice wall spawns even during post-dash reduced deflects
+      if(defender.elementActive&&defender.elem.id==='cryo'){
+        const behindAngle=angle(defender,attacker);
+        iceWalls.push({x:attacker.x+Math.cos(behindAngle)*60,y:attacker.y+Math.sin(behindAngle)*60,
+          angle:behindAngle,life:120,maxLife:120,owner:defender});
+        SFX.freeze();
+      }
       return earlyDmg;
     }
     // Full deflect — no damage, counter-dash
@@ -2890,7 +2898,7 @@ function updateRelicSandy(f,enemy,dt){
   f.sandyTimer-=dt;
   // Afterimage trail — spawn ghostly copies
   if(battleTime%3<1){
-    sandyAfterimages.push({x:f.x,y:f.y,radius:f.radius,rotation:f.rotation,color:f.char.color,life:20,maxLife:20});
+    sandyAfterimages.push({x:f.x,y:f.y,radius:f.radius,rotation:f.rotation,color:f.char.color,life:45,maxLife:45});
   }
   // Blue glow particles
   if(battleTime%2<1){
@@ -2900,7 +2908,7 @@ function updateRelicSandy(f,enemy,dt){
   // Speed-based damage when hitting — handled by attackSandy already
   // Sandy+fire: leave fire trail
   if(f.elementActive&&f.elem.id==='fire'&&battleTime%4<1){
-    fireTrails.push({x:f.x,y:f.y,life:45,maxLife:45,radius:12,owner:f,dmg:f.atk*0.15});
+    fireTrails.push({x:f.x,y:f.y,life:90,maxLife:90,radius:14,owner:f,dmg:f.atk*0.15});
   }
   // Sandy+electric: rotating orbs
   if(f.elementActive&&f.elem.id==='electric'){
@@ -2993,8 +3001,8 @@ function updateRelicKatana(f,enemy,dt){
     f.katanaRushing=false;
     if(enemy.alive){
       // Single devastating slash — like mantis blade finisher but slower build-up
-      const baseDmg=f.atk*3; // big single hit (nerfed from 4x)
-      const mult=1+f.katanaRushDeflects*0.8; // bonus from deflects during rush
+      const baseDmg=f.atk*2; // nerfed from 3x
+      const mult=1+f.katanaRushDeflects*0.5; // nerfed bonus from deflects during rush
       const totalDmg=baseDmg*mult;
       dealDamage(f,enemy,totalDmg,true);
       SFX.katanaSlash();SFX.crit();
@@ -3285,7 +3293,7 @@ function updateChosoBeam(f,enemy,dt){
         if(along>0&&along<beamLen){
           const perp=Math.abs(-ex*Math.sin(f.chosoBeamAngle)+ey*Math.cos(f.chosoBeamAngle));
           if(perp<enemy.radius+18){ // wide hitbox
-            const beamDmg=f.atk*(1.5+chaos*0.12);
+            const beamDmg=f.atk*(1.0+chaos*0.08);
             dealDamage(f,enemy,beamDmg);
             f.chosoBloodHits++;
             f.chosoBeamHitCD=12;
@@ -3318,7 +3326,7 @@ function updateChosoBeam(f,enemy,dt){
     }
     if(f.chosoBeamTimer<=0){
       f.chosoBeamActive=false;
-      f.chosoBeamCooldown=240+rand(0,60); // 4-5 seconds cooldown
+      f.chosoBeamCooldown=360+rand(0,60); // 6-7 seconds cooldown
       f.chosoPiercingFreeze=0; // unfreeze — can move during cooldown
       spawnDmgNum(f.x,f.y-f.radius-20,'RECHARGING...','#880000',false);
     }
@@ -4626,14 +4634,17 @@ function updateBattle(dt){
       let diff=da-currentAngle;
       while(diff>Math.PI)diff-=Math.PI*2;
       while(diff<-Math.PI)diff+=Math.PI*2;
-      const turn=diff*p.homingStrength;
+      const homeSlow=(p.owner&&p.owner.sandyTimeScale<1)?p.owner.sandyTimeScale:1;
+      const turn=diff*p.homingStrength*homeSlow;
       const spd=Math.hypot(p.vx,p.vy);
       const na=currentAngle+turn;
       p.vx=Math.cos(na)*spd;
       p.vy=Math.sin(na)*spd;
     }
 
-    p.x+=p.vx*dt;p.y+=p.vy*dt;p.life-=dt;
+    // Slow projectiles from slowed owners (Sandevistan)
+    const pSlow=(p.owner&&p.owner.sandyTimeScale<1)?p.owner.sandyTimeScale:1;
+    p.x+=p.vx*dt*pSlow;p.y+=p.vy*dt*pSlow;p.life-=dt;
     spawnParticle(p.x,p.y,p.color,0,0,8,2);
 
     // Check hit on target (or any enemy if no target)
@@ -4978,7 +4989,7 @@ function updateBattle(dt){
   // Sandy+fire: fire trail during movement (non-special too if element active)
   fighters.forEach(f=>{
     if(f.alive&&f.char.id==='sandy'&&f.elementActive&&f.elem.id==='fire'&&!f.sandyActive&&battleTime%6<1){
-      fireTrails.push({x:f.x,y:f.y,life:30,maxLife:30,radius:10,owner:f,dmg:f.atk*0.1});
+      fireTrails.push({x:f.x,y:f.y,life:60,maxLife:60,radius:12,owner:f,dmg:f.atk*0.1});
     }
   });
 
@@ -6385,33 +6396,51 @@ function drawNanamiWeapon(r,ext,flash,f){
 }
 
 function drawRyuWeapon(r,ext,flash,f){
-  // Pompadour cannon — fist-mounted energy cannon
-  const cannonLen=35;
-  // Arm mount
-  X.fillStyle='#8b4513';X.fillRect(r-6,-5,14,10);
-  X.strokeStyle='#6b3010';X.lineWidth=1;X.strokeRect(r-6,-5,14,10);
-  // Cannon barrel
-  const bg=X.createLinearGradient(r+8,-8,r+8,8);
-  bg.addColorStop(0,'#774422');bg.addColorStop(0.5,'#995533');bg.addColorStop(1,'#774422');
-  X.fillStyle=bg;
-  drawRoundRect(r+8,-8,cannonLen,16,3);X.fill();
-  X.strokeStyle='#553311';X.lineWidth=1;X.stroke();
-  // Muzzle opening
-  X.fillStyle='#331100';
-  X.beginPath();X.arc(r+8+cannonLen,0,5,0,Math.PI*2);X.fill();
-  X.strokeStyle='#cc6633';X.lineWidth=1;X.stroke();
-  // Energy glow inside
-  X.beginPath();X.arc(r+8+cannonLen,0,3,0,Math.PI*2);
-  X.fillStyle=flash?'#ff8844':'#663311';X.fill();
-  // Orange accent lines
-  X.fillStyle=flash?'rgba(255,136,68,1)':'rgba(204,102,51,0.5)';
-  X.fillRect(r+10,-8,cannonLen-4,1.5);X.fillRect(r+10,6.5,cannonLen-4,1.5);
-  // Muzzle flash
+  // Pompadour hair cannon — Ryu's hair IS the weapon
+  // Thick pompadour shape that shoots from the tip
+  const hairLen=42;
+  // Hair base (thick, brown)
+  const hg=X.createLinearGradient(r-4,-12,r+hairLen,0);
+  hg.addColorStop(0,'#8b5a2b');hg.addColorStop(0.4,'#a0653a');hg.addColorStop(0.8,'#7a4420');hg.addColorStop(1,'#5c3015');
+  X.beginPath();
+  X.moveTo(r-4,-14);
+  X.bezierCurveTo(r+10,-18,r+25,-16,r+hairLen,-6);
+  X.lineTo(r+hairLen+4,0);
+  X.lineTo(r+hairLen,-2);
+  X.bezierCurveTo(r+25,14,r+10,12,r-4,10);
+  X.closePath();
+  X.fillStyle=hg;X.fill();
+  X.strokeStyle='#5c3015';X.lineWidth=1.5;X.stroke();
+  // Hair volume lines (strands)
+  X.strokeStyle='rgba(92,48,21,0.4)';X.lineWidth=0.8;
+  for(let i=0;i<4;i++){
+    const t=(i+1)/5;
+    X.beginPath();
+    X.moveTo(r-4+t*hairLen,-12+t*4);
+    X.quadraticCurveTo(r+t*hairLen+5,-8+t*6,r+t*hairLen+8,-2+t*2);
+    X.stroke();
+  }
+  // Hair shine streak
+  X.fillStyle='rgba(210,160,100,0.3)';
+  X.beginPath();
+  X.moveTo(r+5,-12);X.quadraticCurveTo(r+20,-14,r+35,-8);
+  X.lineTo(r+35,-6);X.quadraticCurveTo(r+20,-10,r+5,-8);
+  X.closePath();X.fill();
+  // Energy tip (where blasts come from)
+  X.beginPath();X.arc(r+hairLen+2,0,5,0,Math.PI*2);
+  X.fillStyle=flash?'#ff8844':'rgba(204,102,51,0.4)';X.fill();
+  if(flash){
+    X.shadowColor='#ff8844';X.shadowBlur=12;
+    X.beginPath();X.arc(r+hairLen+2,0,3,0,Math.PI*2);
+    X.fillStyle='#ffcc88';X.fill();
+    X.shadowBlur=0;
+  }
+  // Muzzle flash from hair tip
   if(flash){
     X.shadowColor='#ff8844';X.shadowBlur=15;
-    X.beginPath();X.arc(r+8+cannonLen+8,0,18,0,Math.PI*2);
+    X.beginPath();X.arc(r+hairLen+10,0,16,0,Math.PI*2);
     X.fillStyle='rgba(255,136,68,0.4)';X.fill();
-    X.beginPath();X.arc(r+8+cannonLen+5,0,8,0,Math.PI*2);
+    X.beginPath();X.arc(r+hairLen+6,0,7,0,Math.PI*2);
     X.fillStyle='rgba(255,200,100,0.6)';X.fill();
     X.shadowBlur=0;
   }
