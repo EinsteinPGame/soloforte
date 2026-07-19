@@ -2394,7 +2394,7 @@ function relicGojo(f,enemy){
 }
 
 function relicSmasher(f,enemy){
-  // YOU'RE NOTHING BUT MEAT: mortar barrage from back-mounted artillery
+  // YOU'RE NOTHING BUT MEAT: mortar barrage + Sandevistan time slow
   // Fires mortar rounds at enemy positions, melee fists available when close
   f.specialTimer=480; // ~8 seconds total
   f.smasherAirborne=false;
@@ -2403,6 +2403,12 @@ function relicSmasher(f,enemy){
   f._smasherMortarCD=0; // mortar cooldown
   f._smasherMortarCount=0; // mortars fired
   f._smasherRelicMelee=true; // enable melee during relic — no ranged blast
+  // Sandevistan time slow — enemies slowed during ult
+  fighters.forEach(other=>{
+    if(other&&other!==f&&other.alive){
+      other.sandyTimeScale=0.3; // 70% slow
+    }
+  });
   // Multi-color activation burst (reduced shake)
   spawnBurst(f.x,f.y,'#cc4444',50,12);
   spawnBurst(f.x,f.y,'#ff6644',35,9);
@@ -3111,9 +3117,21 @@ function updateRelicSmasher(f,enemy,dt){
     });
     if(f._smasherRelicMeleeCD>0)f._smasherRelicMeleeCD-=dt;
   }
+  // Keep enemies slowed during ult
+  fighters.forEach(other=>{
+    if(other&&other!==f&&other.alive)other.sandyTimeScale=Math.min(other.sandyTimeScale,0.3);
+  });
   // End of relic
   if(f.specialTimer<=0){
     f._smasherRelicMelee=false;
+    // Restore enemy time scale
+    fighters.forEach(other=>{
+      if(other&&other!==f){
+        const otherSandy=fighters.some(o=>o!==other&&o.alive&&o.char.id==='sandy'&&o.sandyActive);
+        if(!otherSandy)other.sandyTimeScale=1;
+      }
+    });
+    f.smasherAfterimages=[];
     addLog((f.side===0?'P1':'P2')+' Smasher Protocol ended');
     spawnBurst(f.x,f.y,'#cc4444',10,4);
   }
