@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.2 — Yuji Itadori: Divergent Fist (delayed ghost punch), Black Flash crits with time pause, BLACK FLASH RUSH special, 4 element combos
+// BALL BATTLE ARENA v8.3 — Naoya Zenin: Projection Sorcery (24-frame dashes), Cursed Spirit Phase 2 resurrection, Domain Expansion: Time Cell Moon Palace
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -346,6 +346,14 @@ const CHARS=[
     baseAtkInterval:30,relicChargeRate:0.85,
     specialName:'BLACK FLASH RUSH!',
   },
+  {
+    id:'naoya',name:'Naoya',color:'#00cc88',
+    desc:'Projection Sorcery: 24-frame dashes. Resurrects as Cursed Spirit.',
+    playstyle:'Speed & Projection',
+    stats:{hp:400,atk:24,speed:5.5,range:80,def:5,crit:14},
+    baseAtkInterval:28,relicChargeRate:0.8,
+    specialName:'24-FRAME RULE',
+  },
 ];
 
 // ============================================================
@@ -432,6 +440,10 @@ const COMBO_EFFECTS={
   'yuji_electric':'BF Rush: no time-pause except last 2s',
   'yuji_toxic':'Multiple ghost fists surround enemy',
   'yuji_cryo':'Permanent Black Flash + 2x BF in special but fragile',
+  'naoya_fire':'Projection dashes leave fire trails',
+  'naoya_electric':'Faster dashes + shorter cooldown',
+  'naoya_toxic':'Dashes leave poison zones that damage',
+  'naoya_cryo':'Projection hits freeze longer + slow',
 };
 
 // ============================================================
@@ -814,6 +826,21 @@ function createFighter(charIdx,elemIdx,side){
     yujiBlackFlashTimer:0, // special duration timer
     yujiIcePermanentBF:false, // cryo element: permanent Black Flash
     yujiIceDmgMult:1, // cryo: incoming damage multiplier
+    // Naoya state
+    naoyaPhase:1, // 1=Sorcerer, 2=Cursed Spirit
+    naoyaProjectionCD:0, // cooldown between projection dashes
+    naoyaDashing:false, // currently in projection dash
+    naoyaDashTimer:0, // dash duration
+    naoyaDashAngle:0, // dash direction
+    naoyaDashSpeed:0, // dash speed
+    naoyaDashTrail:[], // afterimage trail positions [{x,y,alpha}]
+    naoyaSlowActive:false, // special: 24-frame slow-mo active
+    naoyaSlowTimer:0, // slow-mo duration
+    naoyaDomainActive:false, // phase 2 domain active
+    naoyaDomainTimer:0, // domain duration
+    naoyaResurrected:false, // has already resurrected as cursed spirit
+    naoyaTransitionTimer:0, // i-frame transition animation
+    naoyaFrameCount:0, // visual 24-frame counter
   };
 }
 
@@ -961,6 +988,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(!defender.alive)return 0;
   // Mechamaru transition i-frames — invulnerable during form switch
   if(defender.mechaTransitionAnim>0)return 0;
+  // Naoya transition i-frames — invulnerable during cursed spirit transformation
+  if(defender.naoyaTransitionTimer>0)return 0;
   // Gojo revival invulnerability — no damage in or out during float-up
   if(attacker.gojoReviving||defender.gojoReviving)return 0;
   // Captured enemies cannot damage the monowire that captured them
@@ -1119,6 +1148,28 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       addLog('GOJO REVIVES!');
       return dmg;
     }
+    // Naoya resurrection — dies and becomes Cursed Spirit (Phase 2)
+    if(defender.char.id==='naoya'&&!defender.naoyaResurrected){
+      defender.hp=1;defender.naoyaResurrected=true;
+      defender.naoyaPhase=2;defender.naoyaTransitionTimer=60; // i-frames
+      defender.stunTimer=0;defender.freezeTimer=0;defender.captureTimer=0;
+      defender.naoyaDashing=false;defender.naoyaSlowActive=false;
+      // Phase 2 stats: faster, more atk, less def
+      defender.speed=defender.baseSpeed*1.4;
+      defender.atk=Math.round(defender.baseAtk*1.3);
+      defender.def=Math.max(1,Math.round(defender.baseDef*0.5));
+      defender.hp=defender.maxHp*0.5; // revive at 50%
+      defender.specialBar=0;
+      defender.specialName='TIME CELL MOON PALACE';
+      SFX.relicActivate();
+      showRelicText('CURSED SPIRIT NAOYA',defender.char.color);
+      spawnBurst(defender.x,defender.y,'#00cc88',40,10);
+      spawnBurst(defender.x,defender.y,'#aa44cc',25,7);
+      for(let r=0;r<3;r++){explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:60+r*25,color:'#00cc88',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});}
+      shakeTimer=25;shakeAmt=14;triggerScreenFlash('#00cc88',15);
+      addLog((defender.side===0?'P1':'P2')+' CURSED SPIRIT NAOYA!');
+      return dmg;
+    }
     defender.hp=0;defender.alive=false;defender.deathAnim=90;
     // Sandy slow cleanup — if a Sandy dies, un-slow everyone it was affecting
     if(defender.char.id==='sandy'){
@@ -1216,6 +1267,7 @@ function performWeaponAttack(f,enemy){
     case 'ryu':attackRyu(f,enemy,chaos);break;
     case 'higuruma':attackHiguruma(f,enemy,chaos);break;
     case 'yuji':attackYuji(f,enemy,chaos);break;
+    case 'naoya':attackNaoya(f,enemy,chaos);break;
   }
 }
 
@@ -2232,6 +2284,35 @@ function attackYuji(f,enemy,chaos){
   }
 }
 
+function attackNaoya(f,enemy,chaos){
+  if(f.naoyaProjectionCD>0||f.naoyaDashing||f.naoyaTransitionTimer>0)return;
+  const d=dist(f,enemy);
+  if(d>f.range+enemy.radius+100+chaos*5)return; // needs to be somewhat close
+
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  const isPhase2=f.naoyaPhase===2;
+
+  // Projection Sorcery: dash toward enemy at extreme speed
+  f.naoyaDashing=true;
+  f.naoyaDashTimer=isPhase2?12:16; // phase 2 is faster
+  f.naoyaDashAngle=angle(f,enemy);
+  f.naoyaDashSpeed=isPhase2?18:14;
+  if(isElecElem)f.naoyaDashSpeed*=1.25;
+  f.naoyaDashTrail=[];
+  f.weaponExtend=1;f.weaponFlash=10;
+  f.naoyaFrameCount=(f.naoyaFrameCount+1)%24;
+
+  // Cooldown
+  const baseCd=f.baseAtkInterval*(isPhase2?0.7:1);
+  f.naoyaProjectionCD=isElecElem?Math.round(baseCd*0.7):baseCd;
+
+  SFX.punch();
+  spawnBurst(f.x,f.y,'#00cc88',8,4);
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -2562,8 +2643,9 @@ function applyElementEffect(attacker,defender){
 // ============================================================
 function useSpecial(f,enemy){
   f.specialBar=0;f.specialActive=true;
-  showRelicText(f.char.specialName,f.char.color);
-  addLog((f.side===0?'P1':'P2')+' '+f.char.specialName+'!');
+  const spName=(f.char.id==='naoya'&&f.naoyaPhase===2)?'TIME CELL MOON PALACE':f.char.specialName;
+  showRelicText(spName,f.char.color);
+  addLog((f.side===0?'P1':'P2')+' '+spName+'!');
   shakeTimer=15;shakeAmt=8;
 
   switch(f.char.id){
@@ -2585,6 +2667,7 @@ function useSpecial(f,enemy){
     case 'ryu':relicRyu(f,enemy);break;
     case 'higuruma':relicHiguruma(f,enemy);break;
     case 'yuji':relicYuji(f,enemy);break;
+    case 'naoya':relicNaoya(f,enemy);break;
   }
 }
 
@@ -3051,6 +3134,43 @@ function relicYuji(f,enemy){
   spawnBurst(f.x,f.y,'#4444ff',15,6);
   addLog((f.side===0?'P1':'P2')+' BLACK FLASH RUSH!');
   spawnDmgNum(f.x,f.y-f.radius-30,'BLACK FLASH RUSH!','#4444ff',false);
+}
+
+function relicNaoya(f,enemy){
+  SFX.relicActivate();
+  if(f.naoyaPhase===1){
+    // Phase 1 Special: 24-Frame Slow-Mo
+    f.naoyaSlowActive=true;
+    f.naoyaSlowTimer=360; // 6 seconds
+    // Slow enemy dramatically
+    fighters.forEach(other=>{
+      if(other&&other!==f&&other.alive&&!other._smasherSandyImmune){
+        other.sandyTimeScale=Math.min(other.sandyTimeScale,0.2); // 80% slow
+      }
+    });
+    spawnBurst(f.x,f.y,'#00cc88',25,8);
+    spawnBurst(f.x,f.y,'#ffffff',15,5);
+    triggerScreenFlash('#00cc88',10);
+    shakeTimer=15;shakeAmt=8;
+    spawnDmgNum(f.x,f.y-f.radius-30,'24-FRAME RULE!','#00cc88',false);
+  } else {
+    // Phase 2 Special: Domain Expansion — Time Cell Moon Palace
+    f.naoyaDomainActive=true;
+    f.naoyaDomainTimer=480; // 8 seconds
+    // Slow enemy even more in domain
+    fighters.forEach(other=>{
+      if(other&&other!==f&&other.alive){
+        other.sandyTimeScale=Math.min(other.sandyTimeScale,0.15);
+      }
+    });
+    spawnBurst(f.x,f.y,'#00cc88',40,12);
+    spawnBurst(f.x,f.y,'#aa44cc',30,8);
+    spawnBurst(f.x,f.y,'#ffffff',20,6);
+    for(let r=0;r<3;r++){explosions.push({x:f.x,y:f.y,radius:0,maxRadius:80+r*30,color:'#00cc88',life:25,maxLife:25,dmg:0,owner:null,target:null,hit:true});}
+    triggerScreenFlash('#aa44cc',15);
+    shakeTimer=20;shakeAmt=12;
+    spawnDmgNum(f.x,f.y-f.radius-30,'TIME CELL MOON PALACE','#aa44cc',false);
+  }
 }
 
 // ============================================================
@@ -4296,6 +4416,151 @@ function updateRelicYuji(f,enemy,dt){
   }
 }
 
+function updateRelicNaoya(f,enemy,dt){
+  // Tick cooldown
+  if(f.naoyaProjectionCD>0)f.naoyaProjectionCD--;
+  // Transition i-frames
+  if(f.naoyaTransitionTimer>0){
+    f.naoyaTransitionTimer-=dt;
+    // Phase 2 transformation particles
+    if(battleTime%2<1){
+      const a=Math.random()*Math.PI*2;
+      spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#aa44cc',Math.cos(a)*2,Math.sin(a)*2,15,3);
+      spawnParticle(f.x+Math.cos(a+2)*f.radius,f.y+Math.sin(a+2)*f.radius,'#00cc88',0,-1.5,12,2);
+    }
+  }
+
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+
+  // Projection dash processing
+  if(f.naoyaDashing){
+    f.naoyaDashTimer-=dt;
+    // Move at extreme speed along dash angle
+    f.vx=Math.cos(f.naoyaDashAngle)*f.naoyaDashSpeed;
+    f.vy=Math.sin(f.naoyaDashAngle)*f.naoyaDashSpeed;
+    // Store trail positions for afterimage
+    f.naoyaDashTrail.push({x:f.x,y:f.y,alpha:0.7});
+    if(f.naoyaDashTrail.length>8)f.naoyaDashTrail.shift();
+    // Dash particles
+    spawnParticle(f.x,f.y,f.naoyaPhase===2?'#aa44cc':'#00cc88',0,0,8,2);
+    // Fire trail
+    if(isFireElem){
+      fireZones.push({x:f.x,y:f.y,radius:15,life:90,maxLife:90,dmg:f.atk*0.08,owner:f});
+    }
+    // Toxic zone
+    if(isToxicElem&&battleTime%6<1){
+      poisonBubbles.push({x:f.x,y:f.y,radius:20,life:120,maxLife:120,dmg:f.atk*0.06,owner:f,slow:true});
+    }
+    // Check collision with enemy during dash
+    if(enemy&&enemy.alive){
+      const d=dist(f,enemy);
+      if(d<f.radius+enemy.radius+10){
+        // Projection hit — collision damage
+        const dashDmg=f.atk*(f.naoyaPhase===2?2.0:1.5);
+        dealDamage(f,enemy,dashDmg,true);
+        spawnBurst(enemy.x,enemy.y,'#00cc88',12,6);
+        SFX.heavyHit();
+        shakeTimer=8;shakeAmt=6;
+        // 24-frame rule: stun enemy briefly (they "broke the rule")
+        const stunDur=isCryoElem?25:15;
+        enemy.stunTimer=Math.max(enemy.stunTimer,stunDur);
+        if(isCryoElem){
+          enemy.freezeTimer=Math.max(enemy.freezeTimer,20);
+          spawnBurst(enemy.x,enemy.y,'#77ddff',8,4);
+        }
+        spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'PROJECTION','#00cc88',false);
+        // Bounce away after hit
+        const ka=angle(enemy,f);
+        f.vx=Math.cos(ka)*8;f.vy=Math.sin(ka)*8;
+        f.naoyaDashing=false;
+        f.naoyaDashTimer=0;
+      }
+    }
+    // End dash
+    if(f.naoyaDashTimer<=0){
+      f.naoyaDashing=false;
+      f.naoyaDashTimer=0;
+    }
+  } else {
+    // Fade trail
+    for(let i=f.naoyaDashTrail.length-1;i>=0;i--){
+      f.naoyaDashTrail[i].alpha-=0.08;
+      if(f.naoyaDashTrail[i].alpha<=0)f.naoyaDashTrail.splice(i,1);
+    }
+  }
+
+  // Phase 1 Special: 24-Frame Slow-Mo
+  if(f.naoyaSlowActive){
+    f.naoyaSlowTimer-=dt;
+    // Speed boost for Naoya during slow-mo
+    if(!f.naoyaDashing){
+      f.speed=f.baseSpeed*1.5;
+    }
+    // Green aura particles
+    if(battleTime%3<1){
+      const a=Math.random()*Math.PI*2;
+      spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#00cc88',0,-1,12,2);
+    }
+    // Frame counter visual
+    f.naoyaFrameCount=(f.naoyaFrameCount+1)%24;
+    if(f.naoyaSlowTimer<=0){
+      f.naoyaSlowActive=false;
+      f.speed=f.baseSpeed*(f.naoyaPhase===2?1.4:1);
+      // Restore enemy speed
+      fighters.forEach(other=>{
+        if(other&&other!==f&&other.sandyTimeScale<1){
+          const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&(s.sandyActive||s.naoyaSlowActive||s.naoyaDomainActive)&&s!==other);
+          if(!otherSandy)other.sandyTimeScale=1;
+        }
+      });
+      addLog((f.side===0?'P1':'P2')+' 24-Frame Rule ended');
+    }
+  }
+
+  // Phase 2 Special: Domain — Time Cell Moon Palace
+  if(f.naoyaDomainActive){
+    f.naoyaDomainTimer-=dt;
+    // Domain aura
+    if(battleTime%2<1){
+      const a=Math.random()*Math.PI*2;
+      const r2=80+Math.random()*40;
+      spawnParticle(f.x+Math.cos(a)*r2,f.y+Math.sin(a)*r2,'#aa44cc',0,0,20,1.5);
+      spawnParticle(f.x+Math.cos(a+1)*r2*0.5,f.y+Math.sin(a+1)*r2*0.5,'#00cc88',0,0,15,1);
+    }
+    // Movement = internal rupture: enemy takes damage proportional to speed
+    if(enemy&&enemy.alive){
+      const enemySpd=Math.hypot(enemy.vx,enemy.vy);
+      if(enemySpd>0.5){
+        const ruptureDmg=f.atk*0.15*enemySpd;
+        if(battleTime%4<1){
+          dealDamage(f,enemy,ruptureDmg,false);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,'RUPTURE','#aa44cc',false);
+          spawnBurst(enemy.x,enemy.y,'#aa44cc',4,2);
+        }
+      }
+    }
+    if(f.naoyaDomainTimer<=0){
+      f.naoyaDomainActive=false;
+      // Restore enemy speed
+      fighters.forEach(other=>{
+        if(other&&other!==f&&other.sandyTimeScale<1){
+          const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&(s.sandyActive||s.naoyaSlowActive||s.naoyaDomainActive)&&s!==other);
+          if(!otherSandy)other.sandyTimeScale=1;
+        }
+      });
+      addLog((f.side===0?'P1':'P2')+' Domain ended');
+    }
+  }
+
+  // Phase 2 particles — cursed spirit aura
+  if(f.naoyaPhase===2&&battleTime%5<1){
+    const a=Math.random()*Math.PI*2;
+    spawnParticle(f.x+Math.cos(a)*f.radius*0.8,f.y+Math.sin(a)*f.radius*0.8,'#aa44cc',0,-0.8,10,1.5);
+  }
+}
+
 // Helper: point inside triangle
 function pointInTriangle(px,py,a,b,c){
   const d1=(px-b.x)*(a.y-b.y)-(a.x-b.x)*(py-b.y);
@@ -4436,6 +4701,7 @@ function updateBattle(dt){
         case 'ryu':updateRelicRyu(f,enemy,dt);break;
         case 'higuruma':updateRelicHiguruma(f,enemy,dt);break;
         case 'yuji':updateRelicYuji(f,enemy,dt);break;
+        case 'naoya':updateRelicNaoya(f,enemy,dt);break;
       }
     }
 
@@ -5013,7 +5279,7 @@ function updateBattle(dt){
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
@@ -5026,7 +5292,8 @@ function updateBattle(dt){
         if(f.char.id==='throw'&&!f.throwWeapons[f.throwActiveIdx].available){/* wait */}
         else if(f.char.id==='berserk'&&f.berserkReloadTimer>0){/* reloading */}
         else if(f.char.id==='katana'&&f.katanaDashing){/* mid counter-dash */}
-        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='ryu'||isWeaponFacingEnemy(f,enemy)){
+        else if(f.char.id==='naoya'&&(f.naoyaDashing||f.naoyaTransitionTimer>0)){/* mid projection dash or transforming */}
+        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='ryu'||f.char.id==='naoya'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -6255,6 +6522,93 @@ function drawBall(f){
     });
   }
 
+  // Naoya face — slicked-back hair, sharp features, arrogant
+  if(f.char.id==='naoya'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    const isP2=f.naoyaPhase===2;
+    // Slicked-back hair
+    X.fillStyle=isP2?'#aa44cc':'#2a6a4a';
+    const spikes=5;
+    for(let i=0;i<spikes;i++){
+      const sa=-Math.PI*0.8+i*(Math.PI*0.5/(spikes-1));
+      const slen=r*0.4+Math.sin(i*1.8)*r*0.06;
+      X.beginPath();
+      X.moveTo(hx+Math.cos(sa-0.1)*r*0.35,hy+Math.sin(sa-0.1)*r*0.55);
+      X.lineTo(hx+Math.cos(sa)*(r*0.55+slen),hy+Math.sin(sa)*(r*0.5+slen));
+      X.lineTo(hx+Math.cos(sa+0.1)*r*0.35,hy+Math.sin(sa+0.1)*r*0.55);
+      X.closePath();X.fill();
+    }
+    // Hair base
+    X.beginPath();
+    X.arc(hx,hy-r*0.15,r*0.45,Math.PI,0);
+    X.fill();
+    // Sharp narrow eyes — arrogant look
+    X.fillStyle=isP2?'#ff4488':'#1a1a1a';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.03,r*0.08,r*0.04,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.03,r*0.08,r*0.04,0,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.14,hy-r*0.04,r*0.02,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.2,hy-r*0.04,r*0.02,0,Math.PI*2);X.fill();
+    // Smirk — arrogant
+    X.strokeStyle=isP2?'#cc3366':'#333';X.lineWidth=1.5;
+    X.beginPath();
+    X.moveTo(hx-r*0.08,hy+r*0.18);
+    X.quadraticCurveTo(hx+r*0.05,hy+r*0.24,hx+r*0.12,hy+r*0.14);
+    X.stroke();
+    // Phase 2: cursed spirit aura
+    if(isP2){
+      const pulse=Math.sin(battleTime*0.12)*0.3+0.5;
+      X.strokeStyle=`rgba(170,68,204,${pulse})`;X.lineWidth=3;
+      X.beginPath();X.arc(hx,hy,r+6,0,Math.PI*2);X.stroke();
+      X.shadowColor='#aa44cc';X.shadowBlur=12;X.stroke();X.shadowBlur=0;
+      // Cursed energy wisps
+      if(battleTime%4<1){
+        for(let i=0;i<2;i++){
+          const wa=Math.random()*Math.PI*2;
+          spawnParticle(hx+Math.cos(wa)*(r+4),hy+Math.sin(wa)*(r+4),'#aa44cc',Math.cos(wa)*1.5,Math.sin(wa)*1.5,10,2);
+        }
+      }
+    }
+    // Slow-mo aura (special active)
+    if(f.naoyaSlowActive){
+      const pulse2=Math.sin(battleTime*0.15)*0.2+0.4;
+      X.strokeStyle=`rgba(0,204,136,${pulse2})`;X.lineWidth=2;
+      X.beginPath();X.arc(hx,hy,r+10,0,Math.PI*2);X.stroke();
+      // 24-frame counter around character
+      X.font='bold 8px Consolas,monospace';X.textAlign='center';X.fillStyle='#00cc88';
+      X.fillText(String(f.naoyaFrameCount).padStart(2,'0'),hx,hy-r-12);
+    }
+    // Domain aura
+    if(f.naoyaDomainActive){
+      const pulse3=Math.sin(battleTime*0.08)*0.15+0.25;
+      X.strokeStyle=`rgba(170,68,204,${pulse3})`;X.lineWidth=2;
+      for(let ring=0;ring<3;ring++){
+        X.beginPath();X.arc(hx,hy,r+20+ring*25,0,Math.PI*2);X.stroke();
+      }
+    }
+    // Transition animation
+    if(f.naoyaTransitionTimer>0){
+      const alpha=f.naoyaTransitionTimer/60;
+      X.fillStyle=`rgba(170,68,204,${alpha*0.5})`;
+      X.beginPath();X.arc(hx,hy,r+15+alpha*20,0,Math.PI*2);X.fill();
+    }
+    X.restore();
+  }
+
+  // Naoya dash afterimage trail
+  if(f.char.id==='naoya'&&f.naoyaDashTrail){
+    f.naoyaDashTrail.forEach(t=>{
+      X.save();
+      X.globalAlpha=t.alpha*0.5;
+      const col=f.naoyaPhase===2?'#aa44cc':'#00cc88';
+      X.fillStyle=col;
+      X.beginPath();X.arc(t.x,t.y,f.radius*0.8,0,Math.PI*2);X.fill();
+      X.restore();
+    });
+  }
+
   // Draw Kashimo homing bolt
   if(f.char.id==='kashimo'&&f.kashimoBoltActive){
     X.save();
@@ -6746,6 +7100,7 @@ function drawWeapon(f){
     case 'ryu':drawRyuWeapon(r,ext,flash,f);break;
     case 'higuruma':drawHigurumaWeapon(r,ext,flash,f);break;
     case 'yuji':drawYujiWeapon(r,ext,flash,f);break;
+    case 'naoya':drawNaoyaWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -7201,6 +7556,34 @@ function drawYujiWeapon(r,ext,flash,f){
     X.shadowColor='#ff69b4';X.shadowBlur=8;
     X.beginPath();X.arc(r+10+ex,0,9,0,Math.PI*2);X.fill();
     X.shadowBlur=0;
+  }
+}
+
+function drawNaoyaWeapon(r,ext,flash,f){
+  // Speed lines — sharp wind slash marks
+  const isP2=f.naoyaPhase===2;
+  const col=isP2?'#aa44cc':'#00cc88';
+  const ex=ext*12;
+  // Main speed blade
+  X.strokeStyle=flash?'#ffffff':col;X.lineWidth=2.5;
+  X.beginPath();X.moveTo(r+2,-4);X.lineTo(r+18+ex,0);X.lineTo(r+2,4);X.stroke();
+  // Speed lines
+  X.strokeStyle=col;X.lineWidth=1;
+  X.beginPath();X.moveTo(r+5,-8);X.lineTo(r+15+ex*0.5,-6);X.stroke();
+  X.beginPath();X.moveTo(r+5,8);X.lineTo(r+15+ex*0.5,6);X.stroke();
+  if(flash){
+    X.shadowColor=col;X.shadowBlur=8;
+    X.strokeStyle='#fff';X.lineWidth=2;
+    X.beginPath();X.moveTo(r+2,-3);X.lineTo(r+20+ex,0);X.lineTo(r+2,3);X.stroke();
+    X.shadowBlur=0;
+  }
+  // Dashing: extra motion blur lines
+  if(f.naoyaDashing){
+    X.strokeStyle=`rgba(${isP2?'170,68,204':'0,204,136'},0.5)`;X.lineWidth=1;
+    for(let i=0;i<3;i++){
+      const yo=(i-1)*6;
+      X.beginPath();X.moveTo(r-5,yo);X.lineTo(r+25+ex,yo);X.stroke();
+    }
   }
 }
 
@@ -8323,6 +8706,14 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.arc(14,0,6,0,Math.PI*2);X.fill();
       X.fillStyle='#cc4488';X.fillRect(8,-3,5,6);
       break;
+    case 'naoya':
+      // Speed slash
+      X.strokeStyle='#00cc88';X.lineWidth=2;
+      X.beginPath();X.moveTo(4,-3);X.lineTo(20,0);X.lineTo(4,3);X.stroke();
+      X.strokeStyle='#00cc88';X.lineWidth=1;
+      X.beginPath();X.moveTo(6,-6);X.lineTo(16,-4);X.stroke();
+      X.beginPath();X.moveTo(6,6);X.lineTo(16,4);X.stroke();
+      break;
   }
   X.restore();
 }
@@ -8347,7 +8738,7 @@ function drawTitle(){
 
   X.font=(isMobile?'13':'16')+'px Consolas,Courier New,monospace';
   X.fillStyle='#888';
-  X.fillText('18 Fighters // 4 Elements',W/2,titleY+65);
+  X.fillText('19 Fighters // 4 Elements',W/2,titleY+65);
 
   const t=Date.now()*0.002;
   // Two rows of characters for 16+ roster
@@ -9495,6 +9886,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'ryu':statLine='CANNON';break;
     case 'higuruma':statLine='HAMMER';break;
     case 'yuji':{const bf=f.yujiBlackFlashActive?'BF RUSH ':f.yujiIcePermanentBF?'PERM BF ':'';const ghosts=f.yujiGhostFists?f.yujiGhostFists.length:0;statLine=bf+'FIST'+(ghosts>0?' x'+ghosts:'');break;}
+    case 'naoya':{const ph=f.naoyaPhase===2?'CS ':'';const mode=f.naoyaDashing?'DASH':f.naoyaDomainActive?'DOMAIN':f.naoyaSlowActive?'24F':'PROJ';statLine=ph+mode;break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
