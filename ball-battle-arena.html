@@ -775,6 +775,9 @@ function createFighter(charIdx,elemIdx,side){
     chosoRedScaleActive:false, // flowing red scale buff
     chosoRedScaleTimer:0, // buff duration
     chosoOrbs:[], // {x,y,alive} — blood orbs around arena
+    chosoChainQueue:[], // [{orb,delay}] — queued chain reaction explosions
+    chosoChainTimer:0, // countdown to next chain explosion
+    chosoChainIdx:0, // how many orbs have chained (for acceleration)
     chosoBloodEdge:false, // melee mode during special
     chosoEdgeForm:'sword', // 'sword' or 'dagger'
     chosoEdgeTimer:0, // melee form duration (7s = 420 frames)
@@ -883,7 +886,10 @@ function createFighter(charIdx,elemIdx,side){
     naoyaDomainTimer:0, // domain duration
     naoyaResurrected:false, // has already resurrected as cursed spirit
     naoyaTransitionTimer:0, // i-frame transition animation
-    naoyaFrameCount:0, // visual 24-frame counter
+    naoyaFrameCount:0, // projection sorcery frame counter (0-23)
+    naoyaFrameStack:0, // accumulated frames (more = faster, burns through faster)
+    naoyaFrameBurnCD:0, // cooldown after burning all 24 frames (penalty)
+    naoyaFrameBurned:false, // currently in penalty state
     // Yuta & Rika state — Rika is independent with own HP
     yutaSlashCD:0, // katana slash cooldown
     yutaHitCount:0, // hit counter for cursed energy output burst
@@ -1477,14 +1483,15 @@ function attackPLS(f,enemy,chaos){
     y:f.y+Math.sin(a)*f.radius,
     vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,
     owner:f,target:enemy,
-    color:'#33cc33',life:120,radius:16+chaos*2,
+    color:'#33ff66',life:120,radius:16+chaos*2,
     dmg:f.atk*(1+chaos*0.12),
     explosive:true,explosionRadius:explosionRadius*1.8,
-    homing:false,
+    homing:false,isPlsOrb:true,
   });
   SFX.missile();
-  // Staff launch burst at tip
-  spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#66ff66',8,4);
+  // Green energy crescent at staff tip
+  spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#66ff66',10,5);
+  spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#aaffaa',5,3);
 
   // PLS scaling: hits = faster fire + bigger explosions
   f.plsExplosionRadius=35+f.totalHits*0.4;
@@ -1676,23 +1683,27 @@ function attackGojo(f,enemy,chaos){
   let purpleChance=f.gojoAwakened?0.07:0; // reduced from 0.15
   if(f.elementActive&&f.elem.id==='cryo')purpleChance+=0.05;
   if(purpleChance>0&&f.gojoPurpleCD<=0&&Math.random()<purpleChance){
-    // Strong Purple — powerful but NOT one-shot, bigger projectile
-    f.gojoPurpleCD=180; // 3 second cooldown between purples
-    SFX.gojoPurple();
+    // 200% MASSIVE Purple — single devastating projectile
+    f.gojoPurpleCD=240; // 4 second cooldown (bigger payoff, longer wait)
+    SFX.gojoPurple();SFX.megaExplosion();
     const ba=angle(f,enemy);
-    const beamDmg=f.atk*1.3*dmgMult; // toned down from 2x
+    const beamDmg=f.atk*2.5*dmgMult; // massive single hit
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
-      vx:Math.cos(ba)*8,vy:Math.sin(ba)*8,
-      owner:f,target:null,color:'#7722cc',
-      life:80,radius:24,dmg:beamDmg,
+      vx:Math.cos(ba)*10,vy:Math.sin(ba)*10,
+      owner:f,target:null,color:'#9922ff',
+      life:100,radius:42,dmg:beamDmg,
       explosive:false,homing:false,isGojoPurple:true,
+      isMassivePurple:true,
     });
-    spawnBurst(f.x,f.y,'#7722cc',25,8);
-    spawnBurst(f.x,f.y,'#aa55ff',18,6);
-    spawnBurst(f.x,f.y,'#cc88ff',10,4);
-    spawnDmgNum(f.x,f.y-f.radius-25,'PURPLE!','#7722cc',true);
-    shakeTimer=8;shakeAmt=5;
+    // Big visual impact — red + blue converging into purple
+    spawnBurst(f.x,f.y,'#ff4444',20,8);
+    spawnBurst(f.x,f.y,'#4488ff',20,8);
+    spawnBurst(f.x,f.y,'#9922ff',30,10);
+    spawnBurst(f.x,f.y,'#cc88ff',15,6);
+    spawnDmgNum(f.x,f.y-f.radius-30,'MASSIVE PURPLE!','#9922ff',true);
+    shakeTimer=15;shakeAmt=10;
+    triggerScreenFlash('#9922ff',8);triggerHitFreeze(4);
     f.gojoAttackMode='red';
     return;
   }
@@ -1755,17 +1766,22 @@ function attackChoso(f,enemy,chaos){
       spawnBurst(enemy.x,enemy.y,'#cc0000',6,3);
       shakeTimer=5;shakeAmt=3;
     }
-    // Check if near any blood orbs — detonate on melee hit (generous range)
-    // Orbs detonate if near Choso OR near the enemy being hit
-    f.chosoOrbs.forEach(orb=>{
-      if(!orb.alive)return;
-      const nearChoso=dist(f,orb)<meleeRange+60;
-      const nearEnemy=enemy.alive&&dist(enemy,orb)<meleeRange+60;
-      if(nearChoso||nearEnemy){
-        spawnDmgNum(orb.x,orb.y-15,'BLOOD DETONATION','#ff4444',false);
-        chosoDetonateOrb(f,orb,enemy,chaos);
+    // Check if Choso hit near any blood orbs — only manual trigger starts chain reaction
+    if(f.chosoChainQueue.length===0){ // don't re-trigger during active chain
+      let closestOrb=null,closestDist=meleeRange+60;
+      f.chosoOrbs.forEach(orb=>{
+        if(!orb.alive)return;
+        const d=dist(f,orb);
+        if(d<closestDist){closestDist=d;closestOrb=orb;}
+      });
+      if(closestOrb){
+        // Detonate the hit orb immediately, then start chain reaction
+        spawnDmgNum(closestOrb.x,closestOrb.y-15,'CHAIN START!','#ff4444',true);
+        chosoDetonateOrb(f,closestOrb,enemy,chaos);
+        // Queue remaining orbs as chain reaction (closest-first, accelerating)
+        chosoStartChainReaction(f,closestOrb,enemy,chaos);
       }
-    });
+    }
     // Poison element: 5 blood hits = poison stack
     if(f.elementActive&&f.elem.id==='toxic'&&f.chosoBloodHits>=5){
       f.chosoBloodHits=0;
@@ -1810,6 +1826,23 @@ function chosoDetonateOrb(f,orb,enemy,chaos){
       explosive:false,homing:false,isChosoBuzzsaw:true,
     });
   }
+}
+
+function chosoStartChainReaction(f,detonatedOrb,enemy,chaos){
+  // Build chain queue: sort remaining alive orbs by distance from detonated orb (closest first)
+  const alive=f.chosoOrbs.filter(o=>o.alive);
+  if(alive.length===0)return;
+  // Sort by distance from the detonated orb
+  alive.sort((a,b)=>{
+    const da=Math.hypot(a.x-detonatedOrb.x,a.y-detonatedOrb.y);
+    const db=Math.hypot(b.x-detonatedOrb.x,b.y-detonatedOrb.y);
+    return da-db;
+  });
+  f.chosoChainQueue=alive;
+  f.chosoChainIdx=0;
+  f.chosoChainTimer=30; // first chain delay (0.5s) — accelerates from here
+  f._chosoChainEnemy=enemy;
+  f._chosoChainChaos=chaos;
 }
 
 function attackToji(f,enemy,chaos){
@@ -2144,7 +2177,7 @@ function attackRyu(f,enemy,chaos){
     if(f.elem.id==='toxic')dmgMult=1.1;
   }
   if(d<f.radius+enemy.radius+60){
-    // SHOCKWAVE RINGS — close range knockback
+    // SHOCKWAVE RINGS — close range knockback, orange-red concussive blast
     SFX.ryuShockwave();
     f.weaponExtend=1;f.weaponFlash=10;
     const ringDmg=f.atk*(0.8+chaos*0.08)*dmgMult;
@@ -2152,15 +2185,15 @@ function attackRyu(f,enemy,chaos){
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
       vx:Math.cos(ba)*ringSpeed,vy:Math.sin(ba)*ringSpeed,
-      owner:f,target:null,color:'#cc6633',
+      owner:f,target:null,color:'#ff5500',
       life:30,radius:18+chaos*1,dmg:ringDmg,
       explosive:false,homing:false,isRyuRing:true,
       knockback:6+chaos*0.3,
     });
-    spawnBurst(f.x,f.y,'#cc6633',10,4);
-    spawnBurst(f.x,f.y,'#ff8844',6,3);
+    spawnBurst(f.x,f.y,'#ff5500',12,5);
+    spawnBurst(f.x,f.y,'#ffaa00',8,4);
   } else {
-    // CANNON BLASTS — fires in weapon direction at intervals
+    // CANNON BLASTS — heavy orange-red fireballs with muzzle flash
     SFX.ryuCannon();
     f.weaponExtend=1;f.weaponFlash=8;
     const cannonDmg=f.atk*(1.0+chaos*0.1)*dmgMult;
@@ -2169,7 +2202,7 @@ function attackRyu(f,enemy,chaos){
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
       vx:Math.cos(ba)*projSpeed,vy:Math.sin(ba)*projSpeed,
-      owner:f,target:null,color:'#cc6633',
+      owner:f,target:null,color:'#ff6622',
       life:60,radius:projRadius,dmg:cannonDmg,
       explosive:true,explosionRadius:30+chaos*2,homing:false,isRyuCannon:true,
     });
@@ -2182,13 +2215,16 @@ function attackRyu(f,enemy,chaos){
         projectiles.push({
           x:f.x+Math.cos(sa)*f.radius,y:f.y+Math.sin(sa)*f.radius,
           vx:Math.cos(sa)*(projSpeed*0.8),vy:Math.sin(sa)*(projSpeed*0.8),
-          owner:f,target:null,color:'#ff8844',
+          owner:f,target:null,color:'#ff4400',
           life:45,radius:6+chaos*0.3,dmg:splitDmg,
           explosive:false,homing:false,isRyuSplit:true,
         });
       }
     }
-    spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ff8844',8,4);
+    // Muzzle flash burst — bright orange/yellow flash
+    spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ffaa00',10,5);
+    spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#ff4400',6,3);
+    shakeTimer=Math.max(shakeTimer,2);shakeAmt=Math.max(shakeAmt,2);
   }
 }
 
@@ -2353,6 +2389,8 @@ function attackYuji(f,enemy,chaos){
 
 function attackNaoya(f,enemy,chaos){
   if(f.naoyaProjectionCD>0||f.naoyaDashing||f.naoyaTransitionTimer>0)return;
+  // Frame burn penalty — frozen, can't attack
+  if(f.naoyaFrameBurned)return;
   const d=dist(f,enemy);
   if(d>f.range+enemy.radius+100+chaos*5)return; // needs to be somewhat close
 
@@ -2362,21 +2400,43 @@ function attackNaoya(f,enemy,chaos){
   const isCryoElem=f.elementActive&&f.elem.id==='cryo';
   const isPhase2=f.naoyaPhase===2;
 
-  // Projection Sorcery: dash toward enemy at extreme speed
+  // Frame stacking: each dash consumes frames and gains speed
+  // More stacks = more frames consumed at once, more speed boost
+  const framesPerDash=1+Math.floor(f.naoyaFrameStack/4); // 1 at start, up to 7 at max stack
+  f.naoyaFrameCount=(f.naoyaFrameCount+framesPerDash)%24;
+  f.naoyaFrameStack=Math.min(24,f.naoyaFrameStack+1);
+
+  // Speed scales with frame stack — high risk/high reward
+  const stackSpeedBonus=1+f.naoyaFrameStack*0.06; // up to +144% speed at max
+  const baseDashSpeed=isPhase2?18:14;
   f.naoyaDashing=true;
-  f.naoyaDashTimer=isPhase2?12:16; // phase 2 is faster
+  f.naoyaDashTimer=isPhase2?12:16;
   f.naoyaDashAngle=angle(f,enemy);
-  f.naoyaDashSpeed=isPhase2?18:14;
+  f.naoyaDashSpeed=baseDashSpeed*stackSpeedBonus;
   if(isElecElem)f.naoyaDashSpeed*=1.25;
   f.naoyaDashTrail=[];
-  f.naoyaFrameCount=(f.naoyaFrameCount+1)%24;
 
-  // Cooldown
+  // Check if frames burned out (used all 24) — penalty freeze
+  if(f.naoyaFrameCount===0&&f.naoyaFrameStack>=12){
+    f.naoyaFrameBurned=true;
+    f.naoyaFrameBurnCD=90; // 1.5s penalty freeze
+    f.naoyaFrameStack=0;
+    spawnDmgNum(f.x,f.y-f.radius-30,'FRAME BURNOUT!','#ff4444',true);
+    spawnBurst(f.x,f.y,'#ff4444',15,6);
+    SFX.warning();
+  }
+
+  // Cooldown — faster at higher stacks
   const baseCd=f.baseAtkInterval*(isPhase2?0.7:1);
-  f.naoyaProjectionCD=isElecElem?Math.round(baseCd*0.7):baseCd;
+  const stackCdReduction=Math.max(0.4,1-f.naoyaFrameStack*0.025); // up to 40% faster
+  f.naoyaProjectionCD=Math.round((isElecElem?baseCd*0.7:baseCd)*stackCdReduction);
 
   SFX.punch();
-  spawnBurst(f.x,f.y,'#00cc88',8,4);
+  // Visual intensity scales with stack
+  const burstSize=8+f.naoyaFrameStack;
+  spawnBurst(f.x,f.y,'#00cc88',burstSize,4+Math.floor(f.naoyaFrameStack/4));
+  if(f.naoyaFrameStack>=12)spawnBurst(f.x,f.y,'#88ffcc',6,3);
+  if(f.naoyaFrameStack>=18){spawnBurst(f.x,f.y,'#ffffff',4,2);shakeTimer=Math.max(shakeTimer,3);shakeAmt=Math.max(shakeAmt,2);}
 }
 
 function attackYuta(f,enemy,chaos){
@@ -4248,6 +4308,38 @@ function updateRelicChoso(f,enemy,dt){
       spawnBurst(f.x,f.y,'#8b0000',8,4);
     }
   }
+  // Chain reaction update — orbs explode one at a time, accelerating
+  if(f.chosoChainQueue.length>0){
+    f.chosoChainTimer-=dt;
+    if(f.chosoChainTimer<=0){
+      // Find next alive orb in queue
+      let nextOrb=null;
+      while(f.chosoChainQueue.length>0&&!nextOrb){
+        const candidate=f.chosoChainQueue.shift();
+        if(candidate.alive)nextOrb=candidate;
+      }
+      if(nextOrb){
+        f.chosoChainIdx++;
+        const chaos=f._chosoChainChaos||getChaosLevel(f);
+        const enemy=f._chosoChainEnemy;
+        // Chain detonation with escalating label
+        spawnDmgNum(nextOrb.x,nextOrb.y-15,'CHAIN x'+f.chosoChainIdx,'#ff6644',f.chosoChainIdx>=5);
+        chosoDetonateOrb(f,nextOrb,enemy,chaos);
+        // Accelerating delay: starts at 25 frames, goes down to 4 minimum
+        f.chosoChainTimer=Math.max(4,25-f.chosoChainIdx*3);
+        // Escalating screen effects
+        if(f.chosoChainIdx>=5)shakeTimer=Math.max(shakeTimer,6);
+        if(f.chosoChainIdx>=10){shakeAmt=Math.max(shakeAmt,8);triggerScreenFlash('#cc0000',3);}
+      }
+      if(f.chosoChainQueue.length===0&&f.chosoChainIdx>0){
+        // Chain complete
+        addLog('BLOOD CHAIN x'+f.chosoChainIdx+'!');
+        if(f.chosoChainIdx>=5){SFX.megaExplosion();shakeTimer=12;shakeAmt=10;triggerScreenFlash('#cc0000',8);}
+        f.chosoChainIdx=0;
+      }
+    }
+    // Visual: draw connecting lines between queued orbs
+  }
   // Draw orb pulsing (visual update is in drawBall, but keep orbs alive check here)
 }
 
@@ -4842,8 +4934,9 @@ function updateRelicNaoya(f,enemy,dt){
     if(enemy&&enemy.alive){
       const d=dist(f,enemy);
       if(d<f.radius+enemy.radius+18){
-        // Projection hit — collision damage (phase 2: faster but slightly weaker)
-        const dashDmg=f.atk*(f.naoyaPhase===2?1.3:1.5);
+        // Projection hit — collision damage scales with frame stack (high risk/high reward)
+        const stackDmgBonus=1+f.naoyaFrameStack*0.04; // up to +96% damage at max stack
+        const dashDmg=f.atk*(f.naoyaPhase===2?1.3:1.5)*stackDmgBonus;
         dealDamage(f,enemy,dashDmg,true);
         spawnBurst(enemy.x,enemy.y,'#00cc88',12,6);
         SFX.heavyHit();
@@ -4880,6 +4973,28 @@ function updateRelicNaoya(f,enemy,dt){
     for(let i=f.naoyaDashTrail.length-1;i>=0;i--){
       f.naoyaDashTrail[i].alpha-=0.08;
       if(f.naoyaDashTrail[i].alpha<=0)f.naoyaDashTrail.splice(i,1);
+    }
+  }
+
+  // Frame stack decay — slowly lose stacks when not dashing (keeps pressure on)
+  if(!f.naoyaDashing&&f.naoyaFrameStack>0&&battleTime%30<1){
+    f.naoyaFrameStack=Math.max(0,f.naoyaFrameStack-1);
+  }
+  // Frame burnout penalty — frozen and vulnerable
+  if(f.naoyaFrameBurned){
+    f.naoyaFrameBurnCD-=dt;
+    f.vx*=0.9;f.vy*=0.9; // slow to a crawl
+    // Warning particles
+    if(battleTime%4<1){
+      const a=Math.random()*Math.PI*2;
+      spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#ff4444',0,-1,10,2);
+    }
+    if(f.naoyaFrameBurnCD<=0){
+      f.naoyaFrameBurned=false;
+      f.naoyaFrameStack=0;
+      f.naoyaFrameCount=0;
+      spawnDmgNum(f.x,f.y-f.radius-25,'FRAMES RESET','#00cc88',false);
+      spawnBurst(f.x,f.y,'#00cc88',10,4);
     }
   }
 
@@ -6747,16 +6862,32 @@ function drawBall(f){
     X.restore();
   }
 
-  // Draw Choso blood orbs
+  // Draw Choso blood orbs + chain reaction lines
   if(f.char.id==='choso'&&f.chosoOrbs){
+    // Chain reaction connecting lines — show which orbs will explode next
+    if(f.chosoChainQueue&&f.chosoChainQueue.length>0){
+      X.save();
+      X.strokeStyle='#ff444488';X.lineWidth=1.5;X.setLineDash([4,4]);
+      let prev=null;
+      f.chosoChainQueue.forEach(orb=>{
+        if(!orb.alive)return;
+        if(prev){
+          X.beginPath();X.moveTo(prev.x,prev.y);X.lineTo(orb.x,orb.y);X.stroke();
+        }
+        prev=orb;
+      });
+      X.setLineDash([]);X.restore();
+    }
     f.chosoOrbs.forEach(orb=>{
       if(!orb.alive)return;
+      const inChain=f.chosoChainQueue&&f.chosoChainQueue.includes(orb);
       const pulse=Math.sin(battleTime*0.15+orb.x*0.1)*2;
-      X.beginPath();X.arc(orb.x,orb.y,6+pulse,0,Math.PI*2);
-      X.fillStyle='#cc0000';X.fill();
-      X.shadowColor='#ff0000';X.shadowBlur=8;X.fill();X.shadowBlur=0;
+      const orbRadius=inChain?7+pulse:6+pulse; // slightly bigger if in chain
+      X.beginPath();X.arc(orb.x,orb.y,orbRadius,0,Math.PI*2);
+      X.fillStyle=inChain?'#ff4400':'#cc0000';X.fill();
+      X.shadowColor=inChain?'#ff6600':'#ff0000';X.shadowBlur=inChain?12:8;X.fill();X.shadowBlur=0;
       X.beginPath();X.arc(orb.x,orb.y,3+pulse*0.5,0,Math.PI*2);
-      X.fillStyle='#ff4444';X.fill();
+      X.fillStyle=inChain?'#ffaa44':'#ff4444';X.fill();
     });
   }
 
@@ -6805,6 +6936,22 @@ function drawBall(f){
     // Slight smirk
     X.strokeStyle='#555';X.lineWidth=1;
     X.beginPath();X.arc(hx,hy+f.radius*0.15,f.radius*0.12,0.2,Math.PI-0.4);X.stroke();
+    // Heavenly Restriction aura — subtle physical power glow (no cursed energy = raw body)
+    // Constant pale silver-blue aura with muscle-tension ripples
+    const hrPulse=Math.sin(battleTime*0.08)*3;
+    const hrAlpha=f.tojiTriActive?0.5:0.25; // brighter during ult
+    X.beginPath();X.arc(hx,hy,f.radius+5+hrPulse,0,Math.PI*2);
+    const hrGrad=X.createRadialGradient(hx,hy,f.radius,hx,hy,f.radius+10+hrPulse);
+    hrGrad.addColorStop(0,`rgba(180,200,220,${hrAlpha})`);
+    hrGrad.addColorStop(0.6,`rgba(140,170,200,${hrAlpha*0.5})`);
+    hrGrad.addColorStop(1,'rgba(120,150,180,0)');
+    X.fillStyle=hrGrad;X.fill();
+    // Faint ripple lines radiating outward (physical pressure)
+    if(battleTime%6<1){
+      const ra=Math.random()*Math.PI*2;
+      spawnParticle(hx+Math.cos(ra)*(f.radius+4),hy+Math.sin(ra)*(f.radius+4),
+        '#aabbcc',Math.cos(ra)*0.8,Math.sin(ra)*0.8,12,1.5);
+    }
     X.restore();
   }
 
@@ -7281,10 +7428,24 @@ function drawBall(f){
         }
       }
     }
-    // 24-frame counter — always visible above Naoya
+    // 24-frame counter + stack meter — always visible above Naoya
     X.font='bold 8px Consolas,monospace';X.textAlign='center';
-    X.fillStyle=isP2?'#aa44cc':'#00cc88';
-    X.fillText(String(f.naoyaFrameCount+1).padStart(2,'0')+'/24',hx,hy-r-12);
+    // Color shifts based on stack level: green→yellow→orange→red
+    const stackPct=f.naoyaFrameStack/24;
+    const frameColor=f.naoyaFrameBurned?'#ff2222':stackPct>0.75?'#ff4444':stackPct>0.5?'#ff8844':stackPct>0.25?'#ffcc00':isP2?'#aa44cc':'#00cc88';
+    X.fillStyle=frameColor;
+    const frameLabel=f.naoyaFrameBurned?'BURNOUT':String(f.naoyaFrameCount+1).padStart(2,'0')+'/24';
+    X.fillText(frameLabel,hx,hy-r-18);
+    // Stack bar underneath frame counter
+    const barW=r*1.4,barH=3,barX=hx-barW/2,barY=hy-r-13;
+    X.fillStyle='#333';X.fillRect(barX,barY,barW,barH);
+    X.fillStyle=frameColor;X.fillRect(barX,barY,barW*stackPct,barH);
+    // Stack speed indicator
+    if(f.naoyaFrameStack>0){
+      X.font='bold 6px Consolas,monospace';
+      X.fillStyle=frameColor;
+      X.fillText('SPD x'+((1+f.naoyaFrameStack*0.06).toFixed(1)),hx,hy-r-6);
+    }
     // Slow-mo aura (special active)
     if(f.naoyaSlowActive){
       const pulse2=Math.sin(battleTime*0.15)*0.2+0.4;
@@ -10595,6 +10756,25 @@ function drawBattle(){
 
   // Projectiles — big glowing orbs with comet trails
   projectiles.forEach(p=>{
+    // Massive Purple special rendering — swirling red+blue aura around giant purple core
+    if(p.isMassivePurple){
+      const pulse=Math.sin(battleTime*0.4)*4;
+      // Swirling red and blue rings
+      for(let i=0;i<3;i++){
+        const sa=battleTime*0.15+i*Math.PI*2/3;
+        const sx=p.x+Math.cos(sa)*(p.radius+8+pulse);
+        const sy=p.y+Math.sin(sa)*(p.radius+8+pulse);
+        X.globalAlpha=0.5;
+        X.beginPath();X.arc(sx,sy,6,0,Math.PI*2);
+        X.fillStyle=i%2===0?'#ff4444':'#4488ff';X.fill();
+      }
+      X.globalAlpha=1;
+      // Extra wide distortion glow
+      X.shadowColor='#9922ff';X.shadowBlur=p.radius*5;
+      X.beginPath();X.arc(p.x,p.y,p.radius+12+pulse,0,Math.PI*2);
+      X.fillStyle='#9922ff22';X.fill();
+      X.shadowBlur=0;
+    }
     // Comet trail — multiple fading circles behind the projectile
     const spd=Math.hypot(p.vx,p.vy);
     if(spd>1){
@@ -10620,6 +10800,22 @@ function drawBattle(){
     // Core bright spot
     X.beginPath();X.arc(p.x-p.radius*0.15,p.y-p.radius*0.15,p.radius*0.3,0,Math.PI*2);
     X.fillStyle='rgba(255,255,255,0.7)';X.fill();
+    // PLS orb — green energy ring around the orb
+    if(p.isPlsOrb){
+      X.save();
+      X.strokeStyle='#aaffaa';X.lineWidth=2;X.globalAlpha=0.6;
+      X.beginPath();X.arc(p.x,p.y,p.radius+5+Math.sin(battleTime*0.3)*2,0,Math.PI*2);X.stroke();
+      X.globalAlpha=1;X.restore();
+    }
+    // Ryu cannon — fiery orange glow ring + smoke trail
+    if(p.isRyuCannon){
+      X.save();
+      const rpulse=Math.sin(battleTime*0.5)*2;
+      X.shadowColor='#ff4400';X.shadowBlur=p.radius*2;
+      X.beginPath();X.arc(p.x,p.y,p.radius+3+rpulse,0,Math.PI*2);
+      X.fillStyle='#ff660033';X.fill();
+      X.shadowBlur=0;X.restore();
+    }
     // Homing glow extra — pulsing
     if(p.homing){const hpulse=Math.sin(battleTime*0.3)*3;X.beginPath();X.arc(p.x,p.y,p.radius+10+hpulse,0,Math.PI*2);X.fillStyle=p.color+'22';X.fill();X.strokeStyle=p.color+'44';X.lineWidth=1.5;X.stroke();}
   });
@@ -10989,7 +11185,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'ryu':statLine='CANNON';break;
     case 'higuruma':statLine='HAMMER';break;
     case 'yuji':{const bf=f.yujiBlackFlashActive?'BF RUSH ':f.yujiIcePermanentBF?'PERM BF ':'';const ghosts=f.yujiGhostFists?f.yujiGhostFists.length:0;statLine=bf+'FIST'+(ghosts>0?' x'+ghosts:'');break;}
-    case 'naoya':{const ph=f.naoyaPhase===2?'CS ':'';const mode=f.naoyaDashing?'DASH':f.naoyaDomainActive?'DOMAIN':f.naoyaSlowActive?'24F':'PROJ';statLine=ph+mode;break;}
+    case 'naoya':{const ph=f.naoyaPhase===2?'CS ':'';const mode=f.naoyaFrameBurned?'BURNOUT':f.naoyaDashing?'DASH':f.naoyaDomainActive?'DOMAIN':f.naoyaSlowActive?'24F':'PROJ';const stk=f.naoyaFrameStack>0?' STK:'+f.naoyaFrameStack:'';statLine=ph+mode+stk;break;}
     case 'yuta':{const cp=f.yutaCopiedTech?f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%':'---';const dom=f.yutaDomainActive?'DOMAIN ':'';statLine=dom+'COPY:'+cp;break;}
     case 'todo':{const storm=f.todoSpecialActive?'STORM ':'';const stk=f.todoBuffStacks>0?'x'+f.todoBuffStacks:'';statLine=storm+'SWAP'+stk;break;}
   }
