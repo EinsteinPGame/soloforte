@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.5 — Fixes: domain clash, Rika independent fighter, Naoya collision aura, Yuji flying fist
+// BALL BATTLE ARENA v8.6 — Naoya Projection Sorcery freeze visual (frame lock rectangle)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -679,6 +679,7 @@ function createFighter(charIdx,elemIdx,side){
     captureTimer:0, // can't attack while captured
     stunTimer:0,burnTimer:0,burnDmg:0,
     slowTimer:0,freezeTimer:0,
+    projectionFrozenTimer:0, // Naoya Projection Sorcery freeze (huge rect overlay)
     defReduction:0,defReductionTimer:0,
     // Quickhack
     quickhackTimer:0,quickhackType:null,quickhackProgress:0,quickhackMax:90,
@@ -897,6 +898,7 @@ function updatePhysics(f,dt){
   if(f.sandyTimeScale<1)spdMult*=f.sandyTimeScale; // Sandevistan slow
   if(f.stunTimer>0)spdMult=0.15;
   if(f.freezeTimer>0)spdMult=0.08;
+  if(f.projectionFrozenTimer>0)spdMult=0; // Naoya projection frame lock
   if(f.chosoPiercingFreeze>0)spdMult=0; // Choso frozen while aiming
   if(f.mechaMouthBlastActive)spdMult=0; // Mechamaru frozen while firing mouth blast
   if(f.kashimoAmberActive)spdMult=0; // Kashimo frozen during AMBER charge
@@ -1182,7 +1184,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     // Gojo revival — first death triggers awakened state
     if(defender.char.id==='gojo'&&!defender.gojoRevived){
       defender.hp=1;defender.gojoRevived=true;defender.gojoReviving=true;defender.gojoReviveTimer=120;
-      defender.stunTimer=0;defender.freezeTimer=0;defender.captureTimer=0;
+      defender.stunTimer=0;defender.freezeTimer=0;defender.projectionFrozenTimer=0;defender.captureTimer=0;
       SFX.gojoRevive();
       showRelicText('I ALONE AM THE HONOURED ONE',defender.char.color);
       spawnBurst(defender.x,defender.y,'#8888ff',40,10);
@@ -1196,7 +1198,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     if(defender.char.id==='naoya'&&!defender.naoyaResurrected){
       defender.hp=1;defender.naoyaResurrected=true;
       defender.naoyaPhase=2;defender.naoyaTransitionTimer=60; // i-frames
-      defender.stunTimer=0;defender.freezeTimer=0;defender.captureTimer=0;
+      defender.stunTimer=0;defender.freezeTimer=0;defender.projectionFrozenTimer=0;defender.captureTimer=0;
       defender.naoyaDashing=false;defender.naoyaSlowActive=false;
       // Phase 2 stats: faster, more atk, less def
       defender.speed=defender.baseSpeed*1.4;
@@ -1276,6 +1278,7 @@ function performWeaponAttack(f,enemy){
   if(!f.alive||!enemy.alive)return;
   if(f.captureTimer>0)return;
   if(f.stunTimer>0||f.freezeTimer>0)return;
+  if(f.projectionFrozenTimer>0)return; // Naoya frame lock
   if(f.chosoPiercingFreeze>0)return; // Choso frozen while firing beam
   if(f.mechaMouthBlastActive)return; // Mechamaru frozen while firing mouth blast
   if(f.kashimoAmberActive)return; // Kashimo frozen during AMBER
@@ -4625,6 +4628,13 @@ function updateRelicNaoya(f,enemy,dt){
         // 24-frame rule: stun enemy briefly (they "broke the rule")
         const stunDur=isCryoElem?25:15;
         enemy.stunTimer=Math.max(enemy.stunTimer,stunDur);
+        // Projection freeze — huge rectangle overlay when special/domain active
+        if(f.naoyaSlowActive||f.naoyaDomainActive){
+          const freezeDur=f.naoyaDomainActive?50:35;
+          enemy.projectionFrozenTimer=Math.max(enemy.projectionFrozenTimer,freezeDur);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-40,'FRAME LOCK!','#00ffaa',false);
+          SFX.freeze();
+        }
         if(isCryoElem){
           enemy.freezeTimer=Math.max(enemy.freezeTimer,20);
           spawnBurst(enemy.x,enemy.y,'#77ddff',8,4);
@@ -4925,6 +4935,7 @@ function updateBattle(dt){
     if(f.stunTimer>0)f.stunTimer-=dt;
     if(f.slowTimer>0)f.slowTimer-=dt;
     if(f.freezeTimer>0)f.freezeTimer-=dt;
+    if(f.projectionFrozenTimer>0){f.projectionFrozenTimer-=dt;f.stunTimer=Math.max(f.stunTimer,2);} // locked in projection frame
     if(f.higurumaDisableTimer>0){f.higurumaDisableTimer-=dt;f.attackTimer=Math.max(f.attackTimer,10);}
     if(f.higurumaSwingCD>0)f.higurumaSwingCD-=dt;
     if(f.higurumaElecBurstCD>0)f.higurumaElecBurstCD-=dt;
@@ -6195,6 +6206,35 @@ function drawBall(f){
 
   // Freeze visual
   if(f.freezeTimer>0){X.beginPath();X.arc(f.x,f.y,f.radius+4,0,Math.PI*2);X.fillStyle='rgba(119,221,255,0.4)';X.fill();X.strokeStyle='#77ddff';X.lineWidth=3;X.stroke();}
+
+  // Projection Sorcery freeze — huge transparent rectangle overlay (24-frame rule violation)
+  if(f.projectionFrozenTimer>0){
+    X.save();
+    const pw=f.radius*3.2,ph=f.radius*4;
+    const px=f.x-pw/2,py=f.y-ph/2;
+    const fadeIn=Math.min(1,f.projectionFrozenTimer/10);
+    // Translucent green/purple rectangle
+    const isNaoyaP2=fighters.some(o=>o&&o.char&&o.char.id==='naoya'&&o.naoyaPhase===2&&o.alive);
+    const rectCol=isNaoyaP2?'rgba(170,68,204,':'rgba(0,204,136,';
+    X.fillStyle=rectCol+(0.18*fadeIn)+')';
+    X.fillRect(px,py,pw,ph);
+    // Thick border
+    X.strokeStyle=isNaoyaP2?'rgba(170,68,204,'+(0.6*fadeIn)+')':'rgba(0,204,136,'+(0.6*fadeIn)+')';
+    X.lineWidth=3;X.strokeRect(px,py,pw,ph);
+    // Scan lines inside rectangle
+    X.globalAlpha=0.12*fadeIn;
+    for(let sl=0;sl<ph;sl+=4){
+      X.fillStyle=isNaoyaP2?'#aa44cc':'#00cc88';
+      X.fillRect(px,py+sl,pw,2);
+    }
+    X.globalAlpha=1;
+    // "FROZEN" label
+    X.font='bold 10px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=isNaoyaP2?'#cc88ff':'#66ffcc';X.globalAlpha=0.8*fadeIn;
+    X.fillText('FRAME LOCKED',f.x,py+10);
+    X.globalAlpha=1;
+    X.restore();
+  }
 
   // Sandevistan time-slow visual — blue tint + clock hands on slowed fighters
   if(f.sandyTimeScale<1&&f.char.id!=='sandy'){
@@ -10463,6 +10503,7 @@ function drawFighterInfo(f,px,py,maxW,align){
   if(f.burnTimer>0)statuses.push({t:'BURN',c:'#ff4400'});
   if(f.stunTimer>0)statuses.push({t:'STUN',c:'#ffcc00'});
   if(f.freezeTimer>0)statuses.push({t:'FROZEN',c:'#77ddff'});
+  if(f.projectionFrozenTimer>0)statuses.push({t:'FRAME LOCK',c:'#00ffaa'});
   if(f.elementActive)statuses.push({t:f.elem.name,c:f.elem.color});
 
   X.font='8px Consolas,monospace';X.textAlign=isL?'left':'right';
