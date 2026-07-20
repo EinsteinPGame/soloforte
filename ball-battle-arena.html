@@ -525,6 +525,7 @@ let _bossSelSlot=1; // cycling slot for boss select UI
 let _bossSelPage=1; // 1=pick chars, 2=elements+boss
 let teamElem1=0,teamElem2=0,teamElem3=0,bossElem=0; // elements
 let selectPage=0; // pagination for character select (0-indexed)
+let selectTab=0; // 0=Fighters, 1=Bosses
 
 const ARENA={x:15,y:65,w:W-30,h:H-200};
 
@@ -9315,22 +9316,37 @@ function drawBallPreview(bx,by,r,ch){
 }
 
 function drawSelectDesktop(){
-  // Paginated grid: fixed card size, arrows to page, bosses at bottom of EVERY page
+  // Tab system: Fighters | Bosses
   const normalChars=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss);
   const bossChars=[...CHARS.keys()].filter(i=>CHARS[i].isBoss);
-  const gapX=10,gapY=8,padX=15,headerH=60,bottomH=150;
+  const gapX=10,gapY=8,padX=15,headerH=90,bottomH=150;
   const availW=W-padX*2,availH=H-headerH-bottomH;
+
+  // Draw tabs
+  const tabW=120,tabH=30,tabY=50;
+  const tabTotalW=tabW*2+10;
+  const tabStartX=(W-tabTotalW)/2;
+  ['Fighters ('+normalChars.length+')','Bosses ('+bossChars.length+')'].forEach((label,ti)=>{
+    const tx=tabStartX+ti*(tabW+10);
+    const isActive=selectTab===ti;
+    drawRoundRect(tx,tabY,tabW,tabH,6);
+    X.fillStyle=isActive?'#2a2a5a':'#111128';X.fill();
+    X.strokeStyle=isActive?(ti===0?'#7b68ee':'#cc4444'):'#333';X.lineWidth=isActive?2:1;X.stroke();
+    X.font='bold 11px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=isActive?'#fff':'#888';
+    X.fillText(label,tx+tabW/2,tabY+20);
+    addBtn('tab_'+ti,tx,tabY,tabW,tabH,'','transparent',()=>{selectTab=ti;selectPage=0;});
+  });
+
   // Fixed card size for consistency
   const cardW=120,cardH=170;
   const cols=Math.floor((availW+gapX)/(cardW+gapX));
-  const bossRows=Math.ceil(bossChars.length/cols); // boss rows always at bottom
-  const normalRowsPerPage=Math.max(1,Math.floor((availH-bossRows*(cardH+gapY))/(cardH+gapY)));
-  const normalsPerPage=normalRowsPerPage*cols;
-  const totalPages=Math.max(1,Math.ceil(normalChars.length/normalsPerPage));
+  const charList=selectTab===0?normalChars:bossChars;
+  const rowsPerPage=Math.max(1,Math.floor((availH)/(cardH+gapY)));
+  const charsPerPage=rowsPerPage*cols;
+  const totalPages=Math.max(1,Math.ceil(charList.length/charsPerPage));
   selectPage=clamp(selectPage,0,totalPages-1);
-  // Slice normal chars for current page
-  const pageNormals=normalChars.slice(selectPage*normalsPerPage,(selectPage+1)*normalsPerPage);
-  const displayOrder=[...pageNormals,...bossChars];
+  const displayOrder=charList.slice(selectPage*charsPerPage,(selectPage+1)*charsPerPage);
 
   const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
@@ -9413,24 +9429,41 @@ function drawSelectDesktop(){
 }
 
 function drawSelectMobile(){
-  // Paginated mobile grid: both P1 and P2 share same page, bosses at bottom of all pages
+  // Tab system + paginated mobile grid
   const normalChars=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss);
   const bossChars=[...CHARS.keys()].filter(i=>CHARS[i].isBoss);
-  const gapX=5,gapY=3,padX=5,headerH=42,bottomH=105;
+  const gapX=5,gapY=3,padX=5,headerH=68,bottomH=105;
   const availW=W-padX*2;
   const totalAvailH=H-headerH-bottomH;
   const gridGap=10;
   const singleGridH=(totalAvailH-gridGap)/2;
+
+  // Draw tabs
+  const tabW=Math.min(110,Math.floor((W-30)/2)),tabH=24,tabY=38;
+  const tabTotalW=tabW*2+8;
+  const tabStartX=(W-tabTotalW)/2;
+  ['Fighters','Bosses'].forEach((label,ti)=>{
+    const tx=tabStartX+ti*(tabW+8);
+    const isActive=selectTab===ti;
+    drawRoundRect(tx,tabY,tabW,tabH,5);
+    X.fillStyle=isActive?'#2a2a5a':'#111128';X.fill();
+    X.strokeStyle=isActive?(ti===0?'#7b68ee':'#cc4444'):'#333';X.lineWidth=isActive?2:1;X.stroke();
+    X.font='bold 10px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=isActive?'#fff':'#888';
+    X.fillText(label,tx+tabW/2,tabY+16);
+    addBtn('mtab_'+ti,tx,tabY,tabW,tabH,'','transparent',()=>{selectTab=ti;selectPage=0;});
+  });
+
+  const charList=selectTab===0?normalChars:bossChars;
   const maxCols=Math.floor((availW+gapX)/(120+gapX));
   const cols=Math.max(2,maxCols);
   const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
   const cardH=65; // fixed compact card height
-  const bossRows=Math.ceil(bossChars.length/cols);
-  const normalRowsPerGrid=Math.max(1,Math.floor((singleGridH-15-bossRows*(cardH+gapY))/(cardH+gapY)));
-  const normalsPerPage=normalRowsPerGrid*cols;
-  const totalPages=Math.max(1,Math.ceil(normalChars.length/normalsPerPage));
+  const rowsPerGrid=Math.max(1,Math.floor((singleGridH-15)/(cardH+gapY)));
+  const charsPerPage=rowsPerGrid*cols;
+  const totalPages=Math.max(1,Math.ceil(charList.length/charsPerPage));
   selectPage=clamp(selectPage,0,totalPages-1);
-  const pageNormals=normalChars.slice(selectPage*normalsPerPage,(selectPage+1)*normalsPerPage);
+  const pageChars=charList.slice(selectPage*charsPerPage,(selectPage+1)*charsPerPage);
   const totalW=cols*cardW+(cols-1)*gapX;
   const startX=(W-totalW)/2;
 
@@ -9438,7 +9471,7 @@ function drawSelectMobile(){
     X.font='bold 11px Consolas,monospace';X.textAlign='center';
     X.fillStyle=labelColor;X.fillText(label,W/2,yStart);
     const gridY=yStart+5;
-    const displayChars=[...pageNormals,...bossChars];
+    const displayChars=pageChars;
     displayChars.forEach((i,di)=>{
       const ch=CHARS[i];
       const row=Math.floor(di/cols),col=di%cols;
