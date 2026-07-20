@@ -29,9 +29,9 @@ canvas{display:block}
 <div id="title-screen" class="screen-overlay">
   <h1 style="color:#0ff">TIMESTRIKE</h1>
   <p style="color:#a8f;font-size:1.1rem">BULLET TIME SHOOTER</p>
-  <p>WASD: Move | Mouse: Aim | Click: Shoot</p>
-  <p>R: Switch Weapon | E/Space: Melee | Stop Moving = Bullet Time</p>
-  <div class="btn-row" style="margin-top:16px">
+  <p id="controls-hint">WASD: Move | Mouse: Aim | Click: Shoot</p>
+  <p id="controls-hint2">R: Switch Weapon | E/Space: Melee | Stop Moving = Bullet Time</p>
+  <div class="btn-row" style="margin-top:16px" id="mode-row">
     <button class="gbtn" onclick="setMode('fps')" id="mode-fps" style="border-color:#0ff;color:#0ff">FPS MODE</button>
     <button class="gbtn" onclick="setMode('classic')" id="mode-classic" style="border-color:#a8f;color:#a8f">CLASSIC MODE</button>
   </div>
@@ -112,6 +112,7 @@ function saveSave(){try{localStorage.setItem('timestrike_save',JSON.stringify(sa
 loadSave();
 
 function setMode(mode){
+  if(isMobile)mode='classic';
   gameMode=mode;
   const fpsBtn=document.getElementById('mode-fps');
   const classicBtn=document.getElementById('mode-classic');
@@ -301,6 +302,94 @@ document.addEventListener('mousedown',e=>{mouseDown=true;initAudio();
 document.addEventListener('mouseup',()=>{mouseDown=false});
 document.addEventListener('pointerlockchange',()=>{pointerLocked=!!document.pointerLockElement});
 
+// ── MOBILE TOUCH CONTROLS ──
+let touchJoystick={active:false,id:null,cx:0,cy:0,dx:0,dy:0};
+let touchAim={active:false,id:null,x:0,y:0};
+let mobileFireHeld=false;
+
+if(isMobile){
+  // Force classic mode on mobile
+  gameMode='classic';
+
+  // Hide FPS mode button, update hints
+  document.addEventListener('DOMContentLoaded',()=>{
+    const modeRow=document.getElementById('mode-row');
+    if(modeRow)modeRow.style.display='none';
+    const h1=document.getElementById('controls-hint');
+    const h2=document.getElementById('controls-hint2');
+    if(h1)h1.textContent='Left: Move joystick | Right: Aim & shoot';
+    if(h2)h2.textContent='Buttons: Melee, Switch weapon | Stop = Bullet Time';
+    const desc=document.getElementById('mode-desc');
+    if(desc)desc.textContent='Classic mode (optimized for touch)';
+  });
+
+  C.addEventListener('touchstart',e=>{
+    e.preventDefault();initAudio();
+    for(const t of e.changedTouches){
+      const tx=t.clientX,ty=t.clientY;
+      // Left half = joystick
+      if(tx<innerWidth*0.4&&!touchJoystick.active){
+        touchJoystick.active=true;touchJoystick.id=t.identifier;
+        touchJoystick.cx=tx;touchJoystick.cy=ty;touchJoystick.dx=0;touchJoystick.dy=0;
+      }
+      // Right half = aim + shoot
+      else if(tx>=innerWidth*0.4){
+        // Check button areas first
+        const btnH=innerHeight-140;
+        if(ty>btnH&&tx>innerWidth-160){
+          // Bottom-right button area
+          if(tx>innerWidth-80){triggerMelee();}
+          else{switchWeapon();}
+        }else{
+          touchAim.active=true;touchAim.id=t.identifier;
+          touchAim.x=tx;touchAim.y=ty;
+          mobileFireHeld=true;mouseDown=true;
+        }
+      }
+    }
+  },{passive:false});
+
+  C.addEventListener('touchmove',e=>{
+    e.preventDefault();
+    for(const t of e.changedTouches){
+      if(t.identifier===touchJoystick.id&&touchJoystick.active){
+        touchJoystick.dx=t.clientX-touchJoystick.cx;
+        touchJoystick.dy=t.clientY-touchJoystick.cy;
+        // Clamp to joystick radius
+        const maxR=60;
+        const d=Math.sqrt(touchJoystick.dx*touchJoystick.dx+touchJoystick.dy*touchJoystick.dy);
+        if(d>maxR){touchJoystick.dx*=maxR/d;touchJoystick.dy*=maxR/d;}
+      }
+      if(t.identifier===touchAim.id&&touchAim.active){
+        touchAim.x=t.clientX;touchAim.y=t.clientY;
+        mouseX=t.clientX;mouseY=t.clientY;
+      }
+    }
+  },{passive:false});
+
+  C.addEventListener('touchend',e=>{
+    for(const t of e.changedTouches){
+      if(t.identifier===touchJoystick.id){
+        touchJoystick.active=false;touchJoystick.dx=0;touchJoystick.dy=0;
+      }
+      if(t.identifier===touchAim.id){
+        touchAim.active=false;mobileFireHeld=false;mouseDown=false;
+      }
+    }
+  },{passive:false});
+
+  C.addEventListener('touchcancel',e=>{
+    for(const t of e.changedTouches){
+      if(t.identifier===touchJoystick.id){
+        touchJoystick.active=false;touchJoystick.dx=0;touchJoystick.dy=0;
+      }
+      if(t.identifier===touchAim.id){
+        touchAim.active=false;mobileFireHeld=false;mouseDown=false;
+      }
+    }
+  },{passive:false});
+}
+
 function switchWeapon(){
   if(gameState!=='game')return;
   let next=(currentWeapon+1)%3;
@@ -369,6 +458,18 @@ function update(dt){
   if(gameOver||levelComplete)return;
   const realDt=dt;
 
+  // Mobile joystick → keys mapping
+  if(isMobile&&touchJoystick.active){
+    const jd=Math.sqrt(touchJoystick.dx*touchJoystick.dx+touchJoystick.dy*touchJoystick.dy);
+    const deadZone=12;
+    keys['w']=touchJoystick.dy<-deadZone;
+    keys['s']=touchJoystick.dy>deadZone;
+    keys['a']=touchJoystick.dx<-deadZone;
+    keys['d']=touchJoystick.dx>deadZone;
+  } else if(isMobile&&!touchJoystick.active){
+    keys['w']=false;keys['a']=false;keys['s']=false;keys['d']=false;
+  }
+
   // Bullet time
   const moving=keys['w']||keys['a']||keys['s']||keys['d']||
     keys['arrowup']||keys['arrowleft']||keys['arrowdown']||keys['arrowright'];
@@ -388,10 +489,11 @@ function update(dt){
     if(mouseDx!==0){player.angle+=mouseDx*MOUSE_SENS;mouseDx=0;}
     if(mouseDy!==0){player.pitch=Math.max(-C.height*0.35,Math.min(C.height*0.35,player.pitch-mouseDy*0.5));mouseDy=0;}
   }else{
-    // Classic mode: aim toward mouse position
-    const viewScale=Math.min(W,H)*0.45/MAP_W;
-    const offX=W/2-player.x*viewScale;
-    const offY=H/2-player.y*viewScale;
+    // Classic mode: aim toward mouse/touch position
+    const cw=W||C.width,ch=H||C.height;
+    const viewScale=Math.min(cw,ch)*0.045;
+    const offX=cw/2-player.x*viewScale;
+    const offY=ch/2-player.y*viewScale;
     const worldMX=(mouseX-offX)/viewScale;
     const worldMY=(mouseY-offY)/viewScale;
     player.angle=Math.atan2(worldMY-player.y,worldMX-player.x);
@@ -1142,6 +1244,43 @@ function drawHUD(){
     X.fillStyle='#555';X.font='11px "Courier New"';X.textAlign='left';
     X.fillText('MELEE CD',200,H-25);
   }
+
+  // Mobile touch controls overlay
+  if(isMobile){
+    X.save();
+    // Virtual joystick (left side)
+    const jx=touchJoystick.active?touchJoystick.cx:80;
+    const jy=touchJoystick.active?touchJoystick.cy:H-120;
+    // Outer ring
+    X.globalAlpha=0.25;
+    X.strokeStyle='#0ff';X.lineWidth=2;
+    X.beginPath();X.arc(jx,jy,55,0,Math.PI*2);X.stroke();
+    // Inner stick
+    X.globalAlpha=0.4;
+    X.fillStyle='#0ff';
+    X.beginPath();X.arc(jx+touchJoystick.dx,jy+touchJoystick.dy,20,0,Math.PI*2);X.fill();
+
+    // Action buttons (bottom right)
+    const btnSize=36;
+    // Melee button
+    const meleeX=W-55,meleeY=H-90;
+    X.globalAlpha=meleeCooldown>0?0.15:0.35;
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(meleeX,meleeY,btnSize,0,Math.PI*2);X.fill();
+    X.globalAlpha=0.8;X.fillStyle=meleeCooldown>0?'#555':'#fff';
+    X.font='bold 11px "Courier New"';X.textAlign='center';X.textBaseline='middle';
+    X.fillText('MELEE',meleeX,meleeY);
+
+    // Weapon switch button
+    const swX=W-130,swY=H-90;
+    X.globalAlpha=0.35;X.fillStyle=WEAPONS[currentWeapon].color;
+    X.beginPath();X.arc(swX,swY,btnSize,0,Math.PI*2);X.fill();
+    X.globalAlpha=0.8;X.fillStyle='#fff';
+    X.fillText(WEAPONS[currentWeapon].name.slice(0,3),swX,swY);
+
+    X.textBaseline='alphabetic';
+    X.restore();
+  }
 }
 
 function formatTime(t){
@@ -1202,8 +1341,8 @@ function startLevel(lvl){
   gameState='game';
   initLevel(lvl);
   initAudio();
-  if(gameMode==='fps')C.requestPointerLock&&C.requestPointerLock();
-  C.style.cursor=gameMode==='classic'?'crosshair':'none';
+  if(gameMode==='fps'&&!isMobile)C.requestPointerLock&&C.requestPointerLock();
+  C.style.cursor=isMobile?'none':gameMode==='classic'?'crosshair':'none';
 }
 
 function showComplete(){
