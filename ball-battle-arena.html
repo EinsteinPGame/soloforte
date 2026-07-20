@@ -865,6 +865,7 @@ function createFighter(charIdx,elemIdx,side){
     higurumaSwordActive:false, // Executioner Sword spawned
     higurumaSwordTimer:0, // sword animation timer
     higurumaSwordTarget:null, // sword target
+    higurumaNextSword:false, // next attack uses Executioner Sword (after Execution verdict)
     // Yuji state
     yujiDivergentCD:0, // cooldown between punches
     yujiGhostFists:[], // pending delayed blue fists [{target, timer, dmg, x, y, angle}]
@@ -2234,6 +2235,30 @@ function attackHiguruma(f,enemy,chaos){
   const isFireElem=f.elementActive&&f.elem.id==='fire';
   const isElecElem=f.elementActive&&f.elem.id==='electric';
   const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+
+  // Executioner Sword — next attack after Execution verdict is a devastating sword strike
+  if(f.higurumaNextSword&&enemy&&enemy.alive&&d<f.radius+enemy.radius+80){
+    f.higurumaNextSword=false;
+    f.weaponExtend=1;f.weaponFlash=20;
+    SFX.executionerSword();
+    const swordDmg=f.atk*4; // massive single hit
+    dealDamage(f,enemy,swordDmg,true);
+    // Visual: big red slash + purple burst
+    spawnDmgNum(enemy.x,enemy.y-enemy.radius-40,'EXECUTIONER SWORD!','#ff0000',true);
+    spawnBurst(enemy.x,enemy.y,'#ff0000',30,10);
+    spawnBurst(enemy.x,enemy.y,'#5a3a7a',20,7);
+    spawnBurst(enemy.x,enemy.y,'#ffffff',12,5);
+    // Slash line visual
+    for(let i=0;i<15;i++){
+      const t=i/15;
+      spawnParticle(lerp(enemy.x-40,enemy.x+40,t),lerp(enemy.y-40,enemy.y+40,t),'#ff0000',0,0,18,2);
+    }
+    explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:70,color:'#5a3a7a',life:18,maxLife:18,dmg:0,owner:null,target:null,hit:true});
+    shakeTimer=20;shakeAmt=12;
+    triggerScreenFlash('#ff0000',8);triggerHitFreeze(5);
+    addLog((f.side===0?'P1':'P2')+' EXECUTIONER SWORD STRIKE!');
+    return;
+  }
 
   // Fire element: ONLY big hammer swing (faster, bigger)
   // Electric element: ONLY small hammers (20-burst volley)
@@ -4822,6 +4847,9 @@ function updateRelicHiguruma(f,enemy,dt){
           explosions.push({x:target.x,y:target.y,radius:0,maxRadius:90,color:'#5a3a7a',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
           triggerScreenFlash('#ff0000',10);
           addLog((f.side===0?'P1':'P2')+' EXECUTIONER SWORD! '+Math.round(swordDmg)+' DMG!');
+          // Grant Executioner Sword for next attack
+          f.higurumaNextSword=true;
+          spawnDmgNum(f.x,f.y-f.radius-20,'SWORD READY','#ff4444',false);
         }
       }
     }
@@ -11186,7 +11214,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'kashimo':statLine=(f.kashimoDartPhase!=='idle'?'DART ':'STAFF ')+(f.kashimoAmberUsed?'':'AMBER');break;
     case 'nanami':{const chaos=getChaosLevel(f);let cr=f.crit+chaos*1.5;if(f.nanamiOvertimeActive)cr=Math.min(90,cr+35);const cm=f.nanamiOvertimeActive?2.4:(f.elementActive&&f.elem.id==='electric'?1.4:1.8);statLine=(f.nanamiOvertimeActive?'OT ':'')+(f.nanamiIceShattered?'FIST ':'')+Math.round(cr)+'%cr '+cm.toFixed(1)+'x'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:'');break;}
     case 'ryu':statLine='CANNON';break;
-    case 'higuruma':statLine='HAMMER';break;
+    case 'higuruma':statLine=f.higurumaNextSword?'SWORD READY':'HAMMER';break;
     case 'yuji':{const bf=f.yujiBlackFlashActive?'BF RUSH ':f.yujiIcePermanentBF?'PERM BF ':'';const ghosts=f.yujiGhostFists?f.yujiGhostFists.length:0;statLine=bf+'FIST'+(ghosts>0?' x'+ghosts:'');break;}
     case 'naoya':{const ph=f.naoyaPhase===2?'CS ':'';const mode=f.naoyaFrameBurned?'BURNOUT':f.naoyaDashing?'DASH':f.naoyaDomainActive?'DOMAIN':f.naoyaSlowActive?'24F':'PROJ';const stk=f.naoyaFrameStack>0?' STK:'+f.naoyaFrameStack:'';statLine=ph+mode+stk;break;}
     case 'yuta':{const cp=f.yutaCopiedTech?f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%':'---';const dom=f.yutaDomainActive?'DOMAIN ':'';statLine=dom+'COPY:'+cp;break;}
