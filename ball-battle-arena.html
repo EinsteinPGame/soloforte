@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.6 — Naoya Projection Sorcery freeze visual (frame lock rectangle)
+// BALL BATTLE ARENA v8.7 — Todo (Boogie Woogie), Rika wandering fix, Yuji fist bigger
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -206,6 +206,8 @@ const SFX={
   yutaDomain(){[200,400,600,800,1000,1200].forEach((f,i)=>this._tone(f,0.2,'sine',0.25,i*0.06));this._noise(0.2,0.2);this._tone(100,0.4,'sine',0.3,0.35)},
   // Yuta — Domain sword impact
   yutaSwordHit(){this._tone(800,0.08,'sawtooth',0.2);this._tone(1200,0.06,'square',0.15,0.02);this._tone(400,0.1,'sine',0.12,0.03)},
+  // Todo — Boogie Woogie clap
+  todoClap(){this._tone(1500,0.05,'square',0.3);this._tone(800,0.08,'triangle',0.2,0.02);this._noise(0.03,0.06)},
 };
 
 // ============================================================
@@ -374,6 +376,14 @@ const CHARS=[
     baseAtkInterval:35,relicChargeRate:0.75,
     specialName:'AUTHENTIC MUTUAL LOVE',
   },
+  {
+    id:'todo',name:'Todo',color:'#dd7733',
+    desc:'Boogie Woogie: clap to swap positions. Buff allies, debuff enemies.',
+    playstyle:'Swap & Buff',
+    stats:{hp:480,atk:26,speed:4.5,range:60,def:7,crit:14},
+    baseAtkInterval:28,relicChargeRate:0.9,
+    specialName:'BOOGIE WOOGIE STORM',
+  },
 ];
 
 // ============================================================
@@ -468,6 +478,10 @@ const COMBO_EFFECTS={
   'yuta_electric':'Rika attacks faster + higher copy chance',
   'yuta_toxic':'Copied technique projectiles poison on hit',
   'yuta_cryo':'Domain swords freeze on hit + extra swords',
+  'todo_fire':'Stat buff from Boogie Woogie is stronger',
+  'todo_electric':'Higher chance to clap + swap',
+  'todo_toxic':'Stat debuff from Boogie Woogie is stronger',
+  'todo_cryo':'Swaps leave behind extra cursed papers',
 };
 
 // ============================================================
@@ -886,6 +900,17 @@ function createFighter(charIdx,elemIdx,side){
     yutaDomainSwords:[], // [{x,y,vx,vy,dmg,color,timer,guaranteed,hit}]
     yutaDomainClash:false, // domain clash with Gojo
     yutaDomainClashTimer:0, // clash animation timer
+    // Todo state — Boogie Woogie
+    todoPunchCD:0, // melee punch cooldown
+    todoSwapCD:0, // boogie woogie clap cooldown
+    todoSwapAnim:0, // clap flash animation
+    todoSwapTarget:null, // who we swapped with
+    todoPapers:[], // cursed energy papers [{x,y,life}]
+    todoSpecialActive:false, // storm mode: constant swapping
+    todoSpecialTimer:0, // storm duration
+    todoSpecialSwapCD:0, // swap cooldown during storm
+    todoBuffStacks:0, // stacked buff count from special
+    todoBuffTimer:0, // buff decay timer (5-8s after special ends)
   };
 }
 
@@ -1316,6 +1341,7 @@ function performWeaponAttack(f,enemy){
     case 'yuji':attackYuji(f,enemy,chaos);break;
     case 'naoya':attackNaoya(f,enemy,chaos);break;
     case 'yuta':attackYuta(f,enemy,chaos);break;
+    case 'todo':attackTodo(f,enemy,chaos);break;
   }
 }
 
@@ -2425,6 +2451,198 @@ function attackYuta(f,enemy,chaos){
   }
 }
 
+function attackTodo(f,enemy,chaos){
+  const d=dist(f,enemy);
+  if(d>f.radius+enemy.radius+40+chaos*3)return; // melee collision range
+  if(f.todoPunchCD>0)return;
+
+  f.todoPunchCD=f.baseAtkInterval;
+  f.weaponExtend=1;f.weaponFlash=10;
+  SFX.punch();
+
+  // Collision punch — charges into enemy like a brawler
+  const punchDmg=f.atk*(1.1+chaos*0.1);
+  dealDamage(f,enemy,punchDmg,true);
+  spawnBurst(enemy.x,enemy.y,'#dd7733',8,4);
+
+  // Knockback on hit
+  const ka=angle(f,enemy);
+  enemy.vx+=Math.cos(ka)*4;enemy.vy+=Math.sin(ka)*4;
+}
+
+function relicTodo(f,enemy){
+  SFX.relicActivate();
+  f.todoSpecialActive=true;
+  f.todoSpecialTimer=420; // 7 seconds
+  f.todoSpecialSwapCD=0;
+  f.todoBuffStacks=0;
+
+  // Throw cursed energy papers around the arena
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  const paperCount=isCryoElem?12:8;
+  f.todoPapers=[];
+  for(let i=0;i<paperCount;i++){
+    f.todoPapers.push({
+      x:50+Math.random()*(W-100),
+      y:50+Math.random()*(H-100),
+      life:420,
+    });
+  }
+
+  spawnBurst(f.x,f.y,'#dd7733',30,10);
+  spawnBurst(f.x,f.y,'#ffcc44',20,6);
+  triggerScreenFlash('#dd7733',12);
+  shakeTimer=15;shakeAmt=8;
+  spawnDmgNum(f.x,f.y-f.radius-30,'BOOGIE WOOGIE STORM','#dd7733',false);
+  addLog((f.side===0?'P1':'P2')+' BOOGIE WOOGIE STORM!');
+}
+
+function todoPerformSwap(f,targetX,targetY,swapTarget){
+  // Swap positions
+  const oldX=f.x,oldY=f.y;
+  f.x=targetX;f.y=targetY;
+  if(swapTarget&&swapTarget.alive){
+    swapTarget.x=oldX;swapTarget.y=oldY;
+  }
+
+  // Visual effects
+  SFX.todoClap();
+  f.todoSwapAnim=20;
+  f.todoSwapTarget=swapTarget;
+  spawnBurst(f.x,f.y,'#dd7733',12,5);
+  spawnBurst(oldX,oldY,'#ffcc44',12,5);
+  spawnDmgNum(f.x,f.y-f.radius-20,'SWAP!','#ffcc44',false);
+
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+
+  // Stat buff to self + allies
+  const buffMult=isFireElem?1.4:1.0;
+  const buffDur=f.todoSpecialActive?(180+f.todoBuffStacks*15):(60*3); // 3-5s
+  fighters.forEach(o=>{
+    if(!o||!o.alive)return;
+    if(o.side===f.side){
+      // Buff allies (atk, speed, def, crit — NOT hp)
+      o.atk=Math.min(o.atk*1.05*buffMult,o.char.stats.atk*2.5);
+      o.speed=Math.min(o.speed*1.03,o.baseSpeed*2);
+      o.def=Math.min(o.def+0.5*buffMult,o.char.stats.def*2);
+    }
+  });
+
+  // Stat debuff to enemies
+  const debuffMult=isToxicElem?1.5:1.0;
+  fighters.forEach(o=>{
+    if(!o||!o.alive||o.side===f.side)return;
+    o.atk=Math.max(o.atk*0.95/debuffMult,o.char.stats.atk*0.3);
+    o.speed=Math.max(o.speed*0.97,o.baseSpeed*0.4);
+    o.def=Math.max(o.def-0.3*debuffMult,0);
+  });
+
+  // Ice: leave a paper at swap origin
+  if(isCryoElem&&f.todoPapers){
+    f.todoPapers.push({x:oldX,y:oldY,life:180});
+  }
+
+  if(f.todoSpecialActive)f.todoBuffStacks++;
+}
+
+function updateRelicTodo(f,enemy,dt){
+  if(f.todoPunchCD>0)f.todoPunchCD--;
+  if(f.todoSwapAnim>0)f.todoSwapAnim-=dt;
+
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+
+  // Passive Boogie Woogie — chance to clap every ~60 frames
+  if(f.todoSwapCD>0)f.todoSwapCD-=dt;
+  if(!f.todoSpecialActive&&f.todoSwapCD<=0){
+    const fighterCount=fighters.filter(o=>o&&o.alive).length;
+    const baseChance=isElecElem?0.04:0.025;
+    const chance=baseChance*fighterCount;
+    if(Math.random()<chance){
+      // Pick random target to swap with
+      const targets=fighters.filter(o=>o&&o!==f&&o.alive);
+      if(targets.length>0){
+        const t=targets[Math.floor(Math.random()*targets.length)];
+        todoPerformSwap(f,t.x,t.y,t);
+        f.todoSwapCD=60; // 1 second cooldown
+      }
+    }
+  }
+
+  // Special: Boogie Woogie Storm — constant swapping
+  if(f.todoSpecialActive){
+    f.todoSpecialTimer-=dt;
+    if(f.todoSpecialSwapCD>0)f.todoSpecialSwapCD-=dt;
+
+    // Storm particles
+    if(battleTime%4<1){
+      spawnParticle(f.x+(Math.random()-0.5)*40,f.y+(Math.random()-0.5)*40,'#ffcc44',0,-1.5,15,2);
+    }
+
+    // Constant swapping during storm
+    if(f.todoSpecialSwapCD<=0){
+      const swapInterval=isElecElem?18:25;
+      f.todoSpecialSwapCD=swapInterval;
+
+      // Collect all swap targets: fighters + papers
+      const swapTargets=[];
+      fighters.forEach(o=>{if(o&&o!==f&&o.alive)swapTargets.push({type:'fighter',obj:o,x:o.x,y:o.y});});
+      f.todoPapers.forEach((p,pi)=>{if(p.life>0)swapTargets.push({type:'paper',idx:pi,x:p.x,y:p.y});});
+
+      if(swapTargets.length>0){
+        const t=swapTargets[Math.floor(Math.random()*swapTargets.length)];
+        if(t.type==='fighter'){
+          todoPerformSwap(f,t.x,t.y,t.obj);
+        } else {
+          // Swap with paper
+          const oldX=f.x,oldY=f.y;
+          f.x=t.x;f.y=t.y;
+          f.todoPapers[t.idx].x=oldX;f.todoPapers[t.idx].y=oldY;
+          f.todoSwapAnim=15;
+          spawnBurst(f.x,f.y,'#ffcc44',8,3);
+          spawnDmgNum(f.x,f.y-f.radius-15,'PAPER SWAP','#ffcc44',false);
+          // Still apply buffs/debuffs
+          const isFireElem=f.elementActive&&f.elem.id==='fire';
+          const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+          const buffMult=isFireElem?1.4:1.0;
+          const debuffMult=isToxicElem?1.5:1.0;
+          fighters.forEach(o=>{
+            if(!o||!o.alive)return;
+            if(o.side===f.side){o.atk=Math.min(o.atk*1.03*buffMult,o.char.stats.atk*2.5);}
+            else{o.atk=Math.max(o.atk*0.97/debuffMult,o.char.stats.atk*0.3);}
+          });
+          f.todoBuffStacks++;
+        }
+      }
+    }
+
+    // Tick paper life
+    f.todoPapers.forEach(p=>{if(p.life>0)p.life-=dt;});
+    f.todoPapers=f.todoPapers.filter(p=>p.life>0);
+
+    // End storm when timer or all papers gone
+    if(f.todoSpecialTimer<=0||f.todoPapers.length===0){
+      f.todoSpecialActive=false;
+      f.todoBuffTimer=360; // buffs last 6 more seconds then decay
+      addLog((f.side===0?'P1':'P2')+' Boogie Woogie Storm ended!');
+    }
+  }
+
+  // Post-special buff decay
+  if(!f.todoSpecialActive&&f.todoBuffTimer>0){
+    f.todoBuffTimer-=dt;
+    if(f.todoBuffTimer<=0){
+      // Reset stats to base
+      fighters.forEach(o=>{
+        if(!o||!o.alive)return;
+        o.atk=o.char.stats.atk;o.speed=o.baseSpeed;o.def=o.char.stats.def;
+      });
+      f.todoBuffStacks=0;
+    }
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -2781,6 +2999,7 @@ function useSpecial(f,enemy){
     case 'yuji':relicYuji(f,enemy);break;
     case 'naoya':relicNaoya(f,enemy);break;
     case 'yuta':relicYuta(f,enemy);break;
+    case 'todo':relicTodo(f,enemy);break;
   }
 }
 
@@ -4741,37 +4960,32 @@ function updateRelicYuta(f,enemy,dt){
   // Initialize Rika position near Yuta
   if(!f.yutaRikaPosInit){f.yutaRikaPos={x:f.x+40,y:f.y};f.yutaRikaPosInit=true;}
 
-  // Rika companion — independent fighter, chases and attacks enemy
+  // Rika companion — random wandering + hit-and-turn (like normal fighters)
   if(f.yutaRikaAttackCD>0)f.yutaRikaAttackCD-=dt;
 
-  // Rika independent movement — chase enemy, stay near-ish to Yuta
-  if(enemy&&enemy.alive){
-    const dx=enemy.x-f.yutaRikaPos.x,dy=enemy.y-f.yutaRikaPos.y;
-    const dE=Math.hypot(dx,dy);
-    const rikaSpd=(isElecElem?4.5:3.2)*dt;
-    // Move toward enemy
-    if(dE>enemy.radius+25){
-      f.yutaRikaPos.x+=dx/dE*rikaSpd;f.yutaRikaPos.y+=dy/dE*rikaSpd;
-    } else {
-      // Circle strafe around enemy when close
-      f.yutaRikaAngle+=0.06*(isElecElem?1.5:1)*dt;
-      f.yutaRikaPos.x=enemy.x+Math.cos(f.yutaRikaAngle)*(enemy.radius+30);
-      f.yutaRikaPos.y=enemy.y+Math.sin(f.yutaRikaAngle)*(enemy.radius+30);
-    }
-    // Don't stray too far from Yuta (tether at 200px)
-    const dY=Math.hypot(f.yutaRikaPos.x-f.x,f.yutaRikaPos.y-f.y);
-    if(dY>200){
-      f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.05;
-      f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.05;
-    }
-    // Keep in bounds
-    f.yutaRikaPos.x=Math.max(20,Math.min(W-20,f.yutaRikaPos.x));
-    f.yutaRikaPos.y=Math.max(20,Math.min(H-20,f.yutaRikaPos.y));
-  } else {
-    // No enemy — drift near Yuta
-    f.yutaRikaPos.x+=(f.x+40-f.yutaRikaPos.x)*0.05;
-    f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.05;
+  // Rika random movement — wander near Yuta, occasionally change direction
+  if(!f.yutaRikaMoveAngle)f.yutaRikaMoveAngle=Math.random()*Math.PI*2;
+  if(!f.yutaRikaTurnTimer)f.yutaRikaTurnTimer=0;
+  f.yutaRikaTurnTimer-=dt;
+  if(f.yutaRikaTurnTimer<=0){
+    f.yutaRikaMoveAngle+=((Math.random()-0.5)*Math.PI*1.2); // random turn
+    f.yutaRikaTurnTimer=30+Math.random()*60; // change direction every 0.5-1.5s
   }
+  const rikaSpd=(isElecElem?3.5:2.5)*dt;
+  f.yutaRikaPos.x+=Math.cos(f.yutaRikaMoveAngle)*rikaSpd;
+  f.yutaRikaPos.y+=Math.sin(f.yutaRikaMoveAngle)*rikaSpd;
+  // Don't stray too far from Yuta (tether at 160px)
+  const dY=Math.hypot(f.yutaRikaPos.x-f.x,f.yutaRikaPos.y-f.y);
+  if(dY>160){
+    f.yutaRikaMoveAngle=Math.atan2(f.y-f.yutaRikaPos.y,f.x-f.yutaRikaPos.x)+((Math.random()-0.5)*0.5);
+    f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.06;
+    f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.06;
+  }
+  // Bounce off walls
+  if(f.yutaRikaPos.x<25||f.yutaRikaPos.x>W-25)f.yutaRikaMoveAngle=Math.PI-f.yutaRikaMoveAngle;
+  if(f.yutaRikaPos.y<25||f.yutaRikaPos.y>H-25)f.yutaRikaMoveAngle=-f.yutaRikaMoveAngle;
+  f.yutaRikaPos.x=Math.max(20,Math.min(W-20,f.yutaRikaPos.x));
+  f.yutaRikaPos.y=Math.max(20,Math.min(H-20,f.yutaRikaPos.y));
 
   // Rika claw attack — when close to enemy
   if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive){
@@ -5026,6 +5240,7 @@ function updateBattle(dt){
         case 'yuji':updateRelicYuji(f,enemy,dt);break;
         case 'naoya':updateRelicNaoya(f,enemy,dt);break;
         case 'yuta':updateRelicYuta(f,enemy,dt);break;
+        case 'todo':updateRelicTodo(f,enemy,dt);break;
       }
     }
 
@@ -5045,18 +5260,18 @@ function updateBattle(dt){
         const isElecElem=f.elementActive&&f.elem.id==='electric';
         if(!f.yutaRikaPosInit){f.yutaRikaPos={x:f.x+40,y:f.y};f.yutaRikaPosInit=true;}
         if(f.yutaRikaAttackCD>0)f.yutaRikaAttackCD-=dt;
-        // Independent movement
-        if(enemy&&enemy.alive){
-          const dx=enemy.x-f.yutaRikaPos.x,dy=enemy.y-f.yutaRikaPos.y;
-          const dE=Math.hypot(dx,dy);
-          const rikaSpd=(isElecElem?4.5:3.2)*dt;
-          if(dE>enemy.radius+25){f.yutaRikaPos.x+=dx/dE*rikaSpd;f.yutaRikaPos.y+=dy/dE*rikaSpd;}
-          else{f.yutaRikaAngle+=0.06*(isElecElem?1.5:1)*dt;f.yutaRikaPos.x=enemy.x+Math.cos(f.yutaRikaAngle)*(enemy.radius+30);f.yutaRikaPos.y=enemy.y+Math.sin(f.yutaRikaAngle)*(enemy.radius+30);}
-          const dY=Math.hypot(f.yutaRikaPos.x-f.x,f.yutaRikaPos.y-f.y);
-          if(dY>200){f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.05;f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.05;}
-          f.yutaRikaPos.x=Math.max(20,Math.min(W-20,f.yutaRikaPos.x));
-          f.yutaRikaPos.y=Math.max(20,Math.min(H-20,f.yutaRikaPos.y));
-        } else {f.yutaRikaPos.x+=(f.x+40-f.yutaRikaPos.x)*0.05;f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.05;}
+        // Random wandering movement (same as domain version)
+        if(!f.yutaRikaMoveAngle)f.yutaRikaMoveAngle=Math.random()*Math.PI*2;
+        if(!f.yutaRikaTurnTimer)f.yutaRikaTurnTimer=0;
+        f.yutaRikaTurnTimer-=dt;
+        if(f.yutaRikaTurnTimer<=0){f.yutaRikaMoveAngle+=((Math.random()-0.5)*Math.PI*1.2);f.yutaRikaTurnTimer=30+Math.random()*60;}
+        const rikaSpd2=(isElecElem?3.5:2.5)*dt;
+        f.yutaRikaPos.x+=Math.cos(f.yutaRikaMoveAngle)*rikaSpd2;f.yutaRikaPos.y+=Math.sin(f.yutaRikaMoveAngle)*rikaSpd2;
+        const dY2=Math.hypot(f.yutaRikaPos.x-f.x,f.yutaRikaPos.y-f.y);
+        if(dY2>160){f.yutaRikaMoveAngle=Math.atan2(f.y-f.yutaRikaPos.y,f.x-f.yutaRikaPos.x)+((Math.random()-0.5)*0.5);f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.06;f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.06;}
+        if(f.yutaRikaPos.x<25||f.yutaRikaPos.x>W-25)f.yutaRikaMoveAngle=Math.PI-f.yutaRikaMoveAngle;
+        if(f.yutaRikaPos.y<25||f.yutaRikaPos.y>H-25)f.yutaRikaMoveAngle=-f.yutaRikaMoveAngle;
+        f.yutaRikaPos.x=Math.max(20,Math.min(W-20,f.yutaRikaPos.x));f.yutaRikaPos.y=Math.max(20,Math.min(H-20,f.yutaRikaPos.y));
         // Rika claw attack
         if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive){
           const dToEnemy=Math.hypot(f.yutaRikaPos.x-enemy.x,f.yutaRikaPos.y-enemy.y);
@@ -5073,6 +5288,11 @@ function updateBattle(dt){
           f.yutaRikaClawAnim-=dt;if(f.yutaRikaClawAnim<=0)f.yutaRikaLunging=false;
         }
       }
+    }
+
+    // Todo per-frame: passive swap + cooldowns run always
+    if(f.char.id==='todo'&&!f.specialActive){
+      updateRelicTodo(f,enemy,dt);
     }
 
     // Mechamaru per-frame: phase management, jet boosters, Ultimate missiles, True Form timer
@@ -6913,27 +7133,35 @@ function drawBall(f){
       X.translate(gf.x,gf.y);
       X.rotate(gf.angle||0);
       X.globalAlpha=alpha;
-      // Blue energy trail
-      X.shadowColor='#4488ff';X.shadowBlur=12;
-      const trailG=X.createLinearGradient(-20,0,5,0);
-      trailG.addColorStop(0,'rgba(68,136,255,0)');trailG.addColorStop(1,'rgba(68,136,255,0.5)');
+      // Blue energy trail — wide and visible
+      X.shadowColor='#4488ff';X.shadowBlur=18;
+      const trailG=X.createLinearGradient(-30,0,5,0);
+      trailG.addColorStop(0,'rgba(68,136,255,0)');trailG.addColorStop(0.4,'rgba(68,136,255,0.3)');trailG.addColorStop(1,'rgba(68,136,255,0.6)');
       X.fillStyle=trailG;
-      X.fillRect(-22,-5,22,10);
-      // Fist shape — knuckles facing forward
-      const sz=8+progress*3;
+      X.fillRect(-32,-8,32,16);
+      // Fist shape — large, knuckles facing forward
+      const sz=12+progress*4;
+      // Wrist/palm base
+      X.fillStyle='#3377ee';
+      X.beginPath();X.ellipse(-sz*0.3,0,sz*0.7,sz*0.85,0,0,Math.PI*2);X.fill();
+      // Main fist body (bigger)
       X.fillStyle='#4488ff';
-      // Main fist body
       X.beginPath();X.arc(0,0,sz,0,Math.PI*2);X.fill();
-      X.fill(); // double for glow
-      // Knuckle bumps
-      X.fillStyle='#66aaff';
-      for(let k=0;k<3;k++){
-        const ky=-3+k*3;
-        X.beginPath();X.arc(sz*0.7,ky,2.5,0,Math.PI*2);X.fill();
+      // Knuckle bumps — larger and more prominent
+      X.fillStyle='#88bbff';
+      for(let k=0;k<4;k++){
+        const ky=-4.5+k*3;
+        X.beginPath();X.arc(sz*0.75,ky,3.2,0,Math.PI*2);X.fill();
       }
-      // Bright center
-      X.fillStyle='rgba(180,220,255,0.6)';
-      X.beginPath();X.arc(-1,-1,sz*0.4,0,Math.PI*2);X.fill();
+      // Finger lines
+      X.strokeStyle='rgba(30,60,140,0.4)';X.lineWidth=1;
+      for(let k=0;k<3;k++){X.beginPath();X.moveTo(sz*0.2,-3+k*3);X.lineTo(sz*0.65,-3+k*3);X.stroke();}
+      // Bright highlight
+      X.fillStyle='rgba(200,230,255,0.5)';
+      X.beginPath();X.arc(-2,-2,sz*0.35,0,Math.PI*2);X.fill();
+      // Outer glow ring
+      X.strokeStyle='rgba(68,136,255,0.3)';X.lineWidth=2;
+      X.beginPath();X.arc(0,0,sz+4,0,Math.PI*2);X.stroke();
       X.shadowBlur=0;
       X.restore();
     });
@@ -7164,6 +7392,55 @@ function drawBall(f){
       }
     }
     X.restore();
+  }
+
+  // Todo face — spiky brown hair, strong jaw, confident grin
+  if(f.char.id==='todo'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    // Spiky brown hair
+    X.fillStyle='#8B6914';
+    for(let i=0;i<7;i++){
+      const a=-Math.PI*0.8+i*Math.PI*0.25;
+      X.beginPath();X.moveTo(hx+Math.cos(a)*r*0.5,hy+Math.sin(a)*r*0.5);
+      X.lineTo(hx+Math.cos(a-0.15)*(r+6),hy+Math.sin(a-0.15)*(r+6));
+      X.lineTo(hx+Math.cos(a+0.15)*(r+6),hy+Math.sin(a+0.15)*(r+6));
+      X.closePath();X.fill();
+    }
+    // Eyes — sharp, confident
+    X.fillStyle='#222';
+    X.beginPath();X.ellipse(hx-r*0.22,hy-r*0.1,r*0.12,r*0.08,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.22,hy-r*0.1,r*0.12,r*0.08,0,0,Math.PI*2);X.fill();
+    // Confident grin
+    X.strokeStyle='#222';X.lineWidth=1.5;
+    X.beginPath();X.arc(hx,hy+r*0.15,r*0.25,0.1,Math.PI-0.1);X.stroke();
+    // Swap flash
+    if(f.todoSwapAnim>0){
+      X.globalAlpha=f.todoSwapAnim/20*0.5;
+      X.fillStyle='#ffcc44';X.beginPath();X.arc(hx,hy,r+10,0,Math.PI*2);X.fill();
+      X.globalAlpha=1;
+    }
+    X.restore();
+  }
+
+  // Todo cursed energy papers
+  if(f.char.id==='todo'&&f.todoPapers){
+    f.todoPapers.forEach(p=>{
+      if(p.life<=0)return;
+      X.save();
+      const fadeAlpha=Math.min(1,p.life/30);
+      X.globalAlpha=fadeAlpha*0.7;
+      X.translate(p.x,p.y);
+      X.rotate(Math.sin(battleTime*0.05+p.x)*0.3);
+      // Paper rectangle
+      X.fillStyle='#ffee88';X.fillRect(-5,-7,10,14);
+      X.strokeStyle='#dd7733';X.lineWidth=0.8;X.strokeRect(-5,-7,10,14);
+      // Cursed energy symbol
+      X.fillStyle='#cc6633';X.font='bold 8px Consolas,monospace';X.textAlign='center';
+      X.fillText('\u5370',0,2); // kanji for "seal"
+      X.globalAlpha=1;
+      X.restore();
+    });
   }
 
   // Yuta domain swords drawing
@@ -7684,6 +7961,7 @@ function drawWeapon(f){
     case 'yuji':drawYujiWeapon(r,ext,flash,f);break;
     case 'naoya':drawNaoyaWeapon(r,ext,flash,f);break;
     case 'yuta':drawYutaWeapon(r,ext,flash,f);break;
+    case 'todo':drawTodoWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -8193,6 +8471,26 @@ function drawYutaWeapon(r,ext,flash,f){
     X.strokeStyle=f.yutaCopiedTech.color;X.lineWidth=2;
     X.beginPath();X.moveTo(r+20,0);X.lineTo(r+13+bladeLen,0);X.stroke();
     X.shadowBlur=0;
+  }
+}
+
+function drawTodoWeapon(r,ext,flash,f){
+  // Todo — big open hand / fist (brawler, no weapon)
+  const extend=ext*10;
+  const col=flash?'#fff':'#dd7733';
+  // Forearm
+  X.fillStyle='#c97030';X.fillRect(r-4,-3,12+extend,6);
+  // Fist
+  X.fillStyle=col;
+  X.beginPath();X.arc(r+10+extend,0,7,0,Math.PI*2);X.fill();
+  // Knuckles
+  X.fillStyle='#eea050';
+  for(let k=0;k<3;k++){X.beginPath();X.arc(r+14+extend,-3+k*3,2,0,Math.PI*2);X.fill();}
+  // Clap flash during swap
+  if(f.todoSwapAnim>10){
+    X.globalAlpha=0.6;X.fillStyle='#ffcc44';
+    X.beginPath();X.arc(r+10+extend,0,15,0,Math.PI*2);X.fill();
+    X.globalAlpha=1;
   }
 }
 
@@ -9333,6 +9631,16 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.fillStyle='#cc88ff';X.beginPath();X.arc(-8,-5,3,0,Math.PI*2);X.fill();
       X.fillStyle='#ffee44';X.beginPath();X.arc(-9,-5.5,1,0,Math.PI*2);X.fill();
       X.beginPath();X.arc(-7,-5.5,1,0,Math.PI*2);X.fill();
+      break;
+    case 'todo':
+      // Clapping hands icon
+      X.fillStyle='#dd7733';
+      X.beginPath();X.arc(-6,0,5,0,Math.PI*2);X.fill(); // left hand
+      X.beginPath();X.arc(6,0,5,0,Math.PI*2);X.fill(); // right hand
+      // Clap flash
+      X.fillStyle='#ffcc44';X.globalAlpha=0.5;
+      X.beginPath();X.arc(0,0,4,0,Math.PI*2);X.fill();
+      X.globalAlpha=1;
       break;
   }
   X.restore();
@@ -10541,6 +10849,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'yuji':{const bf=f.yujiBlackFlashActive?'BF RUSH ':f.yujiIcePermanentBF?'PERM BF ':'';const ghosts=f.yujiGhostFists?f.yujiGhostFists.length:0;statLine=bf+'FIST'+(ghosts>0?' x'+ghosts:'');break;}
     case 'naoya':{const ph=f.naoyaPhase===2?'CS ':'';const mode=f.naoyaDashing?'DASH':f.naoyaDomainActive?'DOMAIN':f.naoyaSlowActive?'24F':'PROJ';statLine=ph+mode;break;}
     case 'yuta':{const cp=f.yutaCopiedTech?f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%':'---';const dom=f.yutaDomainActive?'DOMAIN ':'';statLine=dom+'COPY:'+cp;break;}
+    case 'todo':{const storm=f.todoSpecialActive?'STORM ':'';const stk=f.todoBuffStacks>0?'x'+f.todoBuffStacks:'';statLine=storm+'SWAP'+stk;break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
