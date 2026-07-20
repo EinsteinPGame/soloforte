@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.3 — Naoya Zenin: Projection Sorcery (24-frame dashes), Cursed Spirit Phase 2 resurrection, Domain Expansion: Time Cell Moon Palace
+// BALL BATTLE ARENA v8.4 — Yuta & Rika: Katana + Rika summon, Copy System, Domain Expansion: Authentic Mutual Love
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -194,6 +194,18 @@ const SFX={
   gaveling(){this._tone(80,0.3,'sawtooth',0.35);this._tone(200,0.25,'square',0.25,0.05);this._tone(400,0.2,'triangle',0.15,0.1);this._noise(0.15,0.25)},
   sentencing(){this._tone(60,0.4,'sine',0.3);this._tone(150,0.35,'triangle',0.25,0.08);this._tone(300,0.3,'square',0.2,0.15);this._noise(0.2,0.3)},
   executionerSword(){this._tone(50,0.5,'sawtooth',0.4);this._tone(100,0.4,'square',0.35,0.1);this._tone(250,0.35,'triangle',0.25,0.15);this._tone(500,0.25,'sine',0.15,0.25);this._noise(0.25,0.35)},
+  // Yuta — Katana slash (clean, sharp)
+  yutaSlash(){this._tone(1000,0.06,'sawtooth',0.2);this._tone(1600,0.04,'sawtooth',0.14,0.01);this._noise(0.04,0.07)},
+  // Yuta — Cursed energy output burst
+  yutaOutput(){this._tone(400,0.12,'sine',0.22);this._tone(800,0.08,'triangle',0.15,0.03);this._noise(0.06,0.1)},
+  // Yuta — Copy technique acquired
+  yutaCopy(){this._tone(700,0.1,'square',0.18);this._tone(1100,0.08,'sine',0.15,0.03);this._tone(500,0.12,'triangle',0.1,0.06)},
+  // Rika — Claw slash (heavy, monstrous)
+  rikaClaw(){this._tone(300,0.1,'sawtooth',0.22);this._tone(600,0.06,'square',0.18,0.02);this._noise(0.06,0.12)},
+  // Yuta — Domain Expansion: Authentic Mutual Love
+  yutaDomain(){[200,400,600,800,1000,1200].forEach((f,i)=>this._tone(f,0.2,'sine',0.25,i*0.06));this._noise(0.2,0.2);this._tone(100,0.4,'sine',0.3,0.35)},
+  // Yuta — Domain sword impact
+  yutaSwordHit(){this._tone(800,0.08,'sawtooth',0.2);this._tone(1200,0.06,'square',0.15,0.02);this._tone(400,0.1,'sine',0.12,0.03)},
 };
 
 // ============================================================
@@ -354,6 +366,14 @@ const CHARS=[
     baseAtkInterval:28,relicChargeRate:0.8,
     specialName:'24-FRAME RULE',
   },
+  {
+    id:'yuta',name:'Yuta & Rika',color:'#6644cc',
+    desc:'Katana + Rika summon. Copies enemy techniques. Domain: Authentic Mutual Love.',
+    playstyle:'Copy & Adapt',
+    stats:{hp:560,atk:28,speed:4.2,range:90,def:8,crit:16},
+    baseAtkInterval:35,relicChargeRate:0.75,
+    specialName:'AUTHENTIC MUTUAL LOVE',
+  },
 ];
 
 // ============================================================
@@ -444,6 +464,10 @@ const COMBO_EFFECTS={
   'naoya_electric':'Faster dashes + shorter cooldown',
   'naoya_toxic':'Dashes leave poison zones that damage',
   'naoya_cryo':'Projection hits freeze longer + slow',
+  'yuta_fire':'Copied techniques deal bonus fire damage + burn',
+  'yuta_electric':'Rika attacks faster + higher copy chance',
+  'yuta_toxic':'Copied technique projectiles poison on hit',
+  'yuta_cryo':'Domain swords freeze on hit + extra swords',
 };
 
 // ============================================================
@@ -841,6 +865,23 @@ function createFighter(charIdx,elemIdx,side){
     naoyaResurrected:false, // has already resurrected as cursed spirit
     naoyaTransitionTimer:0, // i-frame transition animation
     naoyaFrameCount:0, // visual 24-frame counter
+    // Yuta & Rika state
+    yutaSlashCD:0, // katana slash cooldown
+    yutaHitCount:0, // hit counter for cursed energy output burst
+    yutaCopiedTech:null, // {charId, potency, color, name} — currently copied technique
+    yutaCopyCount:0, // times re-copied same tech (increases potency)
+    yutaCopyCD:0, // cooldown between copy attempts
+    yutaCopyFlash:0, // visual flash when copy triggers
+    yutaRikaAngle:0, // Rika orbit angle around Yuta
+    yutaRikaAttackCD:ch.id==='yuta'?60+rand(0,30):0, // Rika claw attack cooldown
+    yutaRikaClawAnim:0, // claw visual animation
+    yutaRikaLunging:false, // Rika lunging toward enemy
+    yutaRikaLungePos:{x:0,y:0}, // Rika's current position during lunge
+    yutaDomainActive:false, // domain expansion active
+    yutaDomainTimer:0, // domain duration
+    yutaDomainSwords:[], // [{x,y,vx,vy,dmg,color,timer,guaranteed,hit}]
+    yutaDomainClash:false, // domain clash with Gojo
+    yutaDomainClashTimer:0, // clash animation timer
   };
 }
 
@@ -1268,6 +1309,7 @@ function performWeaponAttack(f,enemy){
     case 'higuruma':attackHiguruma(f,enemy,chaos);break;
     case 'yuji':attackYuji(f,enemy,chaos);break;
     case 'naoya':attackNaoya(f,enemy,chaos);break;
+    case 'yuta':attackYuta(f,enemy,chaos);break;
   }
 }
 
@@ -2313,6 +2355,70 @@ function attackNaoya(f,enemy,chaos){
   spawnBurst(f.x,f.y,'#00cc88',8,4);
 }
 
+function attackYuta(f,enemy,chaos){
+  const d=dist(f,enemy);
+  if(d>f.radius+enemy.radius+50+chaos*3)return;
+  if(f.yutaSlashCD>0)return;
+
+  f.yutaSlashCD=f.baseAtkInterval;
+  f.weaponExtend=1;f.weaponFlash=10;
+  SFX.yutaSlash();
+
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+
+  // Katana slash
+  const slashDmg=f.atk*(1.1+chaos*0.08);
+  const dmg=dealDamage(f,enemy,slashDmg,true);
+  spawnBurst(enemy.x,enemy.y,'#6644cc',6,3);
+
+  // Cursed Energy I/O — Output: every 3rd hit, burst extra damage
+  f.yutaHitCount++;
+  if(f.yutaHitCount%3===0){
+    const burstDmg=f.atk*(0.5+chaos*0.05);
+    dealDamage(f,enemy,burstDmg,false);
+    SFX.yutaOutput();
+    spawnBurst(enemy.x,enemy.y,'#8866ee',10,5);
+    spawnDmgNum(enemy.x,enemy.y-enemy.radius-30,'CE OUTPUT','#8866ee',false);
+  }
+  // Input: heal 3% of damage dealt
+  f.hp=Math.min(f.maxHp,f.hp+dmg*0.03);
+
+  // Copy system — chance to copy enemy technique
+  if(f.yutaCopyCD<=0){
+    const copyChance=isElecElem?0.30:(f.yutaDomainActive?1.0:0.20);
+    if(Math.random()<copyChance){
+      f.yutaCopyCD=90;
+      if(f.yutaCopiedTech&&f.yutaCopiedTech.charId===enemy.char.id){
+        f.yutaCopyCount=Math.min(4,f.yutaCopyCount+1);
+        f.yutaCopiedTech.potency=Math.min(0.8,0.4+f.yutaCopyCount*0.1);
+        addLog((f.side===0?'P1':'P2')+' RE-COPY: '+f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%!');
+      } else {
+        f.yutaCopiedTech={charId:enemy.char.id,potency:0.4,color:enemy.char.color,name:enemy.char.name};
+        f.yutaCopyCount=0;
+        addLog((f.side===0?'P1':'P2')+' COPIED: '+f.yutaCopiedTech.name+'!');
+      }
+      f.yutaCopyFlash=20;
+      SFX.yutaCopy();
+      spawnDmgNum(f.x,f.y-f.radius-35,'COPY '+Math.round(f.yutaCopiedTech.potency*100)+'%',f.yutaCopiedTech.color,false);
+      spawnBurst(f.x,f.y,f.yutaCopiedTech.color,12,5);
+
+      // Auto-trigger copied technique projectile
+      const copyDmg=f.atk*f.yutaCopiedTech.potency*(isFireElem?1.3:1);
+      const ba=angle(f,enemy);
+      projectiles.push({
+        x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
+        vx:Math.cos(ba)*5,vy:Math.sin(ba)*5,
+        owner:f,target:enemy,color:f.yutaCopiedTech.color,
+        life:90,maxLife:90,radius:7,
+        dmg:copyDmg,explosive:false,homing:true,homingStrength:0.12,
+        isYutaCopy:true,applyPoison:isToxicElem,
+      });
+    }
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -2668,6 +2774,7 @@ function useSpecial(f,enemy){
     case 'higuruma':relicHiguruma(f,enemy);break;
     case 'yuji':relicYuji(f,enemy);break;
     case 'naoya':relicNaoya(f,enemy);break;
+    case 'yuta':relicYuta(f,enemy);break;
   }
 }
 
@@ -3171,6 +3278,51 @@ function relicNaoya(f,enemy){
     shakeTimer=20;shakeAmt=12;
     spawnDmgNum(f.x,f.y-f.radius-30,'TIME CELL MOON PALACE','#aa44cc',false);
   }
+}
+
+function relicYuta(f,enemy){
+  SFX.yutaDomain();
+  f.yutaDomainActive=true;
+  f.yutaDomainTimer=480; // 8 seconds
+  f.yutaDomainSwords=[];
+
+  // Spawn domain swords from copied techniques
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  const swordCount=isCryoElem?8:5;
+  const copyColor=f.yutaCopiedTech?f.yutaCopiedTech.color:'#6644cc';
+  const copyPotency=f.yutaCopiedTech?f.yutaCopiedTech.potency:0.4;
+  for(let i=0;i<swordCount;i++){
+    const sa=Math.PI*2*i/swordCount;
+    const spawnR=120+Math.random()*40;
+    f.yutaDomainSwords.push({
+      x:f.x+Math.cos(sa)*spawnR,y:f.y+Math.sin(sa)*spawnR,
+      vx:0,vy:0,angle:sa,
+      dmg:f.atk*(1.0+copyPotency)*(1+i*0.05),
+      color:i===0?'#ffcc00':copyColor,
+      timer:40+i*12, // staggered launch
+      guaranteed:i===0, // first sword is guaranteed hit at 130%
+      hit:false,freeze:isCryoElem,
+    });
+  }
+  if(f.yutaDomainSwords.length>0)f.yutaDomainSwords[0].dmg*=1.3; // guaranteed sword at 130%
+
+  // Domain clash check — if enemy is Gojo with domain active
+  if(enemy&&enemy.char.id==='gojo'&&enemy.gojoDomainActive){
+    f.yutaDomainClash=true;
+    f.yutaDomainClashTimer=120; // 2 second clash
+    addLog('DOMAIN CLASH! Yuta vs Gojo!');
+    spawnDmgNum(W/2,H/2-50,'DOMAIN CLASH!!','#ffcc00',true);
+    triggerScreenFlash('#ffcc00',20);
+    shakeTimer=30;shakeAmt=15;
+  }
+
+  spawnBurst(f.x,f.y,'#6644cc',40,12);
+  spawnBurst(f.x,f.y,'#aa66ff',30,8);
+  spawnBurst(f.x,f.y,'#ffffff',20,6);
+  for(let r=0;r<3;r++){explosions.push({x:f.x,y:f.y,radius:0,maxRadius:80+r*30,color:'#6644cc',life:25,maxLife:25,dmg:0,owner:null,target:null,hit:true});}
+  triggerScreenFlash('#6644cc',15);
+  shakeTimer=20;shakeAmt=12;
+  spawnDmgNum(f.x,f.y-f.radius-30,'AUTHENTIC MUTUAL LOVE','#6644cc',false);
 }
 
 // ============================================================
@@ -4561,6 +4713,137 @@ function updateRelicNaoya(f,enemy,dt){
   }
 }
 
+function updateRelicYuta(f,enemy,dt){
+  // Tick cooldowns
+  if(f.yutaSlashCD>0)f.yutaSlashCD--;
+  if(f.yutaCopyCD>0)f.yutaCopyCD--;
+  if(f.yutaCopyFlash>0)f.yutaCopyFlash--;
+
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+
+  // Rika companion — orbits and periodically attacks
+  f.yutaRikaAngle+=0.04*(isElecElem?1.5:1)*dt;
+  if(f.yutaRikaAttackCD>0)f.yutaRikaAttackCD-=dt;
+
+  // Rika claw attack
+  if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive){
+    const rikaX=f.x+Math.cos(f.yutaRikaAngle)*55;
+    const rikaY=f.y+Math.sin(f.yutaRikaAngle)*55;
+    const dToEnemy=Math.hypot(rikaX-enemy.x,rikaY-enemy.y);
+    if(dToEnemy<enemy.radius+70){
+      // Rika lunges and claws
+      f.yutaRikaLunging=true;
+      f.yutaRikaLungePos={x:rikaX,y:rikaY};
+      f.yutaRikaClawAnim=15;
+      f.yutaRikaAttackCD=isElecElem?40:65;
+      const clawDmg=f.atk*(f.yutaDomainActive?1.0:0.7);
+      dealDamage(f,enemy,clawDmg,true);
+      SFX.rikaClaw();
+      spawnBurst(enemy.x,enemy.y,'#aa44ff',8,4);
+      spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,'RIKA','#aa44ff',false);
+    }
+  }
+
+  // Rika lunge animation
+  if(f.yutaRikaLunging){
+    if(enemy&&enemy.alive){
+      f.yutaRikaLungePos.x+=(enemy.x-f.yutaRikaLungePos.x)*0.25;
+      f.yutaRikaLungePos.y+=(enemy.y-f.yutaRikaLungePos.y)*0.25;
+    }
+    f.yutaRikaClawAnim-=dt;
+    if(f.yutaRikaClawAnim<=0)f.yutaRikaLunging=false;
+  }
+
+  // Domain Expansion: Authentic Mutual Love
+  if(f.yutaDomainActive){
+    f.yutaDomainTimer-=dt;
+    // Domain aura particles
+    if(battleTime%2<1){
+      const a=Math.random()*Math.PI*2;
+      const r2=70+Math.random()*50;
+      spawnParticle(f.x+Math.cos(a)*r2,f.y+Math.sin(a)*r2,'#6644cc',0,0,18,1.5);
+      spawnParticle(f.x+Math.cos(a+2)*r2*0.6,f.y+Math.sin(a+2)*r2*0.6,'#aa44ff',0,-0.5,12,1);
+    }
+
+    // Domain clash animation
+    if(f.yutaDomainClash){
+      f.yutaDomainClashTimer-=dt;
+      if(battleTime%4<1){
+        spawnBurst(W/2,H/2,'#ffcc00',6,4);
+        shakeTimer=Math.max(shakeTimer,3);shakeAmt=Math.max(shakeAmt,4);
+      }
+      if(f.yutaDomainClashTimer<=0){
+        f.yutaDomainClash=false;
+        // Clash result: Yuta wins (Rika breaks through) — big damage to Gojo
+        if(enemy&&enemy.alive){
+          const clashDmg=f.atk*3;
+          dealDamage(f,enemy,clashDmg,false);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-40,'DOMAIN BROKEN!','#ffcc00',true);
+          spawnBurst(enemy.x,enemy.y,'#ffcc00',30,10);
+          shakeTimer=20;shakeAmt=12;
+          enemy.gojoDomainActive=false;enemy.gojoDomainTimer=0;
+          addLog('Yuta breaks Gojo\'s domain!');
+        }
+      }
+    }
+
+    // Process domain swords
+    for(let i=f.yutaDomainSwords.length-1;i>=0;i--){
+      const sw=f.yutaDomainSwords[i];
+      if(sw.hit){f.yutaDomainSwords.splice(i,1);continue;}
+      sw.timer-=dt;
+      if(sw.timer>0){
+        // Orbiting phase — circle around Yuta
+        sw.angle+=0.06*dt;
+        const orbitR=90+Math.sin(sw.angle*2)*15;
+        sw.x=f.x+Math.cos(sw.angle)*orbitR;
+        sw.y=f.y+Math.sin(sw.angle)*orbitR;
+        // Glowing particles
+        spawnParticle(sw.x,sw.y,sw.color,0,0,8,2);
+      } else {
+        // Launch phase — home toward enemy
+        if(enemy&&enemy.alive){
+          const da=angle(sw,enemy);
+          sw.vx+=(Math.cos(da)*1.2);sw.vy+=(Math.sin(da)*1.2);
+          const spd=Math.hypot(sw.vx,sw.vy);
+          const maxSpd=sw.guaranteed?12:9;
+          if(spd>maxSpd){sw.vx=sw.vx/spd*maxSpd;sw.vy=sw.vy/spd*maxSpd;}
+          sw.x+=sw.vx*dt;sw.y+=sw.vy*dt;
+          // Trail
+          spawnParticle(sw.x,sw.y,sw.color,0,0,10,2.5);
+          // Check hit
+          if(dist(sw,enemy)<enemy.radius+12){
+            sw.hit=true;
+            const actualDmg=sw.guaranteed?sw.dmg:sw.dmg;
+            dealDamage(f,enemy,actualDmg,sw.guaranteed);
+            SFX.yutaSwordHit();
+            spawnBurst(enemy.x,enemy.y,sw.color,12,6);
+            shakeTimer=6;shakeAmt=4;
+            if(sw.guaranteed){
+              spawnDmgNum(enemy.x,enemy.y-enemy.radius-35,'GUARANTEED HIT!','#ffcc00',true);
+              triggerScreenFlash('#ffcc00',8);triggerHitFreeze(4);
+            }
+            if(sw.freeze&&enemy.alive){
+              enemy.freezeTimer=Math.max(enemy.freezeTimer,30);
+              enemy.stunTimer=Math.max(enemy.stunTimer,20);
+              spawnBurst(enemy.x,enemy.y,'#77ddff',8,4);
+            }
+          }
+        }
+        // Timeout
+        if(sw.timer<-180){sw.hit=true;}
+      }
+    }
+
+    // Domain end
+    if(f.yutaDomainTimer<=0){
+      f.yutaDomainActive=false;
+      f.yutaDomainSwords=[];
+      addLog((f.side===0?'P1':'P2')+' Domain ended');
+    }
+  }
+}
+
 // Helper: point inside triangle
 function pointInTriangle(px,py,a,b,c){
   const d1=(px-b.x)*(a.y-b.y)-(a.x-b.x)*(py-b.y);
@@ -4702,12 +4985,47 @@ function updateBattle(dt){
         case 'higuruma':updateRelicHiguruma(f,enemy,dt);break;
         case 'yuji':updateRelicYuji(f,enemy,dt);break;
         case 'naoya':updateRelicNaoya(f,enemy,dt);break;
+        case 'yuta':updateRelicYuta(f,enemy,dt);break;
       }
     }
 
     // Choso beam runs always (not just during special)
     if(f.char.id==='choso'&&(f.chosoBeamActive||f.chosoBeamCooldown>0||f.chosoPiercingFreeze>0)){
       updateChosoBeam(f,enemy,dt);
+    }
+
+    // Yuta+Rika per-frame: cooldowns + Rika companion (runs always)
+    if(f.char.id==='yuta'){
+      if(f.yutaSlashCD>0)f.yutaSlashCD--;
+      if(f.yutaCopyCD>0)f.yutaCopyCD--;
+      if(f.yutaCopyFlash>0)f.yutaCopyFlash--;
+      // Rika updates run in updateRelicYuta (called during special OR always below)
+      if(!f.specialActive){
+        // Run Rika companion logic even outside of special
+        const isElecElem=f.elementActive&&f.elem.id==='electric';
+        f.yutaRikaAngle+=0.04*(isElecElem?1.5:1)*dt;
+        if(f.yutaRikaAttackCD>0)f.yutaRikaAttackCD-=dt;
+        if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive){
+          const rikaX=f.x+Math.cos(f.yutaRikaAngle)*55;
+          const rikaY=f.y+Math.sin(f.yutaRikaAngle)*55;
+          const dToEnemy=Math.hypot(rikaX-enemy.x,rikaY-enemy.y);
+          if(dToEnemy<enemy.radius+70){
+            f.yutaRikaLunging=true;
+            f.yutaRikaLungePos={x:rikaX,y:rikaY};
+            f.yutaRikaClawAnim=15;
+            f.yutaRikaAttackCD=isElecElem?40:65;
+            const clawDmg=f.atk*0.7;
+            dealDamage(f,enemy,clawDmg,true);
+            SFX.rikaClaw();
+            spawnBurst(enemy.x,enemy.y,'#aa44ff',8,4);
+            spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,'RIKA','#aa44ff',false);
+          }
+        }
+        if(f.yutaRikaLunging){
+          if(enemy&&enemy.alive){f.yutaRikaLungePos.x+=(enemy.x-f.yutaRikaLungePos.x)*0.25;f.yutaRikaLungePos.y+=(enemy.y-f.yutaRikaLungePos.y)*0.25;}
+          f.yutaRikaClawAnim-=dt;if(f.yutaRikaClawAnim<=0)f.yutaRikaLunging=false;
+        }
+      }
     }
 
     // Mechamaru per-frame: phase management, jet boosters, Ultimate missiles, True Form timer
@@ -5279,7 +5597,7 @@ function updateBattle(dt){
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
@@ -5440,6 +5758,12 @@ function updateBattle(dt){
             spawnBurst(p.target.x,p.target.y,'#aa44cc',8,3);
           }
         }
+      }
+      // Yuta copy projectile: apply poison if toxic element
+      if(p.isYutaCopy&&p.applyPoison&&p.target&&p.target.alive){
+        p.target.burnTimer=Math.max(p.target.burnTimer,120);
+        p.target.burnDmg=Math.max(p.target.burnDmg,p.owner.atk*0.1);
+        spawnDmgNum(p.target.x,p.target.y-p.target.radius-25,'COPY POISON','#aa44cc',false);
       }
       // Throwing weapon on hit: return instantly
       if(p.isThrowWeapon&&p.owner){
@@ -6609,6 +6933,113 @@ function drawBall(f){
     });
   }
 
+  // Yuta face — dark messy hair, determined look
+  if(f.char.id==='yuta'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    // Dark messy hair — spiky tufts
+    X.fillStyle='#1a1a2a';
+    const spikes=7;
+    for(let i=0;i<spikes;i++){
+      const sa=-Math.PI*0.9+i*(Math.PI*0.75/(spikes-1));
+      const slen=r*0.35+Math.sin(i*2.1)*r*0.08;
+      X.beginPath();
+      X.moveTo(hx+Math.cos(sa-0.12)*r*0.3,hy+Math.sin(sa-0.12)*r*0.5);
+      X.lineTo(hx+Math.cos(sa)*(r*0.5+slen),hy+Math.sin(sa)*(r*0.45+slen));
+      X.lineTo(hx+Math.cos(sa+0.12)*r*0.3,hy+Math.sin(sa+0.12)*r*0.5);
+      X.closePath();X.fill();
+    }
+    // Hair base
+    X.beginPath();X.arc(hx,hy-r*0.12,r*0.42,Math.PI,0);X.fill();
+    // Eyes — determined, slightly wide
+    X.fillStyle='#1a1a1a';
+    X.beginPath();X.ellipse(hx-r*0.15,hy-r*0.02,r*0.07,r*0.05,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.15,hy-r*0.02,r*0.07,r*0.05,0,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.12,hy-r*0.03,r*0.02,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.03,r*0.02,0,Math.PI*2);X.fill();
+    // Mouth — determined line
+    X.strokeStyle='#333';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-r*0.06,hy+r*0.17);X.lineTo(hx+r*0.06,hy+r*0.17);X.stroke();
+    // Copy flash — enemy color pulse
+    if(f.yutaCopyFlash>0){
+      const copyAlpha=f.yutaCopyFlash/20;
+      const copyCol=f.yutaCopiedTech?f.yutaCopiedTech.color:'#ffffff';
+      X.strokeStyle=copyCol;X.lineWidth=3;X.globalAlpha=copyAlpha;
+      X.beginPath();X.arc(hx,hy,r+5,0,Math.PI*2);X.stroke();
+      X.globalAlpha=1;
+    }
+    // Domain aura
+    if(f.yutaDomainActive){
+      const pulse=Math.sin(battleTime*0.1)*0.2+0.4;
+      X.strokeStyle=`rgba(102,68,204,${pulse})`;X.lineWidth=2;
+      for(let ring=0;ring<3;ring++){
+        X.beginPath();X.arc(hx,hy,r+15+ring*20,0,Math.PI*2);X.stroke();
+      }
+    }
+    X.restore();
+  }
+
+  // Rika companion drawing (orbiting purple entity)
+  if(f.char.id==='yuta'){
+    X.save();
+    const rikaR=55;
+    const rikaX=f.yutaRikaLunging?f.yutaRikaLungePos.x:(f.x+Math.cos(f.yutaRikaAngle)*rikaR);
+    const rikaY=f.yutaRikaLunging?f.yutaRikaLungePos.y:(f.y+Math.sin(f.yutaRikaAngle)*rikaR);
+    const rikaSize=f.yutaDomainActive?18:13;
+    // Rika body — monstrous purple blob
+    const rg=X.createRadialGradient(rikaX,rikaY,2,rikaX,rikaY,rikaSize);
+    rg.addColorStop(0,'#cc88ff');rg.addColorStop(0.6,'#8844cc');rg.addColorStop(1,'rgba(102,34,170,0.3)');
+    X.fillStyle=rg;X.beginPath();X.arc(rikaX,rikaY,rikaSize,0,Math.PI*2);X.fill();
+    // Rika eyes — glowing yellow
+    X.fillStyle='#ffee44';
+    X.beginPath();X.arc(rikaX-3,rikaY-2,2.5,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(rikaX+3,rikaY-2,2.5,0,Math.PI*2);X.fill();
+    // Glow
+    X.shadowColor='#8844cc';X.shadowBlur=8;
+    X.beginPath();X.arc(rikaX,rikaY,rikaSize+2,0,Math.PI*2);X.stroke();
+    X.shadowBlur=0;
+    // Claw animation
+    if(f.yutaRikaClawAnim>0){
+      const clawExt=f.yutaRikaClawAnim/15;
+      for(let c=0;c<3;c++){
+        const ca=Math.PI*2*c/3+battleTime*0.1;
+        X.strokeStyle='#cc44ff';X.lineWidth=2;
+        X.beginPath();
+        X.moveTo(rikaX+Math.cos(ca)*rikaSize,rikaY+Math.sin(ca)*rikaSize);
+        X.lineTo(rikaX+Math.cos(ca)*(rikaSize+12*clawExt),rikaY+Math.sin(ca)*(rikaSize+12*clawExt));
+        X.stroke();
+      }
+    }
+    X.restore();
+  }
+
+  // Yuta domain swords drawing
+  if(f.char.id==='yuta'&&f.yutaDomainSwords){
+    f.yutaDomainSwords.forEach(sw=>{
+      if(sw.hit)return;
+      X.save();
+      X.translate(sw.x,sw.y);
+      const sAngle=sw.timer>0?(sw.angle+Math.PI/2):Math.atan2(sw.vy,sw.vx);
+      X.rotate(sAngle);
+      // Sword blade
+      X.fillStyle=sw.color;
+      X.beginPath();X.moveTo(-2,-12);X.lineTo(0,-20);X.lineTo(2,-12);X.lineTo(2,8);X.lineTo(-2,8);X.closePath();X.fill();
+      // Glow
+      X.shadowColor=sw.color;X.shadowBlur=sw.guaranteed?12:6;
+      X.fill();X.shadowBlur=0;
+      // Guard
+      X.fillStyle='#888';X.fillRect(-4,6,8,3);
+      // Guaranteed marker — gold glow
+      if(sw.guaranteed){
+        X.strokeStyle='#ffcc00';X.lineWidth=1.5;
+        X.beginPath();X.arc(0,0,14,0,Math.PI*2);X.stroke();
+      }
+      X.restore();
+    });
+  }
+
   // Draw Kashimo homing bolt
   if(f.char.id==='kashimo'&&f.kashimoBoltActive){
     X.save();
@@ -7101,6 +7532,7 @@ function drawWeapon(f){
     case 'higuruma':drawHigurumaWeapon(r,ext,flash,f);break;
     case 'yuji':drawYujiWeapon(r,ext,flash,f);break;
     case 'naoya':drawNaoyaWeapon(r,ext,flash,f);break;
+    case 'yuta':drawYutaWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -7584,6 +8016,38 @@ function drawNaoyaWeapon(r,ext,flash,f){
       const yo=(i-1)*6;
       X.beginPath();X.moveTo(r-5,yo);X.lineTo(r+25+ex,yo);X.stroke();
     }
+  }
+}
+
+function drawYutaWeapon(r,ext,flash,f){
+  // Katana — clean blade with purple cursed energy glow
+  const ex=ext*10;
+  const bladeLen=40+ex;
+  // Hilt/handle
+  X.fillStyle='#4a3a2a';X.fillRect(r-2,-2.5,12,5);
+  // Guard (tsuba)
+  X.fillStyle='#888';X.fillRect(r+10,-5,3,10);
+  // Blade
+  const bg=X.createLinearGradient(r+13,0,r+13+bladeLen,0);
+  bg.addColorStop(0,'#c0c0d0');bg.addColorStop(0.7,'#e0e0f0');bg.addColorStop(1,'#aaaacc');
+  X.fillStyle=bg;
+  X.beginPath();X.moveTo(r+13,-3);X.lineTo(r+13+bladeLen,0);X.lineTo(r+13,-0.5);X.lineTo(r+13,3);X.lineTo(r+13+bladeLen,0);X.closePath();X.fill();
+  // Edge line
+  X.strokeStyle='#8888aa';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(r+13,0);X.lineTo(r+13+bladeLen,0);X.stroke();
+  // Cursed energy glow
+  if(flash||f.yutaDomainActive){
+    X.shadowColor='#6644cc';X.shadowBlur=10;
+    X.strokeStyle='#8866ee';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(r+15,-2);X.lineTo(r+13+bladeLen,0);X.lineTo(r+15,2);X.stroke();
+    X.shadowBlur=0;
+  }
+  // Copy glow — show enemy color on blade when copy active
+  if(f.yutaCopiedTech&&f.yutaCopyFlash>0){
+    X.shadowColor=f.yutaCopiedTech.color;X.shadowBlur=12;
+    X.strokeStyle=f.yutaCopiedTech.color;X.lineWidth=2;
+    X.beginPath();X.moveTo(r+20,0);X.lineTo(r+13+bladeLen,0);X.stroke();
+    X.shadowBlur=0;
   }
 }
 
@@ -8714,6 +9178,16 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.moveTo(6,-6);X.lineTo(16,-4);X.stroke();
       X.beginPath();X.moveTo(6,6);X.lineTo(16,4);X.stroke();
       break;
+    case 'yuta':
+      // Mini katana
+      X.fillStyle='#4a3a2a';X.fillRect(-2,-1.5,8,3);
+      X.fillStyle='#888';X.fillRect(6,-3,2,6);
+      X.fillStyle='#c0c0d0';X.beginPath();X.moveTo(8,-2);X.lineTo(24,0);X.lineTo(8,2);X.closePath();X.fill();
+      // Rika mini eyes
+      X.fillStyle='#cc88ff';X.beginPath();X.arc(-8,-5,3,0,Math.PI*2);X.fill();
+      X.fillStyle='#ffee44';X.beginPath();X.arc(-9,-5.5,1,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(-7,-5.5,1,0,Math.PI*2);X.fill();
+      break;
   }
   X.restore();
 }
@@ -8738,7 +9212,7 @@ function drawTitle(){
 
   X.font=(isMobile?'13':'16')+'px Consolas,Courier New,monospace';
   X.fillStyle='#888';
-  X.fillText('19 Fighters // 4 Elements',W/2,titleY+65);
+  X.fillText(CHARS.length+' Fighters // 4 Elements',W/2,titleY+65);
 
   const t=Date.now()*0.002;
   // Two rows of characters for 16+ roster
@@ -8768,7 +9242,7 @@ function drawTitle(){
   addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
   addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v8.2 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v8.4 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -9887,6 +10361,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'higuruma':statLine='HAMMER';break;
     case 'yuji':{const bf=f.yujiBlackFlashActive?'BF RUSH ':f.yujiIcePermanentBF?'PERM BF ':'';const ghosts=f.yujiGhostFists?f.yujiGhostFists.length:0;statLine=bf+'FIST'+(ghosts>0?' x'+ghosts:'');break;}
     case 'naoya':{const ph=f.naoyaPhase===2?'CS ':'';const mode=f.naoyaDashing?'DASH':f.naoyaDomainActive?'DOMAIN':f.naoyaSlowActive?'24F':'PROJ';statLine=ph+mode;break;}
+    case 'yuta':{const cp=f.yutaCopiedTech?f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%':'---';const dom=f.yutaDomainActive?'DOMAIN ':'';statLine=dom+'COPY:'+cp;break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
