@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.4 — Yuta & Rika: Katana + Rika summon, Copy System, Domain Expansion: Authentic Mutual Love
+// BALL BATTLE ARENA v8.5 — Fixes: domain clash, Rika independent fighter, Naoya collision aura, Yuji flying fist
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -872,11 +872,13 @@ function createFighter(charIdx,elemIdx,side){
     yutaCopyCount:0, // times re-copied same tech (increases potency)
     yutaCopyCD:0, // cooldown between copy attempts
     yutaCopyFlash:0, // visual flash when copy triggers
-    yutaRikaAngle:0, // Rika orbit angle around Yuta
+    yutaRikaAngle:0, // Rika facing angle
     yutaRikaAttackCD:ch.id==='yuta'?60+rand(0,30):0, // Rika claw attack cooldown
     yutaRikaClawAnim:0, // claw visual animation
     yutaRikaLunging:false, // Rika lunging toward enemy
     yutaRikaLungePos:{x:0,y:0}, // Rika's current position during lunge
+    yutaRikaPos:{x:0,y:0}, // Rika's independent position
+    yutaRikaPosInit:false, // whether Rika's position has been initialized
     yutaDomainActive:false, // domain expansion active
     yutaDomainTimer:0, // domain duration
     yutaDomainSwords:[], // [{x,y,vx,vy,dmg,color,timer,guaranteed,hit}]
@@ -2301,27 +2303,27 @@ function attackYuji(f,enemy,chaos){
 
   spawnBurst(enemy.x,enemy.y,'#ff69b4',8,4);
 
-  // Delayed Divergent Fist (ghost blue punch)
+  // Delayed Divergent Fist (ghost blue punch — flies toward enemy)
   if(isToxicElem){
-    // Poison: multiple ghost fists surrounding enemy
+    // Poison: multiple ghost fists surrounding enemy then converge
     const count=3+Math.floor(chaos*0.5);
     const dmgPer=punchDmg*(0.5+chaos*0.03);
     for(let i=0;i<count;i++){
       const a=Math.PI*2*i/count;
       f.yujiGhostFists.push({
         target:enemy,timer:25+i*5,dmg:dmgPer,
-        x:enemy.x+Math.cos(a)*40,y:enemy.y+Math.sin(a)*40,
-        angle:a+Math.PI,isBF:isBF,isFireKB:false,
+        x:f.x+Math.cos(a)*30,y:f.y+Math.sin(a)*30,
+        angle:a,isBF:isBF,isFireKB:false,flying:true,
       });
     }
   } else {
-    // Normal/Fire/Electric/Cryo: single delayed fist
+    // Normal/Fire/Electric/Cryo: single fist flies from Yuji toward enemy
     const ghostDmg=punchDmg*(isFireElem?1.6:1.0)*(1+chaos*0.08);
     const ba=angle(f,enemy);
     f.yujiGhostFists.push({
       target:enemy,timer:30,dmg:ghostDmg,
-      x:enemy.x+Math.cos(ba+Math.PI)*30,y:enemy.y+Math.sin(ba+Math.PI)*30,
-      angle:ba,isBF:isBF,isFireKB:isFireElem,
+      x:f.x+Math.cos(ba)*20,y:f.y+Math.sin(ba)*20,
+      angle:ba,isBF:isBF,isFireKB:isFireElem,flying:true,
     });
   }
 }
@@ -4515,31 +4517,35 @@ function updateRelicYuji(f,enemy,dt){
   // Tick down divergent fist cooldown
   if(f.yujiDivergentCD>0)f.yujiDivergentCD--;
 
-  // Process ghost fists (delayed blue punches)
+  // Process ghost fists (delayed blue punches — fly toward enemy)
   for(let i=f.yujiGhostFists.length-1;i>=0;i--){
     const gf=f.yujiGhostFists[i];
     gf.timer--;
-    // Track target position
+    // Fly toward target
     if(gf.target&&gf.target.alive){
-      gf.x+=(gf.target.x-gf.x)*0.1;
-      gf.y+=(gf.target.y-gf.y)*0.1;
-    }
-    if(gf.timer<=0){
-      // Ghost fist strikes!
-      if(gf.target&&gf.target.alive){
+      const dx=gf.target.x-gf.x,dy=gf.target.y-gf.y;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      const speed=6+((30-gf.timer)/30)*8; // accelerates as timer runs down
+      if(d>1){gf.x+=dx/d*speed;gf.y+=dy/d*speed;}
+      gf.angle=Math.atan2(dy,dx);
+      // Hit detection — close enough to target
+      if(d<gf.target.radius+10||gf.timer<=0){
         dealDamage(f,gf.target,gf.dmg,false);
-        spawnBurst(gf.target.x,gf.target.y,'#4488ff',10,5);
+        spawnBurst(gf.x,gf.y,'#4488ff',10,5);
         SFX.punch();
         if(gf.isBF)triggerBlackFlash(f,gf.target);
         if(gf.isFireKB){
-          // Fire: knock into walls
-          const ka=angle(f,gf.target);
+          const ka=Math.atan2(dy,dx);
           const kb=12;
           gf.target.vx+=Math.cos(ka)*kb;gf.target.vy+=Math.sin(ka)*kb;
           spawnBurst(gf.target.x,gf.target.y,'#ff4400',8,5);
         }
+        f.yujiGhostFists.splice(i,1);
+        continue;
       }
+    } else if(gf.timer<=0){
       f.yujiGhostFists.splice(i,1);
+      continue;
     }
   }
 
@@ -4721,19 +4727,47 @@ function updateRelicYuta(f,enemy,dt){
 
   const isElecElem=f.elementActive&&f.elem.id==='electric';
 
-  // Rika companion — orbits and periodically attacks
-  f.yutaRikaAngle+=0.04*(isElecElem?1.5:1)*dt;
+  // Initialize Rika position near Yuta
+  if(!f.yutaRikaPosInit){f.yutaRikaPos={x:f.x+40,y:f.y};f.yutaRikaPosInit=true;}
+
+  // Rika companion — independent fighter, chases and attacks enemy
   if(f.yutaRikaAttackCD>0)f.yutaRikaAttackCD-=dt;
 
-  // Rika claw attack
+  // Rika independent movement — chase enemy, stay near-ish to Yuta
+  if(enemy&&enemy.alive){
+    const dx=enemy.x-f.yutaRikaPos.x,dy=enemy.y-f.yutaRikaPos.y;
+    const dE=Math.hypot(dx,dy);
+    const rikaSpd=(isElecElem?4.5:3.2)*dt;
+    // Move toward enemy
+    if(dE>enemy.radius+25){
+      f.yutaRikaPos.x+=dx/dE*rikaSpd;f.yutaRikaPos.y+=dy/dE*rikaSpd;
+    } else {
+      // Circle strafe around enemy when close
+      f.yutaRikaAngle+=0.06*(isElecElem?1.5:1)*dt;
+      f.yutaRikaPos.x=enemy.x+Math.cos(f.yutaRikaAngle)*(enemy.radius+30);
+      f.yutaRikaPos.y=enemy.y+Math.sin(f.yutaRikaAngle)*(enemy.radius+30);
+    }
+    // Don't stray too far from Yuta (tether at 200px)
+    const dY=Math.hypot(f.yutaRikaPos.x-f.x,f.yutaRikaPos.y-f.y);
+    if(dY>200){
+      f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.05;
+      f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.05;
+    }
+    // Keep in bounds
+    f.yutaRikaPos.x=Math.max(20,Math.min(W-20,f.yutaRikaPos.x));
+    f.yutaRikaPos.y=Math.max(20,Math.min(H-20,f.yutaRikaPos.y));
+  } else {
+    // No enemy — drift near Yuta
+    f.yutaRikaPos.x+=(f.x+40-f.yutaRikaPos.x)*0.05;
+    f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.05;
+  }
+
+  // Rika claw attack — when close to enemy
   if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive){
-    const rikaX=f.x+Math.cos(f.yutaRikaAngle)*55;
-    const rikaY=f.y+Math.sin(f.yutaRikaAngle)*55;
-    const dToEnemy=Math.hypot(rikaX-enemy.x,rikaY-enemy.y);
-    if(dToEnemy<enemy.radius+70){
-      // Rika lunges and claws
+    const dToEnemy=Math.hypot(f.yutaRikaPos.x-enemy.x,f.yutaRikaPos.y-enemy.y);
+    if(dToEnemy<enemy.radius+40){
       f.yutaRikaLunging=true;
-      f.yutaRikaLungePos={x:rikaX,y:rikaY};
+      f.yutaRikaLungePos={x:f.yutaRikaPos.x,y:f.yutaRikaPos.y};
       f.yutaRikaClawAnim=15;
       f.yutaRikaAttackCD=isElecElem?40:65;
       const clawDmg=f.atk*(f.yutaDomainActive?1.0:0.7);
@@ -4774,16 +4808,10 @@ function updateRelicYuta(f,enemy,dt){
       }
       if(f.yutaDomainClashTimer<=0){
         f.yutaDomainClash=false;
-        // Clash result: Yuta wins (Rika breaks through) — big damage to Gojo
-        if(enemy&&enemy.alive){
-          const clashDmg=f.atk*3;
-          dealDamage(f,enemy,clashDmg,false);
-          spawnDmgNum(enemy.x,enemy.y-enemy.radius-40,'DOMAIN BROKEN!','#ffcc00',true);
-          spawnBurst(enemy.x,enemy.y,'#ffcc00',30,10);
-          shakeTimer=20;shakeAmt=12;
-          enemy.gojoDomainActive=false;enemy.gojoDomainTimer=0;
-          addLog('Yuta breaks Gojo\'s domain!');
-        }
+        // Domain clash resolved — both domains continue independently
+        spawnBurst(W/2,H/2,'#ffcc00',20,8);
+        shakeTimer=15;shakeAmt=8;
+        addLog('Domain clash resolved — both domains active!');
       }
     }
 
@@ -5001,22 +5029,29 @@ function updateBattle(dt){
       if(f.yutaCopyFlash>0)f.yutaCopyFlash--;
       // Rika updates run in updateRelicYuta (called during special OR always below)
       if(!f.specialActive){
-        // Run Rika companion logic even outside of special
+        // Run Rika companion logic even outside of special (same independent movement)
         const isElecElem=f.elementActive&&f.elem.id==='electric';
-        f.yutaRikaAngle+=0.04*(isElecElem?1.5:1)*dt;
+        if(!f.yutaRikaPosInit){f.yutaRikaPos={x:f.x+40,y:f.y};f.yutaRikaPosInit=true;}
         if(f.yutaRikaAttackCD>0)f.yutaRikaAttackCD-=dt;
+        // Independent movement
+        if(enemy&&enemy.alive){
+          const dx=enemy.x-f.yutaRikaPos.x,dy=enemy.y-f.yutaRikaPos.y;
+          const dE=Math.hypot(dx,dy);
+          const rikaSpd=(isElecElem?4.5:3.2)*dt;
+          if(dE>enemy.radius+25){f.yutaRikaPos.x+=dx/dE*rikaSpd;f.yutaRikaPos.y+=dy/dE*rikaSpd;}
+          else{f.yutaRikaAngle+=0.06*(isElecElem?1.5:1)*dt;f.yutaRikaPos.x=enemy.x+Math.cos(f.yutaRikaAngle)*(enemy.radius+30);f.yutaRikaPos.y=enemy.y+Math.sin(f.yutaRikaAngle)*(enemy.radius+30);}
+          const dY=Math.hypot(f.yutaRikaPos.x-f.x,f.yutaRikaPos.y-f.y);
+          if(dY>200){f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.05;f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.05;}
+          f.yutaRikaPos.x=Math.max(20,Math.min(W-20,f.yutaRikaPos.x));
+          f.yutaRikaPos.y=Math.max(20,Math.min(H-20,f.yutaRikaPos.y));
+        } else {f.yutaRikaPos.x+=(f.x+40-f.yutaRikaPos.x)*0.05;f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.05;}
+        // Rika claw attack
         if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive){
-          const rikaX=f.x+Math.cos(f.yutaRikaAngle)*55;
-          const rikaY=f.y+Math.sin(f.yutaRikaAngle)*55;
-          const dToEnemy=Math.hypot(rikaX-enemy.x,rikaY-enemy.y);
-          if(dToEnemy<enemy.radius+70){
-            f.yutaRikaLunging=true;
-            f.yutaRikaLungePos={x:rikaX,y:rikaY};
-            f.yutaRikaClawAnim=15;
-            f.yutaRikaAttackCD=isElecElem?40:65;
-            const clawDmg=f.atk*0.7;
-            dealDamage(f,enemy,clawDmg,true);
-            SFX.rikaClaw();
+          const dToEnemy=Math.hypot(f.yutaRikaPos.x-enemy.x,f.yutaRikaPos.y-enemy.y);
+          if(dToEnemy<enemy.radius+40){
+            f.yutaRikaLunging=true;f.yutaRikaLungePos={x:f.yutaRikaPos.x,y:f.yutaRikaPos.y};
+            f.yutaRikaClawAnim=15;f.yutaRikaAttackCD=isElecElem?40:65;
+            dealDamage(f,enemy,f.atk*0.7,true);SFX.rikaClaw();
             spawnBurst(enemy.x,enemy.y,'#aa44ff',8,4);
             spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,'RIKA','#aa44ff',false);
           }
@@ -6828,20 +6863,37 @@ function drawBall(f){
     X.restore();
   }
 
-  // Yuji ghost fists drawing
+  // Yuji ghost fists drawing — flying blue fist projectiles
   if(f.char.id==='yuji'&&f.yujiGhostFists){
     f.yujiGhostFists.forEach(gf=>{
       const progress=1-(gf.timer/30);
-      const alpha=0.3+progress*0.5;
+      const alpha=0.5+progress*0.4;
       X.save();
+      X.translate(gf.x,gf.y);
+      X.rotate(gf.angle||0);
       X.globalAlpha=alpha;
-      // Blue ghost fist
+      // Blue energy trail
+      X.shadowColor='#4488ff';X.shadowBlur=12;
+      const trailG=X.createLinearGradient(-20,0,5,0);
+      trailG.addColorStop(0,'rgba(68,136,255,0)');trailG.addColorStop(1,'rgba(68,136,255,0.5)');
+      X.fillStyle=trailG;
+      X.fillRect(-22,-5,22,10);
+      // Fist shape — knuckles facing forward
+      const sz=8+progress*3;
       X.fillStyle='#4488ff';
-      X.beginPath();X.arc(gf.x,gf.y,8+progress*4,0,Math.PI*2);X.fill();
-      X.shadowColor='#4488ff';X.shadowBlur=10;X.fill();X.shadowBlur=0;
-      // Fist shape
-      X.fillStyle='rgba(100,150,255,0.5)';
-      X.beginPath();X.arc(gf.x,gf.y,5,0,Math.PI*2);X.fill();
+      // Main fist body
+      X.beginPath();X.arc(0,0,sz,0,Math.PI*2);X.fill();
+      X.fill(); // double for glow
+      // Knuckle bumps
+      X.fillStyle='#66aaff';
+      for(let k=0;k<3;k++){
+        const ky=-3+k*3;
+        X.beginPath();X.arc(sz*0.7,ky,2.5,0,Math.PI*2);X.fill();
+      }
+      // Bright center
+      X.fillStyle='rgba(180,220,255,0.6)';
+      X.beginPath();X.arc(-1,-1,sz*0.4,0,Math.PI*2);X.fill();
+      X.shadowBlur=0;
       X.restore();
     });
   }
@@ -6981,12 +7033,11 @@ function drawBall(f){
     X.restore();
   }
 
-  // Rika companion drawing (orbiting purple entity)
+  // Rika companion drawing (independent fighter)
   if(f.char.id==='yuta'){
     X.save();
-    const rikaR=55;
-    const rikaX=f.yutaRikaLunging?f.yutaRikaLungePos.x:(f.x+Math.cos(f.yutaRikaAngle)*rikaR);
-    const rikaY=f.yutaRikaLunging?f.yutaRikaLungePos.y:(f.y+Math.sin(f.yutaRikaAngle)*rikaR);
+    const rikaX=f.yutaRikaLunging?f.yutaRikaLungePos.x:(f.yutaRikaPos?f.yutaRikaPos.x:(f.x+40));
+    const rikaY=f.yutaRikaLunging?f.yutaRikaLungePos.y:(f.yutaRikaPos?f.yutaRikaPos.y:f.y);
     const rikaSize=f.yutaDomainActive?18:13;
     // Rika body — monstrous purple blob
     const rg=X.createRadialGradient(rikaX,rikaY,2,rikaX,rikaY,rikaSize);
@@ -7992,29 +8043,23 @@ function drawYujiWeapon(r,ext,flash,f){
 }
 
 function drawNaoyaWeapon(r,ext,flash,f){
-  // Speed lines — sharp wind slash marks
+  // Collision aura — no physical weapon, just speed energy
   const isP2=f.naoyaPhase===2;
   const col=isP2?'#aa44cc':'#00cc88';
-  const ex=ext*12;
-  // Main speed blade
-  X.strokeStyle=flash?'#ffffff':col;X.lineWidth=2.5;
-  X.beginPath();X.moveTo(r+2,-4);X.lineTo(r+18+ex,0);X.lineTo(r+2,4);X.stroke();
-  // Speed lines
-  X.strokeStyle=col;X.lineWidth=1;
-  X.beginPath();X.moveTo(r+5,-8);X.lineTo(r+15+ex*0.5,-6);X.stroke();
-  X.beginPath();X.moveTo(r+5,8);X.lineTo(r+15+ex*0.5,6);X.stroke();
-  if(flash){
-    X.shadowColor=col;X.shadowBlur=8;
-    X.strokeStyle='#fff';X.lineWidth=2;
-    X.beginPath();X.moveTo(r+2,-3);X.lineTo(r+20+ex,0);X.lineTo(r+2,3);X.stroke();
-    X.shadowBlur=0;
-  }
-  // Dashing: extra motion blur lines
-  if(f.naoyaDashing){
-    X.strokeStyle=`rgba(${isP2?'170,68,204':'0,204,136'},0.5)`;X.lineWidth=1;
-    for(let i=0;i<3;i++){
-      const yo=(i-1)*6;
-      X.beginPath();X.moveTo(r-5,yo);X.lineTo(r+25+ex,yo);X.stroke();
+  const ex=ext*8;
+  // Speed aura emanating from body
+  if(f.naoyaDashing||flash){
+    X.strokeStyle=flash?'#ffffff':col;X.lineWidth=1.5;X.globalAlpha=0.7;
+    for(let i=0;i<4;i++){
+      const yo=(i-1.5)*5;
+      const len=15+ex+Math.random()*8;
+      X.beginPath();X.moveTo(r-3,yo);X.lineTo(r+len,yo*0.5);X.stroke();
+    }
+    X.globalAlpha=1;
+    if(flash){
+      X.shadowColor=col;X.shadowBlur=10;
+      X.beginPath();X.arc(0,0,r+4,0,Math.PI*2);X.strokeStyle=col;X.lineWidth=2;X.stroke();
+      X.shadowBlur=0;
     }
   }
 }
@@ -9171,12 +9216,13 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.fillStyle='#cc4488';X.fillRect(8,-3,5,6);
       break;
     case 'naoya':
-      // Speed slash
-      X.strokeStyle='#00cc88';X.lineWidth=2;
-      X.beginPath();X.moveTo(4,-3);X.lineTo(20,0);X.lineTo(4,3);X.stroke();
+      // Speed aura — collision energy, no weapon
+      X.shadowColor='#00cc88';X.shadowBlur=6;
+      X.beginPath();X.arc(0,0,10,0,Math.PI*2);
+      X.strokeStyle='rgba(0,204,136,0.6)';X.lineWidth=2;X.stroke();
       X.strokeStyle='#00cc88';X.lineWidth=1;
-      X.beginPath();X.moveTo(6,-6);X.lineTo(16,-4);X.stroke();
-      X.beginPath();X.moveTo(6,6);X.lineTo(16,4);X.stroke();
+      for(let i=0;i<3;i++){const a=Math.PI*2*i/3;X.beginPath();X.moveTo(Math.cos(a)*8,Math.sin(a)*8);X.lineTo(Math.cos(a)*16,Math.sin(a)*16);X.stroke();}
+      X.shadowBlur=0;
       break;
     case 'yuta':
       // Mini katana
@@ -9242,7 +9288,7 @@ function drawTitle(){
   addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
   addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v8.4 // soloforte.ai',W/2,H-20);
+  X.fillText('P10 v8.5 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
