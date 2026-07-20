@@ -2605,11 +2605,12 @@ function updateRelicTodo(f,enemy,dt){
 
   const isElecElem=f.elementActive&&f.elem.id==='electric';
 
-  // Passive Boogie Woogie — chance to clap every ~60 frames
+  // Passive Boogie Woogie — chance to clap (reduced frequency)
   if(f.todoSwapCD>0)f.todoSwapCD-=dt;
-  if(!f.todoSpecialActive&&f.todoSwapCD<=0){
+  // Blocked by Higuruma disable/confiscation
+  if(!f.todoSpecialActive&&f.todoSwapCD<=0&&f.higurumaDisableTimer<=0){
     const fighterCount=fighters.filter(o=>o&&o.alive).length;
-    const baseChance=isElecElem?0.02:0.012;
+    const baseChance=isElecElem?0.012:0.007; // reduced from 0.02/0.012
     const chance=baseChance*fighterCount;
     if(Math.random()<chance){
       // Pick random target to swap with
@@ -2617,7 +2618,7 @@ function updateRelicTodo(f,enemy,dt){
       if(targets.length>0){
         const t=targets[Math.floor(Math.random()*targets.length)];
         todoPerformSwap(f,t.x,t.y,t);
-        f.todoSwapCD=60; // 1 second cooldown
+        f.todoSwapCD=120; // 2 second cooldown (was 1s)
       }
     }
   }
@@ -4769,11 +4770,13 @@ function updateRelicHiguruma(f,enemy,dt){
       // Execute sentence
       const outcome=f.higurumaSentenceOutcome;
       if(outcome==='confiscate'){
-        // Waste enemy special charge
+        // Waste enemy special charge + disable passive abilities briefly
         if(target&&target.alive){
           const prevBar=target.specialBar;
           target.specialBar=isCryo?-target.specialMax*0.3:0; // cryo: negative = must earn back extra
           target.specialActive=false;
+          // Also disable passive abilities (blocks Todo swap, etc.) for 3 seconds
+          target.higurumaDisableTimer=Math.max(target.higurumaDisableTimer,180);
           SFX.gaveling();
           shakeTimer=10;shakeAmt=6;
           spawnDmgNum(target.x,target.y-target.radius-25,'CONFISCATED','#ffcc00',true);
