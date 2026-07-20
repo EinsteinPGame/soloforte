@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.1 — Higuruma: gavel hammer (throw/swing), Domain Expansion: Deadly Sentencing (confiscate/disable/execute), 4 element combos, judge's robes face, courtroom domain bg
+// BALL BATTLE ARENA v8.2 — Yuji Itadori: Divergent Fist (delayed ghost punch), Black Flash crits with time pause, BLACK FLASH RUSH special, 4 element combos
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -338,6 +338,14 @@ const CHARS=[
     baseAtkInterval:42,relicChargeRate:0.9,
     specialName:'DEADLY SENTENCING',
   },
+  {
+    id:'yuji',name:'Yuji',color:'#ff69b4',
+    desc:'Divergent Fist: delayed blue ghost punch. Black Flash crits with time pause.',
+    playstyle:'Fist & Flash',
+    stats:{hp:500,atk:30,speed:5.0,range:70,def:6,crit:18},
+    baseAtkInterval:30,relicChargeRate:0.85,
+    specialName:'BLACK FLASH RUSH!',
+  },
 ];
 
 // ============================================================
@@ -420,6 +428,10 @@ const COMBO_EFFECTS={
   'higuruma_electric':'Small hammers only — 20-burst rapid volley',
   'higuruma_toxic':'Fast small + smaller large w/ knockback + more dmg',
   'higuruma_cryo':'Stronger sentencing — deplete charge, longer disable',
+  'yuji_fire':'Divergent Fist wallslams + extra DMG',
+  'yuji_electric':'BF Rush: no time-pause except last 2s',
+  'yuji_toxic':'Multiple ghost fists surround enemy',
+  'yuji_cryo':'Permanent Black Flash + 2x BF in special but fragile',
 };
 
 // ============================================================
@@ -795,6 +807,13 @@ function createFighter(charIdx,elemIdx,side){
     higurumaSwordActive:false, // Executioner Sword spawned
     higurumaSwordTimer:0, // sword animation timer
     higurumaSwordTarget:null, // sword target
+    // Yuji state
+    yujiDivergentCD:0, // cooldown between punches
+    yujiGhostFists:[], // pending delayed blue fists [{target, timer, dmg, x, y, angle}]
+    yujiBlackFlashActive:false, // special: all hits = Black Flash
+    yujiBlackFlashTimer:0, // special duration timer
+    yujiIcePermanentBF:false, // cryo element: permanent Black Flash
+    yujiIceDmgMult:1, // cryo: incoming damage multiplier
   };
 }
 
@@ -1058,6 +1077,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   }
   // Toji Split Soul Katana: +10% damage taken
   if(defender.tojiDmgTakenDebuff)dmg*=1.1;
+  // Yuji Cryo: takes more damage (glass cannon)
+  if(defender.char&&defender.char.id==='yuji'&&defender.yujiIceDmgMult>1)dmg*=defender.yujiIceDmgMult;
   defender.hp-=dmg;
   defender.hitFlash=8;
   attacker.totalHits++;
@@ -1194,6 +1215,7 @@ function performWeaponAttack(f,enemy){
     case 'nanami':attackNanami(f,enemy,chaos);break;
     case 'ryu':attackRyu(f,enemy,chaos);break;
     case 'higuruma':attackHiguruma(f,enemy,chaos);break;
+    case 'yuji':attackYuji(f,enemy,chaos);break;
   }
 }
 
@@ -2131,6 +2153,85 @@ function attackHiguruma(f,enemy,chaos){
   }
 }
 
+function triggerBlackFlash(f,target){
+  // Black lightning visual
+  const tx=target.x,ty=target.y;
+  for(let i=0;i<8;i++){
+    const a=Math.random()*Math.PI*2;
+    const len=15+Math.random()*25;
+    spawnParticle(tx+Math.cos(a)*5,ty+Math.sin(a)*5,'#111111',Math.cos(a)*len*0.1,Math.sin(a)*len*0.1,12,3);
+    spawnParticle(tx+Math.cos(a)*8,ty+Math.sin(a)*8,'#4444ff',Math.cos(a)*len*0.05,Math.sin(a)*len*0.05,15,2);
+  }
+  // Black flash burst
+  spawnBurst(tx,ty,'#111111',12,6);
+  spawnBurst(tx,ty,'#4444ff',8,4);
+  spawnDmgNum(tx,ty-target.radius-25,'BLACK FLASH','#4444ff',false);
+  addLog((f.side===0?'P1':'P2')+' BLACK FLASH!');
+}
+
+function attackYuji(f,enemy,chaos){
+  const d=dist(f,enemy);
+  if(d>f.radius+enemy.radius+45+chaos*3)return; // melee only
+  if(f.yujiDivergentCD>0)return;
+
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+
+  f.yujiDivergentCD=f.baseAtkInterval;
+  f.weaponExtend=1;f.weaponFlash=10;
+  SFX.punch();
+
+  // Primary punch — direct hit
+  const punchDmg=f.atk*(1.2+chaos*0.1);
+  const isBF=f.yujiBlackFlashActive||f.yujiIcePermanentBF||Math.random()<f.crit/100;
+  dealDamage(f,enemy,punchDmg,false); // no built-in crit, we handle BF manually
+
+  if(isBF){
+    // Black Flash effect
+    const bfMult=(f.yujiBlackFlashActive&&isCryoElem)?2.0:1.5;
+    dealDamage(f,enemy,punchDmg*(bfMult-1),false); // bonus BF damage
+    triggerBlackFlash(f,enemy);
+    // Time pause (unless electric element during special, except last 1-2s)
+    const isElecElem=f.elementActive&&f.elem.id==='electric';
+    let shouldPause=true;
+    if(isElecElem&&f.yujiBlackFlashActive){
+      shouldPause=f.yujiBlackFlashTimer<=120; // only pause in last 2 seconds
+    }
+    if(shouldPause){
+      // Brief time slow for dramatic effect
+      fighters.forEach(e=>{if(e!==f)e.stunTimer=Math.max(e.stunTimer,8);});
+      shakeTimer=8;shakeAmt=6;
+    }
+  }
+
+  spawnBurst(enemy.x,enemy.y,'#ff69b4',8,4);
+
+  // Delayed Divergent Fist (ghost blue punch)
+  if(isToxicElem){
+    // Poison: multiple ghost fists surrounding enemy
+    const count=3+Math.floor(chaos*0.5);
+    const dmgPer=punchDmg*(0.5+chaos*0.03);
+    for(let i=0;i<count;i++){
+      const a=Math.PI*2*i/count;
+      f.yujiGhostFists.push({
+        target:enemy,timer:25+i*5,dmg:dmgPer,
+        x:enemy.x+Math.cos(a)*40,y:enemy.y+Math.sin(a)*40,
+        angle:a+Math.PI,isBF:isBF,isFireKB:false,
+      });
+    }
+  } else {
+    // Normal/Fire/Electric/Cryo: single delayed fist
+    const ghostDmg=punchDmg*(isFireElem?1.6:1.0)*(1+chaos*0.08);
+    const ba=angle(f,enemy);
+    f.yujiGhostFists.push({
+      target:enemy,timer:30,dmg:ghostDmg,
+      x:enemy.x+Math.cos(ba+Math.PI)*30,y:enemy.y+Math.sin(ba+Math.PI)*30,
+      angle:ba,isBF:isBF,isFireKB:isFireElem,
+    });
+  }
+}
+
 // ============================================================
 // STATUS EFFECTS
 // ============================================================
@@ -2483,6 +2584,7 @@ function useSpecial(f,enemy){
     case 'nanami':relicNanami(f,enemy);break;
     case 'ryu':relicRyu(f,enemy);break;
     case 'higuruma':relicHiguruma(f,enemy);break;
+    case 'yuji':relicYuji(f,enemy);break;
   }
 }
 
@@ -2939,6 +3041,16 @@ function relicHiguruma(f,enemy){
   f.higurumaSwordActive=false;
   f.higurumaSwordTimer=60; // 1s delay before sentence
   f.higurumaSwordTarget=enemy;
+}
+
+function relicYuji(f,enemy){
+  f.yujiBlackFlashActive=true;
+  f.yujiBlackFlashTimer=360; // 6 seconds (but time pauses eat into this!)
+  SFX.relicActivate();
+  spawnBurst(f.x,f.y,'#111111',20,8);
+  spawnBurst(f.x,f.y,'#4444ff',15,6);
+  addLog((f.side===0?'P1':'P2')+' BLACK FLASH RUSH!');
+  spawnDmgNum(f.x,f.y-f.radius-30,'BLACK FLASH RUSH!','#4444ff',false);
 }
 
 // ============================================================
@@ -4127,6 +4239,63 @@ function updateRelicHiguruma(f,enemy,dt){
   }
 }
 
+function updateRelicYuji(f,enemy,dt){
+  // Tick down divergent fist cooldown
+  if(f.yujiDivergentCD>0)f.yujiDivergentCD--;
+
+  // Process ghost fists (delayed blue punches)
+  for(let i=f.yujiGhostFists.length-1;i>=0;i--){
+    const gf=f.yujiGhostFists[i];
+    gf.timer--;
+    // Track target position
+    if(gf.target&&gf.target.alive){
+      gf.x+=(gf.target.x-gf.x)*0.1;
+      gf.y+=(gf.target.y-gf.y)*0.1;
+    }
+    if(gf.timer<=0){
+      // Ghost fist strikes!
+      if(gf.target&&gf.target.alive){
+        dealDamage(f,gf.target,gf.dmg,false);
+        spawnBurst(gf.target.x,gf.target.y,'#4488ff',10,5);
+        SFX.punch();
+        if(gf.isBF)triggerBlackFlash(f,gf.target);
+        if(gf.isFireKB){
+          // Fire: knock into walls
+          const ka=angle(f,gf.target);
+          const kb=12;
+          gf.target.vx+=Math.cos(ka)*kb;gf.target.vy+=Math.sin(ka)*kb;
+          spawnBurst(gf.target.x,gf.target.y,'#ff4400',8,5);
+        }
+      }
+      f.yujiGhostFists.splice(i,1);
+    }
+  }
+
+  // Special timer
+  if(f.yujiBlackFlashActive){
+    f.yujiBlackFlashTimer--;
+    // Black aura particles
+    if(battleTime%3<1){
+      const a=Math.random()*Math.PI*2;
+      spawnParticle(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#111111',0,-1.5,15,3);
+      spawnParticle(f.x+Math.cos(a+1)*f.radius,f.y+Math.sin(a+1)*f.radius,'#4444ff',0,-1,12,2);
+    }
+    if(f.yujiBlackFlashTimer<=0){
+      f.yujiBlackFlashActive=false;
+      addLog((f.side===0?'P1':'P2')+' Black Flash Rush ended');
+    }
+  }
+
+  // Cryo permanent Black Flash activation (once HP drops below 100%)
+  if(f.elementActive&&f.elem.id==='cryo'&&!f.yujiIcePermanentBF&&f.hp<f.maxHp){
+    f.yujiIcePermanentBF=true;
+    f.yujiIceDmgMult=1.8; // takes 80% more damage
+    addLog((f.side===0?'P1':'P2')+' ICE BLACK FLASH — PERMANENT!');
+    spawnDmgNum(f.x,f.y-f.radius-30,'PERMANENT BLACK FLASH','#77ddff',false);
+    spawnBurst(f.x,f.y,'#77ddff',15,6);
+  }
+}
+
 // Helper: point inside triangle
 function pointInTriangle(px,py,a,b,c){
   const d1=(px-b.x)*(a.y-b.y)-(a.x-b.x)*(py-b.y);
@@ -4266,6 +4435,7 @@ function updateBattle(dt){
         case 'nanami':updateRelicNanami(f,enemy,dt);break;
         case 'ryu':updateRelicRyu(f,enemy,dt);break;
         case 'higuruma':updateRelicHiguruma(f,enemy,dt);break;
+        case 'yuji':updateRelicYuji(f,enemy,dt);break;
       }
     }
 
@@ -6010,6 +6180,81 @@ function drawBall(f){
     X.restore();
   }
 
+  // Yuji face — pink spiky hair, determined eyes, fighter
+  if(f.char.id==='yuji'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    // Pink spiky hair
+    X.fillStyle='#ff69b4';
+    const spikes=7;
+    for(let i=0;i<spikes;i++){
+      const sa=-Math.PI*0.7+i*(Math.PI*0.4/(spikes-1));
+      const slen=r*0.35+Math.sin(i*2.3)*r*0.08;
+      X.beginPath();
+      X.moveTo(hx+Math.cos(sa-0.12)*r*0.4,hy+Math.sin(sa-0.12)*r*0.6);
+      X.lineTo(hx+Math.cos(sa)*(r*0.6+slen),hy+Math.sin(sa)*(r*0.6+slen));
+      X.lineTo(hx+Math.cos(sa+0.12)*r*0.4,hy+Math.sin(sa+0.12)*r*0.6);
+      X.closePath();X.fill();
+    }
+    // Hair base
+    X.beginPath();
+    X.arc(hx,hy-r*0.15,r*0.5,Math.PI,0);
+    X.fillStyle='#ff69b4';X.fill();
+    // Determined eyes — slightly larger, intense
+    X.fillStyle='#1a1a1a';
+    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.05,r*0.09,r*0.06,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.05,r*0.09,r*0.06,0,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.15,hy-r*0.07,r*0.025,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.21,hy-r*0.07,r*0.025,0,Math.PI*2);X.fill();
+    // Determined mouth — slight grin
+    X.strokeStyle='#333';X.lineWidth=1.5;
+    X.beginPath();
+    X.moveTo(hx-r*0.1,hy+r*0.2);
+    X.quadraticCurveTo(hx,hy+r*0.25,hx+r*0.1,hy+r*0.18);
+    X.stroke();
+    // Black Flash aura when special active
+    if(f.yujiBlackFlashActive){
+      const pulse=Math.sin(battleTime*0.15)*0.3+0.5;
+      X.strokeStyle=`rgba(68,68,255,${pulse})`;X.lineWidth=4;
+      X.beginPath();X.arc(hx,hy,r+8,0,Math.PI*2);X.stroke();
+      X.shadowColor='#4444ff';X.shadowBlur=15;X.stroke();X.shadowBlur=0;
+      // Black sparks
+      if(battleTime%4<1){
+        for(let i=0;i<3;i++){
+          const sa=Math.random()*Math.PI*2;
+          spawnParticle(hx+Math.cos(sa)*(r+5),hy+Math.sin(sa)*(r+5),'#111111',Math.cos(sa)*2,Math.sin(sa)*2,8,2);
+        }
+      }
+    }
+    // Cryo permanent BF indicator
+    if(f.yujiIcePermanentBF){
+      const pulse=Math.sin(battleTime*0.1)*0.2+0.3;
+      X.strokeStyle=`rgba(119,221,255,${pulse})`;X.lineWidth=2;
+      X.beginPath();X.arc(hx,hy,r+12,0,Math.PI*2);X.stroke();
+    }
+    X.restore();
+  }
+
+  // Yuji ghost fists drawing
+  if(f.char.id==='yuji'&&f.yujiGhostFists){
+    f.yujiGhostFists.forEach(gf=>{
+      const progress=1-(gf.timer/30);
+      const alpha=0.3+progress*0.5;
+      X.save();
+      X.globalAlpha=alpha;
+      // Blue ghost fist
+      X.fillStyle='#4488ff';
+      X.beginPath();X.arc(gf.x,gf.y,8+progress*4,0,Math.PI*2);X.fill();
+      X.shadowColor='#4488ff';X.shadowBlur=10;X.fill();X.shadowBlur=0;
+      // Fist shape
+      X.fillStyle='rgba(100,150,255,0.5)';
+      X.beginPath();X.arc(gf.x,gf.y,5,0,Math.PI*2);X.fill();
+      X.restore();
+    });
+  }
+
   // Draw Kashimo homing bolt
   if(f.char.id==='kashimo'&&f.kashimoBoltActive){
     X.save();
@@ -6500,6 +6745,7 @@ function drawWeapon(f){
     case 'nanami':drawNanamiWeapon(r,ext,flash,f);break;
     case 'ryu':drawRyuWeapon(r,ext,flash,f);break;
     case 'higuruma':drawHigurumaWeapon(r,ext,flash,f);break;
+    case 'yuji':drawYujiWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -6939,6 +7185,22 @@ function drawHigurumaWeapon(r,ext,flash,f){
     X.beginPath();X.arc(0,0,f.radius+pulse,0,Math.PI*2);X.stroke();
     X.globalAlpha=1;
     X.restore();
+  }
+}
+
+function drawYujiWeapon(r,ext,flash,f){
+  // Fist — simple boxing glove style
+  const ex=ext*8;
+  X.fillStyle=flash?'#ff88cc':'#ff69b4';
+  X.beginPath();X.arc(r+10+ex,0,7,0,Math.PI*2);X.fill();
+  // Knuckle details
+  X.fillStyle='#cc4488';
+  X.fillRect(r+6+ex,-3,5,6);
+  // Flash effect
+  if(flash){
+    X.shadowColor='#ff69b4';X.shadowBlur=8;
+    X.beginPath();X.arc(r+10+ex,0,9,0,Math.PI*2);X.fill();
+    X.shadowBlur=0;
   }
 }
 
@@ -8055,6 +8317,12 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.strokeStyle='#2a1a3a';X.lineWidth=0.5;X.strokeRect(19,-7,9,14);
       X.fillStyle='#888';X.fillRect(18,-8,11,1.5);X.fillRect(18,6.5,11,1.5);
       break;
+    case 'yuji':
+      // Fist
+      X.fillStyle='#ff69b4';
+      X.beginPath();X.arc(14,0,6,0,Math.PI*2);X.fill();
+      X.fillStyle='#cc4488';X.fillRect(8,-3,5,6);
+      break;
   }
   X.restore();
 }
@@ -8079,7 +8347,7 @@ function drawTitle(){
 
   X.font=(isMobile?'13':'16')+'px Consolas,Courier New,monospace';
   X.fillStyle='#888';
-  X.fillText('16 Fighters // 4 Elements',W/2,titleY+65);
+  X.fillText('18 Fighters // 4 Elements',W/2,titleY+65);
 
   const t=Date.now()*0.002;
   // Two rows of characters for 16+ roster
@@ -9216,6 +9484,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'nanami':{const chaos=getChaosLevel(f);let cr=f.crit+chaos*1.5;if(f.nanamiOvertimeActive)cr=Math.min(90,cr+35);const cm=f.nanamiOvertimeActive?2.4:(f.elementActive&&f.elem.id==='electric'?1.4:1.8);statLine=(f.nanamiOvertimeActive?'OT ':'')+(f.nanamiIceShattered?'FIST ':'')+Math.round(cr)+'%cr '+cm.toFixed(1)+'x'+(f.nanamiCritStreak>=3?' x'+f.nanamiCritStreak:'');break;}
     case 'ryu':statLine='CANNON';break;
     case 'higuruma':statLine='HAMMER';break;
+    case 'yuji':{const bf=f.yujiBlackFlashActive?'BF RUSH ':f.yujiIcePermanentBF?'PERM BF ':'';const ghosts=f.yujiGhostFists?f.yujiGhostFists.length:0;statLine=bf+'FIST'+(ghosts>0?' x'+ghosts:'');break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
