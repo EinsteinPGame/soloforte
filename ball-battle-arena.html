@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v8.9 — Higuruma verdict display, hammer straight-line, Naoya 24-frame always visible
+// BALL BATTLE ARENA v9.0 — Naoya full rework, Higuruma sequential hammers, Rika independent, Todo swap nerf
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -372,8 +372,8 @@ const CHARS=[
     id:'yuta',name:'Yuta & Rika',color:'#6644cc',
     desc:'BOSS. Katana + Rika summon. Copies enemy techniques. Domain: Authentic Mutual Love.',
     playstyle:'Boss — 3v1',
-    stats:{hp:900,atk:25,speed:3.0,range:120,def:11,crit:14},
-    baseAtkInterval:55,relicChargeRate:0.65,
+    stats:{hp:1000,atk:28,speed:3.2,range:120,def:12,crit:16},
+    baseAtkInterval:48,relicChargeRate:0.7,
     specialName:'AUTHENTIC MUTUAL LOVE',
     isBoss:true,
   },
@@ -857,6 +857,8 @@ function createFighter(charIdx,elemIdx,side){
     higurumaSentenceOutcome:null, // 'confiscate' | 'disable' | 'execute'
     higurumaDisableTimer:0, // enemy can't attack timer
     higurumaElecBurstCD:0, // lightning element burst cooldown
+    higurumaHammerQueue:[], // queued hammers to spawn 1-by-1
+    higurumaHammerQueueTimer:0, // delay between queued hammer spawns
     higurumaSwordActive:false, // Executioner Sword spawned
     higurumaSwordTimer:0, // sword animation timer
     higurumaSwordTarget:null, // sword target
@@ -882,7 +884,7 @@ function createFighter(charIdx,elemIdx,side){
     naoyaResurrected:false, // has already resurrected as cursed spirit
     naoyaTransitionTimer:0, // i-frame transition animation
     naoyaFrameCount:0, // visual 24-frame counter
-    // Yuta & Rika state
+    // Yuta & Rika state — Rika is independent with own HP
     yutaSlashCD:0, // katana slash cooldown
     yutaHitCount:0, // hit counter for cursed energy output burst
     yutaCopiedTech:null, // {charId, potency, color, name} — currently copied technique
@@ -890,6 +892,8 @@ function createFighter(charIdx,elemIdx,side){
     yutaCopyCD:0, // cooldown between copy attempts
     yutaCopyFlash:0, // visual flash when copy triggers
     yutaRikaAngle:0, // Rika facing angle
+    yutaRikaHp:ch.id==='yuta'?400:0, // Rika's own HP
+    yutaRikaMaxHp:ch.id==='yuta'?400:0,
     yutaRikaAttackCD:ch.id==='yuta'?60+rand(0,30):0, // Rika claw attack cooldown
     yutaRikaClawAnim:0, // claw visual animation
     yutaRikaLunging:false, // Rika lunging toward enemy
@@ -2201,25 +2205,20 @@ function attackHiguruma(f,enemy,chaos){
   // Default: close=big swing, far=small throws
 
   if(isElecElem){
-    // 20-burst rapid small hammer volley
+    // 20-burst rapid small hammer volley — queued 1-by-1
     if(f.higurumaElecBurstCD>0)return;
     f.higurumaElecBurstCD=150+Math.floor(Math.random()*30); // 2.5-3s cooldown
     SFX.hammerThrow();
     f.weaponExtend=1;f.weaponFlash=12;
     const count=20+Math.floor(chaos*2);
     const dmgPer=f.atk*(0.3+chaos*0.02);
+    f.higurumaHammerQueue=[];
     for(let i=0;i<count;i++){
-      const sa=ba+rand(-0.1,0.1); // straight line with slight drift
+      const sa=ba+rand(-0.1,0.1);
       const spd=6+rand(-0.5,0.5)+chaos*0.2;
-      projectiles.push({
-        x:f.x+Math.cos(sa)*(f.radius+4),y:f.y+Math.sin(sa)*(f.radius+4),
-        vx:Math.cos(sa)*spd,vy:Math.sin(sa)*spd,
-        owner:f,target:null,color:'#7a5a9a',
-        life:40+Math.floor(rand(0,10)),radius:4+chaos*0.2,dmg:dmgPer,
-        explosive:false,homing:false,isHigurumaSmallHammer:true,
-        knockback:1,
-      });
+      f.higurumaHammerQueue.push({sa,spd,dmg:dmgPer,radius:4+chaos*0.2,life:40+Math.floor(rand(0,10)),knockback:1});
     }
+    f.higurumaHammerQueueTimer=0;
     spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#7a5a9a',15,5);
     addLog((f.side===0?'P1':'P2')+' HAMMER VOLLEY!');
     spawnDmgNum(f.x,f.y-f.radius-20,'VOLLEY','#7a5a9a',false);
@@ -2256,24 +2255,19 @@ function attackHiguruma(f,enemy,chaos){
     shakeTimer=6;shakeAmt=4;
     spawnBurst(f.x+Math.cos(ba)*(f.radius+20),f.y+Math.sin(ba)*(f.radius+20),'#5a3a7a',10,5);
   } else {
-    // Small hammer throws — generally straight line with slight drift
+    // Small hammer throws — queued 1-by-1 with slight delay
     SFX.hammerThrow();
     f.weaponExtend=1;f.weaponFlash=8;
     const count=Math.min(10+Math.floor(chaos*1.5),18);
     const dmgPer=f.atk*(0.45+chaos*0.03)*(isToxicElem?1.25:1);
     const spdBase=isToxicElem?7:5.5;
+    f.higurumaHammerQueue=[];
     for(let i=0;i<count;i++){
-      const sa=ba+rand(-0.08,0.08); // mostly straight, slight random drift
-      const spd=spdBase+rand(-0.3,0.3)+chaos*0.15+i*0.15; // stagger speed so they spread along the line
-      projectiles.push({
-        x:f.x+Math.cos(sa)*(f.radius+4),y:f.y+Math.sin(sa)*(f.radius+4),
-        vx:Math.cos(sa)*spd,vy:Math.sin(sa)*spd,
-        owner:f,target:null,color:'#7a5a9a',
-        life:50,radius:5+chaos*0.3,dmg:dmgPer,
-        explosive:false,homing:false,isHigurumaSmallHammer:true,
-        knockback:isToxicElem?3:1,
-      });
+      const sa=ba+rand(-0.08,0.08);
+      const spd=spdBase+rand(-0.3,0.3)+chaos*0.15;
+      f.higurumaHammerQueue.push({sa,spd,dmg:dmgPer,radius:5+chaos*0.3,life:50,knockback:isToxicElem?3:1});
     }
+    f.higurumaHammerQueueTimer=0;
     spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#7a5a9a',8,4);
   }
 }
@@ -2555,7 +2549,7 @@ function updateRelicTodo(f,enemy,dt){
   if(f.todoSwapCD>0)f.todoSwapCD-=dt;
   if(!f.todoSpecialActive&&f.todoSwapCD<=0){
     const fighterCount=fighters.filter(o=>o&&o.alive).length;
-    const baseChance=isElecElem?0.04:0.025;
+    const baseChance=isElecElem?0.02:0.012;
     const chance=baseChance*fighterCount;
     if(Math.random()<chance){
       // Pick random target to swap with
@@ -3449,16 +3443,22 @@ function relicHiguruma(f,enemy){
   spawnBurst(f.x,f.y,'#8866aa',25,8);
   addLog((f.side===0?'P1':'P2')+' DOMAIN EXPANSION: DEADLY SENTENCING!');
   spawnDmgNum(f.x,f.y-f.radius-35,'DEADLY SENTENCING','#5a3a7a',true);
-  // Show punishment verdict
+  // Time pause — freeze both fighters briefly so verdict is visible
+  f.higurumaVerdictPause=90; // 1.5 seconds pause
+  fighters.forEach(ff=>{if(ff&&ff.alive)ff.stunTimer=Math.max(ff.stunTimer,90);});
+  // Show punishment verdict prominently after short delay
   const verdictLabel=outcome==='confiscate'?'VERDICT: CONFISCATION':outcome==='disable'?'VERDICT: ATTACK DISABLED':'VERDICT: EXECUTION';
   const verdictColor=outcome==='confiscate'?'#ffcc00':outcome==='disable'?'#ff6666':'#ff0000';
+  f.higurumaVerdictLabel=verdictLabel;
+  f.higurumaVerdictColor=verdictColor;
+  f.higurumaVerdictShow=90; // show for 1.5s
   setTimeout(()=>{
     if(enemy&&enemy.alive)spawnDmgNum(enemy.x,enemy.y-enemy.radius-45,verdictLabel,verdictColor,true);
-  },800);
+  },400);
 
   // Apply sentence after brief delay (handled in updateRelicHiguruma)
   f.higurumaSwordActive=false;
-  f.higurumaSwordTimer=60; // 1s delay before sentence
+  f.higurumaSwordTimer=90; // 1.5s delay before sentence (matches pause)
   f.higurumaSwordTarget=enemy;
 }
 
@@ -4978,12 +4978,19 @@ function updateRelicYuta(f,enemy,dt){
   const rikaSpd=(isElecElem?3.5:2.5)*dt;
   f.yutaRikaPos.x+=Math.cos(f.yutaRikaMoveAngle)*rikaSpd;
   f.yutaRikaPos.y+=Math.sin(f.yutaRikaMoveAngle)*rikaSpd;
-  // Don't stray too far from Yuta (tether at 160px)
+  // Rika roams freely — very loose tether (350px) so she explores independently
   const dY=Math.hypot(f.yutaRikaPos.x-f.x,f.yutaRikaPos.y-f.y);
-  if(dY>160){
-    f.yutaRikaMoveAngle=Math.atan2(f.y-f.yutaRikaPos.y,f.x-f.yutaRikaPos.x)+((Math.random()-0.5)*0.5);
-    f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.06;
-    f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.06;
+  if(dY>350){
+    f.yutaRikaMoveAngle=Math.atan2(f.y-f.yutaRikaPos.y,f.x-f.yutaRikaPos.x)+((Math.random()-0.5)*0.3);
+    f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.03;
+    f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.03;
+  }
+  // Rika actively hunts enemy — move toward enemy when reasonably close
+  if(enemy&&enemy.alive&&f.yutaRikaHp>0){
+    const dToE=Math.hypot(f.yutaRikaPos.x-enemy.x,f.yutaRikaPos.y-enemy.y);
+    if(dToE<200&&dToE>enemy.radius+30){
+      f.yutaRikaMoveAngle=Math.atan2(enemy.y-f.yutaRikaPos.y,enemy.x-f.yutaRikaPos.x)+((Math.random()-0.5)*0.3);
+    }
   }
   // Bounce off walls
   if(f.yutaRikaPos.x<25||f.yutaRikaPos.x>W-25)f.yutaRikaMoveAngle=Math.PI-f.yutaRikaMoveAngle;
@@ -4991,19 +4998,47 @@ function updateRelicYuta(f,enemy,dt){
   f.yutaRikaPos.x=Math.max(20,Math.min(W-20,f.yutaRikaPos.x));
   f.yutaRikaPos.y=Math.max(20,Math.min(H-20,f.yutaRikaPos.y));
 
-  // Rika claw attack — when close to enemy
-  if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive){
+  // Rika claw attack — when close to enemy (Rika only attacks if alive)
+  if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive&&f.yutaRikaHp>0){
     const dToEnemy=Math.hypot(f.yutaRikaPos.x-enemy.x,f.yutaRikaPos.y-enemy.y);
-    if(dToEnemy<enemy.radius+40){
+    if(dToEnemy<enemy.radius+55){
       f.yutaRikaLunging=true;
       f.yutaRikaLungePos={x:f.yutaRikaPos.x,y:f.yutaRikaPos.y};
       f.yutaRikaClawAnim=15;
-      f.yutaRikaAttackCD=isElecElem?40:65;
-      const clawDmg=f.atk*(f.yutaDomainActive?1.0:0.7);
+      f.yutaRikaAttackCD=isElecElem?35:55;
+      const clawDmg=f.atk*(f.yutaDomainActive?1.3:0.9);
       dealDamage(f,enemy,clawDmg,true);
       SFX.rikaClaw();
-      spawnBurst(enemy.x,enemy.y,'#aa44ff',8,4);
-      spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,'RIKA','#aa44ff',false);
+      spawnBurst(enemy.x,enemy.y,'#aa44ff',10,5);
+      spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,'RIKA CLAW','#aa44ff',false);
+      // Knockback
+      const ka=Math.atan2(enemy.y-f.yutaRikaPos.y,enemy.x-f.yutaRikaPos.x);
+      enemy.vx+=Math.cos(ka)*3;enemy.vy+=Math.sin(ka)*3;
+    }
+  }
+
+  // Rika takes damage from enemy body contact + enemy projectiles
+  if(f.yutaRikaHp>0&&enemy&&enemy.alive){
+    const dRikaEnemy=Math.hypot(f.yutaRikaPos.x-enemy.x,f.yutaRikaPos.y-enemy.y);
+    if(dRikaEnemy<enemy.radius+24&&(!f._rikaBodyCD||f._rikaBodyCD<=0)){
+      f.yutaRikaHp-=enemy.atk*0.4;
+      f._rikaBodyCD=30;
+      spawnBurst(f.yutaRikaPos.x,f.yutaRikaPos.y,'#ff4444',6,3);
+      if(f.yutaRikaHp<=0){f.yutaRikaHp=0;spawnDmgNum(f.yutaRikaPos.x,f.yutaRikaPos.y-30,'RIKA DOWN','#ff4444',true);spawnBurst(f.yutaRikaPos.x,f.yutaRikaPos.y,'#aa44ff',20,8);}
+    }
+    if(f._rikaBodyCD>0)f._rikaBodyCD-=dt;
+    // Rika hit by projectiles
+    for(let pi=projectiles.length-1;pi>=0;pi--){
+      const p=projectiles[pi];
+      if(p&&p.owner&&p.owner.side!==f.side){
+        const dp=Math.hypot(p.x-f.yutaRikaPos.x,p.y-f.yutaRikaPos.y);
+        if(dp<24+p.radius){
+          f.yutaRikaHp-=p.dmg*0.5;
+          spawnBurst(f.yutaRikaPos.x,f.yutaRikaPos.y,p.color,5,3);
+          projectiles.splice(pi,1);
+          if(f.yutaRikaHp<=0){f.yutaRikaHp=0;spawnDmgNum(f.yutaRikaPos.x,f.yutaRikaPos.y-30,'RIKA DOWN','#ff4444',true);spawnBurst(f.yutaRikaPos.x,f.yutaRikaPos.y,'#aa44ff',20,8);break;}
+        }
+      }
     }
   }
 
@@ -5157,6 +5192,27 @@ function updateBattle(dt){
     if(f.higurumaDisableTimer>0){f.higurumaDisableTimer-=dt;f.attackTimer=Math.max(f.attackTimer,10);}
     if(f.higurumaSwingCD>0)f.higurumaSwingCD-=dt;
     if(f.higurumaElecBurstCD>0)f.higurumaElecBurstCD-=dt;
+    if(f.higurumaVerdictShow>0)f.higurumaVerdictShow-=dt;
+    if(f.higurumaVerdictPause>0)f.higurumaVerdictPause-=dt;
+    // Higuruma hammer queue — spawn 1 hammer every 4 frames
+    if(f.higurumaHammerQueue&&f.higurumaHammerQueue.length>0){
+      f.higurumaHammerQueueTimer-=dt;
+      if(f.higurumaHammerQueueTimer<=0){
+        const h=f.higurumaHammerQueue.shift();
+        const ba2=f.weaponAngle; // use current facing for each hammer
+        const sa2=ba2+rand(-0.08,0.08);
+        projectiles.push({
+          x:f.x+Math.cos(sa2)*(f.radius+4),y:f.y+Math.sin(sa2)*(f.radius+4),
+          vx:Math.cos(sa2)*h.spd,vy:Math.sin(sa2)*h.spd,
+          owner:f,target:null,color:'#7a5a9a',
+          life:h.life,radius:h.radius,dmg:h.dmg,
+          explosive:false,homing:false,isHigurumaSmallHammer:true,
+          knockback:h.knockback||1,
+        });
+        f.higurumaHammerQueueTimer=4; // 4 frames between each hammer
+        if(f.higurumaHammerQueue.length%3===0)SFX.hammerThrow(); // sound every 3rd hammer
+      }
+    }
     if(f.captureTimer>0){
       f.captureTimer-=dt;
       // Captured enemies take constant crush damage
@@ -5242,11 +5298,16 @@ function updateBattle(dt){
         case 'ryu':updateRelicRyu(f,enemy,dt);break;
         case 'higuruma':updateRelicHiguruma(f,enemy,dt);break;
         case 'yuji':updateRelicYuji(f,enemy,dt);break;
-        case 'naoya':updateRelicNaoya(f,enemy,dt);break;
+        // naoya: handled outside specialActive block (always runs)
         case 'yuta':updateRelicYuta(f,enemy,dt);break;
-        case 'todo':updateRelicTodo(f,enemy,dt);break;
+        // todo: handled outside specialActive block (always runs)
       }
     }
+
+    // Naoya dash/cooldown runs always (not just during special) — critical fix
+    if(f.char.id==='naoya') updateRelicNaoya(f,enemy,dt);
+    // Todo cooldown/swap runs always
+    if(f.char.id==='todo') updateRelicTodo(f,enemy,dt);
 
     // Choso beam runs always (not just during special)
     if(f.char.id==='choso'&&(f.chosoBeamActive||f.chosoBeamCooldown>0||f.chosoPiercingFreeze>0)){
@@ -7292,28 +7353,42 @@ function drawBall(f){
       const tx=barX+barW*(i/24);
       X.beginPath();X.moveTo(tx,barY);X.lineTo(tx,barY+barH);X.stroke();
     }
-    // Show expected position markers during special/domain only
-    if(isSpecialMode&&f.alive){
-      const projCount=3;
+    // Show projection afterimages — hollowed balls showing predicted path (always visible, brighter during special)
+    if(f.alive){
+      const projCount=isSpecialMode?5:3;
+      const baseA=isSpecialMode?0.5:0.25;
       for(let p=1;p<=projCount;p++){
-        const px=f.x+f.vx*p*4,py=f.y+f.vy*p*4;
-        X.globalAlpha=0.3-p*0.08;
-        X.strokeStyle=col;X.lineWidth=1;
-        X.beginPath();X.arc(px,py,f.radius*0.7,0,Math.PI*2);X.stroke();
-        X.font='bold 7px Consolas,monospace';X.fillStyle=col;X.globalAlpha=0.5;
+        const px=f.x+f.vx*p*5,py=f.y+f.vy*p*5;
+        X.globalAlpha=baseA-p*(baseA/projCount*0.8);
+        X.strokeStyle=col;X.lineWidth=isSpecialMode?2:1.5;
+        X.beginPath();X.arc(px,py,f.radius*0.8,0,Math.PI*2);X.stroke();
+        // Inner dashed ring
+        X.setLineDash([3,3]);X.lineWidth=0.8;
+        X.beginPath();X.arc(px,py,f.radius*0.4,0,Math.PI*2);X.stroke();
+        X.setLineDash([]);
+        // Frame number inside
+        X.font='bold 9px Consolas,monospace';X.fillStyle=col;X.globalAlpha=Math.min(0.7,baseA+0.1);
         X.fillText(''+(((f.naoyaFrameCount+p)%24)+1),px,py+3);
       }
+      // During dash — show trail afterimages as hollowed balls
+      if(f.naoyaDashing&&f.naoyaDashTrail){
+        f.naoyaDashTrail.forEach((t,ti)=>{
+          X.globalAlpha=t.alpha*0.5;
+          X.strokeStyle=col;X.lineWidth=1.5;
+          X.beginPath();X.arc(t.x,t.y,f.radius*0.7,0,Math.PI*2);X.stroke();
+        });
+      }
     }
-    // Show enemy expected positions during special/domain
+    // Show enemy predicted positions during special/domain
     const enemy2=isSpecialMode?fighters.find(e=>e&&e!==f&&e.alive):null;
     if(enemy2){
-      const projCount=3;
+      const projCount=4;
       for(let p=1;p<=projCount;p++){
-        const px=enemy2.x+enemy2.vx*p*4,py=enemy2.y+enemy2.vy*p*4;
-        X.globalAlpha=0.25-p*0.06;
-        X.strokeStyle='#ff4444';X.lineWidth=1;
+        const px=enemy2.x+enemy2.vx*p*5,py=enemy2.y+enemy2.vy*p*5;
+        X.globalAlpha=0.3-p*0.06;
+        X.strokeStyle='#ff4444';X.lineWidth=1.5;
         X.beginPath();X.arc(px,py,enemy2.radius*0.7,0,Math.PI*2);X.stroke();
-        X.font='bold 7px Consolas,monospace';X.fillStyle='#ff4444';X.globalAlpha=0.5;
+        X.font='bold 8px Consolas,monospace';X.fillStyle='#ff4444';X.globalAlpha=0.5;
         X.fillText(''+(((f.naoyaFrameCount+p)%24)+1),px,py+3);
       }
     }
@@ -7368,36 +7443,66 @@ function drawBall(f){
     X.restore();
   }
 
-  // Rika companion drawing (independent fighter)
-  if(f.char.id==='yuta'){
+  // Rika companion drawing (independent fighter with own HP)
+  if(f.char.id==='yuta'&&f.yutaRikaHp>0){
     X.save();
     const rikaX=f.yutaRikaLunging?f.yutaRikaLungePos.x:(f.yutaRikaPos?f.yutaRikaPos.x:(f.x+40));
     const rikaY=f.yutaRikaLunging?f.yutaRikaLungePos.y:(f.yutaRikaPos?f.yutaRikaPos.y:f.y);
-    const rikaSize=f.yutaDomainActive?18:13;
-    // Rika body — monstrous purple blob
-    const rg=X.createRadialGradient(rikaX,rikaY,2,rikaX,rikaY,rikaSize);
-    rg.addColorStop(0,'#cc88ff');rg.addColorStop(0.6,'#8844cc');rg.addColorStop(1,'rgba(102,34,170,0.3)');
+    const rikaSize=f.yutaDomainActive?28:24; // Big — same scale as fighters
+    // Rika body — monstrous dark purple entity
+    const rg=X.createRadialGradient(rikaX,rikaY,3,rikaX,rikaY,rikaSize);
+    rg.addColorStop(0,'#dd99ff');rg.addColorStop(0.4,'#9944dd');rg.addColorStop(0.8,'#6622aa');rg.addColorStop(1,'rgba(80,20,140,0.4)');
     X.fillStyle=rg;X.beginPath();X.arc(rikaX,rikaY,rikaSize,0,Math.PI*2);X.fill();
-    // Rika eyes — glowing yellow
+    // Monstrous features — jagged edges
+    X.strokeStyle='#aa55dd';X.lineWidth=1.5;
+    for(let sp=0;sp<6;sp++){
+      const sa=sp*Math.PI/3+battleTime*0.02;
+      X.beginPath();X.moveTo(rikaX+Math.cos(sa)*rikaSize*0.85,rikaY+Math.sin(sa)*rikaSize*0.85);
+      X.lineTo(rikaX+Math.cos(sa)*(rikaSize+5+Math.sin(battleTime*0.1+sp)*3),rikaY+Math.sin(sa)*(rikaSize+5+Math.sin(battleTime*0.1+sp)*3));
+      X.stroke();
+    }
+    // Rika eyes — large glowing yellow, menacing
     X.fillStyle='#ffee44';
-    X.beginPath();X.arc(rikaX-3,rikaY-2,2.5,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(rikaX+3,rikaY-2,2.5,0,Math.PI*2);X.fill();
-    // Glow
-    X.shadowColor='#8844cc';X.shadowBlur=8;
-    X.beginPath();X.arc(rikaX,rikaY,rikaSize+2,0,Math.PI*2);X.stroke();
+    X.beginPath();X.arc(rikaX-rikaSize*0.22,rikaY-rikaSize*0.12,4,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(rikaX+rikaSize*0.22,rikaY-rikaSize*0.12,4,0,Math.PI*2);X.fill();
+    // Eye glow
+    X.shadowColor='#ffee44';X.shadowBlur=8;
+    X.beginPath();X.arc(rikaX-rikaSize*0.22,rikaY-rikaSize*0.12,3,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(rikaX+rikaSize*0.22,rikaY-rikaSize*0.12,3,0,Math.PI*2);X.fill();
     X.shadowBlur=0;
-    // Claw animation
+    // Mouth — wide, jagged
+    X.strokeStyle='#ffcc44';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(rikaX-rikaSize*0.3,rikaY+rikaSize*0.15);
+    X.lineTo(rikaX-rikaSize*0.1,rikaY+rikaSize*0.25);X.lineTo(rikaX,rikaY+rikaSize*0.15);
+    X.lineTo(rikaX+rikaSize*0.1,rikaY+rikaSize*0.25);X.lineTo(rikaX+rikaSize*0.3,rikaY+rikaSize*0.15);
+    X.stroke();
+    // Glow outline
+    X.shadowColor='#8844cc';X.shadowBlur=12;
+    X.strokeStyle='rgba(170,68,255,0.5)';X.lineWidth=2;
+    X.beginPath();X.arc(rikaX,rikaY,rikaSize+3,0,Math.PI*2);X.stroke();
+    X.shadowBlur=0;
+    // Claw animation — bigger, more dramatic
     if(f.yutaRikaClawAnim>0){
       const clawExt=f.yutaRikaClawAnim/15;
-      for(let c=0;c<3;c++){
-        const ca=Math.PI*2*c/3+battleTime*0.1;
-        X.strokeStyle='#cc44ff';X.lineWidth=2;
+      for(let c=0;c<5;c++){
+        const ca=Math.PI*2*c/5+battleTime*0.12;
+        X.strokeStyle='#cc44ff';X.lineWidth=3;
         X.beginPath();
         X.moveTo(rikaX+Math.cos(ca)*rikaSize,rikaY+Math.sin(ca)*rikaSize);
-        X.lineTo(rikaX+Math.cos(ca)*(rikaSize+12*clawExt),rikaY+Math.sin(ca)*(rikaSize+12*clawExt));
+        X.lineTo(rikaX+Math.cos(ca)*(rikaSize+18*clawExt),rikaY+Math.sin(ca)*(rikaSize+18*clawExt));
         X.stroke();
       }
     }
+    // HP bar for Rika
+    const hpW=rikaSize*2,hpH=4;
+    const hpX=rikaX-hpW/2,hpY=rikaY-rikaSize-10;
+    X.fillStyle='#333';X.fillRect(hpX,hpY,hpW,hpH);
+    const hpPct=Math.max(0,f.yutaRikaHp/f.yutaRikaMaxHp);
+    X.fillStyle=hpPct>0.5?'#aa55dd':'#ff4444';X.fillRect(hpX,hpY,hpW*hpPct,hpH);
+    X.strokeStyle='#555';X.lineWidth=0.5;X.strokeRect(hpX,hpY,hpW,hpH);
+    // Label
+    X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc88ff';
+    X.fillText('RIKA',rikaX,hpY-3);
     X.restore();
   }
 
@@ -8428,25 +8533,16 @@ function drawYujiWeapon(r,ext,flash,f){
 }
 
 function drawNaoyaWeapon(r,ext,flash,f){
-  // Collision aura — no physical weapon, speed energy lines always visible
+  // Collision-only — no physical weapon. Just a glow ring when dashing.
   const isP2=f&&f.naoyaPhase===2;
   const col=isP2?'#aa44cc':'#00cc88';
   const isDashing=f&&f.naoyaDashing;
-  // Speed aura — always visible (brighter when dashing)
-  const baseAlpha=isDashing?0.8:0.3;
-  X.strokeStyle=col;X.lineWidth=isDashing?2:1;X.globalAlpha=baseAlpha;
-  for(let i=0;i<4;i++){
-    const yo=(i-1.5)*5;
-    const len=isDashing?(20+Math.random()*10):(8+Math.random()*5);
-    X.beginPath();X.moveTo(r-3,yo);X.lineTo(r+len,yo*0.5);X.stroke();
-  }
-  // Collision glow ring when dashing
   if(isDashing){
-    X.shadowColor=col;X.shadowBlur=12;
-    X.beginPath();X.arc(0,0,r+6,0,Math.PI*2);X.strokeStyle=col;X.lineWidth=2.5;X.stroke();
+    X.shadowColor=col;X.shadowBlur=15;
+    X.beginPath();X.arc(0,0,r+8,0,Math.PI*2);X.strokeStyle=col;X.lineWidth=3;X.globalAlpha=0.9;X.stroke();
     X.shadowBlur=0;
+    X.globalAlpha=1;
   }
-  X.globalAlpha=1;
 }
 
 function drawYutaWeapon(r,ext,flash,f){
@@ -10193,6 +10289,19 @@ function drawBattle(){
     X.strokeStyle='rgba(90,58,122,0.5)';X.lineWidth=2;
     drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.stroke();
     X.shadowBlur=0;
+    // Verdict text overlay — large centered text during pause
+    if(higurumaF.higurumaVerdictShow>0&&higurumaF.higurumaVerdictLabel){
+      const vAlpha=Math.min(1,higurumaF.higurumaVerdictShow/30);
+      X.save();
+      X.font='bold 28px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+      X.fillStyle=higurumaF.higurumaVerdictColor||'#ffcc00';X.globalAlpha=vAlpha;
+      X.shadowColor=higurumaF.higurumaVerdictColor||'#ffcc00';X.shadowBlur=20;
+      X.fillText(higurumaF.higurumaVerdictLabel,ARENA.x+ARENA.w/2,ARENA.y+ARENA.h/2-30);
+      X.font='bold 16px Consolas,monospace';
+      X.fillStyle='#ffffff';X.globalAlpha=vAlpha*0.8;X.shadowBlur=0;
+      X.fillText('DEADLY SENTENCING',ARENA.x+ARENA.w/2,ARENA.y+ARENA.h/2+10);
+      X.restore();
+    }
   } else if(gojoF){
     // INFINITE VOID — deep cosmic void with intense geometric distortion
     X.fillStyle='#020008';X.fill();
