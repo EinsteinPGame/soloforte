@@ -295,6 +295,31 @@
       font-weight: bold !important;
     }
 
+    /* -- Note Name Labels (on-notation overlay) -- */
+    .note-name-label {
+      position: absolute;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      color: #fff;
+      background: #7b68ee;
+      border-radius: 3px;
+      padding: 1px 3px;
+      line-height: 1.2;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 5;
+      opacity: 0;
+      transform: translateX(-50%);
+      transition: opacity 0.2s;
+    }
+    .note-names-active .note-name-label {
+      opacity: 1;
+    }
+    .sheet-render-area {
+      position: relative;
+    }
+
     /* -- Melody Guide -- */
     .melody-guide {
       max-width: 960px;
@@ -581,7 +606,7 @@
         <h2 id="sheetTitle"></h2>
         <span class="sheet-composer" id="sheetComposer"></span>
       </div>
-      <button class="notes-toggle-btn" id="notesToggle" onclick="toggleNoteGuide()">Show Note Names</button>
+      <button class="notes-toggle-btn" id="notesToggle" onclick="toggleNoteGuide()" aria-pressed="false" aria-label="Toggle note letter names on notation" title="Show/hide note letter names (C4, D5, etc.) on the sheet music">Show Note Names</button>
     </div>
     <div class="sheet-render-area" id="sheetRenderArea"></div>
     <div class="melody-guide" id="melodyGuide"></div>
@@ -1186,21 +1211,190 @@ V:LH clef=bass name=""
     // -- Note Names Guide --
     let noteGuideVisible = false;
     let currentSongId = null;
+    let currentTuneObj = null;
+
+    // Convert ABC pitch number to note name with octave
+    // In abcjs, pitch 0 = C4 (middle C), each integer = one diatonic step
+    function pitchToNoteName(pitch, accidental) {
+      const noteNames = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+      // pitch 0 = C4, pitch 7 = C5, pitch -7 = C3, etc.
+      let octave = 4 + Math.floor(pitch / 7);
+      let noteIndex = ((pitch % 7) + 7) % 7; // ensure positive mod
+      let name = noteNames[noteIndex];
+
+      // Add accidental symbols
+      if (accidental === 'sharp') name += '#';
+      else if (accidental === 'flat') name += 'b';
+      else if (accidental === 'dblsharp') name += '##';
+      else if (accidental === 'dblflat') name += 'bb';
+
+      return name + octave;
+    }
+
+    // Extract accidental from abcjs pitch object
+    function getAccidental(pitchObj) {
+      if (pitchObj.accidental) return pitchObj.accidental;
+      return null;
+    }
+
+    // Place note name labels on the rendered SVG notation
+    function annotateNotesOnSVG() {
+      const renderArea = document.getElementById('sheetRenderArea');
+      // Remove any existing labels
+      renderArea.querySelectorAll('.note-name-label').forEach(el => el.remove());
+
+      if (!currentTuneObj || !currentTuneObj[0]) return;
+
+      const svg = renderArea.querySelector('svg');
+      if (!svg) return;
+
+      const svgRect = svg.getBoundingClientRect();
+      const areaRect = renderArea.getBoundingClientRect();
+
+      // abcjs adds classes to note elements. Find all noteheads.
+      const noteElements = svg.querySelectorAll('.abcjs-note');
+
+      // Also try to get structured data from the tune object
+      const tune = currentTuneObj[0];
+
+      // Use abcjs element data: each note group in SVG has positional data
+      // We iterate over SVG note groups and extract position + pitch from the tune lines
+      if (tune.lines) {
+        tune.lines.forEach(line => {
+          if (!line.staff) return;
+          line.staff.forEach(staff => {
+            if (!staff.voices) return;
+            staff.voices.forEach(voice => {
+              voice.forEach(element => {
+                if (element.el_type !== 'note' || !element.pitches) return;
+                if (element.rest) return; // skip rests
+
+                element.pitches.forEach((pitchObj, pIdx) => {
+                  if (pitchObj.pitch === undefined || pitchObj.pitch === null) return;
+
+                  // Get the abselem which has position info
+                  const abselem = element.abselem;
+                  if (!abselem) return;
+
+                  // Get x position from abselem
+                  let x = abselem.x;
+                  // Get y position from the pitch - use the notehead position
+                  // abcjs noteheads are in abselem.heads array
+                  let y = null;
+                  if (abselem.heads && abselem.heads[pIdx]) {
+                    y = abselem.heads[pIdx].y;
+                    // If heads don't have y, try the pitch calculation
+                  }
+
+                  if (x === undefined) return;
+
+                  const noteName = pitchToNoteName(
+                    pitchObj.pitch,
+                    getAccidental(pitchObj)
+                  );
+
+                  const label = document.createElement('span');
+                  label.className = 'note-name-label';
+                  label.textContent = noteName;
+                  label.setAttribute('aria-hidden', 'true');
+
+                  // Position the label below the note
+                  // SVG coordinates need to be mapped to the container
+                  const svgViewBox = svg.viewBox.baseVal;
+                  const svgWidth = svgViewBox.width || svg.clientWidth;
+                  const svgHeight = svgViewBox.height || svg.clientHeight;
+                  const containerWidth = renderArea.clientWidth;
+                  const containerHeight = svg.clientHeight;
+
+                  const scaleX = containerWidth / svgWidth;
+                  const scaleY = containerHeight / svgHeight;
+
+                  // Padding offset from the render area
+                  const paddingLeft = parseFloat(getComputedStyle(renderArea).paddingLeft) || 0;
+                  const paddingTop = parseFloat(getComputedStyle(renderArea).paddingTop) || 0;
+
+                  const labelX = (x * scaleX) + paddingLeft;
+
+                  // For y, use the notehead position or fallback to a position below staff
+                  let labelY;
+                  if (y !== null && y !== undefined) {
+                    labelY = (y * scaleY) + paddingTop + 16;
+                  } else if (abselem.heads && abselem.heads[pIdx] && abselem.heads[pIdx].top !== undefined) {
+                    labelY = (abselem.heads[pIdx].top * scaleY) + paddingTop + 16;
+                  } else {
+                    // Fallback: place below the abselem bottom
+                    const bot = abselem.bottom || 0;
+                    labelY = (bot * scaleY) + paddingTop + 16;
+                  }
+
+                  label.style.left = labelX + 'px';
+                  label.style.top = labelY + 'px';
+
+                  renderArea.appendChild(label);
+                });
+              });
+            });
+          });
+        });
+      }
+
+      // Fallback: if structured approach yielded no labels, try SVG element parsing
+      if (renderArea.querySelectorAll('.note-name-label').length === 0) {
+        annotateFromSVGElements(svg, renderArea);
+      }
+    }
+
+    // Fallback annotation method using SVG DOM elements directly
+    function annotateFromSVGElements(svg, renderArea) {
+      // abcjs renders noteheads as path elements inside g.abcjs-note groups
+      const noteGroups = svg.querySelectorAll('.abcjs-note');
+      if (!noteGroups.length) return;
+
+      const paddingLeft = parseFloat(getComputedStyle(renderArea).paddingLeft) || 0;
+      const paddingTop = parseFloat(getComputedStyle(renderArea).paddingTop) || 0;
+
+      noteGroups.forEach(group => {
+        // Each note group may have data attributes from abcjs
+        const dataStr = group.getAttribute('data-name');
+        if (!dataStr) return;
+
+        // abcjs sets data-name like "C4", "D#5", etc. on note elements
+        const rect = group.getBoundingClientRect();
+        const areaRect = renderArea.getBoundingClientRect();
+
+        const label = document.createElement('span');
+        label.className = 'note-name-label';
+        label.textContent = dataStr;
+        label.setAttribute('aria-hidden', 'true');
+        label.style.left = (rect.left - areaRect.left + rect.width / 2) + 'px';
+        label.style.top = (rect.bottom - areaRect.top + 2) + 'px';
+
+        renderArea.appendChild(label);
+      });
+    }
 
     function toggleNoteGuide() {
       noteGuideVisible = !noteGuideVisible;
       const btn = document.getElementById('notesToggle');
       const guide = document.getElementById('melodyGuide');
+      const renderArea = document.getElementById('sheetRenderArea');
 
       if (noteGuideVisible) {
         btn.classList.add('active');
         btn.textContent = 'Hide Note Names';
+        btn.setAttribute('aria-pressed', 'true');
+        renderArea.classList.add('note-names-active');
         showNoteGuide(currentSongId);
         guide.classList.add('visible');
+        annotateNotesOnSVG();
       } else {
         btn.classList.remove('active');
         btn.textContent = 'Show Note Names';
+        btn.setAttribute('aria-pressed', 'false');
+        renderArea.classList.remove('note-names-active');
         guide.classList.remove('visible');
+        // Remove overlay labels
+        renderArea.querySelectorAll('.note-name-label').forEach(el => el.remove());
       }
     }
 
@@ -1209,7 +1403,8 @@ V:LH clef=bass name=""
       if (!song || !song.noteGuide) return;
 
       const guide = document.getElementById('melodyGuide');
-      let html = '<h3>Melody Note Names</h3>';
+      let html = '<h3>Note Names Reference</h3>';
+      html += '<p style="font-size:0.82rem;color:#8888aa;margin-bottom:12px;">Letter names for each section — use alongside the notation above.</p>';
 
       const sectionLabels = {
         intro: 'Intro',
@@ -1254,7 +1449,11 @@ V:LH clef=bass name=""
       const btn = document.getElementById('notesToggle');
       btn.classList.remove('active');
       btn.textContent = 'Show Note Names';
+      btn.setAttribute('aria-pressed', 'false');
       document.getElementById('melodyGuide').classList.remove('visible');
+      const renderArea = document.getElementById('sheetRenderArea');
+      renderArea.classList.remove('note-names-active');
+      renderArea.querySelectorAll('.note-name-label').forEach(el => el.remove());
 
       const overlay = document.getElementById('sheetOverlay');
       overlay.classList.add('open');
@@ -1262,14 +1461,15 @@ V:LH clef=bass name=""
 
       // Render ABC after overlay is visible
       setTimeout(() => {
-        ABCJS.renderAbc('sheetRenderArea', song.abc, {
+        currentTuneObj = ABCJS.renderAbc('sheetRenderArea', song.abc, {
           responsive: 'resize',
           staffwidth: 800,
           paddingtop: 10,
           paddingbottom: 20,
           paddingleft: 10,
           paddingright: 10,
-          scale: 1.1
+          scale: 1.1,
+          add_classes: true
         });
       }, 50);
     }

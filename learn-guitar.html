@@ -1142,8 +1142,16 @@ function openLesson(id) {
   var detail = document.getElementById('lesson-detail');
   detail.innerHTML = '<button class="back-btn" onclick="closeLesson()">< Back to Lessons</button>' +
     '<h3>Lesson ' + lesson.id + ': ' + lesson.title + '</h3>' +
+    '<button class="note-toggle' + (noteNamesOn ? ' active' : '') + '" onclick="toggleNoteNames()" style="margin-bottom:12px">' + (noteNamesOn ? 'Hide Note Names' : 'Show Note Names') + '</button>' +
     lesson.content();
   detail.classList.add('show');
+  // Store original tab content and apply note names if enabled
+  detail.querySelectorAll('.tab-display pre').forEach(function(pre) {
+    pre.setAttribute('data-original-tab', pre.textContent);
+    if (noteNamesOn) {
+      pre.innerHTML = addNoteNames(pre.textContent);
+    }
+  });
   window.scrollTo(0, 0);
 }
 
@@ -1202,9 +1210,13 @@ function escHtml(s) {
 
 function toggleNoteNames() {
   noteNamesOn = !noteNamesOn;
-  var btn = document.getElementById('note-toggle-btn');
-  if (btn) btn.className = 'note-toggle' + (noteNamesOn ? ' active' : '');
+  // Update all toggle buttons on the page
+  document.querySelectorAll('.note-toggle').forEach(function(btn) {
+    btn.className = 'note-toggle' + (noteNamesOn ? ' active' : '');
+    btn.textContent = noteNamesOn ? 'Hide Note Names' : 'Show Note Names';
+  });
   renderSongTab();
+  renderLessonNoteNames();
 }
 
 function renderSongTab() {
@@ -1216,6 +1228,19 @@ function renderSongTab() {
   } else {
     el.textContent = s.tab;
   }
+}
+
+function renderLessonNoteNames() {
+  var pres = document.querySelectorAll('#lesson-detail .tab-display pre');
+  pres.forEach(function(pre) {
+    var orig = pre.getAttribute('data-original-tab');
+    if (!orig) return;
+    if (noteNamesOn) {
+      pre.innerHTML = addNoteNames(orig);
+    } else {
+      pre.textContent = orig;
+    }
+  });
 }
 
 // ==================== SONGS ====================
@@ -1259,7 +1284,7 @@ function openSong(idx) {
     '<p>' + s.guide + '</p></div>' +
 
     '<div class="guide-section"><h4>Tablature</h4>' +
-    '<button id="note-toggle-btn" class="note-toggle' + (noteNamesOn ? ' active' : '') + '" onclick="toggleNoteNames()">Note Names</button>' +
+    '<button id="note-toggle-btn" class="note-toggle' + (noteNamesOn ? ' active' : '') + '" onclick="toggleNoteNames()">' + (noteNamesOn ? 'Hide Note Names' : 'Show Note Names') + '</button>' +
     '<div class="tab-display"><pre id="song-tab-pre"></pre></div></div>';
 
   currentSongIdx = idx;
