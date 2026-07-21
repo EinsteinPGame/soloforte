@@ -513,6 +513,10 @@ const COMBO_EFFECTS={
   'dabura_electric':'Faster phase transitions + dashes, -15% damage',
   'dabura_toxic':'Darkness attacks +30% damage, light attacks -20%',
   'dabura_cryo':'RCT heals 50% faster (cap 25HP total remains)',
+  'yuki_fire':'Mass meter fills faster + Garuda leaves fire trail',
+  'yuki_electric':'Garuda chains lightning to nearby enemies on hit',
+  'yuki_toxic':'Mass decays 50% slower between combos',
+  'yuki_cryo':'Black hole pulls slower but Garuda orbits longer',
 };
 
 // ============================================================
@@ -781,6 +785,7 @@ const PERSONALIZED_WIN_BUFFS={
   throw:{name:'Ricochet Edge',desc:'Throw weapons return 25% faster',apply(f){f._throwReturnMult=(f._throwReturnMult||1)*0.75;}},
   smasher:{name:'Reinforced Plating',desc:'Defense +15%',apply(f){f.def=Math.round(f.def*1.15);f.baseDef=Math.round(f.baseDef*1.15);}},
   kashimo:{name:'Lightning Charge',desc:'Special charges 15% faster',apply(f){f._kashimoChargeMult=(f._kashimoChargeMult||1)*1.15;}},
+  yuki:{name:'Gravitational Density',desc:'Mass meter max +15',apply(f){f.yukiMassMax=(f.yukiMassMax||100)+15;}},
 };
 function applyWinBuffToFighter(f){
   const buff=PERSONALIZED_WIN_BUFFS[f.char.id];
@@ -1758,6 +1763,7 @@ function performWeaponAttack(f,enemy){
     case 'todo':attackTodo(f,enemy,chaos);break;
     case 'mahoraga':attackMahoraga(f,enemy,chaos);break;
     case 'dabura':attackDabura(f,enemy,chaos);break;
+    case 'yuki':attackYuki(f,enemy,chaos);break;
   }
 }
 
@@ -3152,6 +3158,198 @@ function relicDabura(f,enemy){
   addLog((f.side===0?'P1':'P2')+' RADIANT DOMAIN — MODULO!');
 }
 
+function attackYuki(f,enemy,chaos){
+  // Garuda-enhanced melee — combos fill mass meter
+  const d=dist(f,enemy);
+  const meleeRange=f.radius+enemy.radius+55+chaos*3;
+  if(d>meleeRange)return;
+  if(f.yukiBHActive)return; // can't attack during black hole
+
+  f.weaponExtend=1;f.weaponFlash=10;
+  SFX.punch();
+
+  // Base punch damage — scales with mass
+  const massMult=1+(f.yukiMass/f.yukiMassMax)*0.8; // up to 1.8x at full mass
+  const spdPenalty=1-(f.yukiMass/f.yukiMassMax)*0.4; // up to 0.6x speed at full mass
+  f.speed=f.baseSpeed*spdPenalty;
+  const punchDmg=f.atk*massMult*(1+chaos*0.08);
+  dealDamage(f,enemy,punchDmg,true);
+  spawnBurst(enemy.x,enemy.y,'#cc3366',8,4);
+
+  // Garuda combo — each hit fills mass meter
+  f.yukiHitCombo++;
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const massGain=3+f.yukiHitCombo*0.8+(isFireElem?2:0);
+  f.yukiMass=Math.min(f.yukiMassMax,f.yukiMass+massGain);
+  f.yukiOverloaded=f.yukiMass>=f.yukiMassMax*0.8;
+
+  // Knockback (more mass = more knockback)
+  const ka=angle(f,enemy);
+  const knockForce=3+massMult*2;
+  enemy.vx+=Math.cos(ka)*knockForce;enemy.vy+=Math.sin(ka)*knockForce;
+
+  // Fire element: Garuda leaves fire trail DOT
+  if(isFireElem&&f.yukiMass>=30){
+    enemy.burnTimer=Math.max(enemy.burnTimer,90);
+    enemy.burnDmg=Math.max(enemy.burnDmg,f.atk*0.12*massMult);
+  }
+
+  // Lightning element: Garuda chains lightning on hit
+  if(f.elementActive&&f.elem.id==='electric'&&f.yukiHitCombo%3===0){
+    spawnSparks(enemy.x,enemy.y,'#44ddff',10);
+    const chainDmg=f.atk*0.3;
+    dealDamage(f,enemy,chainDmg,false);
+    spawnDmgNum(enemy.x+rand(-15,15),enemy.y-enemy.radius-20,'CHAIN','#44ddff',false);
+  }
+
+  // Overloaded: can throw Garuda as projectile
+  if(f.yukiOverloaded&&f.yukiGarudaCD<=0&&!f.yukiGaruda.thrown){
+    f.yukiGaruda.thrown=true;
+    f.yukiGaruda.orbiting=false;
+    f.yukiGaruda.returnTimer=90; // returns after 1.5s
+    f.yukiGarudaCD=120; // 2s cooldown
+    const throwAngle=angle(f,enemy);
+    projectiles.push({
+      x:f.x,y:f.y,
+      vx:Math.cos(throwAngle)*7,vy:Math.sin(throwAngle)*7,
+      owner:f,target:null,color:'#ff4488',
+      life:90,radius:12,dmg:f.atk*1.5*massMult,
+      explosive:false,homing:true,isYukiGaruda:true,
+    });
+    f.yukiMass=Math.max(0,f.yukiMass-30); // throwing costs mass
+    f.yukiOverloaded=f.yukiMass>=f.yukiMassMax*0.8;
+    SFX.rocketLaunch();
+    spawnDmgNum(f.x,f.y-f.radius-25,'GARUDA THROW!','#ff4488',true);
+    spawnBurst(f.x,f.y,'#ff4488',15,6);
+  }
+
+  // Mass decay between combos (toxic element: 50% slower)
+  f._yukiMassDecayCD=f.elementActive&&f.elem.id==='toxic'?90:60;
+}
+
+function relicYuki(f,enemy){
+  // STAR RAGE — BLACK HOLE
+  SFX.relicActivate();
+  SFX.megaExplosion();
+
+  f.yukiBHActive=true;
+  f.yukiBHTimer=300; // 5 seconds
+  f.yukiBHPos={x:(f.x+enemy.x)/2,y:(f.y+enemy.y)/2}; // between the two
+  f.yukiBHPhase=0; // 0=expand, 1=orbit, 2=collapse
+  f.yukiBHRadius=0;
+  f.yukiSelfDmgApplied=false;
+  f.specialTimer=300;
+
+  // Garuda starts orbiting the black hole
+  f.yukiGaruda.orbiting=false;
+  f.yukiGaruda.thrown=false;
+  f.yukiGaruda.x=f.yukiBHPos.x+80;
+  f.yukiGaruda.y=f.yukiBHPos.y;
+  f.yukiGaruda.angle=0;
+
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  f._yukiBHMaxRadius=isCryoElem?160:130; // ice: bigger but slower pull
+  f._yukiBHPullStrength=isCryoElem?2.5:4; // ice: weaker pull, more orbit time
+
+  spawnBurst(f.yukiBHPos.x,f.yukiBHPos.y,'#cc3366',40,15);
+  spawnBurst(f.yukiBHPos.x,f.yukiBHPos.y,'#220022',30,10);
+  triggerScreenFlash('#cc3366',15);
+  shakeTimer=20;shakeAmt=12;
+  spawnDmgNum(f.x,f.y-f.radius-30,'STAR RAGE','#ff4488',true);
+  addLog((f.side===0?'P1':'P2')+' STAR RAGE — BLACK HOLE!');
+}
+
+function updateRelicYuki(f,enemy,dt){
+  if(!f.yukiBHActive)return;
+  f.yukiBHTimer-=dt;
+  const bh=f.yukiBHPos;
+  const maxR=f._yukiBHMaxRadius||130;
+  const pullStr=f._yukiBHPullStrength||4;
+
+  // Phase transitions
+  if(f.yukiBHPhase===0){
+    // Expand
+    f.yukiBHRadius=Math.min(maxR,f.yukiBHRadius+2*dt);
+    if(f.yukiBHRadius>=maxR)f.yukiBHPhase=1;
+  } else if(f.yukiBHPhase===1){
+    // Orbit — Garuda circles the edge, pull enemies
+    if(f.yukiBHTimer<=90)f.yukiBHPhase=2; // last 1.5s = collapse
+  } else if(f.yukiBHPhase===2){
+    // Collapse — radius shrinks, damage everything inside
+    f.yukiBHRadius=Math.max(0,f.yukiBHRadius-3*dt);
+  }
+
+  // Garuda orbits the black hole edge
+  f.yukiGaruda.angle+=0.06*dt;
+  const orbitR=f.yukiBHPhase===2?f.yukiBHRadius:maxR+10;
+  f.yukiGaruda.x=bh.x+Math.cos(f.yukiGaruda.angle)*orbitR;
+  f.yukiGaruda.y=bh.y+Math.sin(f.yukiGaruda.angle)*orbitR;
+
+  // Garuda damages enemy on close pass
+  if(enemy.alive){
+    const gd=Math.hypot(f.yukiGaruda.x-enemy.x,f.yukiGaruda.y-enemy.y);
+    if(gd<25&&battleTime%8<1){
+      dealDamage(f,enemy,f.atk*0.4,false);
+      spawnBurst(enemy.x,enemy.y,'#ff4488',6,3);
+    }
+  }
+
+  // Pull enemy toward center
+  if(enemy.alive){
+    const ed=Math.hypot(enemy.x-bh.x,enemy.y-bh.y);
+    if(ed<f.yukiBHRadius+30){
+      const pa=Math.atan2(bh.y-enemy.y,bh.x-enemy.x);
+      const force=pullStr*(1-ed/(f.yukiBHRadius+30));
+      enemy.vx+=Math.cos(pa)*force*dt*0.5;
+      enemy.vy+=Math.sin(pa)*force*dt*0.5;
+      // Damage while inside the pull zone
+      if(battleTime%15<1){
+        const bhDmg=f.atk*(f.yukiBHPhase===2?0.6:0.25);
+        dealDamage(f,enemy,bhDmg,false);
+        spawnBurst(enemy.x,enemy.y,'#cc3366',4,2);
+      }
+    }
+  }
+
+  // Visual particles — swirling inward
+  if(battleTime%3<1){
+    const pa=Math.random()*Math.PI*2;
+    const pr=f.yukiBHRadius+20;
+    spawnParticle(bh.x+Math.cos(pa)*pr,bh.y+Math.sin(pa)*pr,'#cc3366',
+      Math.cos(pa+Math.PI)*2,Math.sin(pa+Math.PI)*2,30,2);
+  }
+
+  // Collapse phase: final damage burst
+  if(f.yukiBHPhase===2&&f.yukiBHRadius<=5&&!f.yukiSelfDmgApplied){
+    f.yukiSelfDmgApplied=true;
+    // Big damage to enemy
+    if(enemy.alive){
+      const collapseDmg=f.atk*3;
+      dealDamage(f,enemy,collapseDmg,true);
+      spawnBurst(bh.x,bh.y,'#ff4488',40,15);
+      spawnBurst(bh.x,bh.y,'#220022',30,10);
+      SFX.megaExplosion();
+      shakeTimer=25;shakeAmt=15;
+      spawnDmgNum(bh.x,bh.y-30,'COLLAPSE!','#ff4488',true);
+      triggerScreenFlash('#cc3366',12);
+    }
+    // Self-damage + reset mass meter
+    f.hp-=f.maxHp*0.12;
+    spawnDmgNum(f.x,f.y-f.radius-20,Math.round(f.maxHp*0.12),'#ff4488',false);
+    f.yukiMass=0;
+    f.yukiOverloaded=false;
+  }
+
+  // End special
+  if(f.yukiBHTimer<=0||f.yukiBHRadius<=0){
+    f.yukiBHActive=false;
+    f.yukiBHPos=null;
+    f.yukiGaruda.orbiting=true;
+    f.yukiGaruda.thrown=false;
+    f.speed=f.baseSpeed;
+  }
+}
+
 function todoPerformSwap(f,targetX,targetY,swapTarget){
   // Swap positions
   const oldX=f.x,oldY=f.y;
@@ -3658,6 +3856,7 @@ function useSpecial(f,enemy){
     case 'todo':relicTodo(f,enemy);break;
     case 'mahoraga':relicMahoraga(f,enemy);break;
     case 'dabura':relicDabura(f,enemy);break;
+    case 'yuki':relicYuki(f,enemy);break;
   }
 }
 
@@ -6091,6 +6290,7 @@ function updateBattle(dt){
         // naoya: handled outside specialActive block (always runs)
         case 'yuta':updateRelicYuta(f,enemy,dt);break;
         // todo: handled outside specialActive block (always runs)
+        case 'yuki':updateRelicYuki(f,enemy,dt);break;
       }
     }
 
@@ -6148,6 +6348,37 @@ function updateBattle(dt){
     // Todo per-frame: passive swap + cooldowns run always
     if(f.char.id==='todo'&&!f.specialActive){
       updateRelicTodo(f,enemy,dt);
+    }
+
+    // Yuki per-frame: mass decay, Garuda orbit, cooldowns
+    if(f.char.id==='yuki'){
+      if(f.yukiGarudaCD>0)f.yukiGarudaCD-=dt;
+      // Mass decay when not hitting
+      if(f._yukiMassDecayCD>0){f._yukiMassDecayCD-=dt;}
+      else if(f.yukiMass>0&&!f.yukiBHActive){
+        f.yukiMass=Math.max(0,f.yukiMass-0.15*dt);
+        f.yukiOverloaded=f.yukiMass>=f.yukiMassMax*0.8;
+        if(f.yukiMass<=0)f.yukiHitCombo=0;
+      }
+      // Speed penalty from mass
+      if(!f.yukiBHActive){
+        const spdPen=1-(f.yukiMass/f.yukiMassMax)*0.4;
+        f.speed=f.baseSpeed*spdPen;
+      }
+      // Garuda orbits around Yuki when not thrown and not in BH
+      if(f.yukiGaruda.orbiting&&!f.yukiBHActive){
+        f.yukiGaruda.angle+=0.05*dt;
+        f.yukiGaruda.x=f.x+Math.cos(f.yukiGaruda.angle)*30;
+        f.yukiGaruda.y=f.y+Math.sin(f.yukiGaruda.angle)*30;
+      }
+      // Garuda return after thrown
+      if(f.yukiGaruda.thrown){
+        f.yukiGaruda.returnTimer-=dt;
+        if(f.yukiGaruda.returnTimer<=0){
+          f.yukiGaruda.thrown=false;
+          f.yukiGaruda.orbiting=true;
+        }
+      }
     }
 
     // Mechamaru per-frame: phase management, jet boosters, Ultimate missiles, True Form timer
@@ -10043,6 +10274,12 @@ function drawBall(f){
       const phaseLabel='P'+f.dabPhase+(f.dabRCTActive?' RCT':'');
       X.fillText(mode+' '+phaseLabel,f.x,statY);
       break;}
+    case 'yuki':{
+      const mass=Math.round(f.yukiMass||0);
+      const overload=f.yukiOverloaded?'OVR ':'';
+      const bh=f.yukiBHActive?'BH ':'';
+      X.fillText(bh+overload+'Mass:'+mass+'/'+(f.yukiMassMax||100),f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -10085,6 +10322,7 @@ function drawWeapon(f){
     case 'todo':drawTodoWeapon(r,ext,flash,f);break;
     case 'mahoraga':drawMahoragaWeapon(r,ext,flash,f);break;
     case 'dabura':drawDaburaWeapon(r,ext,flash,f);break;
+    case 'yuki':drawYukiWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -10694,6 +10932,73 @@ function drawDaburaWeapon(r,ext,flash,f){
   X.beginPath();X.arc(r+10+bladeLen+extend,0,6,0,Math.PI*2);
   X.fillStyle=glowCol;X.fill();
   X.globalAlpha=1;
+}
+
+function drawYukiWeapon(r,ext,flash,f){
+  // Garuda — bird-shaped weapon orbiting or thrown
+  const extend=ext*8;
+  const col=flash?'#ffffff':'#ff4488';
+  const bodyCol=flash?'#ffccdd':'#cc3366';
+  // Fist (Yuki is primarily a melee fighter)
+  X.fillStyle='#cc8899';X.fillRect(r-4,-3,10+extend,6);
+  X.fillStyle=col;
+  X.beginPath();X.arc(r+8+extend,0,6,0,Math.PI*2);X.fill();
+  // Knuckle details
+  X.fillStyle='#ffaacc';
+  for(let k=0;k<3;k++){X.beginPath();X.arc(r+12+extend,-3+k*3,1.5,0,Math.PI*2);X.fill();}
+
+  // Draw Garuda separately (orbiting or in BH)
+  if(f&&f.yukiGaruda){
+    X.save();
+    X.rotate(-f.weaponAngle); // undo weapon rotation to draw in world space
+    const gx=f.yukiGaruda.x-f.x;
+    const gy=f.yukiGaruda.y-f.y;
+    X.translate(gx,gy);
+    // Bird body
+    X.fillStyle=bodyCol;
+    X.beginPath();X.ellipse(0,0,10,6,0,0,Math.PI*2);X.fill();
+    // Wings
+    X.strokeStyle=col;X.lineWidth=2;
+    const wingFlap=Math.sin(battleTime*0.3)*4;
+    X.beginPath();X.moveTo(-5,-4);X.lineTo(-16,-12+wingFlap);X.lineTo(-8,-1);X.stroke();
+    X.beginPath();X.moveTo(5,-4);X.lineTo(16,-12+wingFlap);X.lineTo(8,-1);X.stroke();
+    // Beak
+    X.fillStyle='#ffaa33';X.beginPath();X.moveTo(10,0);X.lineTo(16,-2);X.lineTo(16,2);X.closePath();X.fill();
+    // Eye
+    X.fillStyle='#fff';X.beginPath();X.arc(6,-3,2,0,Math.PI*2);X.fill();
+    X.fillStyle='#000';X.beginPath();X.arc(6.5,-3,1,0,Math.PI*2);X.fill();
+    // Mass glow — brighter as mass increases
+    if(f.yukiMass>20){
+      const glow=f.yukiMass/(f.yukiMassMax||100);
+      X.globalAlpha=0.3+glow*0.4;
+      X.shadowColor='#ff4488';X.shadowBlur=8+glow*12;
+      X.beginPath();X.ellipse(0,0,12,8,0,0,Math.PI*2);
+      X.fillStyle='rgba(255,68,136,0.3)';X.fill();
+      X.shadowBlur=0;X.globalAlpha=1;
+    }
+    X.restore();
+  }
+
+  // Mass meter bar below the fighter
+  if(f){
+    X.save();
+    X.rotate(-f.weaponAngle);
+    const meterW=30;
+    const meterH=4;
+    const mx=-meterW/2;
+    const my=f.radius+8;
+    X.fillStyle='#333';X.fillRect(mx,my,meterW,meterH);
+    const fill=Math.min(1,(f.yukiMass||0)/(f.yukiMassMax||100));
+    const mCol=f.yukiOverloaded?'#ff2244':'#cc3366';
+    X.fillStyle=mCol;X.fillRect(mx,my,meterW*fill,meterH);
+    X.strokeStyle='#666';X.lineWidth=0.5;X.strokeRect(mx,my,meterW,meterH);
+    // Overload indicator
+    if(f.yukiOverloaded){
+      X.fillStyle='#ff4488';X.font='bold 7px Consolas,monospace';X.textAlign='center';
+      X.fillText('OVR',0,my+meterH+8);
+    }
+    X.restore();
+  }
 }
 
 function drawMantisBlades(r,ext,flash,f){
@@ -11844,6 +12149,18 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.arc(0,0,4,0,Math.PI*2);X.fill();
       X.globalAlpha=1;
       break;
+    case 'yuki':
+      // Garuda bird silhouette
+      X.fillStyle='#cc3366';
+      // Body
+      X.beginPath();X.ellipse(0,0,8,5,0,0,Math.PI*2);X.fill();
+      // Wings spread
+      X.strokeStyle='#ff4488';X.lineWidth=2;
+      X.beginPath();X.moveTo(-4,-3);X.lineTo(-14,-10);X.lineTo(-8,-2);X.stroke();
+      X.beginPath();X.moveTo(4,-3);X.lineTo(14,-10);X.lineTo(8,-2);X.stroke();
+      // Beak
+      X.fillStyle='#ffaa33';X.beginPath();X.moveTo(8,0);X.lineTo(14,-1);X.lineTo(14,1);X.closePath();X.fill();
+      break;
   }
   X.restore();
 }
@@ -12911,6 +13228,35 @@ function drawBattle(){
     X.globalAlpha=1;
   });
 
+  // Yuki Black Hole visual
+  fighters.forEach(f=>{
+    if(f.char.id==='yuki'&&f.yukiBHActive&&f.yukiBHPos){
+      const bh=f.yukiBHPos;
+      const r=f.yukiBHRadius;
+      // Dark center with radial gradient
+      const g=X.createRadialGradient(bh.x,bh.y,0,bh.x,bh.y,r+20);
+      g.addColorStop(0,'rgba(0,0,0,0.9)');
+      g.addColorStop(0.3,'rgba(34,0,34,0.7)');
+      g.addColorStop(0.6,'rgba(204,51,102,0.3)');
+      g.addColorStop(1,'rgba(204,51,102,0)');
+      X.fillStyle=g;X.beginPath();X.arc(bh.x,bh.y,r+20,0,Math.PI*2);X.fill();
+      // Accretion ring
+      X.strokeStyle='rgba(255,68,136,0.5)';X.lineWidth=3;
+      X.beginPath();X.ellipse(bh.x,bh.y,r,r*0.3,battleTime*0.01,0,Math.PI*2);X.stroke();
+      X.strokeStyle='rgba(204,51,102,0.3)';X.lineWidth=2;
+      X.beginPath();X.ellipse(bh.x,bh.y,r*0.7,r*0.5,battleTime*0.01+0.5,0,Math.PI*2);X.stroke();
+      // Event horizon
+      X.fillStyle='rgba(0,0,0,0.95)';X.beginPath();X.arc(bh.x,bh.y,Math.max(5,r*0.2),0,Math.PI*2);X.fill();
+      // Collapse phase: intense glow
+      if(f.yukiBHPhase===2){
+        X.globalAlpha=0.6;X.shadowColor='#ff4488';X.shadowBlur=20;
+        X.beginPath();X.arc(bh.x,bh.y,r+10,0,Math.PI*2);
+        X.strokeStyle='#ff4488';X.lineWidth=4;X.stroke();
+        X.shadowBlur=0;X.globalAlpha=1;
+      }
+    }
+  });
+
   // Fighters
   fighters.forEach(f=>drawBall(f));
 
@@ -13371,6 +13717,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'naoya':{const mode=f.naoyaFrameBurned?'BURNOUT':f.naoyaDashing?'DASH':f.naoyaSlowActive?'24F':'PROJ';const stk=f.naoyaFrameStack>0?' STK:'+f.naoyaFrameStack:'';statLine=mode+stk;break;}
     case 'yuta':{const cp=f.yutaCopiedTech?f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%':'---';const dom=f.yutaDomainActive?'DOMAIN ':'';statLine=dom+'COPY:'+cp;break;}
     case 'todo':{const storm=f.todoSpecialActive?'STORM ':'';const stk=f.todoBuffStacks>0?'x'+f.todoBuffStacks:'';statLine=storm+'SWAP'+stk;break;}
+    case 'yuki':{const bh=f.yukiBHActive?'BH ':'';const ovr=f.yukiOverloaded?'OVR ':'';statLine=bh+ovr+'Mass:'+Math.round(f.yukiMass||0);break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
