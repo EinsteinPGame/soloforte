@@ -793,7 +793,7 @@ let gameMode='1v1'; // '1v1' or 'boss'
 let bossChar=CHARS.findIndex(c=>c.id==='smasher'); // selected boss for boss mode
 let teamChar1=0,teamChar2=1,teamChar3=2; // team chars for boss mode (3v1)
 let _bossSelSlot=1; // cycling slot for boss select UI
-let _bossSelPage=1; // 1=pick chars, 2=elements+boss
+let _bossSelPage=1; // 1=pick chars, 2=pick boss, 3=elements
 let teamElem1=0,teamElem2=0,teamElem3=0,bossElem=0; // elements
 let selectPage=0; // pagination for character select (0-indexed)
 let selectTab=0; // 0=Fighters, 1=Bosses
@@ -1615,28 +1615,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       spawnDmgNum(defender.x,defender.y-defender.radius-20,'+'+Math.round(heal),'#00ff88',false);
       return dmg;
     }
-    // Naoya resurrection — dies and becomes Cursed Spirit (Phase 2)
-    if(defender.char.id==='naoya'&&!defender.naoyaResurrected){
-      defender.hp=1;defender.naoyaResurrected=true;
-      defender.naoyaPhase=2;defender.naoyaTransitionTimer=60; // i-frames
-      defender.stunTimer=0;defender.freezeTimer=0;defender.projectionFrozenTimer=0;defender.captureTimer=0;
-      defender.naoyaDashing=false;defender.naoyaSlowActive=false;
-      // Phase 2 stats: faster, more atk, less def
-      defender.speed=defender.baseSpeed*1.4;
-      defender.atk=Math.round(defender.baseAtk*1.3);
-      defender.def=Math.max(1,Math.round(defender.baseDef*0.5));
-      defender.hp=defender.maxHp*0.5; // revive at 50%
-      defender.specialBar=0;
-      defender.specialName='TIME CELL MOON PALACE';
-      SFX.relicActivate();
-      showRelicText('CURSED SPIRIT NAOYA',defender.char.color);
-      spawnBurst(defender.x,defender.y,'#00cc88',40,10);
-      spawnBurst(defender.x,defender.y,'#aa44cc',25,7);
-      for(let r=0;r<3;r++){explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:60+r*25,color:'#00cc88',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});}
-      shakeTimer=25;shakeAmt=14;triggerScreenFlash('#00cc88',15);
-      addLog((defender.side===0?'P1':'P2')+' CURSED SPIRIT NAOYA!');
-      return dmg;
-    }
+    // Naoya — no resurrection (removed Phase 2)
     defender.hp=0;defender.alive=false;defender.deathAnim=90;
     // Sandy slow cleanup — if a Sandy dies, un-slow everyone it was affecting
     if(defender.char.id==='sandy'){
@@ -2869,19 +2848,17 @@ function attackNaoya(f,enemy,chaos){
   const isElecElem=f.elementActive&&f.elem.id==='electric';
   const isToxicElem=f.elementActive&&f.elem.id==='toxic';
   const isCryoElem=f.elementActive&&f.elem.id==='cryo';
-  const isPhase2=f.naoyaPhase===2;
-
   // Frame stacking: each dash consumes frames and gains speed
   // More stacks = more frames consumed at once, more speed boost
   const framesPerDash=1+Math.floor(f.naoyaFrameStack/4); // 1 at start, up to 7 at max stack
   f.naoyaFrameCount=(f.naoyaFrameCount+framesPerDash)%24;
   f.naoyaFrameStack=Math.min(24,f.naoyaFrameStack+1);
 
-  // Speed scales with frame stack — high risk/high reward (nerfed: less speed scaling)
-  const stackSpeedBonus=1+f.naoyaFrameStack*0.035; // up to +84% speed at max (was 144%)
-  const baseDashSpeed=isPhase2?15:12; // nerfed from 18/14
+  // Speed scales with frame stack — high risk/high reward
+  const stackSpeedBonus=1+f.naoyaFrameStack*0.035; // up to +84% speed at max
+  const baseDashSpeed=12;
   f.naoyaDashing=true;
-  f.naoyaDashTimer=isPhase2?12:16;
+  f.naoyaDashTimer=16;
   f.naoyaDashAngle=angle(f,enemy);
   f.naoyaDashSpeed=baseDashSpeed*stackSpeedBonus;
   if(isElecElem)f.naoyaDashSpeed*=1.25;
@@ -2897,8 +2874,8 @@ function attackNaoya(f,enemy,chaos){
     SFX.warning();
   }
 
-  // Cooldown — slightly faster at higher stacks (nerfed)
-  const baseCd=f.baseAtkInterval*(isPhase2?0.8:1); // was 0.7
+  // Cooldown — slightly faster at higher stacks
+  const baseCd=f.baseAtkInterval;
   const stackCdReduction=Math.max(0.6,1-f.naoyaFrameStack*0.015); // up to 24% faster (was 40%)
   f.naoyaProjectionCD=Math.round((isElecElem?baseCd*0.7:baseCd)*stackCdReduction);
 
@@ -3613,7 +3590,7 @@ function applyElementEffect(attacker,defender){
 // ============================================================
 function useSpecial(f,enemy){
   f.specialBar=0;f.specialActive=true;
-  const spName=(f.char.id==='naoya'&&f.naoyaPhase===2)?'TIME CELL MOON PALACE':f.char.specialName;
+  const spName=f.char.specialName;
   showRelicText(spName,f.char.color);
   addLog((f.side===0?'P1':'P2')+' '+spName+'!');
   shakeTimer=15;shakeAmt=8;
@@ -4126,39 +4103,25 @@ function relicYuji(f,enemy){
 
 function relicNaoya(f,enemy){
   SFX.relicActivate();
-  if(f.naoyaPhase===1){
-    // Phase 1 Special: 24-Frame Slow-Mo
-    f.naoyaSlowActive=true;
-    f.naoyaSlowTimer=360; // 6 seconds
-    // Slow enemy dramatically
-    fighters.forEach(other=>{
-      if(other&&other!==f&&other.alive&&!other._smasherSandyImmune){
-        other.sandyTimeScale=Math.min(other.sandyTimeScale,0.2); // 80% slow
-      }
-    });
-    spawnBurst(f.x,f.y,'#00cc88',25,8);
-    spawnBurst(f.x,f.y,'#ffffff',15,5);
-    triggerScreenFlash('#00cc88',10);
-    shakeTimer=15;shakeAmt=8;
-    spawnDmgNum(f.x,f.y-f.radius-30,'24-FRAME RULE!','#00cc88',false);
-  } else {
-    // Phase 2 Special: Domain Expansion — Time Cell Moon Palace
-    f.naoyaDomainActive=true;
-    f.naoyaDomainTimer=480; // 8 seconds
-    // Slow enemy even more in domain
-    fighters.forEach(other=>{
-      if(other&&other!==f&&other.alive){
-        other.sandyTimeScale=Math.min(other.sandyTimeScale,0.15);
-      }
-    });
-    spawnBurst(f.x,f.y,'#00cc88',40,12);
-    spawnBurst(f.x,f.y,'#aa44cc',30,8);
-    spawnBurst(f.x,f.y,'#ffffff',20,6);
-    for(let r=0;r<3;r++){explosions.push({x:f.x,y:f.y,radius:0,maxRadius:80+r*30,color:'#00cc88',life:25,maxLife:25,dmg:0,owner:null,target:null,hit:true});}
-    triggerScreenFlash('#aa44cc',15);
-    shakeTimer=20;shakeAmt=12;
-    spawnDmgNum(f.x,f.y-f.radius-30,'TIME CELL MOON PALACE','#aa44cc',false);
-  }
+  // 24-Frame Rule: moderate enemy slow + massive Naoya speed boost
+  // Enemy can still move and dodge — follows projection rule
+  f.naoyaSlowActive=true;
+  f.naoyaSlowTimer=360; // 6 seconds
+  // Moderate slow — enemy can still move and reposition
+  fighters.forEach(other=>{
+    if(other&&other!==f&&other.alive&&!other._smasherSandyImmune){
+      other.sandyTimeScale=Math.min(other.sandyTimeScale,0.55); // 45% slow (was 80%)
+    }
+  });
+  // Reset frame stack for fresh burst of dashes
+  f.naoyaFrameStack=0;
+  f.naoyaFrameCount=0;
+  f.naoyaFrameBurned=false;
+  spawnBurst(f.x,f.y,'#00cc88',25,8);
+  spawnBurst(f.x,f.y,'#ffffff',15,5);
+  triggerScreenFlash('#00cc88',10);
+  shakeTimer=15;shakeAmt=8;
+  spawnDmgNum(f.x,f.y-f.radius-30,'24-FRAME RULE!','#00cc88',false);
 }
 
 function relicYuta(f,enemy){
@@ -5614,7 +5577,7 @@ function updateRelicNaoya(f,enemy,dt){
     f.naoyaDashTrail.push({x:f.x,y:f.y,alpha:0.7});
     if(f.naoyaDashTrail.length>8)f.naoyaDashTrail.shift();
     // Dash particles
-    spawnParticle(f.x,f.y,f.naoyaPhase===2?'#aa44cc':'#00cc88',0,0,8,2);
+    spawnParticle(f.x,f.y,'#00cc88',0,0,8,2);
     // Fire trail
     if(isFireElem){
       fireZones.push({x:f.x,y:f.y,radius:15,life:90,maxLife:90,dmg:f.atk*0.08,owner:f});
@@ -5628,8 +5591,8 @@ function updateRelicNaoya(f,enemy,dt){
       const d=dist(f,enemy);
       if(d<f.radius+enemy.radius+18){
         // Projection hit — collision damage scales with frame stack (high risk/high reward)
-        const stackDmgBonus=1+f.naoyaFrameStack*0.025; // up to +60% damage at max stack (was 96%)
-        const dashDmg=f.atk*(f.naoyaPhase===2?1.0:1.2)*stackDmgBonus; // nerfed from 1.3/1.5
+        const stackDmgBonus=1+f.naoyaFrameStack*0.025; // up to +60% damage at max stack
+        const dashDmg=f.atk*1.2*stackDmgBonus;
         dealDamage(f,enemy,dashDmg,true);
         spawnBurst(enemy.x,enemy.y,'#00cc88',12,6);
         SFX.heavyHit();
@@ -5637,11 +5600,8 @@ function updateRelicNaoya(f,enemy,dt){
         // 24-frame rule: stun enemy briefly (they "broke the rule")
         const stunDur=isCryoElem?25:15;
         enemy.stunTimer=Math.max(enemy.stunTimer,stunDur);
-        // Projection hit during special — brief stun, NOT perma-freeze
-        // Kyle: enemies should follow the projection rule (slowed movement), not be locked solid
-        if(f.naoyaSlowActive||f.naoyaDomainActive){
-          const stunDur2=f.naoyaDomainActive?25:18;
-          enemy.stunTimer=Math.max(enemy.stunTimer,stunDur2);
+        // During special: no extra stun — enemy follows projection rule (slowed, not locked)
+        if(f.naoyaSlowActive){
           spawnDmgNum(enemy.x,enemy.y-enemy.radius-40,'FRAME BREAK!','#00ffaa',false);
         }
         if(isCryoElem){
@@ -5691,14 +5651,13 @@ function updateRelicNaoya(f,enemy,dt){
     }
   }
 
-  // Phase 1 Special: 24-Frame Slow-Mo
+  // 24-Frame Rule Special: Naoya speed boost + moderate enemy slow
   if(f.naoyaSlowActive){
     f.naoyaSlowTimer-=dt;
-    // Naoya special can't charge while active
     f.specialBar=0;
-    // Speed boost for Naoya during slow-mo (but also slowed somewhat — follows the rule)
+    // Big speed boost — Naoya repositions freely during projection rule
     if(!f.naoyaDashing){
-      f.speed=f.baseSpeed*1.2; // reduced from 1.5 — Naoya also follows projection rules
+      f.speed=f.baseSpeed*1.8; // massive speed boost for repositioning
     }
     // Green aura particles
     if(battleTime%3<1){
@@ -5709,59 +5668,16 @@ function updateRelicNaoya(f,enemy,dt){
     f.naoyaFrameCount=(f.naoyaFrameCount+1)%24;
     if(f.naoyaSlowTimer<=0){
       f.naoyaSlowActive=false;
-      f.speed=f.baseSpeed*(f.naoyaPhase===2?1.4:1);
+      f.speed=f.baseSpeed;
       // Restore enemy speed
       fighters.forEach(other=>{
         if(other&&other!==f&&other.sandyTimeScale<1){
-          const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&(s.sandyActive||s.naoyaSlowActive||s.naoyaDomainActive)&&s!==other);
+          const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&(s.sandyActive||s.naoyaSlowActive)&&s!==other);
           if(!otherSandy)other.sandyTimeScale=1;
         }
       });
       addLog((f.side===0?'P1':'P2')+' 24-Frame Rule ended');
     }
-  }
-
-  // Phase 2 Special: Domain — Time Cell Moon Palace
-  if(f.naoyaDomainActive){
-    f.naoyaDomainTimer-=dt;
-    // Naoya special can't charge while domain active
-    f.specialBar=0;
-    // Domain aura
-    if(battleTime%2<1){
-      const a=Math.random()*Math.PI*2;
-      const r2=80+Math.random()*40;
-      spawnParticle(f.x+Math.cos(a)*r2,f.y+Math.sin(a)*r2,'#aa44cc',0,0,20,1.5);
-      spawnParticle(f.x+Math.cos(a+1)*r2*0.5,f.y+Math.sin(a+1)*r2*0.5,'#00cc88',0,0,15,1);
-    }
-    // Movement = internal rupture: enemy takes damage proportional to speed
-    if(enemy&&enemy.alive){
-      const enemySpd=Math.hypot(enemy.vx,enemy.vy);
-      if(enemySpd>0.5){
-        const ruptureDmg=f.atk*0.15*enemySpd;
-        if(battleTime%4<1){
-          dealDamage(f,enemy,ruptureDmg,false);
-          spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,'RUPTURE','#aa44cc',false);
-          spawnBurst(enemy.x,enemy.y,'#aa44cc',4,2);
-        }
-      }
-    }
-    if(f.naoyaDomainTimer<=0){
-      f.naoyaDomainActive=false;
-      // Restore enemy speed
-      fighters.forEach(other=>{
-        if(other&&other!==f&&other.sandyTimeScale<1){
-          const otherSandy=fighters.find(s=>s&&s!==f&&s.alive&&(s.sandyActive||s.naoyaSlowActive||s.naoyaDomainActive)&&s!==other);
-          if(!otherSandy)other.sandyTimeScale=1;
-        }
-      });
-      addLog((f.side===0?'P1':'P2')+' Domain ended');
-    }
-  }
-
-  // Phase 2 particles — cursed spirit aura
-  if(f.naoyaPhase===2&&battleTime%5<1){
-    const a=Math.random()*Math.PI*2;
-    spawnParticle(f.x+Math.cos(a)*f.radius*0.8,f.y+Math.sin(a)*f.radius*0.8,'#aa44cc',0,-0.8,10,1.5);
   }
 }
 
@@ -6009,7 +5925,7 @@ function updateBattle(dt){
     if(f.projectionFrozenTimer>0){f.projectionFrozenTimer-=dt;f.stunTimer=Math.max(f.stunTimer,2);} // locked in projection frame
     // Safety: if no active Naoya/Sandy slow source exists, restore sandyTimeScale
     if(f.sandyTimeScale<1){
-      const hasSlowSource=fighters.some(s=>s&&s!==f&&s.alive&&(s.sandyActive||s.naoyaSlowActive||s.naoyaDomainActive));
+      const hasSlowSource=fighters.some(s=>s&&s!==f&&s.alive&&(s.sandyActive||s.naoyaSlowActive));
       if(!hasSlowSource)f.sandyTimeScale=1;
     }
     if(f.higurumaDisableTimer>0){f.higurumaDisableTimer-=dt;f.attackTimer=Math.max(f.attackTimer,10);}
@@ -6328,6 +6244,12 @@ function updateBattle(dt){
       // Dart rush cooldown
       if(f.kashimoDartCD>0&&f.kashimoDartPhase==='idle'&&!f.kashimoAmberActive)f.kashimoDartCD-=dt;
 
+      // Safety: if dart phase gets stuck (non-idle with no timer), force reset
+      if(f.kashimoDartPhase!=='idle'&&f.kashimoDartPhase!=='bolt'&&f.kashimoDartTimer<-60){
+        f.kashimoDartPhase='idle';f.kashimoStaffMode=true;f.kashimoStaffThrown=false;
+        f.kashimoBoltActive=false;f.kashimoStaffGroundPos=null;
+        f.kashimoDartCD=120;
+      }
       // Trigger dart rush when cooldown expires
       if(f.kashimoDartCD<=0&&f.kashimoDartPhase==='idle'&&!f.kashimoAmberActive&&enemy.alive){
         f.kashimoDartPhase='throw';
@@ -6365,8 +6287,8 @@ function updateBattle(dt){
         const dashSpd=9+chaos*0.4;
         f.vx=Math.cos(f.kashimoDartDashAngle)*dashSpd;
         f.vy=Math.sin(f.kashimoDartDashAngle)*dashSpd;
-        // Electricity trail (every other frame to reduce particle load)
-        if(battleTime%2<1)spawnParticle(f.x,f.y,pick(['#ffcc00','#ffee66','#fff']),0,0,6,2);
+        // Electricity trail (every 3rd frame to reduce particle load)
+        if(battleTime%3<1)spawnParticle(f.x,f.y,pick(['#ffcc00','#ffee66','#fff']),0,0,6,2);
         // Hit enemy during dash (only if passing close — not guaranteed)
         if(enemy.alive&&dist(f,enemy)<f.radius+enemy.radius+12){
           const dashDmg=f.atk*(0.5+chaos*0.04);
@@ -6426,7 +6348,12 @@ function updateBattle(dt){
       else if(f.kashimoDartPhase==='bolt'){
         // Homing bolt — slow curve then dart guaranteed hit
         f.kashimoBoltTimer-=dt;
-        if(enemy.alive){
+        // Safety: if enemy died, end bolt immediately
+        if(!enemy.alive){
+          f.kashimoBoltActive=false;f.kashimoDartPhase='idle';
+          f.kashimoDartCD=120;
+        }
+        else if(enemy.alive){
           const toEnemy=angle(f.kashimoBoltPos,enemy);
           // Slow curve phase then dart
           const curveRate=f.kashimoBoltTimer>30?0.04:0.15; // slow then fast
@@ -7074,7 +7001,7 @@ function updateBattle(dt){
         if(f.char.id==='throw'&&!f.throwWeapons[f.throwActiveIdx].available){/* wait */}
         else if(f.char.id==='berserk'&&f.berserkReloadTimer>0){/* reloading */}
         else if(f.char.id==='katana'&&f.katanaDashing){/* mid counter-dash */}
-        else if(f.char.id==='naoya'&&(f.naoyaDashing||f.naoyaTransitionTimer>0)){/* mid projection dash or transforming */}
+        else if(f.char.id==='naoya'&&f.naoyaDashing){/* mid projection dash */}
         else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='ryu'||f.char.id==='naoya'||f.char.id==='mahoraga'||f.char.id==='dabura'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
@@ -7643,42 +7570,40 @@ function drawBall(f){
     const pw=f.radius*5,ph=f.radius*6.5;
     const px=f.x-pw/2,py=f.y-ph/2;
     const fadeIn=Math.min(1,f.projectionFrozenTimer/10);
-    const isNaoyaP2=fighters.some(o=>o&&o.char&&o.char.id==='naoya'&&o.naoyaPhase===2&&o.alive);
     // 1fps flicker — alternate between bright and dim every few frames
     const flickerOn=Math.floor(battleTime/8)%2===0;
     const flickAlpha=flickerOn?1:0.6;
     // Bright filled rectangle
-    const rectCol=isNaoyaP2?'rgba(170,68,204,':'rgba(0,204,136,';
-    X.fillStyle=rectCol+(0.3*fadeIn*flickAlpha)+')';
+    X.fillStyle='rgba(0,204,136,'+(0.3*fadeIn*flickAlpha)+')';
     X.fillRect(px,py,pw,ph);
     // THICK glowing border
-    X.shadowColor=isNaoyaP2?'#aa44cc':'#00cc88';X.shadowBlur=15*fadeIn;
-    X.strokeStyle=isNaoyaP2?'rgba(170,68,204,'+(0.85*fadeIn)+')':'rgba(0,204,136,'+(0.85*fadeIn)+')';
+    X.shadowColor='#00cc88';X.shadowBlur=15*fadeIn;
+    X.strokeStyle='rgba(0,204,136,'+(0.85*fadeIn)+')';
     X.lineWidth=5;X.strokeRect(px,py,pw,ph);
     X.shadowBlur=0;
     // Scan lines — thicker, more visible
     X.globalAlpha=0.2*fadeIn*flickAlpha;
     for(let sl=0;sl<ph;sl+=5){
-      X.fillStyle=isNaoyaP2?'#cc66ee':'#00ffaa';
+      X.fillStyle='#00ffaa';
       X.fillRect(px,py+sl,pw,3);
     }
     X.globalAlpha=1;
     // Frame counter numbers — glitch aesthetic
     X.font='bold 8px Consolas,monospace';X.textAlign='left';
-    X.fillStyle=isNaoyaP2?'rgba(204,136,255,'+(0.5*fadeIn)+')':'rgba(102,255,204,'+(0.5*fadeIn)+')';
+    X.fillStyle='rgba(102,255,204,'+(0.5*fadeIn)+')';
     for(let fn=0;fn<4;fn++){
       X.fillText(String(Math.floor(Math.random()*24)).padStart(2,'0'),px+3,py+12+fn*10);
     }
     // BIG "FRAME LOCKED" label at top
     X.font='bold 14px Consolas,monospace';X.textAlign='center';
-    X.fillStyle=isNaoyaP2?'#ee99ff':'#88ffdd';X.globalAlpha=0.9*fadeIn*flickAlpha;
+    X.fillStyle='#88ffdd';X.globalAlpha=0.9*fadeIn*flickAlpha;
     X.fillText('1 FPS',f.x,py+ph-8);
     X.font='bold 12px Consolas,monospace';
     X.fillText('FRAME LOCKED',f.x,py+14);
     X.globalAlpha=1;
     // Corner brackets for emphasis
     const bk=8;
-    X.strokeStyle=isNaoyaP2?'#ee99ff':'#88ffdd';X.lineWidth=3;X.globalAlpha=0.8*fadeIn;
+    X.strokeStyle='#88ffdd';X.lineWidth=3;X.globalAlpha=0.8*fadeIn;
     X.beginPath();X.moveTo(px,py+bk);X.lineTo(px,py);X.lineTo(px+bk,py);X.stroke();
     X.beginPath();X.moveTo(px+pw-bk,py);X.lineTo(px+pw,py);X.lineTo(px+pw,py+bk);X.stroke();
     X.beginPath();X.moveTo(px+pw,py+ph-bk);X.lineTo(px+pw,py+ph);X.lineTo(px+pw-bk,py+ph);X.stroke();
@@ -8266,6 +8191,37 @@ function drawBall(f){
       X.quadraticCurveTo(hx-r*0.2,hy-r*0.15,hx-r*0.3,hy-r*0.1);X.stroke();
       X.beginPath();X.moveTo(hx+r*0.15,hy-r*0.3);
       X.quadraticCurveTo(hx+r*0.22,hy-r*0.18,hx+r*0.32,hy-r*0.08);X.stroke();
+    }
+    // Defense readiness indicator — visible shield ring when ready to deflect
+    if(!f.katanaDashing&&!f.katanaRushing&&!f.specialActive){
+      const defPulse=Math.sin(battleTime*0.1)*0.15+0.35;
+      // Shield ring — obvious blue glow
+      X.strokeStyle=`rgba(68,102,204,${defPulse})`;X.lineWidth=3;
+      X.beginPath();X.arc(hx,hy,r+6,0,Math.PI*2);X.stroke();
+      X.shadowColor='#4466cc';X.shadowBlur=8;X.stroke();X.shadowBlur=0;
+      // "GUARD" label above ball
+      X.font='bold 7px Consolas,monospace';X.textAlign='center';
+      X.fillStyle=`rgba(68,102,204,${defPulse+0.2})`;
+      X.fillText('GUARD',hx,hy-r-6);
+    }
+    // Active deflect pose — intense golden flash
+    if(f.katanaDeflecting>0){
+      const dAlpha=Math.min(1,f.katanaDeflecting/15);
+      X.strokeStyle=`rgba(255,204,0,${dAlpha*0.8})`;X.lineWidth=4;
+      X.shadowColor='#ffcc00';X.shadowBlur=15;
+      X.beginPath();X.arc(hx,hy,r+10,0,Math.PI*2);X.stroke();
+      X.shadowBlur=0;
+      X.font='bold 9px Consolas,monospace';X.textAlign='center';
+      X.fillStyle=`rgba(255,204,0,${dAlpha})`;
+      X.fillText('DEFLECT!',hx,hy-r-8);
+    }
+    // Post-dash damage reduction indicator
+    if(f.katanaPostDashTimer>0){
+      const pdAlpha=Math.min(1,f.katanaPostDashTimer/30)*0.5;
+      X.strokeStyle=`rgba(255,170,0,${pdAlpha})`;X.lineWidth=2;
+      X.setLineDash([4,4]);
+      X.beginPath();X.arc(hx,hy,r+8,0,Math.PI*2);X.stroke();
+      X.setLineDash([]);
     }
     X.restore();
   }
@@ -9030,9 +8986,8 @@ function drawBall(f){
   if(f.char.id==='naoya'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    const isP2=f.naoyaPhase===2;
     // Slicked-back hair
-    X.fillStyle=isP2?'#aa44cc':'#2a6a4a';
+    X.fillStyle='#2a6a4a';
     const spikes=5;
     for(let i=0;i<spikes;i++){
       const sa=-Math.PI*0.8+i*(Math.PI*0.5/(spikes-1));
@@ -9099,27 +9054,13 @@ function drawBall(f){
       X.strokeStyle=`rgba(0,204,136,${pulse2})`;X.lineWidth=2;
       X.beginPath();X.arc(hx,hy,r+10,0,Math.PI*2);X.stroke();
     }
-    // Domain aura
-    if(f.naoyaDomainActive){
-      const pulse3=Math.sin(battleTime*0.08)*0.15+0.25;
-      X.strokeStyle=`rgba(170,68,204,${pulse3})`;X.lineWidth=2;
-      for(let ring=0;ring<3;ring++){
-        X.beginPath();X.arc(hx,hy,r+20+ring*25,0,Math.PI*2);X.stroke();
-      }
-    }
-    // Transition animation
-    if(f.naoyaTransitionTimer>0){
-      const alpha=f.naoyaTransitionTimer/60;
-      X.fillStyle=`rgba(170,68,204,${alpha*0.5})`;
-      X.beginPath();X.arc(hx,hy,r+15+alpha*20,0,Math.PI*2);X.fill();
-    }
+    // (Phase 2 domain/transition removed)
     X.restore();
   }
 
   // Naoya dash expected images — numbered projection frames showing future positions
   if(f.char.id==='naoya'&&f.naoyaDashTrail){
-    const isP2=f.naoyaPhase===2;
-    const col=isP2?'#aa44cc':'#00cc88';
+    const col='#00cc88';
     f.naoyaDashTrail.forEach((t,ti)=>{
       X.save();
       X.globalAlpha=t.alpha*0.4;
@@ -9141,11 +9082,10 @@ function drawBall(f){
   }
   // Naoya 24-Frame counter HUD — always visible (brighter during special/domain)
   if(f.char.id==='naoya'){
-    const isSpecialMode=f.naoyaSlowActive||f.naoyaDomainActive;
+    const isSpecialMode=f.naoyaSlowActive;
     const hudAlpha=isSpecialMode?0.8:0.4;
     X.save();
-    const isP2=f.naoyaPhase===2;
-    const col=isP2?'#aa44cc':'#00cc88';
+    const col='#00cc88';
     // Show current frame counter at top
     const frameNum=f.naoyaFrameCount+1;
     X.font='bold 14px Consolas,monospace';X.textAlign='center';
@@ -10590,8 +10530,7 @@ function drawYujiWeapon(r,ext,flash,f){
 
 function drawNaoyaWeapon(r,ext,flash,f){
   // Collision-only — no physical weapon. Just a glow ring when dashing.
-  const isP2=f&&f.naoyaPhase===2;
-  const col=isP2?'#aa44cc':'#00cc88';
+  const col='#00cc88';
   const isDashing=f&&f.naoyaDashing;
   if(isDashing){
     X.shadowColor=col;X.shadowBlur=15;
@@ -12494,7 +12433,7 @@ function drawBattle(){
   } else {
     // Check for other active domains
     const yutaF=fighters.find(f=>f.char.id==='yuta'&&f.yutaDomainActive);
-    const naoyaF=fighters.find(f=>f.char.id==='naoya'&&f.naoyaDomainActive);
+    const naoyaF=null; // Phase 2 domain removed
     const daburaF=fighters.find(f=>f.char.id==='dabura'&&f.dabDomainActive);
     if(yutaF){
       // AUTHENTIC MUTUAL LOVE — deep purple-black void with Rika's presence
@@ -13294,7 +13233,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'pls':statLine='Exp:'+Math.round(f.plsExplosionRadius+chaos*10)+' DMG:'+Math.round((1+chaos*0.12)*100)+'%';break;
     case 'sandy':statLine='Spd:'+(f.baseSpeed*0.6).toFixed(1)+'-'+(f.baseSpeed*(1+chaos*0.15)).toFixed(1)+' Dodge:'+Math.round((f.dodgeChance+f.sandyDodgeBoost)*100)+'%';break;
     case 'throw':{const avl=f.throwWeapons.filter(tw=>tw.available).length;const cur=f.throwWeapons[f.throwActiveIdx];statLine=(cur?cur.name:'---')+' '+avl+'/3';break;}
-    case 'katana':statLine='DEF:'+(f.katanaDeflectCount||0);break;
+    case 'katana':statLine=(f.katanaDeflecting>0?'DEFLECT! ':f.katanaDashing?'COUNTER ':f.katanaPostDashTimer>0?'80%RED ':'GUARD ')+'DEF:'+(f.katanaDeflectCount||0);break;
     case 'berserk':statLine='x'+Math.floor(6+chaos*0.8)+' Spread:'+Math.round(Math.max(15,60-chaos*4))+'%';break;
     case 'smasher':statLine='RKT:'+Math.round(f.atk*(1.8+chaos*0.2))+' BOSS';break;
     case 'gojo':statLine='INF:'+f.gojoInfinityCharges+'/'+f.gojoInfinityMax+(f.gojoAwakened?' AWK':' BOSS');break;
@@ -13306,7 +13245,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'ryu':statLine='CANNON';break;
     case 'higuruma':statLine=f.higurumaNextSword?'SWORD READY':'HAMMER';break;
     case 'yuji':{const bf=f.yujiBlackFlashActive?'BF RUSH ':f.yujiIcePermanentBF?'PERM BF ':'';const ghosts=f.yujiGhostFists?f.yujiGhostFists.length:0;statLine=bf+'FIST'+(ghosts>0?' x'+ghosts:'');break;}
-    case 'naoya':{const ph=f.naoyaPhase===2?'CS ':'';const mode=f.naoyaFrameBurned?'BURNOUT':f.naoyaDashing?'DASH':f.naoyaDomainActive?'DOMAIN':f.naoyaSlowActive?'24F':'PROJ';const stk=f.naoyaFrameStack>0?' STK:'+f.naoyaFrameStack:'';statLine=ph+mode+stk;break;}
+    case 'naoya':{const mode=f.naoyaFrameBurned?'BURNOUT':f.naoyaDashing?'DASH':f.naoyaSlowActive?'24F':'PROJ';const stk=f.naoyaFrameStack>0?' STK:'+f.naoyaFrameStack:'';statLine=mode+stk;break;}
     case 'yuta':{const cp=f.yutaCopiedTech?f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%':'---';const dom=f.yutaDomainActive?'DOMAIN ':'';statLine=dom+'COPY:'+cp;break;}
     case 'todo':{const storm=f.todoSpecialActive?'STORM ':'';const stk=f.todoBuffStacks>0?'x'+f.todoBuffStacks:'';statLine=storm+'SWAP'+stk;break;}
   }
@@ -13323,11 +13262,25 @@ function drawFighterInfo(f,px,py,maxW,align){
 function drawBossSelect(){
   clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
 
+  // Page indicator dots + arrows (all pages)
+  const dotY=isMobile?H-16:H-20;
+  for(let p=1;p<=3;p++){
+    const dx=W/2+(p-2)*20;
+    X.beginPath();X.arc(dx,dotY,_bossSelPage===p?5:3,0,Math.PI*2);
+    X.fillStyle=_bossSelPage===p?'#4488ff':'#444';X.fill();
+  }
+  // Always-visible arrow navigation
+  const arrowY=isMobile?H-48:H-55;
+  const arrowH=isMobile?32:38;
+  if(_bossSelPage>1)addBtn('bossArrowL',10,arrowY,isMobile?50:70,arrowH,'← Back','#666',()=>{_bossSelPage--;});
+  if(_bossSelPage<3)addBtn('bossArrowR',W-(isMobile?60:80),arrowY,isMobile?50:70,arrowH,'Next →','#4488ff',()=>{_bossSelPage++;});
+  addBtn('bossHome',isMobile?65:85,arrowY,isMobile?40:50,arrowH,'Title','#555',()=>{screen='title';});
+
   if(_bossSelPage===1){
     // ===== PAGE 1: PICK YOUR TEAM (characters only) =====
-    X.font='bold '+(isMobile?'18':'22')+'px Consolas,Courier New,monospace';
+    X.font='bold '+(isMobile?'16':'22')+'px Consolas,Courier New,monospace';
     X.textAlign='center';X.fillStyle='#cc4444';
-    X.fillText('BOSS FIGHT — PICK YOUR TEAM',W/2,isMobile?25:30);
+    X.fillText('BOSS FIGHT — PICK YOUR TEAM (1/3)',W/2,isMobile?22:28);
     const selectableChars=CHARS.filter(c=>!c.isBoss);
     const gapX=isMobile?5:10,gapY=isMobile?5:6,padX=isMobile?5:15;
     const availW=W-padX*2;
@@ -13336,12 +13289,12 @@ function drawBossSelect(){
     const cols=Math.min(n,Math.max(2,Math.min(maxCols,Math.ceil(Math.sqrt(n)))));
     const rows=Math.ceil(n/cols);
     const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
-    const bottomSpace=isMobile?130:150;
-    const cardH=Math.min(Math.floor(((H-55-bottomSpace)-(rows-1)*gapY)/rows),isMobile?90:130);
+    const bottomSpace=isMobile?70:85;
+    const cardH=Math.min(Math.floor(((H-50-bottomSpace)-(rows-1)*gapY)/rows),isMobile?90:130);
     const totalW=cols*cardW+(cols-1)*gapX;
     const startX=(W-totalW)/2;
-    const gridStartY=isMobile?35:45;
-    X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
+    const gridStartY=isMobile?32:40;
+    X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='center';
     X.fillStyle='#4488ff';X.fillText('Tap to assign: T1 (blue) / T2 (green) / T3 (orange)',W/2,gridStartY);
     const charGridY=gridStartY+8;
     selectableChars.forEach((ch,i)=>{
@@ -13362,14 +13315,9 @@ function drawBossSelect(){
       X.fillText(ch.name,cx+cardW/2,cy+(isMobile?(compact?34:46):cardH>120?62:50));
       X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
       X.fillText(ch.playstyle,cx+cardW/2,cy+(isMobile?(compact?44:56):cardH>120?74:60));
-      if(isMobile){
-        X.font='7px Consolas,monospace';X.fillStyle='#888';X.textAlign='center';
-        X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+cardW/2,cy+(compact?54:66));
-        if(!compact)X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+cardW/2,cy+76);
-      } else if(cardH>70){
+      if(!isMobile&&cardH>70){
         X.font='8px Consolas,monospace';X.textAlign='left';X.fillStyle='#888';
         X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),cx+8,cy+(cardH>120?90:74));
-        X.fillText('RNG:'+ch.stats.range+' DEF:'+ch.stats.def,cx+8,cy+(cardH>120?102:84));
       }
       addBtn('bsel_'+i,cx,cy,cardW,cardH,'','transparent',()=>{
         if(origIdx===teamChar1||origIdx===teamChar2||origIdx===teamChar3)return;
@@ -13379,47 +13327,63 @@ function drawBossSelect(){
         else{teamChar3=origIdx;_bossSelSlot=1;}
       });
     });
-    const gridBottom=charGridY+rows*(cardH+gapY);
-    // Boss selection below character grid
-    let bossY=gridBottom+(isMobile?4:8);
-    X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#cc4444';X.fillText('SELECT BOSS',W/2,bossY);
-    bossY+=6;
-    const bosses=CHARS.filter(c=>c.isBoss);
-    const bossCardW=isMobile?Math.min(140,Math.floor((W-20-(bosses.length-1)*10)/bosses.length)):140;
-    const bossTotalW=bosses.length*bossCardW+(bosses.length-1)*10;
-    const bossStartX=(W-bossTotalW)/2;
-    const bCardH=isMobile?50:60;
-    bosses.forEach((bch,bi)=>{
-      const bIdx=CHARS.indexOf(bch);
-      const bx=bossStartX+bi*(bossCardW+10);
-      const by=bossY;
-      const isSel=bossChar===bIdx;
-      drawRoundRect(bx,by,bossCardW,bCardH,6);
-      X.fillStyle=isSel?'#221122':'#111128';X.fill();
-      X.strokeStyle=isSel?bch.color:bch.color+'66';X.lineWidth=isSel?3:1.5;X.stroke();
-      const ballR=isMobile?10:14;
-      drawBallPreview(bx+ballR+10,by+bCardH/2,ballR,bch);
-      X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
-      X.fillText(bch.name,bx+ballR*2+16,by+(isMobile?18:22));
-      X.font=(isMobile?'7':'8')+'px Consolas,monospace';X.fillStyle='#888';
-      X.fillText('HP:'+bch.stats.hp+' ATK:'+bch.stats.atk,bx+ballR*2+16,by+(isMobile?30:36));
-      if(isSel){X.font='bold '+(isMobile?'7':'8')+'px Consolas,monospace';X.fillStyle='#cc4444';X.fillText('SELECTED',bx+ballR*2+16,by+(isMobile?42:48));}
-      addBtn('boss_sel_'+bi,bx,by,bossCardW,bCardH,'','transparent',()=>{bossChar=bIdx;});
-    });
-    // Bottom: NEXT button + Back
-    const bBtnY=isMobile?H-50:H-65;
-    addBtn('bossNext',W/2-100,bBtnY,200,isMobile?38:48,'NEXT →','#4488ff',()=>{_bossSelPage=2;});
-    addBtn('bossBack',20,bBtnY,80,isMobile?32:38,'Back','#666',()=>{screen='title';});
-  } else {
-    // ===== PAGE 2: ELEMENTS =====
+
+  } else if(_bossSelPage===2){
+    // ===== PAGE 2: SELECT BOSS =====
     X.font='bold '+(isMobile?'16':'22')+'px Consolas,Courier New,monospace';
     X.textAlign='center';X.fillStyle='#cc4444';
-    X.fillText('PICK ELEMENTS',W/2,isMobile?25:30);
+    X.fillText('SELECT BOSS (2/3)',W/2,isMobile?22:28);
+    // Show team summary at top
+    let sumY=isMobile?38:45;
+    X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#aaa';
+    X.fillText('YOUR TEAM: '+CHARS[teamChar1].name+' / '+CHARS[teamChar2].name+' / '+CHARS[teamChar3].name,W/2,sumY);
+    sumY+=isMobile?16:22;
+    // Boss cards — large, detailed
+    const bosses=CHARS.filter(c=>c.isBoss);
+    const bCardW=isMobile?Math.min(W-40,300):320;
+    const bCardH=isMobile?80:100;
+    const bGap=isMobile?10:15;
+    const bTotalH=bosses.length*bCardH+(bosses.length-1)*bGap;
+    const bStartY=sumY;
+    bosses.forEach((bch,bi)=>{
+      const bIdx=CHARS.indexOf(bch);
+      const bx=(W-bCardW)/2;
+      const by=bStartY+bi*(bCardH+bGap);
+      const isSel=bossChar===bIdx;
+      drawRoundRect(bx,by,bCardW,bCardH,8);
+      X.fillStyle=isSel?'#1a0a1a':'#111128';X.fill();
+      X.strokeStyle=isSel?bch.color:'#333';X.lineWidth=isSel?3:1.5;X.stroke();
+      if(isSel){X.shadowColor=bch.color;X.shadowBlur=10;X.stroke();X.shadowBlur=0;}
+      // Large ball preview
+      const ballR=isMobile?16:22;
+      drawBallPreview(bx+ballR+15,by+bCardH/2,ballR,bch);
+      // Boss info
+      const infoX=bx+ballR*2+30;
+      X.font='bold '+(isMobile?'12':'14')+'px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
+      X.fillText(bch.name,infoX,by+(isMobile?22:28));
+      const tierTag=typeof getTierLetter==='function'?getTierLetter(bch.id):'S';
+      X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle=tierTag.startsWith('S')?'#ffcc00':'#ff8844';
+      X.fillText('['+tierTag+']',infoX+X.measureText(bch.name).width+8,by+(isMobile?22:28));
+      X.font=(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle=bch.color;
+      X.fillText(bch.playstyle,infoX,by+(isMobile?36:44));
+      X.font=(isMobile?'8':'9')+'px Consolas,monospace';X.fillStyle='#888';
+      X.fillText('HP:'+bch.stats.hp+' ATK:'+bch.stats.atk+' SPD:'+bch.stats.speed.toFixed(1)+' DEF:'+bch.stats.def,infoX,by+(isMobile?50:58));
+      X.fillText('RNG:'+bch.stats.range+' CRIT:'+bch.stats.crit+'%',infoX,by+(isMobile?62:72));
+      if(isSel){
+        X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.fillStyle='#cc4444';
+        X.textAlign='right';X.fillText('SELECTED',bx+bCardW-10,by+(isMobile?22:28));X.textAlign='left';
+      }
+      addBtn('boss_sel_'+bi,bx,by,bCardW,bCardH,'','transparent',()=>{bossChar=bIdx;});
+    });
 
+  } else {
+    // ===== PAGE 3: ELEMENTS =====
+    X.font='bold '+(isMobile?'16':'22')+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.fillStyle='#cc4444';
+    X.fillText('PICK ELEMENTS (3/3)',W/2,isMobile?22:28);
     // Show selected team + boss summary at top
-    let sumY=isMobile?42:50;
-    X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';
+    let sumY=isMobile?38:46;
+    X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='center';
     X.fillStyle='#aaa';X.fillText('YOUR TEAM vs '+CHARS[bossChar].name.toUpperCase(),W/2,sumY);
     sumY+=isMobile?14:18;
     const teamLabels=[{idx:teamChar1,c:'#4488ff',l:'T1'},{idx:teamChar2,c:'#33cc66',l:'T2'},{idx:teamChar3,c:'#ff8833',l:'T3'}];
@@ -13429,18 +13393,18 @@ function drawBossSelect(){
     teamLabels.forEach((t,ti)=>{
       const sx=sumStartX+ti*(sumCardW+10);
       const ch=CHARS[t.idx];
-      drawRoundRect(sx,sumY,sumCardW,isMobile?40:45,5);
+      drawRoundRect(sx,sumY,sumCardW,isMobile?36:42,5);
       X.fillStyle='#111128';X.fill();
       X.strokeStyle=t.c;X.lineWidth=2;X.stroke();
-      const ballR=isMobile?8:10;
-      drawBallPreview(sx+ballR+8,sumY+(isMobile?20:22),ballR,ch);
-      X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.textAlign='left';
-      X.fillStyle=t.c;X.fillText(t.l,sx+ballR*2+14,sumY+(isMobile?15:17));
-      X.fillStyle='#fff';X.fillText(ch.name.length>12?ch.name.slice(0,11)+'…':ch.name,sx+ballR*2+14,sumY+(isMobile?28:32));
+      const ballR=isMobile?7:9;
+      drawBallPreview(sx+ballR+6,sumY+(isMobile?18:21),ballR,ch);
+      X.font='bold '+(isMobile?'8':'9')+'px Consolas,monospace';X.textAlign='left';
+      X.fillStyle=t.c;X.fillText(t.l,sx+ballR*2+12,sumY+(isMobile?13:15));
+      X.fillStyle='#fff';X.fillText(ch.name.length>12?ch.name.slice(0,11)+'…':ch.name,sx+ballR*2+12,sumY+(isMobile?26:30));
     });
-    sumY+=isMobile?50:58;
+    sumY+=isMobile?44:52;
 
-    // Element pickers — one per row on mobile, 3-across on desktop
+    // Element pickers
     if(isMobile){
       const elemRows=[
         {label:'T1 ELEMENT',color:'#4488ff',sel:teamElem1,pfx:'be1',cb:(i)=>{teamElem1=i;},char:CHARS[teamChar1]},
@@ -13449,22 +13413,20 @@ function drawBossSelect(){
         {label:'BOSS ELEMENT',color:'#cc4444',sel:bossElem,pfx:'beb',cb:(i)=>{bossElem=i;},char:CHARS[bossChar]},
       ];
       elemRows.forEach((er,ri)=>{
-        const ey=sumY+ri*60;
-        X.font='bold 10px Consolas,monospace';X.textAlign='left';
+        const ey=sumY+ri*55;
+        X.font='bold 9px Consolas,monospace';X.textAlign='left';
         X.fillStyle=er.color;
         X.fillText(er.label+' ('+er.char.name+')',10,ey);
         const pickerW=5*(37+3)-3;
         const pickerX=Math.floor((W-pickerW)/2);
         drawElementPickerMobile(pickerX,ey+6,er.sel,er.pfx,er.cb);
-        // Show element effect description
         const selElem=ELEMENTS[er.sel];
         if(selElem&&selElem.id!=='none'){
           const key=er.char.id+'_'+selElem.id;
           const desc=COMBO_EFFECTS[key]||'';
-          if(desc){X.font='8px Consolas,monospace';X.textAlign='center';X.fillStyle=selElem.color+'cc';X.fillText(desc,W/2,ey+48);}
+          if(desc){X.font='8px Consolas,monospace';X.textAlign='center';X.fillStyle=selElem.color+'cc';X.fillText(desc,W/2,ey+44);}
         }
       });
-      sumY+=4*60+8;
     } else {
       X.font='bold 12px Consolas,monospace';X.textAlign='center';
       const eColW=Math.floor(W/3)-10;
@@ -13474,7 +13436,6 @@ function drawBossSelect(){
       drawElementPicker(5,sumY+8,teamElem1,'be1',(i)=>{teamElem1=i;});
       drawElementPicker(W/3+5,sumY+8,teamElem2,'be2',(i)=>{teamElem2=i;});
       drawElementPicker(W*2/3+5,sumY+8,teamElem3,'be3',(i)=>{teamElem3=i;});
-      // Element effect descriptions for team
       sumY+=58;
       const teamElems=[{idx:teamChar1,sel:teamElem1,c:'#4488ff'},{idx:teamChar2,sel:teamElem2,c:'#33cc66'},{idx:teamChar3,sel:teamElem3,c:'#ff8833'}];
       X.font='10px Consolas,monospace';
@@ -13490,7 +13451,6 @@ function drawBossSelect(){
       X.font='bold 12px Consolas,monospace';
       X.fillStyle='#cc4444';X.textAlign='center';X.fillText('BOSS ELEMENT ('+CHARS[bossChar].name+')',W/2,sumY);
       drawElementPicker(W/2-130,sumY+8,bossElem,'beb',(i)=>{bossElem=i;});
-      // Boss element description
       sumY+=58;
       const bossEl=ELEMENTS[bossElem];
       if(bossEl&&bossEl.id!=='none'){
@@ -13498,13 +13458,10 @@ function drawBossSelect(){
         const bDesc=COMBO_EFFECTS[bKey]||'';
         if(bDesc){X.font='10px Consolas,monospace';X.textAlign='center';X.fillStyle=bossEl.color+'cc';X.fillText(bDesc,W/2,sumY);}
       }
-      sumY+=15;
     }
-
-    // Bottom: FIGHT + Back (goes to page 1)
-    const bBtnY=isMobile?H-50:H-65;
-    addBtn('bossBattle',W/2-100,bBtnY,200,isMobile?38:48,'FIGHT BOSS!','#cc4444',startBattle);
-    addBtn('bossBack',20,bBtnY,80,isMobile?32:38,'← Back','#666',()=>{_bossSelPage=1;});
+    // FIGHT button on page 3
+    const fightY=isMobile?H-85:H-100;
+    addBtn('bossBattle',W/2-100,fightY,200,isMobile?34:42,'FIGHT BOSS!','#cc4444',startBattle);
   }
   buttons.forEach(b=>{
     if(b.id.startsWith('bsel_'))return;
