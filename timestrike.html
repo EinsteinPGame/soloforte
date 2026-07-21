@@ -327,22 +327,25 @@ if(isMobile){
     e.preventDefault();initAudio();
     for(const t of e.changedTouches){
       const tx=t.clientX,ty=t.clientY;
-      // Left half = joystick
+      // Left 40% = joystick
       if(tx<innerWidth*0.4&&!touchJoystick.active){
         touchJoystick.active=true;touchJoystick.id=t.identifier;
         touchJoystick.cx=tx;touchJoystick.cy=ty;touchJoystick.dx=0;touchJoystick.dy=0;
       }
-      // Right half = aim + shoot
+      // Right 60% = aim + shoot + buttons
       else if(tx>=innerWidth*0.4){
-        // Check button areas first
-        const btnH=innerHeight-140;
-        if(ty>btnH&&tx>innerWidth-160){
-          // Bottom-right button area
-          if(tx>innerWidth-80){triggerMelee();}
-          else{switchWeapon();}
-        }else{
+        // Check button areas first (bigger hit zones for mobile)
+        const meleeR=45,swR=45;
+        const meleeX=innerWidth-55,meleeY=innerHeight-90;
+        const swX=innerWidth-130,swY=innerHeight-90;
+        const dMelee=Math.sqrt((tx-meleeX)**2+(ty-meleeY)**2);
+        const dSwitch=Math.sqrt((tx-swX)**2+(ty-swY)**2);
+        if(dMelee<meleeR){triggerMelee();}
+        else if(dSwitch<swR){switchWeapon();}
+        else{
           touchAim.active=true;touchAim.id=t.identifier;
           touchAim.x=tx;touchAim.y=ty;
+          mouseX=tx;mouseY=ty;
           mobileFireHeld=true;mouseDown=true;
         }
       }
@@ -461,7 +464,7 @@ function update(dt){
   // Mobile joystick → keys mapping
   if(isMobile&&touchJoystick.active){
     const jd=Math.sqrt(touchJoystick.dx*touchJoystick.dx+touchJoystick.dy*touchJoystick.dy);
-    const deadZone=12;
+    const deadZone=Math.min(18,innerWidth*0.025); // scale-aware dead zone
     keys['w']=touchJoystick.dy<-deadZone;
     keys['s']=touchJoystick.dy>deadZone;
     keys['a']=touchJoystick.dx<-deadZone;
@@ -473,12 +476,17 @@ function update(dt){
   // Bullet time
   const moving=keys['w']||keys['a']||keys['s']||keys['d']||
     keys['arrowup']||keys['arrowleft']||keys['arrowdown']||keys['arrowright'];
-  targetTimeScale=moving?0.7:0.03;
+  // Mobile: small grace period before bullet time (0.3s) so lifting joystick doesn't instantly freeze
+  if(!player._btGrace)player._btGrace=0;
+  if(moving){player._btGrace=isMobile?0.3:0;}
+  else if(player._btGrace>0){player._btGrace-=realDt;}
+  const btActive=!moving&&player._btGrace<=0;
+  targetTimeScale=btActive?0.03:0.7;
   // Smooth SUPERHOT-style transition: slow to enter bullet time, faster to exit
-  const lerpSpeed=moving?realDt*5:realDt*6;
+  const lerpSpeed=btActive?realDt*(isMobile?3:6):realDt*5;
   timeScale+=(targetTimeScale-timeScale)*lerpSpeed;
-  if(!moving&&slowmoTimer<=0){slowmoTimer=0.5;sfxSlowmo();}
-  if(moving)slowmoTimer=0;else slowmoTimer-=realDt;
+  if(btActive&&slowmoTimer<=0){slowmoTimer=0.5;sfxSlowmo();}
+  if(!btActive)slowmoTimer=0;else slowmoTimer-=realDt;
 
   const ts=timeScale;
   const gdt=dt*ts;
@@ -1277,6 +1285,15 @@ function drawHUD(){
     X.beginPath();X.arc(swX,swY,btnSize,0,Math.PI*2);X.fill();
     X.globalAlpha=0.8;X.fillStyle='#fff';
     X.fillText(WEAPONS[currentWeapon].name.slice(0,3),swX,swY);
+
+    // Crosshair at aim point
+    if(touchAim.active){
+      X.globalAlpha=0.7;X.strokeStyle='#0ff';X.lineWidth=1.5;
+      const cx=touchAim.x,cy=touchAim.y,cr=12;
+      X.beginPath();X.moveTo(cx-cr,cy);X.lineTo(cx+cr,cy);X.stroke();
+      X.beginPath();X.moveTo(cx,cy-cr);X.lineTo(cx,cy+cr);X.stroke();
+      X.beginPath();X.arc(cx,cy,cr*0.6,0,Math.PI*2);X.stroke();
+    }
 
     X.textBaseline='alphabetic';
     X.restore();
