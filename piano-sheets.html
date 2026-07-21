@@ -1398,38 +1398,156 @@ V:LH clef=bass name=""
       }
     }
 
+    // Parse ABC notation string to extract note names with octaves for RH voice
+    function parseAbcToNoteNames(abcString) {
+      const lines = abcString.split('\n');
+      const sections = [];
+      let currentSection = null;
+      let keySignature = 'C';
+
+      // Key signature accidentals map
+      const keyAccidentals = {
+        'C': {}, 'Am': {},
+        'G': {F:'#'}, 'Em': {F:'#'},
+        'D': {F:'#',C:'#'}, 'Bm': {F:'#',C:'#'},
+        'A': {F:'#',C:'#',G:'#'}, 'F#m': {F:'#',C:'#',G:'#'}, 'F#min': {F:'#',C:'#',G:'#'},
+        'E': {F:'#',C:'#',G:'#',D:'#'}, 'C#m': {F:'#',C:'#',G:'#',D:'#'}, 'C#min': {F:'#',C:'#',G:'#',D:'#'},
+        'B': {F:'#',C:'#',G:'#',D:'#',A:'#'},
+        'F#': {F:'#',C:'#',G:'#',D:'#',A:'#',E:'#'},
+        'F': {B:'b'}, 'Dm': {B:'b'},
+        'Bb': {B:'b',E:'b'}, 'Gm': {B:'b',E:'b'},
+        'Eb': {B:'b',E:'b',A:'b'}, 'Cm': {B:'b',E:'b',A:'b'},
+        'Ab': {B:'b',E:'b',A:'b',D:'b'},
+        'Db': {B:'b',E:'b',A:'b',D:'b',G:'b'},
+      };
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('K:')) {
+          keySignature = trimmed.substring(2).trim();
+        }
+        if (trimmed.startsWith('%%') && !trimmed.startsWith('%%staves')) {
+          // Section comment like "%% Intro - iconic descending pattern"
+          const sectionName = trimmed.replace(/^%%\s*/, '').replace(/\s*-.*$/, '').trim();
+          currentSection = { name: sectionName, notes: [] };
+          sections.push(currentSection);
+        }
+        // Only parse RH (treble) voice lines
+        if (trimmed.startsWith('[V:RH]') && currentSection) {
+          const musicPart = trimmed.replace('[V:RH]', '').replace(/\|:?:?\|?/g, ' | ');
+          const keyAcc = keyAccidentals[keySignature] || {};
+          const parsed = parseAbcNotes(musicPart, keyAcc);
+          currentSection.notes.push(...parsed);
+        }
+      }
+      return sections;
+    }
+
+    // Parse individual ABC note tokens into note names
+    function parseAbcNotes(music, keyAccidentals) {
+      const results = [];
+      // Match notes: optional accidental(s), note letter, optional octave markers
+      const noteRegex = /([_^=]*)([A-Ga-g])([,\']*)/g;
+      let match;
+
+      while ((match = noteRegex.exec(music)) !== null) {
+        const accidentalPrefix = match[1];
+        const letter = match[2];
+        const octaveMarkers = match[3];
+
+        // Skip if it's part of a voice/header directive
+        const before = music.substring(Math.max(0, match.index - 3), match.index);
+        if (before.includes(':') || before.includes('V:') || before.includes('K:')) continue;
+
+        // Determine base note name (uppercase)
+        const upperLetter = letter.toUpperCase();
+
+        // Determine octave: lowercase = octave 5+, uppercase = octave 4-
+        let octave;
+        if (letter === letter.toLowerCase()) {
+          // Lowercase letter = octave 5 base
+          octave = 5;
+          for (const ch of octaveMarkers) {
+            if (ch === "'") octave++;
+            if (ch === ",") octave--;
+          }
+        } else {
+          // Uppercase letter = octave 4 base
+          octave = 4;
+          for (const ch of octaveMarkers) {
+            if (ch === ",") octave--;
+            if (ch === "'") octave++;
+          }
+        }
+
+        // Determine accidental
+        let accSymbol = '';
+        if (accidentalPrefix.includes('^^')) accSymbol = '##';
+        else if (accidentalPrefix.includes('^')) accSymbol = '#';
+        else if (accidentalPrefix.includes('__')) accSymbol = 'bb';
+        else if (accidentalPrefix.includes('_')) accSymbol = 'b';
+        else if (accidentalPrefix.includes('=')) accSymbol = ''; // natural
+        else if (keyAccidentals[upperLetter]) {
+          accSymbol = keyAccidentals[upperLetter];
+        }
+
+        results.push(upperLetter + accSymbol + octave);
+      }
+
+      // Deduplicate consecutive identical notes for readability
+      return results;
+    }
+
     function showNoteGuide(songId) {
       const song = songData[songId];
-      if (!song || !song.noteGuide) return;
+      if (!song) return;
 
       const guide = document.getElementById('melodyGuide');
       let html = '<h3>Note Names Reference</h3>';
-      html += '<p style="font-size:0.82rem;color:#8888aa;margin-bottom:12px;">Letter names for each section — use alongside the notation above.</p>';
+      html += '<p style="font-size:0.82rem;color:#8888aa;margin-bottom:14px;">Note letter names with octave numbers for the right hand (treble) part. Use alongside the notation above.</p>';
 
-      const sectionLabels = {
-        intro: 'Intro',
-        melody: 'Main Melody',
-        theme: 'Theme',
-        verse: 'Verse',
-        prechorus: 'Pre-Chorus',
-        chorus: 'Chorus',
-        bridge: 'Bridge',
-        sectionB: 'Section B',
-        sectionC: 'Section C',
-        bass: 'Bass Line',
-        chords: 'Chord Progression',
-        development: 'Development',
-        climax: 'Climax',
-        variation: 'Variation'
-      };
+      // Parse ABC for full note-by-note names with octaves
+      const parsedSections = parseAbcToNoteNames(song.abc);
 
-      for (const [key, notes] of Object.entries(song.noteGuide)) {
-        const label = sectionLabels[key] || key;
-        const formatted = notes.replace(/\|/g, '<span class="bar">|</span>');
-        html += `<div class="guide-section">
-          <div class="guide-label">${label}</div>
-          <div class="guide-notes">${formatted}</div>
-        </div>`;
+      if (parsedSections.length > 0) {
+        html += '<div style="margin-bottom:18px;padding:16px;background:#1a1a3e;border-radius:8px;border:1px solid #3a3a6a;">';
+        html += '<div class="guide-label" style="margin-bottom:8px;color:#7b68ee;font-size:0.85rem;">FULL NOTE SEQUENCE (Right Hand)</div>';
+        parsedSections.forEach(section => {
+          if (section.notes.length === 0) return;
+          html += '<div style="margin-bottom:10px;">';
+          html += '<div style="font-size:0.78rem;color:#9090b0;margin-bottom:3px;font-weight:600;">' + section.name + '</div>';
+          html += '<div class="guide-notes" style="font-size:0.88rem;">';
+          // Group notes and add visual spacing
+          const noteStr = section.notes.map(n => {
+            const letter = n.replace(/[0-9]/g, '');
+            const oct = n.replace(/[^0-9]/g, '');
+            return '<span style="display:inline-block;margin:2px 1px;padding:2px 5px;background:#7b68ee22;border:1px solid #7b68ee44;border-radius:4px;font-size:0.82rem;color:#d0d0f0;">' +
+              '<strong>' + letter + '</strong><sub style="font-size:0.7em;color:#8888cc;">' + oct + '</sub></span>';
+          }).join(' ');
+          html += noteStr;
+          html += '</div></div>';
+        });
+        html += '</div>';
+      }
+
+      // Also show the original simplified guide if available
+      if (song.noteGuide) {
+        html += '<div class="guide-label" style="margin-bottom:8px;color:#7b68ee;font-size:0.85rem;">SIMPLIFIED MELODY GUIDE</div>';
+        const sectionLabels = {
+          intro: 'Intro', melody: 'Main Melody', theme: 'Theme',
+          verse: 'Verse', prechorus: 'Pre-Chorus', chorus: 'Chorus',
+          bridge: 'Bridge', sectionB: 'Section B', sectionC: 'Section C',
+          bass: 'Bass Line', chords: 'Chord Progression',
+          development: 'Development', climax: 'Climax', variation: 'Variation'
+        };
+        for (const [key, notes] of Object.entries(song.noteGuide)) {
+          const label = sectionLabels[key] || key;
+          const formatted = notes.replace(/\|/g, '<span class="bar">|</span>');
+          html += `<div class="guide-section">
+            <div class="guide-label">${label}</div>
+            <div class="guide-notes">${formatted}</div>
+          </div>`;
+        }
       }
 
       guide.innerHTML = html;
