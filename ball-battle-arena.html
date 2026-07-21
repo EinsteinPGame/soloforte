@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v9.0 — Naoya full rework, Higuruma sequential hammers, Rika independent, Todo swap nerf
+// BALL BATTLE ARENA v9.1.3 — Confiscation blocks Gojo Infinity regen + Katana deflect, Executioner Sword bypasses Infinity
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -1085,10 +1085,10 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     spawnBurst(defender.x,defender.y,'#4488ff',8,4);
     return 0;
   }
-  // Gojo Infinity — absorbs attacks, deals 0 damage. Specials bypass.
+  // Gojo Infinity — absorbs attacks, deals 0 damage. Specials + Executioner Sword bypass.
   if(defender.char.id==='gojo'&&defender.gojoInfinityCharges>0
     &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
-    &&!(attacker.specialActive)
+    &&!(attacker.specialActive)&&!(attacker.higurumaSwordActive)
     &&!defender.tojiEnemyDebuff){
     defender.gojoInfinityCharges--;
     spawnDmgNum(defender.x,defender.y-defender.radius-15,'INFINITY','#8888ff',true);
@@ -1107,7 +1107,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
     &&!(attacker.specialActive)
     &&(!defender.katanaDashing||defender.katanaRushing)
-    &&!defender.tojiEnemyDebuff){
+    &&!defender.tojiEnemyDebuff
+    &&defender.higurumaDisableTimer<=0){
     // Post counter-dash cooldown (1 second): 80% damage reduction, no full deflect
     if(defender.katanaPostDashTimer>0){
       const isCrit=canCrit&&Math.random()*100<attacker.crit;
@@ -2239,6 +2240,7 @@ function attackHiguruma(f,enemy,chaos){
   // Executioner Sword — next attack after Execution verdict is a devastating sword strike
   if(f.higurumaNextSword&&enemy&&enemy.alive&&d<f.radius+enemy.radius+80){
     f.higurumaNextSword=false;
+    f.higurumaSwordActive=false; // clear after follow-up sword used
     f.weaponExtend=1;f.weaponFlash=20;
     SFX.executionerSword();
     const swordDmg=f.atk*4; // massive single hit
@@ -5995,8 +5997,8 @@ function updateBattle(dt){
     if(f.char.id==='gojo'){
       // Purple cooldown tick
       if(f.gojoPurpleCD>0)f.gojoPurpleCD-=dt;
-      // Infinity regen — slow passive regen
-      if(f.gojoInfinityCharges<f.gojoInfinityMax){
+      // Infinity regen — slow passive regen (blocked by Higuruma confiscation/disable)
+      if(f.gojoInfinityCharges<f.gojoInfinityMax&&f.higurumaDisableTimer<=0){
         f.gojoInfinityRegenCD-=dt;
         if(f.gojoInfinityRegenCD<=0){
           f.gojoInfinityCharges=Math.min(f.gojoInfinityMax,f.gojoInfinityCharges+1);
