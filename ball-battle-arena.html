@@ -12112,29 +12112,53 @@ function drawBattle(){
     }
   }});
 
-  // Relic activation text — BIG dramatic display
+  // Relic activation text — CINEMATIC dramatic display
   if(relicTextTimer>0){
     const a=Math.min(1,relicTextTimer/40);
+    const isEarly=relicTextTimer>110; // first ~40 frames = dramatic entrance
     X.globalAlpha=a;
-    // Background darkening stripe
-    X.fillStyle='rgba(0,0,0,'+a*0.5+')';
-    X.fillRect(0,ARENA.y+ARENA.h/2-30,W,60);
-    // Main text — large
-    X.font='bold '+(isMobile?'22':'32')+'px Consolas,Courier New,monospace';
-    X.textAlign='center';X.textBaseline='middle';
+    // FULL SCREEN dark overlay — cinematic feel
+    const overlayAlpha=isEarly?a*0.6:a*0.35;
+    X.fillStyle='rgba(0,0,0,'+overlayAlpha+')';
+    X.fillRect(0,0,W,H);
+    // Cinematic letterbox bars (top + bottom) during early frames
+    if(isEarly){
+      X.fillStyle='rgba(0,0,0,'+a*0.85+')';
+      const barH=isMobile?20:30;
+      X.fillRect(0,0,W,barH);X.fillRect(0,H-barH,W,barH);
+    }
+    // Central glowing band behind text
+    const bandH=isMobile?50:70;
     const mainY=ARENA.y+ARENA.h/2;
-    X.shadowColor=relicTextColor;X.shadowBlur=25;
+    const bandGrad=X.createLinearGradient(0,mainY-bandH/2,0,mainY+bandH/2);
+    bandGrad.addColorStop(0,'rgba(0,0,0,0)');
+    bandGrad.addColorStop(0.3,'rgba(0,0,0,'+a*0.7+')');
+    bandGrad.addColorStop(0.5,'rgba(0,0,0,'+a*0.8+')');
+    bandGrad.addColorStop(0.7,'rgba(0,0,0,'+a*0.7+')');
+    bandGrad.addColorStop(1,'rgba(0,0,0,0)');
+    X.fillStyle=bandGrad;X.fillRect(0,mainY-bandH/2,W,bandH);
+    // Colored edge glow on band
+    X.fillStyle=relicTextColor+'33';X.fillRect(0,mainY-bandH/2,W,2);X.fillRect(0,mainY+bandH/2-2,W,2);
+    // Main text — large with scale-in effect
+    const textScale=isEarly?0.8+((150-relicTextTimer)/40)*0.2:1;
+    X.save();
+    X.translate(W/2,mainY);X.scale(textScale,textScale);
+    X.font='bold '+(isMobile?'24':'36')+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.textBaseline='middle';
+    X.shadowColor=relicTextColor;X.shadowBlur=30;
     X.fillStyle=relicTextColor;
-    X.fillText(relicText,W/2,mainY);
+    X.fillText(relicText,0,0);
     // Outline text for readability
     X.strokeStyle='#000';X.lineWidth=3;
-    X.strokeText(relicText,W/2,mainY);
-    X.fillText(relicText,W/2,mainY);
+    X.strokeText(relicText,0,0);
+    X.fillText(relicText,0,0);
+    X.restore();
     // Sub-line (previous relic text during back-to-back)
     if(relicTextSubTimer>0){
       const sa=Math.min(1,relicTextSubTimer/40);
       X.globalAlpha=sa;
       X.font='bold '+(isMobile?'14':'20')+'px Consolas,Courier New,monospace';
+      X.textAlign='center';X.textBaseline='middle';
       X.shadowColor=relicTextSubColor;X.shadowBlur=15;
       X.fillStyle=relicTextSubColor;
       X.fillText(relicTextSub,W/2,mainY+30);
@@ -12143,11 +12167,12 @@ function drawBattle(){
       X.fillText(relicTextSub,W/2,mainY+30);
       X.globalAlpha=a;
     }
-    // Accent lines
-    const lw=isMobile?80:150;
+    // Accent lines — wider, with glow
+    const lw=isMobile?100:180;
     X.strokeStyle=relicTextColor;X.lineWidth=2;X.globalAlpha=a*0.6;
-    X.beginPath();X.moveTo(W/2-lw,mainY+18);X.lineTo(W/2+lw,mainY+18);X.stroke();
-    X.beginPath();X.moveTo(W/2-lw,mainY-18);X.lineTo(W/2+lw,mainY-18);X.stroke();
+    X.shadowColor=relicTextColor;X.shadowBlur=10;
+    X.beginPath();X.moveTo(W/2-lw,mainY+22);X.lineTo(W/2+lw,mainY+22);X.stroke();
+    X.beginPath();X.moveTo(W/2-lw,mainY-22);X.lineTo(W/2+lw,mainY-22);X.stroke();
     X.shadowBlur=0;X.globalAlpha=1;
   }
 
@@ -12378,21 +12403,33 @@ function drawBattle(){
     X.fillStyle='rgba(200,200,200,'+(1-i*0.2)+')';X.fillText(battleLog[i],ARENA.x+8,logY+10+i*12);
   }
 
-  // Victory overlay — dramatic
+  // Victory overlay — CINEMATIC
   if(battleOver&&winner){
     if(Math.random()<0.4)spawnBurst(winner.x+rand(-40,40),winner.y+rand(-40,40),winner.char.color,4,5);
     if(Math.random()<0.15)spawnBurst(rand(ARENA.x,ARENA.x+ARENA.w),rand(ARENA.y,ARENA.y+ARENA.h),pick(['#ffcc00','#ffffff',winner.char.color]),6,4);
     X.save();
-    // Dark overlay
-    X.fillStyle='rgba(0,0,0,0.4)';X.fillRect(0,ARENA.y,W,ARENA.h);
+    // Full screen dark overlay
+    X.fillStyle='rgba(0,0,0,0.55)';X.fillRect(0,0,W,H);
+    // Cinematic letterbox bars
+    const barH=isMobile?18:28;
+    X.fillStyle='rgba(0,0,0,0.85)';X.fillRect(0,0,W,barH);X.fillRect(0,H-barH,W,barH);
+    // Radial glow behind winner
+    const rg=X.createRadialGradient(winner.x,winner.y,10,winner.x,winner.y,120);
+    rg.addColorStop(0,winner.char.color+'44');rg.addColorStop(1,'transparent');
+    X.fillStyle=rg;X.fillRect(0,0,W,H);
     // Winner text
     X.font='bold '+(isMobile?'28':'42')+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
     X.shadowColor=winner.char.color;X.shadowBlur=30;X.fillStyle=winner.char.color;
     X.fillText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
     X.strokeStyle='#000';X.lineWidth=3;X.strokeText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
     X.fillText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
+    // Tier label under winner name
+    const winTier=getTierLetter(winner.char.id);
+    X.font='bold '+(isMobile?'13':'16')+'px Consolas,monospace';
+    X.shadowBlur=10;X.fillStyle='#aaa';
+    X.fillText('['+winTier+' Tier]',W/2,ARENA.y+ARENA.h/2-5);
     X.shadowBlur=0;
-    addBtn('result',W/2-80,ARENA.y+ARENA.h/2+10,160,40,'Continue','#7b68ee',()=>{screen='result';});
+    addBtn('result',W/2-80,ARENA.y+ARENA.h/2+20,160,40,'Continue','#7b68ee',()=>{screen='result';});
     X.restore();
   }
   buttons.forEach(drawBtn);
