@@ -573,68 +573,90 @@ function getSponsorRange(callerTier){
   if(callerTier>=3)return {min:3,max:6}; // B tier = B- to A- range
   return {min:1,max:3}; // C tier = C to B- range
 }
-function canCallSponsor(callerCharId,enemyCharId){
+function getEligibleSponsors(callerCharId,excludeIds){
+  // Returns array of CHARS indices eligible as sponsors for this char
+  const callerTier=getTierNum(callerCharId);
+  if(callerTier>=9)return []; // S tier+ = no sponsors
+  const range=getSponsorRange(callerTier);
+  if(!range)return [];
+  const exclude=new Set(excludeIds||[]);
+  exclude.add(callerCharId);
+  const eligible=[];
+  CHARS.forEach((ch,i)=>{
+    if(ch.isBoss)return; // bosses can't be sponsors
+    if(exclude.has(ch.id))return;
+    const t=getTierNum(ch.id);
+    if(t>=range.min&&t<=range.max)eligible.push(i);
+  });
+  return eligible;
+}
+function canCallSponsor(callerCharId,enemyCharId,sponsorCharId){
+  // sponsorCharId = the selected sponsor's id (from fighter.selectedSponsor)
+  if(!sponsorCharId)return false;
   const callerTier=getTierNum(callerCharId);
   const enemyTier=getTierNum(enemyCharId);
   // S tier+ cannot call sponsors
   if(callerTier>=9)return false;
   // A tier can ONLY call sponsors when fighting S-rank (9+) enemies
   if(callerTier>=6&&enemyTier<9)return false;
-  // Must have a lore combo partner
-  const combo=findLoreCombo(callerCharId);
-  if(!combo)return false;
-  const sponsorId=getLoreSponsor(callerCharId);
-  if(!sponsorId)return false;
-  // Don't allow sponsor if enemy is on the same pair (mirror match)
-  if(combo.pair.includes(enemyCharId))return false;
   // Sponsor must be within allowed tier range
   const range=getSponsorRange(callerTier);
   if(!range)return false;
-  const sponsorTier=getTierNum(sponsorId);
+  const sponsorTier=getTierNum(sponsorCharId);
   if(sponsorTier<range.min||sponsorTier>range.max)return false;
   // Sponsor cannot be in the arena (check all fighters)
-  const inArena=fighters.some(f=>f&&f.alive&&f.char.id===sponsorId);
+  const inArena=fighters.some(f=>f&&f.alive&&f.char.id===sponsorCharId);
   if(inArena)return false;
   return true;
 }
 
 function triggerSponsorCutscene(caller,enemy){
+  if(sponsorCutsceneActive)return;
   const combo=findLoreCombo(caller.char.id);
-  if(!combo||sponsorCutsceneActive)return;
+  const sponsorId=caller.selectedSponsor;
+  const sponsorChar=CHARS.find(c=>c.id===sponsorId);
+  if(!sponsorChar)return;
+  const isLore=combo&&combo.pair.includes(sponsorId);
   sponsorCutsceneActive=true;
-  sponsorCutsceneTimer=combo.cutsceneFrames;
-  sponsorCutsceneData={combo,caller,target:enemy,phase:0,hitDelivered:false};
-  // Freeze all fighters during cutscene
+  const frames=isLore?combo.cutsceneFrames:60; // 1 second for generic
+  sponsorCutsceneTimer=frames;
+  sponsorCutsceneData={
+    combo:isLore?combo:null,
+    isLore,
+    sponsorChar,
+    caller,target:enemy,phase:0,hitDelivered:false,
+    totalFrames:frames,
+    color1:isLore?combo.color1:sponsorChar.color,
+    color2:isLore?combo.color2:caller.char.color,
+    dmgMult:isLore?combo.dmgMult:1.8,
+    name:isLore?combo.name:'SPONSOR: '+sponsorChar.name,
+  };
   fighters.forEach(f=>{if(f)f._preSponsorVx=f.vx;f._preSponsorVy=f.vy;f.vx=0;f.vy=0;});
   SFX.relicActivate();
-  triggerScreenFlash('#ffffff',12);
-  shakeTimer=20;shakeAmt=10;
-  addLog('LORE COMBO: '+combo.name+'!');
+  triggerScreenFlash('#ffffff',isLore?12:8);
+  shakeTimer=isLore?20:12;shakeAmt=isLore?10:6;
+  addLog((isLore?'LORE COMBO: ':'SPONSOR ASSIST: ')+sponsorCutsceneData.name+'!');
 }
 
 function updateSponsorCutscene(dt){
   if(!sponsorCutsceneActive||!sponsorCutsceneData)return;
   const sd=sponsorCutsceneData;
-  const combo=sd.combo;
   sponsorCutsceneTimer-=dt;
-  const progress=1-(sponsorCutsceneTimer/combo.cutsceneFrames);
-  // Deliver damage at 70% progress
+  const progress=1-(sponsorCutsceneTimer/sd.totalFrames);
   if(progress>=0.7&&!sd.hitDelivered&&sd.target&&sd.target.alive){
     sd.hitDelivered=true;
-    const dmg=sd.caller.atk*combo.dmgMult;
+    const dmg=sd.caller.atk*sd.dmgMult;
     dealDamage(sd.caller,sd.target,dmg,false);
-    // Massive visual impact
-    triggerScreenFlash(combo.color1,10);
-    shakeTimer=25;shakeAmt=15;
-    triggerHitFreeze(8);
-    spawnBurst(sd.target.x,sd.target.y,combo.color1,25,10);
-    spawnBurst(sd.target.x,sd.target.y,combo.color2,20,8);
-    spawnBurst(sd.target.x,sd.target.y,'#ffffff',15,6);
-    explosions.push({x:sd.target.x,y:sd.target.y,radius:0,maxRadius:90,color:combo.color1,life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
-    spawnDmgNum(sd.target.x,sd.target.y-sd.target.radius-45,combo.name,combo.color1,true);
+    triggerScreenFlash(sd.color1,sd.isLore?10:6);
+    shakeTimer=sd.isLore?25:15;shakeAmt=sd.isLore?15:8;
+    triggerHitFreeze(sd.isLore?8:4);
+    spawnBurst(sd.target.x,sd.target.y,sd.color1,sd.isLore?25:15,sd.isLore?10:6);
+    spawnBurst(sd.target.x,sd.target.y,sd.color2,sd.isLore?20:12,sd.isLore?8:5);
+    if(sd.isLore)spawnBurst(sd.target.x,sd.target.y,'#ffffff',15,6);
+    explosions.push({x:sd.target.x,y:sd.target.y,radius:0,maxRadius:sd.isLore?90:60,color:sd.color1,life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+    spawnDmgNum(sd.target.x,sd.target.y-sd.target.radius-45,sd.name,sd.color1,true);
     SFX.explode();
   }
-  // End cutscene
   if(sponsorCutsceneTimer<=0){
     sponsorCutsceneActive=false;
     sponsorCutsceneData=null;
@@ -645,55 +667,49 @@ function updateSponsorCutscene(dt){
 function drawSponsorCutscene(){
   if(!sponsorCutsceneActive||!sponsorCutsceneData)return;
   const sd=sponsorCutsceneData;
-  const combo=sd.combo;
-  const progress=1-(sponsorCutsceneTimer/combo.cutsceneFrames);
+  const progress=1-(sponsorCutsceneTimer/sd.totalFrames);
   // Dark overlay
   X.fillStyle='rgba(0,0,0,'+(0.5*Math.min(1,progress*3))+')';
   X.fillRect(0,0,W,H);
-  // Combo name text — cinematic
   X.save();
   X.font='bold '+(isMobile?16:20)+'px Consolas,monospace';X.textAlign='center';
   const textAlpha=progress<0.15?progress/0.15:progress>0.85?(1-progress)/0.15:1;
   X.globalAlpha=textAlpha;
-  // Sponsor name with glow
-  X.shadowColor=combo.color1;X.shadowBlur=20;
-  X.fillStyle=combo.color1;
-  X.fillText(combo.name,W/2,H/2-40);
+  // Name with glow
+  X.shadowColor=sd.color1;X.shadowBlur=20;
+  X.fillStyle=sd.color1;
+  X.fillText(sd.name,W/2,H/2-40);
   X.shadowBlur=0;
-  // Franchise tag
+  // Tag
   X.font=(isMobile?10:12)+'px Consolas,monospace';
   X.fillStyle='#888';
-  X.fillText(combo.franchise+' LORE COMBO',W/2,H/2-20);
+  X.fillText(sd.isLore?(sd.combo.franchise+' LORE COMBO'):'SPONSOR ASSIST',W/2,H/2-20);
   X.globalAlpha=1;
   // Animated sponsor character silhouette
-  const sponsorId=getLoreSponsor(sd.caller.char.id);
-  const sponsorChar=CHARS.find(c=>c.id===sponsorId);
-  if(sponsorChar&&progress>0.2&&progress<0.9){
+  const sc=sd.sponsorChar;
+  if(sc&&progress>0.2&&progress<0.9){
     const enterProgress=Math.min(1,(progress-0.2)/0.3);
-    // Sponsor enters from side
     const sx=sd.caller.side===0?W+40-enterProgress*120:enterProgress*120-40;
     const sy=H/2+20;
     X.globalAlpha=enterProgress*0.9;
-    // Glowing circle for sponsor
     const sg=X.createRadialGradient(sx,sy,5,sx,sy,30);
-    sg.addColorStop(0,sponsorChar.color);sg.addColorStop(0.6,sponsorChar.color+'88');sg.addColorStop(1,'transparent');
+    sg.addColorStop(0,sc.color);sg.addColorStop(0.6,sc.color+'88');sg.addColorStop(1,'transparent');
     X.fillStyle=sg;X.beginPath();X.arc(sx,sy,30,0,Math.PI*2);X.fill();
-    // Sponsor name
     X.font='bold 10px Consolas,monospace';X.textAlign='center';
-    X.fillStyle=sponsorChar.color;
-    X.fillText(sponsorChar.name,sx,sy-35);
+    X.fillStyle=sc.color;
+    X.fillText(sc.name,sx,sy-35);
     X.globalAlpha=1;
   }
-  // Attack lines at impact moment
+  // Attack lines at impact
   if(progress>=0.65&&progress<=0.8){
     const impactAlpha=(progress-0.65)/0.15;
     X.globalAlpha=impactAlpha;
-    // Converging lines toward target
-    for(let i=0;i<12;i++){
-      const a=Math.PI*2*i/12;
+    const lineCount=sd.isLore?12:8;
+    for(let i=0;i<lineCount;i++){
+      const a=Math.PI*2*i/lineCount;
       const r1=120-impactAlpha*80;
       const r2=20;
-      X.strokeStyle=i%2===0?combo.color1:combo.color2;X.lineWidth=3;
+      X.strokeStyle=i%2===0?sd.color1:sd.color2;X.lineWidth=sd.isLore?3:2;
       X.beginPath();
       X.moveTo(sd.target.x+Math.cos(a)*r1,sd.target.y+Math.sin(a)*r1);
       X.lineTo(sd.target.x+Math.cos(a)*r2,sd.target.y+Math.sin(a)*r2);
@@ -719,6 +735,7 @@ const QUICKHACKS=[
 let screen='title';
 let p1Char=0,p2Char=1;
 let p1Elem=0,p2Elem=0;
+let p1Sponsor=-1,p2Sponsor=-1; // -1 = none, index into CHARS
 let battleSpeed=1;
 let fighters=[];
 let particles=[];
@@ -795,6 +812,7 @@ let teamChar1=0,teamChar2=1,teamChar3=2; // team chars for boss mode (3v1)
 let _bossSelSlot=1; // cycling slot for boss select UI
 let _bossSelPage=1; // 1=pick chars, 2=pick boss, 3=elements
 let teamElem1=0,teamElem2=0,teamElem3=0,bossElem=0; // elements
+let teamSponsor1=-1,teamSponsor2=-1,teamSponsor3=-1; // team sponsors for boss mode
 let selectPage=0; // pagination for character select (0-indexed)
 let selectTab=0; // 0=Fighters, 1=Bosses
 
@@ -929,7 +947,7 @@ function createFighter(charIdx,elemIdx,side){
     totalHits:0,
     // Special / Relic
     specialBar:0,specialMax:100,
-    sponsorBar:0,sponsorMax:150,sponsorUsed:false, // sponsor charges slower, once per fight
+    sponsorBar:0,sponsorMax:150,sponsorUsed:false,selectedSponsor:null, // sponsor charges slower, once per fight
     specialActive:false,specialTimer:0,
     // Relic-specific state
     relicDashing:false,relicDashTarget:null,relicDashTimer:0,
@@ -6018,10 +6036,10 @@ function updateBattle(dt){
       useSpecial(f,enemy);
     }
 
-    // Sponsor bar — charges at 40% of special rate, only if char has a lore combo
-    if(!f.sponsorUsed&&!sponsorCutsceneActive&&findLoreCombo(f.char.id)){
+    // Sponsor bar — charges at 40% of special rate, only if char has a selected sponsor
+    if(!f.sponsorUsed&&!sponsorCutsceneActive&&f.selectedSponsor){
       f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.015*(f.char.relicChargeRate||1)*dt);
-      if(f.sponsorBar>=f.sponsorMax&&enemy.alive&&canCallSponsor(f.char.id,enemy.char.id)){
+      if(f.sponsorBar>=f.sponsorMax&&enemy.alive&&canCallSponsor(f.char.id,enemy.char.id,f.selectedSponsor)){
         f.sponsorUsed=true;
         f.sponsorBar=0;
         triggerSponsorCutscene(f,enemy);
@@ -11856,8 +11874,8 @@ function drawTitle(){
   }
 
   const btnW=200,btnH=50;
-  addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];});
-  addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
+  addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];});
+  addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('P10 v8.5 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
@@ -11951,18 +11969,8 @@ function drawSelectDesktop(){
         X.fillStyle='#222';X.fillRect(sx+55,sy+si*statGap-7,cardW-78,5);X.fillStyle=ch.color;X.fillRect(sx+55,sy+si*statGap-7,(cardW-78)*Math.min(1,barVal),5);
       });
     }
-    // Lore combo chain link indicator
-    const lc=findLoreCombo(ch.id);
-    if(lc){
-      const lcPartner=lc.pair.find(id=>id!==ch.id);
-      const lcChar=CHARS.find(c=>c.id===lcPartner);
-      if(lcChar){
-        X.font='bold 8px Consolas,monospace';X.textAlign='center';
-        X.fillStyle='#ff880066';X.fillText('\u26D3 '+lcChar.name,cx+cardW/2,cy+cardH-4);
-      }
-    }
-    addBtn('p1c'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{p1Char=i;});
-    addBtn('p2c'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{p2Char=i;});
+    addBtn('p1c'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{p1Char=i;p1Sponsor=-1;});
+    addBtn('p2c'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{p2Char=i;p2Sponsor=-1;});
   });
 
   // Pagination arrows — prominent with background
@@ -12003,10 +12011,11 @@ function drawSelectDesktop(){
   if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText('P1: '+(COMBO_EFFECTS[key]||''),W/4,comboY);}
   if(p2Elem>0){const key=CHARS[p2Char].id+'_'+ELEMENTS[p2Elem].id;X.fillStyle=ELEMENTS[p2Elem].color;X.textAlign='center';X.fillText('P2: '+(COMBO_EFFECTS[key]||''),W*3/4,comboY);}
 
-  // Sponsor / Lore Combo info
+  // Sponsor pickers
   const sponsorY=comboY+16;
-  drawSponsorInfo(W/4,sponsorY,CHARS[p1Char].id,'center');
-  drawSponsorInfo(W*3/4,sponsorY,CHARS[p2Char].id,'center');
+  const p2Id=CHARS[p2Char].id;
+  drawSponsorPicker(W/4,sponsorY,CHARS[p1Char].id,p1Sponsor,'p1sp',(idx)=>{p1Sponsor=idx;},[p2Id],W/2-30);
+  drawSponsorPicker(W*3/4,sponsorY,CHARS[p2Char].id,p2Sponsor,'p2sp',(idx)=>{p2Sponsor=idx;},[CHARS[p1Char].id],W/2-30);
 
   addBtn('battle',W/2-100,H-70,200,48,'BATTLE!','#ff4444',startBattle);
   addBtn('back',20,H-50,80,35,'Back','#666',()=>{screen='title';});
@@ -12080,9 +12089,6 @@ function drawSelectMobile(){
       X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+6,cy+36);
       X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+6,cy+46);
       if(isSel){X.font='bold 9px Consolas,monospace';X.fillStyle=labelColor;X.textAlign='right';X.fillText(label,cx+cardW-6,cy+14);}
-      // Lore combo chain link
-      const lcm=findLoreCombo(ch.id);
-      if(lcm){const lcmP=lcm.pair.find(id=>id!==ch.id);const lcmC=CHARS.find(c=>c.id===lcmP);if(lcmC){X.font='bold 7px Consolas,monospace';X.textAlign='left';X.fillStyle='#ff880044';X.fillText('\u26D3'+lcmC.name,cx+6,cy+57);}}
       addBtn(prefix+i,cx,cy,cardW,cardH,'','transparent',()=>{cb(i);});
     });
     const rows=Math.ceil(displayChars.length/cols);
@@ -12125,10 +12131,10 @@ function drawSelectMobile(){
   if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W/4+10,comboY);}
   if(p2Elem>0){const key=CHARS[p2Char].id+'_'+ELEMENTS[p2Elem].id;X.fillStyle=ELEMENTS[p2Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W*3/4-10,comboY);}
 
-  // Sponsor / Lore Combo info
+  // Sponsor pickers
   const sponsorY=comboY+12;
-  drawSponsorInfo(W/4+10,sponsorY,CHARS[p1Char].id,'center');
-  drawSponsorInfo(W*3/4-10,sponsorY,CHARS[p2Char].id,'center');
+  drawSponsorPicker(W/4+10,sponsorY,CHARS[p1Char].id,p1Sponsor,'p1spm',(idx)=>{p1Sponsor=idx;},[CHARS[p2Char].id],W/2-20);
+  drawSponsorPicker(W*3/4-10,sponsorY,CHARS[p2Char].id,p2Sponsor,'p2spm',(idx)=>{p2Sponsor=idx;},[CHARS[p1Char].id],W/2-20);
 
   addBtn('battle',W/2-80,H-55,160,40,'BATTLE!','#ff4444',startBattle);
   addBtn('back',10,H-48,60,32,'Back','#666',()=>{screen='title';});
@@ -12201,26 +12207,59 @@ function drawElementIcon(cx,cy,elemId,size){
       break;
   }
 }
-function drawSponsorInfo(cx,cy,charId,align){
-  // Show lore combo / sponsor info for a character
-  const combo=findLoreCombo(charId);
-  if(!combo)return 0; // no height used
-  const sponsorId=combo.pair.find(id=>id!==charId);
-  const sponsorChar=CHARS.find(c=>c.id===sponsorId);
-  if(!sponsorChar)return 0;
-  const isL=align==='left'||align==='center';
-  const ta=align==='center'?'center':align;
-  // Chain link icon + sponsor name
-  X.font='bold 9px Consolas,monospace';X.textAlign=ta;
-  X.fillStyle='#ff880088';
-  const chainIcon='\u26D3'; // chain link
-  X.fillText(chainIcon+' LORE COMBO: '+combo.name,cx,cy);
-  X.font='8px Consolas,monospace';X.fillStyle='#886644';
-  X.fillText('Sponsor: '+sponsorChar.name+' ['+getTierLetter(sponsorId)+']',cx,cy+12);
-  // Draw mini sponsor ball preview
-  const bx=align==='right'?cx-60:align==='center'?cx+X.measureText('Sponsor: '+sponsorChar.name).width/2+12:cx+X.measureText('Sponsor: '+sponsorChar.name).width+12;
-  drawBallPreview(bx,cy+8,6,sponsorChar);
-  return 20; // height used
+function drawSponsorPicker(cx,cy,charId,selectedSponsorIdx,prefix,onSelect,excludeIds,maxW){
+  // Show eligible sponsors as small selectable balls; returns height used
+  const eligible=getEligibleSponsors(charId,excludeIds);
+  if(eligible.length===0){
+    X.font='8px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';
+    X.fillText(getTierNum(charId)>=9?'S-TIER: NO SPONSOR':'NO SPONSORS AVAILABLE',cx,cy+8);
+    return 14;
+  }
+  X.font='bold '+(isMobile?'8':'9')+'px Consolas,monospace';X.textAlign='center';
+  X.fillStyle='#ff8800aa';X.fillText('SPONSOR',cx,cy);
+  const ballR=isMobile?8:10;
+  const gap=isMobile?4:6;
+  const itemW=ballR*2+gap;
+  const maxItems=Math.min(eligible.length,Math.floor((maxW||300)/(itemW)));
+  const totalW=maxItems*itemW-gap;
+  const startX=cx-totalW/2;
+  let h=16;
+  eligible.slice(0,maxItems).forEach((charIdx,i)=>{
+    const ch=CHARS[charIdx];
+    const bx=startX+i*itemW+ballR;
+    const by=cy+10+ballR;
+    const isSel=selectedSponsorIdx===charIdx;
+    const isLore=!!findLoreCombo(charId)&&findLoreCombo(charId).pair.includes(ch.id);
+    // Selection highlight
+    if(isSel){
+      X.beginPath();X.arc(bx,by,ballR+3,0,Math.PI*2);
+      X.strokeStyle='#ff8800';X.lineWidth=2;X.stroke();
+    }
+    // Lore combo glow
+    if(isLore){
+      X.beginPath();X.arc(bx,by,ballR+4,0,Math.PI*2);
+      X.strokeStyle='#ffcc0066';X.lineWidth=1.5;X.stroke();
+    }
+    drawBallPreview(bx,by,ballR,ch);
+    // Name below
+    X.font='bold '+(isMobile?'6':'7')+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=isSel?'#ff8800':isLore?'#ffcc00':'#888';
+    const shortN=ch.name.length>6?ch.name.slice(0,5)+'…':ch.name;
+    X.fillText(shortN,bx,by+ballR+8);
+    // Lore link icon
+    if(isLore){X.fillText('\u26D3',bx,by-ballR-3);}
+    addBtn(prefix+'_sp'+charIdx,bx-ballR-1,by-ballR-1,ballR*2+2,ballR*2+12,'','transparent',()=>{onSelect(charIdx);});
+  });
+  h=10+ballR*2+14;
+  // Show "None" option
+  const noneX=startX-itemW;
+  if(noneX>cx-totalW/2-itemW-5){
+    X.font='bold '+(isMobile?'7':'8')+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=selectedSponsorIdx<0?'#ff8800':'#555';
+    X.fillText('NONE',noneX,cy+10+ballR+3);
+    addBtn(prefix+'_spN',noneX-15,cy+4,30,h-4,'','transparent',()=>{onSelect(-1);});
+  }
+  return h;
 }
 function drawElementPicker(sx,sy,selected,prefix,cb){
   ELEMENTS.forEach((el,i)=>{
@@ -12293,6 +12332,10 @@ function startBattle(){
     const t2=createFighter(teamChar2,teamElem2,0);
     const t3=createFighter(teamChar3,teamElem3,0);
     const boss=createFighter(bossChar,bossElem,1);
+    // Assign selected sponsors
+    if(teamSponsor1>=0)t1.selectedSponsor=CHARS[teamSponsor1].id;
+    if(teamSponsor2>=0)t2.selectedSponsor=CHARS[teamSponsor2].id;
+    if(teamSponsor3>=0)t3.selectedSponsor=CHARS[teamSponsor3].id;
     // Position team spread out, boss on right
     t1.y=ARENA.y+ARENA.h*0.25;
     t2.y=ARENA.y+ARENA.h*0.5;
@@ -12304,6 +12347,9 @@ function startBattle(){
     addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' + '+CHARS[teamChar3].name+' vs '+CHARS[bossChar].name);
   } else {
     fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
+    // Assign selected sponsors
+    if(p1Sponsor>=0)fighters[0].selectedSponsor=CHARS[p1Sponsor].id;
+    if(p2Sponsor>=0)fighters[1].selectedSponsor=CHARS[p2Sponsor].id;
     // Apply personalized win buffs from previous rounds
     fighters.forEach(f=>applyWinBuffToFighter(f));
     addLog('Round '+roundNumber+(p1RoundWins+p2RoundWins>0?' (P1:'+p1RoundWins+' P2:'+p2RoundWins+')':''));
@@ -13154,25 +13200,29 @@ function drawBattle(){
     }
     // Sponsor bars (only show if char has a lore combo)
     const lbY=spBarY+spBarH+2,lbH=6;
-    if(findLoreCombo(f1.char.id)&&!f1.sponsorUsed){
+    if(f1.selectedSponsor&&!f1.sponsorUsed){
       const lr1=f1.sponsorBar/f1.sponsorMax;
+      const sc1=CHARS.find(c=>c.id===f1.selectedSponsor);
+      const isLore1=!!findLoreCombo(f1.char.id)&&findLoreCombo(f1.char.id).pair.includes(f1.selectedSponsor);
       X.fillStyle='#0a0a0a';X.fillRect(p1bx,lbY,barW,lbH);
       const lbg1=X.createLinearGradient(p1bx,lbY,p1bx+barW*lr1,lbY);
       lbg1.addColorStop(0,'#664422');lbg1.addColorStop(1,lr1>=1?'#ff8800':'#885522');
       X.fillStyle=lbg1;X.fillRect(p1bx,lbY,barW*lr1,lbH);
       X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p1bx,lbY,barW,lbH);
-      if(lr1>=1){X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle='#ff8800';X.fillText('COMBO READY!',p1bx+2,lbY+5.5);}
-      else{const combo=findLoreCombo(f1.char.id);const sponsorId=combo.pair.find(id=>id!==f1.char.id);const sc=CHARS.find(c=>c.id===sponsorId);if(sc){X.font='7px Consolas,monospace';X.textAlign='left';X.fillStyle='#886644';X.fillText(sc.name,p1bx+2,lbY+5);}}
+      if(lr1>=1){X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle='#ff8800';X.fillText(isLore1?'LORE COMBO!':'SPONSOR!',p1bx+2,lbY+5.5);}
+      else if(sc1){X.font='7px Consolas,monospace';X.textAlign='left';X.fillStyle='#886644';X.fillText((isLore1?'\u26D3':'')+sc1.name,p1bx+2,lbY+5);}
     }
-    if(findLoreCombo(f2.char.id)&&!f2.sponsorUsed){
+    if(f2.selectedSponsor&&!f2.sponsorUsed){
       const lr2=f2.sponsorBar/f2.sponsorMax;
+      const sc2=CHARS.find(c=>c.id===f2.selectedSponsor);
+      const isLore2=!!findLoreCombo(f2.char.id)&&findLoreCombo(f2.char.id).pair.includes(f2.selectedSponsor);
       X.fillStyle='#0a0a0a';X.fillRect(p2bx,lbY,barW,lbH);
       const lbg2=X.createLinearGradient(p2bx+barW*(1-lr2),lbY,p2bx+barW,lbY);
       lbg2.addColorStop(0,lr2>=1?'#ff8800':'#885522');lbg2.addColorStop(1,'#664422');
       X.fillStyle=lbg2;X.fillRect(p2bx+barW*(1-lr2),lbY,barW*lr2,lbH);
       X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p2bx,lbY,barW,lbH);
-      if(lr2>=1){X.font='bold 8px Consolas,monospace';X.textAlign='right';X.fillStyle='#ff8800';X.fillText('COMBO READY!',p2bx+barW-2,lbY+5.5);}
-      else{const combo=findLoreCombo(f2.char.id);const sponsorId=combo.pair.find(id=>id!==f2.char.id);const sc=CHARS.find(c=>c.id===sponsorId);if(sc){X.font='7px Consolas,monospace';X.textAlign='right';X.fillStyle='#886644';X.fillText(sc.name,p2bx+barW-2,lbY+5);}}
+      if(lr2>=1){X.font='bold 8px Consolas,monospace';X.textAlign='right';X.fillStyle='#ff8800';X.fillText(isLore2?'LORE COMBO!':'SPONSOR!',p2bx+barW-2,lbY+5.5);}
+      else if(sc2){X.font='7px Consolas,monospace';X.textAlign='right';X.fillStyle='#886644';X.fillText((isLore2?'\u26D3':'')+sc2.name,p2bx+barW-2,lbY+5);}
     }
 
     X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';X.fillText('VS',W/2,barY+12);
@@ -13371,9 +13421,6 @@ function drawBossSelect(){
         X.font='8px Consolas,monospace';X.textAlign='left';X.fillStyle='#888';
         X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),cx+8,cy+(cardH>120?90:74));
       }
-      // Lore combo chain link indicator
-      const lcb=findLoreCombo(ch.id);
-      if(lcb){const lcbP=lcb.pair.find(id=>id!==ch.id);const lcbC=CHARS.find(c=>c.id===lcbP);if(lcbC){X.font='bold 7px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff880055';X.fillText('\u26D3'+lcbC.name,cx+cardW/2,cy+cardH-3);}}
       addBtn('bsel_'+i,cx,cy,cardW,cardH,'','transparent',()=>{
         if(origIdx===teamChar1||origIdx===teamChar2||origIdx===teamChar3)return;
         if(!_bossSelSlot)_bossSelSlot=1;
@@ -13514,24 +13561,20 @@ function drawBossSelect(){
         if(bDesc){X.font='10px Consolas,monospace';X.textAlign='center';X.fillStyle=bossEl.color+'cc';X.fillText(bDesc,W/2,sumY);}
       }
     }
-    // Sponsor / Lore Combo info for team members
-    const sponsorInfoY=isMobile?H-120:H-140;
+    // Sponsor pickers for team members
+    const spBaseY=isMobile?H-150:H-170;
     const teamIds=[CHARS[teamChar1].id,CHARS[teamChar2].id,CHARS[teamChar3].id];
-    const teamWithCombos=teamIds.filter(id=>findLoreCombo(id));
-    if(teamWithCombos.length>0){
-      X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.textAlign='center';
-      X.fillStyle='#ff880088';X.fillText('\u26D3 LORE COMBOS IN YOUR TEAM',W/2,sponsorInfoY);
-      teamWithCombos.forEach((id,ti)=>{
-        const combo=findLoreCombo(id);
-        const sponsorId=combo.pair.find(sid=>sid!==id);
-        const ch=CHARS.find(c=>c.id===id);
-        const sc=CHARS.find(c=>c.id===sponsorId);
-        if(ch&&sc){
-          X.font=(isMobile?'8':'9')+'px Consolas,monospace';X.fillStyle='#886644';
-          X.fillText(ch.name+' + '+sc.name+' = '+combo.name,W/2,sponsorInfoY+14+ti*12);
-        }
-      });
-    }
+    const bossId=CHARS[bossChar].id;
+    const spExclude=[...teamIds,bossId];
+    const spColW=Math.floor(W/3)-5;
+    const spLabels=[{idx:teamChar1,sel:teamSponsor1,c:'#4488ff',l:'T1',cb:(i)=>{teamSponsor1=i;}},
+      {idx:teamChar2,sel:teamSponsor2,c:'#33cc66',l:'T2',cb:(i)=>{teamSponsor2=i;}},
+      {idx:teamChar3,sel:teamSponsor3,c:'#ff8833',l:'T3',cb:(i)=>{teamSponsor3=i;}}];
+    spLabels.forEach((sp,si)=>{
+      const spx=spColW/2+5+si*(W/3);
+      const excl=spExclude.filter(id=>id!==CHARS[sp.idx].id);
+      drawSponsorPicker(spx,spBaseY,CHARS[sp.idx].id,sp.sel,'bsp'+si,(idx)=>{sp.cb(idx);},excl,spColW);
+    });
     // FIGHT button on page 3
     const fightY=isMobile?H-85:H-100;
     addBtn('bossBattle',W/2-100,fightY,200,isMobile?34:42,'FIGHT BOSS!','#cc4444',startBattle);
@@ -13605,7 +13648,7 @@ function drawResult(){
     roundNumber++;
     startBattle();
   });
-  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];screen=gameMode==='boss'?'bossSelect':'select';});
+  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];p1Sponsor=-1;p2Sponsor=-1;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;screen=gameMode==='boss'?'bossSelect':'select';});
   addBtn('titleback',W/2-60,btnY+55,120,35,'Title','#555',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];screen='title';});
   buttons.forEach(drawBtn);
 }
