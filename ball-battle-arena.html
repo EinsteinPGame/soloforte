@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v9.3.0 — Night Build: personalized win buffs, cinematic cutscenes, source material fixes, Mahoraga boss
+// BALL BATTLE ARENA v9.4.0 — Dabura Karaba boss (S- tier, light/darkness phases, checkerboard domain)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -394,6 +394,15 @@ const CHARS=[
     specialName:'NEGATION SHIELD',
     isBoss:true,
   },
+  {
+    id:'dabura',name:'Dabura Karaba',color:'#ffcc44',
+    desc:'BOSS. Light sword, HP-unlock phases, light→darkness flip. Domain: checkerboard light/shadow.',
+    playstyle:'Boss — 3v1',
+    stats:{hp:2000,atk:32,speed:3.3,range:110,def:14,crit:16},
+    baseAtkInterval:50,relicChargeRate:0.65,
+    specialName:'RADIANT DOMAIN — MODULO',
+    isBoss:true,
+  },
 ];
 
 // ============================================================
@@ -492,6 +501,10 @@ const COMBO_EFFECTS={
   'todo_electric':'Higher chance to clap + swap',
   'todo_toxic':'Stat debuff from Boogie Woogie is stronger',
   'todo_cryo':'Swaps leave behind extra cursed papers',
+  'dabura_fire':'Light attacks +30% damage, darkness attacks -20%',
+  'dabura_electric':'Faster phase transitions + dashes, -15% damage',
+  'dabura_toxic':'Darkness attacks +30% damage, light attacks -20%',
+  'dabura_cryo':'RCT heals 50% faster (cap 25HP total remains)',
 };
 
 // ============================================================
@@ -503,6 +516,7 @@ const TIER_MAP={
   yuta:10,  // S (boss)
   smasher:10, // S (boss)
   mahoraga:10, // S (boss)
+  dabura:9, // S- (boss)
   higuruma:8, toji:8, kashimo:8, // A+
   nanami:7, choso:7, naoya:7, sandy:7, // A
   mechamaru:6, // A-
@@ -731,6 +745,7 @@ const PERSONALIZED_WIN_BUFFS={
   yuta:{name:'Rika Devotion',desc:'Rika stays 20% longer',apply(f){f._rikaDurationMult=(f._rikaDurationMult||1)*1.2;}},
   ryu:{name:'Granite Blast Focus',desc:'Special charges 20% faster',apply(f){f._ryuChargeMult=(f._ryuChargeMult||1)*1.2;}},
   mahoraga:{name:'Rapid Adaptation',desc:'Adaptation stacks +30% faster',apply(f){f.mahoAdaptPerStack=f.mahoAdaptPerStack*1.3;}},
+  dabura:{name:'Radiant Convergence',desc:'Phase thresholds shift +5% earlier',apply(f){f.dabPhaseShift=(f.dabPhaseShift||0)+0.05;}},
   katana:{name:'Iaijutsu Flow',desc:'Attack interval -12%',apply(f){f._katanaAtkIntervalMult=(f._katanaAtkIntervalMult||1)*0.88;}},
   mantis:{name:'Blade Frenzy',desc:'Attack speed +12%',apply(f){f._mantisAtkIntervalMult=(f._mantisAtkIntervalMult||1)*0.88;}},
   gorilla:{name:'Seismic Force',desc:'Knockback +20%',apply(f){f.gorillaKnockbackMult=(f.gorillaKnockbackMult||1)*1.2;}},
@@ -1187,6 +1202,34 @@ function createFighter(charIdx,elemIdx,side){
     mahoSlamPos:null, // {x,y} slam target
     mahoSwipeCD:0, // wide arc swipe cooldown
     mahoAdaptPulse:0, // visual pulse when adaptation triggers
+    // Dabura Karaba state — Light/Darkness phases
+    dabPhase:1, // 1=base, 2=light pillars (75%), 3=speed dash (50%), 4=darkness flip (25%), 5=RCT (5%)
+    dabPhaseShift:0, // win buff: shift thresholds earlier
+    dabLightMode:true, // true=light attacks, false=darkness (flips at phase 4)
+    dabSwordCD:0, // light sword melee cooldown
+    dabSwordSwing:0, // sword swing animation
+    dabSwordAngle:0, // sword direction
+    dabOrbCD:0, // light orb launch cooldown
+    dabOrbs:[], // active light orbs [{x,y,vx,vy,timer,exploded}]
+    dabPillarCD:0, // light pillar cooldown (phase 2+)
+    dabPillars:[], // active light pillars [{x,y,timer,maxTimer}]
+    dabDashCD:0, // speed dash cooldown (phase 3+)
+    dabDashing:false, // currently dashing
+    dabDashTimer:0, // dash duration
+    dabDashAngle:0, // dash direction
+    dabDashTrail:[], // light trail positions [{x,y,timer,dark}] — dark ones do self-damage
+    dabDarkFlip:false, // darkness mode active (phase 4)
+    dabDarkSelfDmgCD:0, // self-damage from dark attacks cooldown
+    dabRCTActive:false, // RCT healing active (phase 5)
+    dabRCTHealed:0, // total HP healed by RCT (cap 25)
+    dabRCTCap:25, // max HP RCT can heal
+    dabPhaseTransition:0, // transition animation timer
+    dabDomainActive:false, // checkerboard domain active
+    dabDomainTimer:0, // domain duration
+    dabDomainPhase:0, // alternates: 0=LIGHT BURNS, 1=SHADOW SEARS
+    dabDomainSwapTimer:0, // timer between zone swaps
+    dabDomainZones:[], // [{x,y,size,isLight}] checkerboard cells
+    dabAuraAngle:0, // rotating aura visual
   };
 }
 
@@ -1205,6 +1248,8 @@ function updatePhysics(f,dt){
   if(f.kashimoAmberActive)spdMult=0; // Kashimo frozen during AMBER charge
   if(f.mahoSlamActive)spdMult=0; // Mahoraga frozen during slam
   if(f.mahoShinjukuAnim>0)spdMult=0; // Mahoraga frozen during Shinjuku transition
+  if(f.dabPhaseTransition>0)spdMult=0; // Dabura frozen during phase transition
+  if(f.dabDashing)spdMult=0; // Dabura movement handled by dash logic
   if(f.slowTimer>0)spdMult*=0.55;
   if(f.captureTimer>0)spdMult=0.05; // nearly immobile when captured
 
@@ -1485,6 +1530,17 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker.char.id==='mahoraga'&&attacker.mahoShinjuku){
     dmg*=1.5; // 50% more damage in Shinjuku mode
   }
+  // Dabura Karaba — elemental damage modifiers + darkness self-damage
+  if(attacker.char.id==='dabura'&&attacker.elementActive){
+    const eId=attacker.elem.id;
+    if(eId==='fire'){dmg*=attacker.dabLightMode?1.3:0.8;} // fire: light+/dark-
+    else if(eId==='toxic'){dmg*=attacker.dabLightMode?0.8:1.3;} // toxic: opposite fire
+    else if(eId==='electric'){dmg*=0.85;} // lightning: less damage
+  }
+  // Dabura darkness mode: more base damage but self-damage on dark attacks
+  if(attacker.char.id==='dabura'&&attacker.dabDarkFlip){
+    dmg*=1.25; // darkness mode = more damage overall
+  }
   defender.hp-=dmg;
   defender.hitFlash=8;
   attacker.totalHits++;
@@ -1544,6 +1600,14 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       for(let r=0;r<4;r++){explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:80+r*30,color:'#ff2244',life:25,maxLife:25,dmg:defender.atk*0.3,owner:defender,target:null,hit:false});}
       shakeTimer=30;shakeAmt=18;triggerScreenFlash('#ff2244',20);
       addLog('MAHORAGA — SHINJUKU MODE!');
+      return dmg;
+    }
+    // Dabura Karaba — RCT prevents death at phase 5
+    if(defender.char.id==='dabura'&&defender.dabRCTActive&&defender.dabRCTHealed<defender.dabRCTCap){
+      defender.hp=1;
+      const heal=Math.min(3,defender.dabRCTCap-defender.dabRCTHealed);
+      defender.hp+=heal;defender.dabRCTHealed+=heal;
+      spawnDmgNum(defender.x,defender.y-defender.radius-20,'+'+Math.round(heal),'#00ff88',false);
       return dmg;
     }
     // Naoya resurrection — dies and becomes Cursed Spirit (Phase 2)
@@ -1622,7 +1686,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:f.char.id==='mahoraga'?0.85:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:f.char.id==='mahoraga'?0.85:f.char.id==='dabura'?0.8:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -1670,6 +1734,7 @@ function performWeaponAttack(f,enemy){
     case 'yuta':attackYuta(f,enemy,chaos);break;
     case 'todo':attackTodo(f,enemy,chaos);break;
     case 'mahoraga':attackMahoraga(f,enemy,chaos);break;
+    case 'dabura':attackDabura(f,enemy,chaos);break;
   }
 }
 
@@ -2983,6 +3048,66 @@ function relicMahoraga(f,enemy){
   addLog((f.side===0?'P1':'P2')+' NEGATION SHIELD!');
 }
 
+// ============================================================
+// DABURA KARABA — Light Sword + Light Orbs
+// ============================================================
+function attackDabura(f,enemy,chaos){
+  const d=dist(f,enemy);
+  if(d>f.radius+enemy.radius+70+chaos*3)return;
+  f.weaponExtend=1;f.weaponFlash=12;
+  SFX.critSlash();
+  const isDark=f.dabDarkFlip;
+  const swordDmg=f.atk*(isDark?1.4:1.2)*(1+chaos*0.1);
+  dealDamage(f,enemy,swordDmg,true);
+  spawnBurst(enemy.x,enemy.y,isDark?'#6622aa':'#ffcc44',10,5);
+  spawnSparks(enemy.x,enemy.y,isDark?'#aa44cc':'#ffee88',8);
+  const ka=angle(f,enemy);
+  enemy.vx+=Math.cos(ka)*(isDark?6:4);enemy.vy+=Math.sin(ka)*(isDark?6:4);
+  // Darkness self-damage
+  if(isDark&&f.dabDarkSelfDmgCD<=0){
+    f.hp-=f.maxHp*0.008;
+    f.dabDarkSelfDmgCD=30;
+    spawnDmgNum(f.x+rand(-10,10),f.y-f.radius-15,f.maxHp*0.008,'#aa44cc',false);
+  }
+  f.dabSwordSwing=15;
+  f.dabSwordAngle=ka;
+}
+
+function relicDabura(f,enemy){
+  // RADIANT DOMAIN — MODULO: checkerboard light/shadow zones
+  f.dabDomainActive=true;
+  f.dabDomainTimer=480; // 8 seconds
+  f.dabDomainPhase=0; // starts with LIGHT BURNS
+  f.dabDomainSwapTimer=90; // swap every 1.5 seconds
+  f.specialTimer=480;
+
+  // Generate checkerboard grid zones (4x3 grid)
+  f.dabDomainZones=[];
+  const cols=4,rows=3;
+  const cellW=W/cols,cellH=H/rows;
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      f.dabDomainZones.push({
+        x:c*cellW+cellW/2,
+        y:r*cellH+cellH/2,
+        w:cellW,h:cellH,
+        isLight:(r+c)%2===0,
+      });
+    }
+  }
+
+  SFX.relicActivate();
+  spawnBurst(f.x,f.y,'#ffcc44',40,12);
+  spawnBurst(f.x,f.y,'#ffffff',25,8);
+  for(let r=0;r<3;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:80+r*35,color:'#ffcc44',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  triggerScreenFlash('#ffcc44',15);
+  shakeTimer=20;shakeAmt=12;
+  spawnDmgNum(f.x,f.y-f.radius-30,'RADIANT DOMAIN','#ffcc44',false);
+  addLog((f.side===0?'P1':'P2')+' RADIANT DOMAIN — MODULO!');
+}
+
 function todoPerformSwap(f,targetX,targetY,swapTarget){
   // Swap positions
   const oldX=f.x,oldY=f.y;
@@ -3488,6 +3613,7 @@ function useSpecial(f,enemy){
     case 'yuta':relicYuta(f,enemy);break;
     case 'todo':relicTodo(f,enemy);break;
     case 'mahoraga':relicMahoraga(f,enemy);break;
+    case 'dabura':relicDabura(f,enemy);break;
   }
 }
 
@@ -5112,7 +5238,7 @@ function updateRelicKashimo(f,enemy,dt){
     f.weaponFlash=12;
     // Deal massive damage every few frames
     if(battleTime%4<1&&enemy.alive){
-      const isBoss=enemy.char&&(enemy.char.id==='smasher'||enemy.char.id==='gojo'||enemy.char.id==='sukuna'||enemy.char.id==='mahoraga');
+      const isBoss=enemy.char&&(enemy.char.id==='smasher'||enemy.char.id==='gojo'||enemy.char.id==='sukuna'||enemy.char.id==='mahoraga'||enemy.char.id==='dabura');
       const floodDmg=isBoss?enemy.maxHp*0.14:enemy.maxHp*1.5; // one-tap normals, 60-70% boss HP over flood
       const elecMult=f.elementActive&&f.elem.id==='electric'?1.5:1;
       dealDamage(f,enemy,floodDmg*elecMult/15); // spread over 15 ticks
@@ -6607,10 +6733,208 @@ function updateBattle(dt){
       if(f.mahoSwordSwing>0)f.mahoSwordSwing-=dt;
     }
 
+    // Dabura Karaba per-frame: phase transitions, light orbs, pillars, dash, domain, RCT
+    if(f.char.id==='dabura'){
+      const hpPct=f.hp/f.maxHp;
+      const shift=f.dabPhaseShift||0;
+      // Phase transitions based on HP thresholds
+      if(f.dabPhase===1&&hpPct<=(0.75+shift)){
+        f.dabPhase=2;f.dabPhaseTransition=60;
+        showRelicText('LIGHT PILLARS','#ffcc44');
+        spawnBurst(f.x,f.y,'#ffcc44',30,10);shakeTimer=15;shakeAmt=10;
+        addLog('DABURA — LIGHT PILLARS UNLOCKED!');
+      }
+      if(f.dabPhase===2&&hpPct<=(0.50+shift)){
+        f.dabPhase=3;f.dabPhaseTransition=60;
+        f.speed=f.baseSpeed*1.4;
+        const isElec=f.elementActive&&f.elem.id==='electric';
+        if(isElec)f.speed=f.baseSpeed*1.6;
+        showRelicText('SPEED DASH','#ffee88');
+        spawnBurst(f.x,f.y,'#ffee88',30,10);shakeTimer=15;shakeAmt=10;
+        addLog('DABURA — SPEED DASH UNLOCKED!');
+      }
+      if(f.dabPhase===3&&hpPct<=(0.25+shift)){
+        f.dabPhase=4;f.dabPhaseTransition=90;
+        f.dabDarkFlip=true;f.dabLightMode=false;
+        f.atk=Math.round(f.baseAtk*1.35);
+        showRelicText('DARKNESS FLIP','#6622aa');
+        spawnBurst(f.x,f.y,'#6622aa',40,12);spawnBurst(f.x,f.y,'#ffcc44',20,6);
+        shakeTimer=25;shakeAmt=14;triggerScreenFlash('#6622aa',15);
+        addLog('DABURA — LIGHT → DARKNESS!');
+      }
+      if(f.dabPhase===4&&hpPct<=(0.05+shift)&&!f.dabRCTActive){
+        f.dabPhase=5;f.dabPhaseTransition=60;
+        f.dabRCTActive=true;f.dabRCTHealed=0;
+        showRelicText('REVERSE CURSED TECHNIQUE','#00ff88');
+        spawnBurst(f.x,f.y,'#00ff88',30,10);shakeTimer=15;shakeAmt=10;
+        addLog('DABURA — RCT ACTIVATED!');
+      }
+
+      // Phase transition animation (i-frames)
+      if(f.dabPhaseTransition>0){
+        f.dabPhaseTransition-=dt;
+        f.vx=0;f.vy=0;
+        f.stunTimer=0;f.freezeTimer=0;
+        if(battleTime%2<1){
+          const pa=Math.random()*Math.PI*2;
+          spawnParticle(f.x+Math.cos(pa)*35,f.y+Math.sin(pa)*35,
+            f.dabDarkFlip?'#6622aa':'#ffcc44',Math.cos(pa+Math.PI)*2,Math.sin(pa+Math.PI)*2,15,3);
+        }
+      }
+
+      // Aura rotation
+      f.dabAuraAngle+=0.03*dt;
+
+      // Self-damage cooldown
+      if(f.dabDarkSelfDmgCD>0)f.dabDarkSelfDmgCD-=dt;
+      if(f.dabSwordSwing>0)f.dabSwordSwing-=dt;
+
+      // RCT passive healing (phase 5)
+      if(f.dabRCTActive&&f.dabRCTHealed<f.dabRCTCap){
+        const cryoMult=(f.elementActive&&f.elem.id==='cryo')?1.5:1;
+        const healRate=0.02*dt*cryoMult;
+        const heal=Math.min(healRate,f.dabRCTCap-f.dabRCTHealed);
+        f.hp=Math.min(f.maxHp,f.hp+heal);
+        f.dabRCTHealed+=heal;
+        if(battleTime%10<1)spawnParticle(f.x+rand(-15,15),f.y+rand(-15,15),'#00ff88',0,-1,10,2);
+      }
+
+      // Light orb cooldown + launching
+      if(f.dabOrbCD>0)f.dabOrbCD-=dt;
+      if(f.dabOrbCD<=0&&enemy&&enemy.alive&&dist(f,enemy)>80){
+        f.dabOrbCD=f.dabDarkFlip?90:120;
+        const oa=angle(f,enemy);
+        f.dabOrbs.push({x:f.x,y:f.y,vx:Math.cos(oa)*5,vy:Math.sin(oa)*5,timer:120,exploded:false});
+        spawnBurst(f.x,f.y,f.dabDarkFlip?'#6622aa':'#ffee88',6,3);
+      }
+      // Update orbs
+      for(let i=f.dabOrbs.length-1;i>=0;i--){
+        const orb=f.dabOrbs[i];
+        orb.x+=orb.vx*dt;orb.y+=orb.vy*dt;orb.timer-=dt;
+        // Check hit
+        fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
+          if(!orb.exploded&&dist(orb,e)<e.radius+15){
+            orb.exploded=true;
+            const orbDmg=f.atk*(f.dabDarkFlip?1.0:0.8);
+            dealDamage(f,e,orbDmg,true);
+            // Ray explosion — spawn 4 rays outward
+            for(let r=0;r<4;r++){
+              const ra=Math.PI*2*r/4;
+              explosions.push({x:orb.x,y:orb.y,radius:0,maxRadius:50,color:f.dabDarkFlip?'#6622aa':'#ffcc44',life:12,maxLife:12,dmg:f.atk*0.3,owner:f,target:null,hit:false});
+            }
+            spawnBurst(orb.x,orb.y,f.dabDarkFlip?'#aa44cc':'#ffee88',15,6);
+            shakeTimer=8;shakeAmt=5;
+          }
+        });
+        if(orb.timer<=0||orb.exploded||orb.x<-20||orb.x>W+20||orb.y<-20||orb.y>H+20){
+          f.dabOrbs.splice(i,1);
+        }
+      }
+
+      // Light pillars (phase 2+)
+      if(f.dabPhase>=2){
+        if(f.dabPillarCD>0)f.dabPillarCD-=dt;
+        if(f.dabPillarCD<=0&&enemy&&enemy.alive){
+          f.dabPillarCD=f.dabDarkFlip?100:140;
+          // Spawn pillar at enemy position (slight offset)
+          f.dabPillars.push({x:enemy.x+rand(-30,30),y:enemy.y+rand(-30,30),timer:60,maxTimer:60});
+          addLog(f.dabDarkFlip?'DARK PILLAR!':'LIGHT PILLAR!');
+        }
+        // Update pillars
+        for(let i=f.dabPillars.length-1;i>=0;i--){
+          const p=f.dabPillars[i];
+          p.timer-=dt;
+          // Warning phase: first 30 frames = warning indicator. Last 30 = damage
+          if(p.timer<=30&&p.timer>28){
+            // Impact frame — damage enemies in pillar radius
+            const pillarR=45;
+            fighters.filter(e=>e.side!==f.side&&e.alive&&dist(p,e)<pillarR).forEach(e=>{
+              dealDamage(f,e,f.atk*(f.dabDarkFlip?1.3:1.0),true);
+              e.stunTimer=Math.max(e.stunTimer,25);
+            });
+            spawnBurst(p.x,p.y,f.dabDarkFlip?'#6622aa':'#ffcc44',20,8);
+            shakeTimer=8;shakeAmt=6;
+          }
+          if(p.timer<=0)f.dabPillars.splice(i,1);
+        }
+      }
+
+      // Speed dash (phase 3+)
+      if(f.dabPhase>=3){
+        if(f.dabDashCD>0)f.dabDashCD-=dt;
+        if(f.dabDashing){
+          f.dabDashTimer-=dt;
+          f.x+=Math.cos(f.dabDashAngle)*10*dt;
+          f.y+=Math.sin(f.dabDashAngle)*10*dt;
+          // Clamp to arena
+          f.x=Math.max(f.radius,Math.min(W-f.radius,f.x));
+          f.y=Math.max(f.radius,Math.min(H-f.radius,f.y));
+          // Leave trail
+          f.dabDashTrail.push({x:f.x,y:f.y,timer:40,dark:f.dabDarkFlip});
+          // Dash hits enemies
+          fighters.filter(e=>e.side!==f.side&&e.alive&&dist(f,e)<f.radius+e.radius+10).forEach(e=>{
+            dealDamage(f,e,f.atk*0.6,true);
+            const ka=angle(f,e);
+            e.vx+=Math.cos(ka)*4;e.vy+=Math.sin(ka)*4;
+          });
+          if(f.dabDashTimer<=0)f.dabDashing=false;
+        }
+        if(!f.dabDashing&&f.dabDashCD<=0&&enemy&&enemy.alive){
+          const isElec=f.elementActive&&f.elem.id==='electric';
+          f.dabDashCD=isElec?100:150;
+          f.dabDashing=true;
+          f.dabDashTimer=20;
+          f.dabDashAngle=angle(f,enemy);
+          SFX.critSlash();
+        }
+        // Update dash trail
+        for(let i=f.dabDashTrail.length-1;i>=0;i--){
+          f.dabDashTrail[i].timer-=dt;
+          // Dark trail does self-damage to Dabura if touched
+          if(f.dabDashTrail[i].dark&&dist(f,f.dabDashTrail[i])<f.radius+10&&f.dabDarkSelfDmgCD<=0){
+            f.hp-=f.maxHp*0.005;f.dabDarkSelfDmgCD=30;
+          }
+          if(f.dabDashTrail[i].timer<=0)f.dabDashTrail.splice(i,1);
+        }
+      }
+
+      // Domain update
+      if(f.dabDomainActive){
+        f.dabDomainTimer-=dt;
+        f.dabDomainSwapTimer-=dt;
+        // Swap light/shadow every 1.5s
+        if(f.dabDomainSwapTimer<=0){
+          f.dabDomainSwapTimer=90;
+          f.dabDomainPhase=1-f.dabDomainPhase;
+          f.dabDomainZones.forEach(z=>z.isLight=!z.isLight);
+          const label=f.dabDomainPhase===0?'LIGHT BURNS':'SHADOW SEARS';
+          spawnDmgNum(W/2,H/2-30,label,f.dabDomainPhase===0?'#ffcc44':'#6622aa',true);
+        }
+        // Damage enemies in active zones
+        if(battleTime%6<1){
+          fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
+            const inActiveZone=f.dabDomainZones.some(z=>{
+              const inZone=Math.abs(e.x-z.x)<z.w/2&&Math.abs(e.y-z.y)<z.h/2;
+              return inZone&&((f.dabDomainPhase===0&&z.isLight)||(f.dabDomainPhase===1&&!z.isLight));
+            });
+            if(inActiveZone){
+              dealDamage(f,e,f.atk*0.15,true);
+              spawnParticle(e.x+rand(-10,10),e.y+rand(-10,10),
+                f.dabDomainPhase===0?'#ffcc44':'#6622aa',rand(-1,1),rand(-2,-1),10,2);
+            }
+          });
+        }
+        if(f.dabDomainTimer<=0){
+          f.dabDomainActive=false;
+          f.dabDomainZones=[];
+        }
+      }
+    }
+
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='mahoraga'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='mahoraga'||f.char.id==='dabura'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
@@ -6624,7 +6948,7 @@ function updateBattle(dt){
         else if(f.char.id==='berserk'&&f.berserkReloadTimer>0){/* reloading */}
         else if(f.char.id==='katana'&&f.katanaDashing){/* mid counter-dash */}
         else if(f.char.id==='naoya'&&(f.naoyaDashing||f.naoyaTransitionTimer>0)){/* mid projection dash or transforming */}
-        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='ryu'||f.char.id==='naoya'||f.char.id==='mahoraga'||isWeaponFacingEnemy(f,enemy)){
+        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='ryu'||f.char.id==='naoya'||f.char.id==='mahoraga'||f.char.id==='dabura'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -9244,6 +9568,108 @@ function drawBall(f){
     }
   }
 
+  // Dabura Karaba visual effects
+  if(f.char.id==='dabura'){
+    const isDark=f.dabDarkFlip;
+    const col1=isDark?'#6622aa':'#ffcc44';
+    const col2=isDark?'#aa44cc':'#ffee88';
+    // Phase indicator above head
+    const phaseNames=['','BASE','PILLARS','DASH','DARKNESS','RCT'];
+    X.font='bold 9px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=col1;
+    X.fillText('P'+f.dabPhase+' '+phaseNames[f.dabPhase],f.x,f.y-f.radius-22);
+    // Rotating aura
+    const auraAlpha=0.15+Math.sin(battleTime*0.15)*0.08;
+    X.save();X.translate(f.x,f.y);X.rotate(f.dabAuraAngle);
+    for(let i=0;i<6;i++){
+      const sa=Math.PI*2*i/6;
+      X.strokeStyle='rgba('+(isDark?'102,34,170':'255,204,68')+','+auraAlpha+')';
+      X.lineWidth=2;
+      X.beginPath();X.moveTo(Math.cos(sa)*f.radius*0.9,Math.sin(sa)*f.radius*0.9);
+      X.lineTo(Math.cos(sa)*(f.radius+12),Math.sin(sa)*(f.radius+12));X.stroke();
+    }
+    X.restore();
+    // RCT indicator
+    if(f.dabRCTActive){
+      X.strokeStyle='rgba(0,255,136,'+(0.3+Math.sin(battleTime*0.2)*0.15)+')';
+      X.lineWidth=2;
+      X.beginPath();X.arc(f.x,f.y,f.radius+8,0,Math.PI*2);X.stroke();
+      X.font='bold 8px Consolas,monospace';
+      X.fillStyle='#00ff88';
+      X.fillText('RCT '+Math.round(f.dabRCTCap-f.dabRCTHealed),f.x,f.y+f.radius+15);
+    }
+    // Darkness mode aura
+    if(isDark){
+      const darkAlpha=0.2+Math.sin(battleTime*0.18)*0.1;
+      X.strokeStyle='rgba(102,34,170,'+darkAlpha+')';
+      X.lineWidth=3;
+      X.beginPath();X.arc(f.x,f.y,f.radius+6,0,Math.PI*2);X.stroke();
+    }
+    // Sword swing visual
+    if(f.dabSwordSwing>0){
+      const swProg=f.dabSwordSwing/15;
+      const swLen=isDark?65:50;
+      X.save();X.translate(f.x,f.y);X.rotate(f.dabSwordAngle);
+      X.strokeStyle='rgba('+(isDark?'170,68,204':'255,238,136')+','+(swProg*0.7)+')';
+      X.lineWidth=3+swProg*3;
+      X.beginPath();X.arc(0,0,swLen,-Math.PI/3*swProg,Math.PI/3*swProg);X.stroke();
+      X.restore();
+    }
+    // Light orbs
+    f.dabOrbs.forEach(orb=>{
+      const orbCol=isDark?'#aa44cc':'#ffcc44';
+      X.beginPath();X.arc(orb.x,orb.y,8,0,Math.PI*2);
+      const og=X.createRadialGradient(orb.x,orb.y,2,orb.x,orb.y,8);
+      og.addColorStop(0,'#ffffff');og.addColorStop(1,orbCol);
+      X.fillStyle=og;X.fill();
+      X.strokeStyle=orbCol;X.lineWidth=1;X.stroke();
+    });
+    // Light pillars
+    f.dabPillars.forEach(p=>{
+      const pillarProg=p.timer/p.maxTimer;
+      const isWarning=p.timer>30;
+      if(isWarning){
+        // Warning circle
+        X.strokeStyle='rgba('+(isDark?'102,34,170':'255,204,68')+','+(0.3+Math.sin(battleTime*0.5)*0.2)+')';
+        X.lineWidth=2;X.setLineDash([6,4]);
+        X.beginPath();X.arc(p.x,p.y,45,0,Math.PI*2);X.stroke();
+        X.setLineDash([]);
+      } else {
+        // Active pillar — vertical beam effect
+        const pillarAlpha=0.4*(p.timer/30);
+        X.fillStyle='rgba('+(isDark?'102,34,170':'255,204,68')+','+pillarAlpha+')';
+        X.fillRect(p.x-12,0,24,H);
+        X.fillStyle='rgba(255,255,255,'+(pillarAlpha*0.5)+')';
+        X.fillRect(p.x-4,0,8,H);
+      }
+    });
+    // Dash trail
+    f.dabDashTrail.forEach(t=>{
+      const alpha=t.timer/40*0.4;
+      X.beginPath();X.arc(t.x,t.y,f.radius*0.7,0,Math.PI*2);
+      X.fillStyle='rgba('+(t.dark?'102,34,170':'255,204,68')+','+alpha+')';X.fill();
+    });
+    // Domain checkerboard overlay
+    if(f.dabDomainActive){
+      f.dabDomainZones.forEach(z=>{
+        const active=(f.dabDomainPhase===0&&z.isLight)||(f.dabDomainPhase===1&&!z.isLight);
+        const zoneAlpha=active?0.15:0.05;
+        const zoneCol=z.isLight?'255,204,68':'102,34,170';
+        X.fillStyle='rgba('+zoneCol+','+zoneAlpha+')';
+        X.fillRect(z.x-z.w/2,z.y-z.h/2,z.w,z.h);
+        if(active){
+          X.strokeStyle='rgba('+zoneCol+',0.3)';X.lineWidth=1;
+          X.strokeRect(z.x-z.w/2,z.y-z.h/2,z.w,z.h);
+        }
+      });
+      // Domain label
+      const dLabel=f.dabDomainPhase===0?'LIGHT BURNS':'SHADOW SEARS';
+      X.font='bold 14px Consolas,monospace';X.textAlign='center';
+      X.fillStyle=f.dabDomainPhase===0?'rgba(255,204,68,0.6)':'rgba(102,34,170,0.6)';
+      X.fillText(dLabel,W/2,25);
+    }
+  }
+
   // HP text in center
   X.font='bold 13px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
   X.strokeStyle='#000';X.lineWidth=3;
@@ -9433,6 +9859,11 @@ function drawBall(f){
       const mode=f.mahoShinjuku?'SHINJUKU':f.mahoNegationActive?'SHIELD':'SWORD';
       X.fillText(mode+' A:'+adaptCount,f.x,statY);
       break;}
+    case 'dabura':{
+      const mode=f.dabDomainActive?'DOMAIN':f.dabDarkFlip?'DARK':'LIGHT';
+      const phaseLabel='P'+f.dabPhase+(f.dabRCTActive?' RCT':'');
+      X.fillText(mode+' '+phaseLabel,f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -9474,6 +9905,7 @@ function drawWeapon(f){
     case 'yuta':drawYutaWeapon(r,ext,flash,f);break;
     case 'todo':drawTodoWeapon(r,ext,flash,f);break;
     case 'mahoraga':drawMahoragaWeapon(r,ext,flash,f);break;
+    case 'dabura':drawDaburaWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -10048,6 +10480,42 @@ function drawMahoragaWeapon(r,ext,flash,f){
     X.fillStyle='rgba(255,34,68,0.5)';
     X.beginPath();X.arc(fx,(Math.random()-0.5)*6,3,0,Math.PI*2);X.fill();
   }
+}
+
+function drawDaburaWeapon(r,ext,flash,f){
+  // Light Sword — glowing blade that shifts to dark purple in darkness mode
+  const extend=ext*12;
+  const isDark=f.dabDarkFlip;
+  const bladeLen=isDark?60:50;
+  const bladeCol=flash?'#ffffff':isDark?'#6622aa':'#ffcc44';
+  const glowCol=isDark?'#aa44cc':'#ffee88';
+  // Handle
+  X.fillStyle=isDark?'#221133':'#aa8822';X.fillRect(r-5,-2.5,12,5);
+  // Guard (round crossguard)
+  X.fillStyle=isDark?'#442266':'#ddaa33';
+  X.beginPath();X.arc(r+6,0,5,0,Math.PI*2);X.fill();
+  // Blade body — triangular taper
+  const g=X.createLinearGradient(r+10,0,r+10+bladeLen+extend,0);
+  g.addColorStop(0,bladeCol);g.addColorStop(0.4,glowCol);g.addColorStop(0.8,bladeCol);g.addColorStop(1,'#ffffff');
+  X.fillStyle=g;
+  X.beginPath();
+  X.moveTo(r+10,-3.5);X.lineTo(r+10+bladeLen+extend,0);X.lineTo(r+10,3.5);X.closePath();X.fill();
+  // Edge glow
+  X.strokeStyle='rgba('+(isDark?'170,68,204':'255,238,136')+',0.6)';
+  X.lineWidth=1.5;
+  X.beginPath();X.moveTo(r+10,-3.5);X.lineTo(r+10+bladeLen+extend,0);X.stroke();
+  X.beginPath();X.moveTo(r+10,3.5);X.lineTo(r+10+bladeLen+extend,0);X.stroke();
+  // Glow particles on blade
+  if(battleTime%4<1){
+    const fx=r+10+Math.random()*bladeLen;
+    X.fillStyle='rgba('+(isDark?'170,68,204':'255,238,136')+',0.6)';
+    X.beginPath();X.arc(fx,(Math.random()-0.5)*5,2.5,0,Math.PI*2);X.fill();
+  }
+  // Light bloom at tip
+  X.globalAlpha=0.4+Math.sin(battleTime*0.2)*0.2;
+  X.beginPath();X.arc(r+10+bladeLen+extend,0,6,0,Math.PI*2);
+  X.fillStyle=glowCol;X.fill();
+  X.globalAlpha=1;
 }
 
 function drawMantisBlades(r,ext,flash,f){
