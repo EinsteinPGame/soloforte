@@ -291,8 +291,8 @@ const CHARS=[
     id:'gojo',name:'Gojo Satoru',color:'#5577ff',
     desc:'BOSS. Infinity barrier. Hollow Purple. Domain: Infinite Void.',
     playstyle:'Boss — 3v1',
-    stats:{hp:1800,atk:28,speed:3.2,range:180,def:15,crit:14},
-    baseAtkInterval:65,relicChargeRate:0.7,
+    stats:{hp:2200,atk:34,speed:3.5,range:190,def:16,crit:16},
+    baseAtkInterval:55,relicChargeRate:0.75,
     specialName:'I ALONE AM THE HONOURED ONE',
     isBoss:true,
   },
@@ -308,8 +308,8 @@ const CHARS=[
     id:'toji',name:'Toji',color:'#2a2a3a',
     desc:'Heavenly Restriction. 3 cursed weapons. No cursed energy needed.',
     playstyle:'Staff & Assassin',
-    stats:{hp:560,atk:32,speed:5.5,range:95,def:8,crit:20},
-    baseAtkInterval:35,relicChargeRate:0.8,
+    stats:{hp:600,atk:35,speed:5.8,range:100,def:9,crit:22},
+    baseAtkInterval:32,relicChargeRate:0.85,
     specialName:'I DON\'T NEED CURSED ENERGY.',
   },
   {
@@ -1158,9 +1158,9 @@ function createFighter(charIdx,elemIdx,side){
     yutaCopyCD:0, // cooldown between copy attempts
     yutaCopyFlash:0, // visual flash when copy triggers
     yutaRikaAngle:0, // Rika facing angle
-    yutaRikaHp:ch.id==='yuta'?700:0, // Rika's own HP — beefier for twin boss
-    yutaRikaMaxHp:ch.id==='yuta'?700:0,
-    yutaRikaAttackCD:ch.id==='yuta'?45+rand(0,20):0, // Rika attacks faster now
+    yutaRikaHp:ch.id==='yuta'?900:0, // Rika's own HP — twin boss partner
+    yutaRikaMaxHp:ch.id==='yuta'?900:0,
+    yutaRikaAttackCD:ch.id==='yuta'?35+rand(0,15):0, // Rika attacks fast — aggressive monster
     yutaRikaClawAnim:0, // claw visual animation
     yutaRikaLunging:false, // Rika lunging toward enemy
     yutaRikaLungePos:{x:0,y:0}, // Rika's current position during lunge
@@ -1510,7 +1510,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     return 0;
   }
   // Mahoraga Adaptation Wheel — stacking damage reduction per attack type
-  if(defender.char.id==='mahoraga'&&!defender.mahoShinjuku){
+  // Blocked by Higuruma confiscation (higurumaDisableTimer > 0)
+  if(defender.char.id==='mahoraga'&&!defender.mahoShinjuku&&defender.higurumaDisableTimer<=0){
     const atkType=attacker.char.id; // adapt per character type
     if(!defender.mahoAdapt[atkType])defender.mahoAdapt[atkType]=0;
     const reduction=Math.min(defender.mahoAdaptMax,defender.mahoAdapt[atkType]*defender.mahoAdaptPerStack);
@@ -1526,6 +1527,9 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     defender.mahoWheelAnim=30; // spin wheel visual
     defender.mahoLastAdaptType=atkType;
     defender.mahoAdaptPulse=15;
+  } else if(defender.char.id==='mahoraga'&&defender.higurumaDisableTimer>0){
+    // Confiscation blocks adaptation — show it
+    if(battleTime%30<2)spawnDmgNum(defender.x+rand(-10,10),defender.y-defender.radius-25,'ADAPT BLOCKED','#ffcc00',false);
   }
   // Mahoraga Shinjuku mode — attacker bypasses ALL defender defenses (already applied above via reduced def)
   if(attacker.char.id==='mahoraga'&&attacker.mahoShinjuku){
@@ -2438,6 +2442,16 @@ function attackKashimo(f,enemy,chaos){
     spawnBurst(enemy.x,enemy.y,'#ffcc00',8,4);
     spawnSparks(enemy.x,enemy.y,'#ffee66',4);
     shakeTimer=4;shakeAmt=3;
+    // Visible lightning bolt from Kashimo to enemy (zigzag line)
+    const segments=6;
+    for(let s=0;s<segments;s++){
+      const t1=s/segments,t2=(s+1)/segments;
+      const x1=lerp(f.x,enemy.x,t1)+(s>0&&s<segments?rand(-12,12):0);
+      const y1=lerp(f.y,enemy.y,t1)+(s>0&&s<segments?rand(-12,12):0);
+      const x2=lerp(f.x,enemy.x,t2)+(s<segments-1?rand(-12,12):0);
+      const y2=lerp(f.y,enemy.y,t2)+(s<segments-1?rand(-12,12):0);
+      spawnParticle((x1+x2)/2,(y1+y2)/2,'#ffee00',rand(-0.5,0.5),rand(-0.5,0.5),8,2);
+    }
     // Electric shock on hit (small zap)
     if(Math.random()<0.3+chaos*0.03){
       const zapDmg=f.atk*0.2;
@@ -2547,12 +2561,13 @@ function ryuSpawnSplits(p){
   fighters.forEach(f=>{if(f&&f.alive&&f.side!==p.owner.side)splitTarget=f;});
   for(let si=0;si<count;si++){
     const sa=(si/count)*Math.PI*2+rand(-0.15,0.15);
+    const splitSpd=tracking?3.5:5; // slower when homing — menacing approach
     projectiles.push({
       x:p.x,y:p.y,
-      vx:Math.cos(sa)*5,vy:Math.sin(sa)*5,
+      vx:Math.cos(sa)*splitSpd,vy:Math.sin(sa)*splitSpd,
       owner:p.owner,target:tracking?splitTarget:null,color:'#ff8844',
-      life:80,radius:7,dmg:splitDmg,
-      explosive:false,homing:tracking,homingStr:tracking?0.04:0,isRyuSplit:true,
+      life:100,radius:7,dmg:splitDmg,
+      explosive:false,homing:tracking,homingStrength:tracking?0.035:0,isRyuSplit:true,
     });
   }
   spawnBurst(p.x,p.y,'#ff8844',25,8);
@@ -2632,14 +2647,19 @@ function attackHiguruma(f,enemy,chaos){
   const isElecElem=f.elementActive&&f.elem.id==='electric';
   const isToxicElem=f.elementActive&&f.elem.id==='toxic';
 
-  // Executioner Sword — next attack after Execution verdict is a devastating sword strike
+  // Executioner Sword — next attack after Execution verdict is a devastating sword strike (PIERCES ALL DEFENSES)
   if(f.higurumaNextSword&&enemy&&enemy.alive&&d<f.radius+enemy.radius+80){
     f.higurumaNextSword=false;
     f.higurumaSwordActive=false; // clear after follow-up sword used
     f.weaponExtend=1;f.weaponFlash=20;
     SFX.executionerSword();
-    const swordDmg=f.atk*4; // massive single hit
-    dealDamage(f,enemy,swordDmg,true);
+    const swordDmg=f.atk*4; // massive single hit — pierces through all defenses
+    const isCrit=Math.random()*100<f.crit;
+    const rawDmg=Math.round(isCrit?swordDmg*2:swordDmg);
+    // Raw damage — bypasses defense, shields, adaptation, negation
+    enemy.hp-=rawDmg;enemy.hitFlash=12;
+    if(enemy.hp<=0){enemy.hp=0;enemy.alive=false;enemy.deathAnim=60;checkVictory(f);}
+    spawnDmgNum(enemy.x,enemy.y-enemy.radius-20,rawDmg+(isCrit?' CRIT!':''),'#ff0000',true);
     // Visual: big red slash + purple burst
     spawnDmgNum(enemy.x,enemy.y-enemy.radius-40,'EXECUTIONER SWORD!','#ff0000',true);
     spawnBurst(enemy.x,enemy.y,'#ff0000',30,10);
@@ -2662,13 +2682,16 @@ function attackHiguruma(f,enemy,chaos){
   // Toxic: both but faster small + knockback on large
   // Default: close=big swing, far=small throws
 
+  // Mode enforcement: can't swing big while small hammers are in flight, and vice versa
+  const smallHammersActive=f.higurumaHammerQueue&&f.higurumaHammerQueue.length>0;
+
   if(isElecElem){
     // 20-burst rapid small hammer volley — queued 1-by-1
     if(f.higurumaElecBurstCD>0)return;
     f.higurumaElecBurstCD=150+Math.floor(Math.random()*30); // 2.5-3s cooldown
     SFX.hammerThrow();
     f.weaponExtend=1;f.weaponFlash=12;
-    const count=20+Math.floor(chaos*2);
+    const count=Math.min(20+Math.floor(chaos*2),24); // cap at 24
     const dmgPer=f.atk*(0.3+chaos*0.02);
     f.higurumaHammerQueue=[];
     for(let i=0;i<count;i++){
@@ -2680,8 +2703,8 @@ function attackHiguruma(f,enemy,chaos){
     spawnBurst(f.x+Math.cos(ba)*f.radius,f.y+Math.sin(ba)*f.radius,'#7a5a9a',15,5);
     addLog((f.side===0?'P1':'P2')+' HAMMER VOLLEY!');
     spawnDmgNum(f.x,f.y-f.radius-20,'VOLLEY','#7a5a9a',false);
-  } else if(isFireElem||(d<f.radius+enemy.radius+70&&!isElecElem)){
-    // Big hammer swing — wide area, more damage
+  } else if(isFireElem||(d<f.radius+enemy.radius+70&&!isElecElem&&!smallHammersActive)){
+    // Big hammer swing — wide area, more damage (blocked while small hammers active)
     if(f.higurumaSwingCD>0&&!isFireElem)return;
     f.higurumaSwingCD=isFireElem?25:40;
     SFX.hammerSwing();
@@ -2717,11 +2740,11 @@ function attackHiguruma(f,enemy,chaos){
       const ga=Math.PI*2*j/8;
       spawnParticle(f.x+Math.cos(ba)*(f.radius+20)+Math.cos(ga)*15,f.y+Math.sin(ba)*(f.radius+20)+Math.sin(ga)*15,'#5a3a7a',Math.cos(ga)*3,Math.sin(ga)*3,18,2);
     }
-  } else {
-    // Small hammer throws — queued 1-by-1 with slight delay
+  } else if(!f.higurumaSwingCD||f.higurumaSwingCD<=0){
+    // Small hammer throws — queued 1-by-1 (blocked during big hammer swing cooldown)
     SFX.hammerThrow();
     f.weaponExtend=1;f.weaponFlash=8;
-    const count=Math.min(10+Math.floor(chaos*1.5),18);
+    const count=Math.min(10+Math.floor(chaos*1.5),14); // cap at 14
     const dmgPer=f.atk*(0.45+chaos*0.03)*(isToxicElem?1.25:1);
     const spdBase=isToxicElem?7:5.5;
     f.higurumaHammerQueue=[];
@@ -3169,12 +3192,12 @@ function updateRelicTodo(f,enemy,dt){
 
   const isElecElem=f.elementActive&&f.elem.id==='electric';
 
-  // Passive Boogie Woogie — chance to clap (reduced frequency)
+  // Passive Boogie Woogie — rare clap to keep it special (main appeal is the special storm)
   if(f.todoSwapCD>0)f.todoSwapCD-=dt;
   // Blocked by Higuruma disable/confiscation
   if(!f.todoSpecialActive&&f.todoSwapCD<=0&&f.higurumaDisableTimer<=0){
     const fighterCount=fighters.filter(o=>o&&o.alive).length;
-    const baseChance=isElecElem?0.012:0.007; // reduced from 0.02/0.012
+    const baseChance=isElecElem?0.004:0.002; // very rare passive swaps — special is the payoff
     const chance=baseChance*fighterCount;
     if(Math.random()<chance){
       // Pick random target to swap with
@@ -3885,9 +3908,9 @@ function relicToji(f,enemy){
   f.tojiWeaponFlyIn=30; // 30 frames for weapons to fly into position
   f.tojiEnemyDebuff=false;
   f.tojiDmgTakenDebuff=false;
-  // Create triangle centered on enemy position
+  // Create triangle centered on enemy position — big enough to trap reliably
   const cx=enemy.x,cy=enemy.y;
-  const triRadius=Math.min(ARENA.w,ARENA.h)*0.5; // ~1/4 of arena area — much bigger
+  const triRadius=Math.min(ARENA.w,ARENA.h)*0.6; // large triangle — guaranteed trapping
   const baseAngle=Math.random()*Math.PI*2;
   f.tojiTriPoints=[];
   for(let i=0;i<3;i++){
@@ -4014,18 +4037,18 @@ function relicNanami(f,enemy){
 }
 
 function relicRyu(f,enemy){
-  // "DESSERT IS SERVED." — slow-moving blast that ALWAYS splits; main gimmick is split damage
+  // "DESSERT IS SERVED." — very slow-moving blast that splits into many homing beams (Sendai Colony reference)
   f.specialTimer=60; // short — Ryu can move right after firing
   const ba=f.weaponAngle; // fires in current weapon direction, no auto-aim
   const chaos=getChaosLevel(f);
-  // Spawn slow blast projectile
-  const blastSpeed=3; // slow moving
-  let splitDmg=f.atk*(1.2+chaos*0.1); // split damage per beam
-  let directDmg=f.atk*(1.5+chaos*0.1); // moderate direct hit damage (not massive)
-  let splitCount=6+Math.floor(Math.random()*3)+Math.floor(chaos*0.5);
+  // Spawn very slow blast projectile
+  const blastSpeed=2; // very slow — gives time to see it coming
+  let splitDmg=f.atk*(1.0+chaos*0.1); // per-beam damage (more beams = balance lower each)
+  let directDmg=f.atk*(1.5+chaos*0.1); // moderate direct hit damage
+  let splitCount=10+Math.floor(Math.random()*4)+Math.floor(chaos*0.5); // many more splits
   if(f.elementActive&&f.elem.id==='fire'){directDmg*=1.3;splitDmg*=1.3;}
-  if(f.elementActive&&f.elem.id==='toxic'){splitCount+=2;} // more splits
-  const trackSplit=f.elementActive&&f.elem.id==='cryo'; // ice: splits track
+  if(f.elementActive&&f.elem.id==='toxic'){splitCount+=3;} // even more splits
+  const trackSplit=true; // ALL splits are homing now (Sendai Colony style)
   projectiles.push({
     x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
     vx:Math.cos(ba)*blastSpeed,vy:Math.sin(ba)*blastSpeed,
@@ -4733,7 +4756,89 @@ function updateRelicSmasher(f,enemy,dt){
   fighters.forEach(other=>{
     if(other&&other!==f&&other.alive)other.sandyTimeScale=Math.min(other.sandyTimeScale,0.3);
   });
-  // End of relic
+  // End of relic — FINALE: fly up, hover, then devastating slam
+  if(f.specialTimer<=0&&!f._smasherFinale){
+    f._smasherFinale=true;
+    f._smasherFinalePhase='rise'; // rise → hover → slam
+    f._smasherFinaleTimer=0;
+    f._smasherFinaleY=f.y; // original Y
+    f._smasherSlamTarget=enemy&&enemy.alive?{x:enemy.x,y:enemy.y}:{x:f.x,y:f.y+80};
+    f._smasherRelicMelee=false;
+    SFX.warning();
+    spawnDmgNum(f.x,f.y-f.radius-30,'RISING...','#ff4444',true);
+    addLog((f.side===0?'P1':'P2')+' Smasher RISING!');
+  }
+  if(f._smasherFinale){
+    f._smasherFinaleTimer+=dt;
+    if(f._smasherFinalePhase==='rise'){
+      // Rise up (30 frames = 0.5s)
+      f.y-=3*dt;f.vx=0;f.vy=0;
+      if(battleTime%3<1)spawnParticle(f.x,f.y+f.radius,'#ff4444',rand(-1,1),2,12,3);
+      if(f._smasherFinaleTimer>=30){
+        f._smasherFinalePhase='hover';
+        f._smasherFinaleTimer=0;
+        spawnDmgNum(f.x,f.y-f.radius-20,'HOVERING','#ffcc00',true);
+      }
+    } else if(f._smasherFinalePhase==='hover'){
+      // Hover for 2s (120 frames), slight bobbing
+      f.vx=0;f.vy=0;
+      f.y+=Math.sin(f._smasherFinaleTimer*0.1)*0.3;
+      // Warning target on ground
+      const st=f._smasherSlamTarget;
+      if(st&&battleTime%4<1){
+        spawnParticle(st.x+rand(-30,30),st.y+rand(-30,30),'#ff2222',0,0,10,3);
+      }
+      if(f._smasherFinaleTimer>=120){
+        f._smasherFinalePhase='slam';
+        f._smasherFinaleTimer=0;
+        spawnDmgNum(f.x,f.y-f.radius-20,'INCOMING!','#ff0000',true);
+      }
+    } else if(f._smasherFinalePhase==='slam'){
+      // Slam down fast (15 frames)
+      const st=f._smasherSlamTarget;
+      if(st){
+        f.x+=(st.x-f.x)*0.2;
+        f.y+=(st.y-f.y)*0.2+5;
+      }
+      f.vx=0;f.vy=0;
+      if(f._smasherFinaleTimer>=15){
+        // IMPACT — massive AoE damage
+        const chaos=getChaosLevel(f);
+        const slamDmg=f.atk*(3.0+chaos*0.3);
+        fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
+          if(dist(f,e)<120+chaos*5){
+            dealDamage(f,e,slamDmg,true);
+            const ka=angle(f,e);
+            e.vx+=Math.cos(ka)*15;e.vy+=Math.sin(ka)*15;
+          }
+        });
+        explosions.push({x:f.x,y:f.y,radius:0,maxRadius:120,color:'#ff4444',life:25,maxLife:25,dmg:0,owner:null,target:null,hit:true});
+        explosions.push({x:f.x,y:f.y,radius:0,maxRadius:80,color:'#ffcc00',life:18,maxLife:18,dmg:0,owner:null,target:null,hit:true});
+        spawnBurst(f.x,f.y,'#ff4444',40,12);
+        spawnBurst(f.x,f.y,'#ffffff',20,6);
+        shakeTimer=25;shakeAmt=16;
+        triggerScreenFlash('#ff4444',10);triggerHitFreeze(6);
+        SFX.megaExplosion();
+        spawnDmgNum(f.x,f.y-f.radius-30,'GROUND SLAM!','#ff4444',true);
+        addLog((f.side===0?'P1':'P2')+' DEVASTATING SLAM!');
+        // End finale
+        f._smasherFinale=false;
+        f._smasherFinalePhase=null;
+        // Restore enemy time scale
+        fighters.forEach(other=>{
+          if(other&&other!==f){
+            const otherSandy=fighters.some(o=>o!==other&&o.alive&&o.char.id==='sandy'&&o.sandyActive);
+            if(!otherSandy)other.sandyTimeScale=1;
+          }
+        });
+        f.smasherAfterimages=[];
+      }
+    }
+    // Keep special "active" during finale so movement code doesn't take over
+    f.specialActive=true;
+    f.specialTimer=1;
+    return; // skip normal end-of-relic
+  }
   if(f.specialTimer<=0){
     f._smasherRelicMelee=false;
     // Restore enemy time scale
@@ -5025,14 +5130,21 @@ function updateRelicToji(f,enemy,dt){
       f.vx+=Math.cos(ka)*2;
       f.vy+=Math.sin(ka)*2;
     }
-    // Check if enemy is inside triangle — keep them trapped
+    // Check if enemy is inside triangle — GUARANTEED trapped (strong barrier)
     if(enemy.alive){
       const inside=pointInTriangle(enemy.x,enemy.y,sPts[0],sPts[1],sPts[2]);
-      // Push enemy back inside if they try to leave
+      // Hard push enemy back inside — they cannot escape
       if(!inside){
         const ka=Math.atan2(tcy-enemy.y,tcx-enemy.x);
-        enemy.vx+=Math.cos(ka)*2;
-        enemy.vy+=Math.sin(ka)*2;
+        // Strong push + velocity dampening + teleport correction
+        enemy.vx=Math.cos(ka)*6;
+        enemy.vy=Math.sin(ka)*6;
+        // If too far outside, snap them back toward center
+        const dFromCenter=Math.hypot(enemy.x-tcx,enemy.y-tcy);
+        if(dFromCenter>triRadius*0.8){
+          enemy.x+=(tcx-enemy.x)*0.15;
+          enemy.y+=(tcy-enemy.y)*0.15;
+        }
       }
       // Element effects inside triangle
       if(f.elementActive){
@@ -5685,11 +5797,12 @@ function updateRelicYuta(f,enemy,dt){
     f.yutaRikaPos.x+=(f.x-f.yutaRikaPos.x)*0.03;
     f.yutaRikaPos.y+=(f.y-f.yutaRikaPos.y)*0.03;
   }
-  // Rika actively hunts enemy — move toward enemy when reasonably close
+  // Rika actively hunts enemy — aggressive pursuer (monstrous behavior)
   if(enemy&&enemy.alive&&f.yutaRikaHp>0){
     const dToE=Math.hypot(f.yutaRikaPos.x-enemy.x,f.yutaRikaPos.y-enemy.y);
-    if(dToE<200&&dToE>enemy.radius+30){
-      f.yutaRikaMoveAngle=Math.atan2(enemy.y-f.yutaRikaPos.y,enemy.x-f.yutaRikaPos.x)+((Math.random()-0.5)*0.3);
+    if(dToE>enemy.radius+35){
+      // Always hunt enemy — Rika is a relentless monster
+      f.yutaRikaMoveAngle=Math.atan2(enemy.y-f.yutaRikaPos.y,enemy.x-f.yutaRikaPos.x)+((Math.random()-0.5)*0.2);
     }
   }
   // Bounce off walls
@@ -5698,15 +5811,15 @@ function updateRelicYuta(f,enemy,dt){
   f.yutaRikaPos.x=Math.max(20,Math.min(W-20,f.yutaRikaPos.x));
   f.yutaRikaPos.y=Math.max(20,Math.min(H-20,f.yutaRikaPos.y));
 
-  // Rika claw attack — when close to enemy (Rika only attacks if alive)
+  // Rika claw attack — aggressive, same-size monster slashing at enemies
   if(f.yutaRikaAttackCD<=0&&enemy&&enemy.alive&&f.yutaRikaHp>0){
     const dToEnemy=Math.hypot(f.yutaRikaPos.x-enemy.x,f.yutaRikaPos.y-enemy.y);
-    if(dToEnemy<enemy.radius+55){
+    if(dToEnemy<enemy.radius+70){
       f.yutaRikaLunging=true;
       f.yutaRikaLungePos={x:f.yutaRikaPos.x,y:f.yutaRikaPos.y};
       f.yutaRikaClawAnim=18;
-      f.yutaRikaAttackCD=isElecElem?28:42;
-      const clawDmg=f.atk*(f.yutaDomainActive?1.8:1.3);
+      f.yutaRikaAttackCD=isElecElem?22:35;
+      const clawDmg=f.atk*(f.yutaDomainActive?2.0:1.5);
       dealDamage(f,enemy,clawDmg,true);
       SFX.rikaClaw();
       spawnBurst(enemy.x,enemy.y,'#aa44ff',14,7);
@@ -7054,6 +7167,19 @@ function updateBattle(dt){
     let wallHit=false;
     if(p.x<ARENA.x||p.x>ARENA.x+ARENA.w||p.y<ARENA.y||p.y>ARENA.y+ARENA.h){wallHit=true;}
 
+    // Choso blood orbs explode when hit by ANY projectile
+    fighters.forEach(cf=>{
+      if(cf&&cf.char.id==='choso'&&cf.chosoOrbs&&cf.side!==p.owner.side){
+        cf.chosoOrbs.forEach(orb=>{
+          if(orb.alive&&Math.hypot(p.x-orb.x,p.y-orb.y)<p.radius+18){
+            const chaos=getChaosLevel(cf);
+            chosoDetonateOrb(cf,orb,fighters.find(e=>e&&e.alive&&e.side!==cf.side),chaos);
+            spawnDmgNum(orb.x,orb.y-15,'ORB HIT!','#ff4444',true);
+          }
+        });
+      }
+    });
+
     if(hit){
       if(p.explosive){
         spawnExplosion(p.target.x,p.target.y,p.explosionRadius,p.color,p.dmg,p.owner,p.target);
@@ -7577,6 +7703,35 @@ function drawBall(f){
 
   // Stun stars
   if(f.stunTimer>0){const st=battleTime*0.3;for(let i=0;i<3;i++){const sa=st+i*Math.PI*2/3;X.fillStyle='#ffcc00';X.font='bold 12px Consolas,monospace';X.textAlign='center';X.fillText('*',f.x+Math.cos(sa)*20,f.y-f.radius-10+Math.sin(sa*2)*3);}}
+
+  // Higuruma Confiscation chains — visible on confiscated enemy
+  if(f.higurumaDisableTimer>0){
+    X.save();
+    const chainAlpha=Math.min(1,f.higurumaDisableTimer/30);
+    X.globalAlpha=chainAlpha*0.8;
+    // Chain links around the fighter
+    const chainCount=6;
+    const chainR=f.radius+8;
+    const chainOff=battleTime*0.05;
+    X.strokeStyle='#ffcc00';X.lineWidth=2.5;
+    for(let ci=0;ci<chainCount;ci++){
+      const ca=chainOff+ci*(Math.PI*2/chainCount);
+      const cx=f.x+Math.cos(ca)*chainR;
+      const cy=f.y+Math.sin(ca)*chainR;
+      // Chain link (small oval)
+      X.beginPath();
+      X.ellipse(cx,cy,4,6,ca,0,Math.PI*2);
+      X.stroke();
+    }
+    // Connecting circle
+    X.beginPath();X.arc(f.x,f.y,chainR,0,Math.PI*2);
+    X.strokeStyle='rgba(255,204,0,0.3)';X.lineWidth=1;X.stroke();
+    // "CONFISCATED" label
+    X.font='bold 9px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#ffcc00';X.globalAlpha=chainAlpha*0.9;
+    X.fillText('CONFISCATED',f.x,f.y+f.radius+14);
+    X.restore();
+  }
 
   // Ball body
   const grad=X.createRadialGradient(f.x-f.radius*0.3,f.y-f.radius*0.3,f.radius*0.1,f.x,f.y,f.radius);
@@ -9101,23 +9256,39 @@ function drawBall(f){
     X.save();
     const rikaX=f.yutaRikaLunging?f.yutaRikaLungePos.x:(f.yutaRikaPos?f.yutaRikaPos.x:(f.x+40));
     const rikaY=f.yutaRikaLunging?f.yutaRikaLungePos.y:(f.yutaRikaPos?f.yutaRikaPos.y:f.y);
-    const rikaSize=f.yutaDomainActive?40:34; // MASSIVE — bigger than fighters, true monster
+    const rikaSize=f.yutaDomainActive?50:45; // Same size as Yuta — true monstrous presence
     // Rika body — monstrous dark purple entity
     const rg=X.createRadialGradient(rikaX,rikaY,3,rikaX,rikaY,rikaSize);
     rg.addColorStop(0,'#dd99ff');rg.addColorStop(0.4,'#9944dd');rg.addColorStop(0.8,'#6622aa');rg.addColorStop(1,'rgba(80,20,140,0.4)');
     X.fillStyle=rg;X.beginPath();X.arc(rikaX,rikaY,rikaSize,0,Math.PI*2);X.fill();
-    // Monstrous features — jagged edges
-    X.strokeStyle='#aa55dd';X.lineWidth=1.5;
-    for(let sp=0;sp<6;sp++){
-      const sa=sp*Math.PI/3+battleTime*0.02;
-      X.beginPath();X.moveTo(rikaX+Math.cos(sa)*rikaSize*0.85,rikaY+Math.sin(sa)*rikaSize*0.85);
-      X.lineTo(rikaX+Math.cos(sa)*(rikaSize+5+Math.sin(battleTime*0.1+sp)*3),rikaY+Math.sin(sa)*(rikaSize+5+Math.sin(battleTime*0.1+sp)*3));
+    // Monstrous features — big claws extending outward
+    X.strokeStyle='#aa55dd';X.lineWidth=2.5;
+    // 4 large claws (arms/legs)
+    for(let sp=0;sp<4;sp++){
+      const sa=sp*Math.PI/2+battleTime*0.02+Math.PI/4;
+      const clawLen=rikaSize*0.5+Math.sin(battleTime*0.1+sp)*4;
+      X.beginPath();
+      X.moveTo(rikaX+Math.cos(sa)*rikaSize*0.7,rikaY+Math.sin(sa)*rikaSize*0.7);
+      X.lineTo(rikaX+Math.cos(sa-0.15)*(rikaSize+clawLen),rikaY+Math.sin(sa-0.15)*(rikaSize+clawLen));
+      X.stroke();
+      X.beginPath();
+      X.moveTo(rikaX+Math.cos(sa)*rikaSize*0.7,rikaY+Math.sin(sa)*rikaSize*0.7);
+      X.lineTo(rikaX+Math.cos(sa+0.15)*(rikaSize+clawLen),rikaY+Math.sin(sa+0.15)*(rikaSize+clawLen));
+      X.stroke();
+    }
+    // Extra jagged spines
+    for(let sp=0;sp<8;sp++){
+      const sa=sp*Math.PI/4+battleTime*0.015;
+      X.strokeStyle='rgba(170,85,221,0.6)';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(rikaX+Math.cos(sa)*rikaSize*0.9,rikaY+Math.sin(sa)*rikaSize*0.9);
+      X.lineTo(rikaX+Math.cos(sa)*(rikaSize+8+Math.sin(battleTime*0.12+sp)*4),rikaY+Math.sin(sa)*(rikaSize+8+Math.sin(battleTime*0.12+sp)*4));
       X.stroke();
     }
     // Rika eyes — large glowing yellow, menacing
     X.fillStyle='#ffee44';
-    X.beginPath();X.arc(rikaX-rikaSize*0.22,rikaY-rikaSize*0.12,4,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(rikaX+rikaSize*0.22,rikaY-rikaSize*0.12,4,0,Math.PI*2);X.fill();
+    const eyeSize=rikaSize*0.1;
+    X.beginPath();X.arc(rikaX-rikaSize*0.22,rikaY-rikaSize*0.12,eyeSize,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(rikaX+rikaSize*0.22,rikaY-rikaSize*0.12,eyeSize,0,Math.PI*2);X.fill();
     // Eye glow
     X.shadowColor='#ffee44';X.shadowBlur=8;
     X.beginPath();X.arc(rikaX-rikaSize*0.22,rikaY-rikaSize*0.12,3,0,Math.PI*2);X.fill();
@@ -9416,7 +9587,9 @@ function drawBall(f){
       const wy=lerp(flySrc[i].y,p.y,flyT);
       X.save();
       X.translate(wx,wy);
-      X.rotate(t+i*0.5);
+      // Weapons always face INWARD toward triangle center
+      const inwardAngle=Math.atan2(tcy-wy,tcx-wx);
+      X.rotate(flyT<1?(t+i*0.5):inwardAngle);
       // Speed trail during fly-in
       if(flyT<1){
         X.globalAlpha=0.4;
@@ -9690,6 +9863,17 @@ function drawBall(f){
   X.strokeText(Math.ceil(f.hp),f.x,f.y);
   X.fillStyle='#fff';
   X.fillText(Math.ceil(f.hp),f.x,f.y);
+
+  // Mirror match label — A/B when both fighters are the same character
+  if(gameMode==='1v1'&&fighters.length===2&&fighters[0].char.id===fighters[1].char.id){
+    const label=f.side===0?'A':'B';
+    const labelCol=f.side===0?'#66ccff':'#ff6666';
+    X.font='bold 16px Consolas,monospace';X.textAlign='center';
+    X.strokeStyle='#000';X.lineWidth=3;
+    X.strokeText(label,f.x,f.y-f.radius-8);
+    X.fillStyle=labelCol;
+    X.fillText(label,f.x,f.y-f.radius-8);
+  }
 
   // Draw weapon (drawWeapon dispatches to drawSandy for Sandy's special effect)
   drawWeapon(f);
@@ -11927,7 +12111,12 @@ function drawSelectMobile(){
       X.strokeStyle=isSel?labelColor:ch.color+'44';X.lineWidth=isSel?2.5:1;X.stroke();
       const compact=true;
       drawBallPreview(cx+20,cy+18,8,ch);
-      X.font='bold 9px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
+      // Tier label
+      const tierStr=getTierLetter(ch.id);
+      const tierCol=tierStr.startsWith('S')?'#ffcc00':tierStr.startsWith('A')?'#44cc88':tierStr.startsWith('B')?'#6688cc':'#888888';
+      X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle=tierCol;
+      X.fillText(tierStr,cx+6,cy+12);
+      X.font='bold 9px Consolas,monospace';X.fillStyle='#fff';
       const shortName=ch.name.length>12?ch.name.slice(0,12):ch.name;
       X.fillText(shortName,cx+38,cy+14);
       X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+38,cy+24);
@@ -12303,7 +12492,80 @@ function drawBattle(){
     drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.stroke();
     X.shadowBlur=0;
   } else {
-    X.fillStyle='#0d0d25';X.fill();X.strokeStyle='#1a1a4a';X.lineWidth=2;X.stroke();
+    // Check for other active domains
+    const yutaF=fighters.find(f=>f.char.id==='yuta'&&f.yutaDomainActive);
+    const naoyaF=fighters.find(f=>f.char.id==='naoya'&&f.naoyaDomainActive);
+    const daburaF=fighters.find(f=>f.char.id==='dabura'&&f.dabDomainActive);
+    if(yutaF){
+      // AUTHENTIC MUTUAL LOVE — deep purple-black void with Rika's presence
+      X.fillStyle='#06001a';X.fill();
+      X.save();
+      drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.clip();
+      // Purple energy radiating from Yuta
+      const yx=yutaF.x,yy=yutaF.y;
+      const yg=X.createRadialGradient(yx,yy,0,yx,yy,280);
+      yg.addColorStop(0,'rgba(102,68,204,0.15)');yg.addColorStop(0.5,'rgba(80,40,160,0.08)');yg.addColorStop(1,'rgba(0,0,0,0.2)');
+      X.fillStyle=yg;X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+      // Floating cursed energy streams
+      for(let i=0;i<15;i++){
+        const sx=ARENA.x+(battleTime*0.6+i*67)%ARENA.w;
+        const sy=ARENA.y+(battleTime*0.3+i*43)%ARENA.h;
+        X.strokeStyle='rgba(170,68,255,0.15)';X.lineWidth=2;
+        X.beginPath();X.moveTo(sx,sy);
+        X.quadraticCurveTo(sx+Math.sin(battleTime*0.02+i)*20,sy+20,sx+Math.cos(battleTime*0.03+i)*15,sy+40);
+        X.stroke();
+      }
+      // Love/curse particles
+      for(let i=0;i<40;i++){
+        const px=ARENA.x+(battleTime*0.4+i*37)%ARENA.w;
+        const py=ARENA.y+(battleTime*0.3+i*51)%ARENA.h;
+        const sz=0.8+Math.sin(battleTime*0.04+i)*0.6;
+        X.beginPath();X.arc(px,py,sz,0,Math.PI*2);
+        X.fillStyle=i%4===0?'rgba(255,68,255,0.3)':'rgba(102,68,204,0.2)';X.fill();
+      }
+      X.restore();
+      X.strokeStyle='#6644cc';X.lineWidth=3;X.stroke();
+      X.shadowColor='#6644cc';X.shadowBlur=12;
+      X.strokeStyle='rgba(102,68,204,0.5)';X.lineWidth=2;
+      drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.stroke();
+      X.shadowBlur=0;
+    } else if(naoyaF){
+      // PROJECTION SORCERY DOMAIN — green grid with frame numbers
+      X.fillStyle='#001a0a';X.fill();
+      X.save();
+      drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.clip();
+      // Grid of 24-frame markers
+      X.strokeStyle='rgba(0,204,136,0.1)';X.lineWidth=1;
+      for(let gx=ARENA.x;gx<ARENA.x+ARENA.w;gx+=30){X.beginPath();X.moveTo(gx,ARENA.y);X.lineTo(gx,ARENA.y+ARENA.h);X.stroke();}
+      for(let gy=ARENA.y;gy<ARENA.y+ARENA.h;gy+=30){X.beginPath();X.moveTo(ARENA.x,gy);X.lineTo(ARENA.x+ARENA.w,gy);X.stroke();}
+      // Frame counter numbers scattered
+      X.font='bold 8px Consolas,monospace';X.fillStyle='rgba(0,255,170,0.15)';X.textAlign='center';
+      for(let i=0;i<20;i++){
+        const fx=ARENA.x+30+(i*71)%Math.max(1,ARENA.w-60);
+        const fy=ARENA.y+20+(i*53)%Math.max(1,ARENA.h-40);
+        X.fillText(String((Math.floor(battleTime/2)+i)%24).padStart(2,'0'),fx,fy);
+      }
+      X.restore();
+      X.strokeStyle='#00cc88';X.lineWidth=3;X.stroke();
+    } else if(daburaF){
+      // RADIANT DOMAIN MODULO — alternating light/dark checkerboard
+      X.fillStyle='#1a1a0a';X.fill();
+      X.save();
+      drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.clip();
+      const tileSize=40;
+      const shift=Math.floor(battleTime/120)%2;
+      for(let tx=ARENA.x;tx<ARENA.x+ARENA.w;tx+=tileSize){
+        for(let ty=ARENA.y;ty<ARENA.y+ARENA.h;ty+=tileSize){
+          const isLight=((Math.floor((tx-ARENA.x)/tileSize)+Math.floor((ty-ARENA.y)/tileSize)+shift)%2===0);
+          X.fillStyle=isLight?'rgba(255,204,68,0.08)':'rgba(60,20,100,0.1)';
+          X.fillRect(tx,ty,tileSize,tileSize);
+        }
+      }
+      X.restore();
+      X.strokeStyle='#ffcc44';X.lineWidth=3;X.stroke();
+    } else {
+      X.fillStyle='#0d0d25';X.fill();X.strokeStyle='#1a1a4a';X.lineWidth=2;X.stroke();
+    }
   }
   X.strokeStyle='#12122a';X.lineWidth=1;
   for(let i=ARENA.x+40;i<ARENA.x+ARENA.w;i+=40){X.beginPath();X.moveTo(i,ARENA.y);X.lineTo(i,ARENA.y+ARENA.h);X.stroke();}
@@ -12975,11 +13237,13 @@ function drawBattle(){
     X.fillText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
     X.strokeStyle='#000';X.lineWidth=3;X.strokeText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
     X.fillText(winner.char.name+' WINS!',W/2,ARENA.y+ARENA.h/2-30);
-    // Tier label under winner name
+    // Tier labels — both winner and loser
     const winTier=getTierLetter(winner.char.id);
+    const loser=fighters.find(f=>f!==winner);
+    const loseTier=loser?getTierLetter(loser.char.id):'?';
     X.font='bold '+(isMobile?'13':'16')+'px Consolas,monospace';
     X.shadowBlur=10;X.fillStyle='#aaa';
-    X.fillText('['+winTier+' Tier]',W/2,ARENA.y+ARENA.h/2-5);
+    X.fillText('['+winTier+'] vs ['+loseTier+(loser?' '+loser.char.name:'')+']',W/2,ARENA.y+ARENA.h/2-5);
     X.shadowBlur=0;
     addBtn('result',W/2-80,ARENA.y+ARENA.h/2+20,160,40,'Continue','#7b68ee',()=>{screen='result';});
     X.restore();
@@ -12990,8 +13254,13 @@ function drawBattle(){
 function drawFighterInfo(f,px,py,maxW,align){
   const isL=align==='left';
   drawMiniWeapon(px+(isL?8:maxW-8),py+6,f.char.id,14);
+  const tierTag=getTierLetter(f.char.id);
+  const tierTagCol=tierTag.startsWith('S')?'#ffcc00':tierTag.startsWith('A')?'#44cc88':tierTag.startsWith('B')?'#6688cc':'#888';
   X.font='bold 11px Consolas,monospace';X.textAlign=isL?'left':'right';X.fillStyle=f.char.color;
   X.fillText(f.char.name,px+(isL?20:maxW-20),py+10);
+  // Tier tag
+  X.font='bold 8px Consolas,monospace';X.fillStyle=tierTagCol;
+  X.fillText('['+tierTag+']',px+(isL?20:maxW-20),py+20);
 
   // Status effects
   const ex=px+(isL?5:maxW-5),ey=py+26;
