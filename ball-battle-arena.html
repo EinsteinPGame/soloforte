@@ -1184,8 +1184,8 @@ function createFighter(charIdx,elemIdx,side){
     todoBuffTimer:0, // buff decay timer (5-8s after special ends)
     // Mahoraga state — Adaptation Wheel
     mahoAdapt:{}, // {attackType: reductionStacks} — tracks damage type → stacking DR
-    mahoAdaptMax:0.95, // max 95% reduction per type
-    mahoAdaptPerStack:0.12, // 12% per stack (caps at ~8 stacks = 96% → clamped to 95%)
+    mahoAdaptMax:0.70, // max 70% reduction per type (nerfed from 95% — was impossible to kill)
+    mahoAdaptPerStack:0.08, // 8% per stack (nerfed from 12%)
     mahoWheelAnim:0, // wheel spin animation timer (visual feedback when adapting)
     mahoWheelAngle:0, // current wheel rotation angle
     mahoLastAdaptType:'', // last type adapted to (for visual)
@@ -1516,6 +1516,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     const reduction=Math.min(defender.mahoAdaptMax,defender.mahoAdapt[atkType]*defender.mahoAdaptPerStack);
     if(reduction>0){
       dmg*=(1-reduction);
+      dmg=Math.max(dmg,attacker.atk*0.15); // minimum 15% of base ATK always gets through
       if(reduction>=0.5){
         spawnDmgNum(defender.x+rand(-10,10),defender.y-defender.radius-25,'ADAPTED','#00ff88',false);
       }
@@ -1550,7 +1551,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     defender.speed=defender.baseSpeed+defender.berserkSpeedBoost;
   }
 
-  if(isCrit){SFX.critSlash();spawnImpact(defender.x,defender.y,'#ffff00',2);addLog((attacker.side===0?'P1':'P2')+' CRIT! '+Math.round(dmg));triggerHitFreeze(4);triggerScreenFlash('#ffff00',8);}
+  if(isCrit){SFX.critSlash();spawnImpact(defender.x,defender.y,'#ffff00',2);addLog((attacker.side===0?'P1':'P2')+' CRIT! '+Math.round(dmg));triggerHitFreeze(6);triggerScreenFlash('#ff8800',8);spawnBurst(defender.x,defender.y,'#ff8800',12,5);spawnSparks(defender.x,defender.y,'#ffaa00',8);}
   spawnDmgNum(defender.x+rand(-15,15),defender.y-defender.radius-10,dmg,isCrit?'#ffff00':'#fff',isCrit);
   spawnImpact(defender.x,defender.y,attacker.char.color,dmg>30?1.5:0.8);
   addCombo(attacker.side);
@@ -1984,6 +1985,7 @@ function attackBerserk(f,enemy,chaos){
   f.weaponExtend=1;f.weaponFlash=15;
   SFX.shotgun();
   const baseAngle=angle(f,enemy);
+  f.weaponAngle=baseAngle; // snap gun barrel to face enemy when firing
   let pelletCount=Math.floor(6+chaos*0.8); // more pellets with chaos
   let spread=Math.max(0.15, 0.6-chaos*0.04); // tighter spread with chaos
   let speed=10+chaos*0.3;
@@ -2084,9 +2086,9 @@ function attackGojo(f,enemy,chaos){
     const beamDmg=f.atk*2.5*dmgMult; // massive single hit
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
-      vx:Math.cos(ba)*10,vy:Math.sin(ba)*10,
+      vx:Math.cos(ba)*4,vy:Math.sin(ba)*4, // slow-moving massive orb
       owner:f,target:null,color:'#9922ff',
-      life:100,radius:42,dmg:beamDmg,
+      life:180,radius:42,dmg:beamDmg, // longer life to compensate for slower speed
       explosive:false,homing:false,isGojoPurple:true,
       isMassivePurple:true,
     });
@@ -2095,7 +2097,7 @@ function attackGojo(f,enemy,chaos){
     spawnBurst(f.x,f.y,'#4488ff',20,8);
     spawnBurst(f.x,f.y,'#9922ff',30,10);
     spawnBurst(f.x,f.y,'#cc88ff',15,6);
-    spawnDmgNum(f.x,f.y-f.radius-30,'MASSIVE PURPLE!','#9922ff',true);
+    spawnDmgNum(f.x,f.y-f.radius-30,'200% PURPLE!','#9922ff',true);
     shakeTimer=15;shakeAmt=10;
     triggerScreenFlash('#9922ff',8);triggerHitFreeze(4);
     f.gojoAttackMode='red';
@@ -2734,33 +2736,36 @@ function attackHiguruma(f,enemy,chaos){
 }
 
 function triggerBlackFlash(f,target){
-  // === BLACK FLASH — MASSIVE VISUAL IMPACT ===
+  // === BLACK FLASH — TIME-STOPPING VISUAL IMPACT ===
   const tx=target.x,ty=target.y;
   // Screen flash — bright white then black
-  triggerScreenFlash('#ffffff',6);
+  triggerScreenFlash('#000000',10); // black flash, not white
+  triggerScreenFlash('#ffffff',4);
   // Huge screen shake
-  shakeTimer=Math.max(shakeTimer,14);shakeAmt=Math.max(shakeAmt,10);
-  // Hit freeze for dramatic impact
-  triggerHitFreeze(4);
+  shakeTimer=Math.max(shakeTimer,20);shakeAmt=Math.max(shakeAmt,14);
+  // LONG hit freeze — time pause like crits but bigger
+  triggerHitFreeze(10); // much longer freeze (was 4)
   // Black lightning bolts — many, long, dramatic
-  for(let i=0;i<20;i++){
+  for(let i=0;i<30;i++){
     const a=Math.random()*Math.PI*2;
-    const len=25+Math.random()*50;
-    spawnParticle(tx+Math.cos(a)*5,ty+Math.sin(a)*5,'#000000',Math.cos(a)*len*0.15,Math.sin(a)*len*0.15,20,4);
-    spawnParticle(tx+Math.cos(a)*10,ty+Math.sin(a)*10,'#2222ff',Math.cos(a)*len*0.08,Math.sin(a)*len*0.08,22,3);
+    const len=30+Math.random()*70;
+    // Thick black lightning
+    spawnParticle(tx+Math.cos(a)*5,ty+Math.sin(a)*5,'#000000',Math.cos(a)*len*0.2,Math.sin(a)*len*0.2,25,5);
+    spawnParticle(tx+Math.cos(a)*8,ty+Math.sin(a)*8,'#1111cc',Math.cos(a)*len*0.12,Math.sin(a)*len*0.12,28,4);
   }
-  // Outer ring of sparks
-  for(let i=0;i<12;i++){
-    const a=Math.PI*2*i/12;
-    spawnParticle(tx+Math.cos(a)*40,ty+Math.sin(a)*40,'#4444ff',Math.cos(a)*5,Math.sin(a)*5,18,2);
-    spawnParticle(tx+Math.cos(a)*30,ty+Math.sin(a)*30,'#111111',Math.cos(a)*3,Math.sin(a)*3,15,3);
+  // Outer ring of sparks — bigger
+  for(let i=0;i<16;i++){
+    const a=Math.PI*2*i/16;
+    spawnParticle(tx+Math.cos(a)*50,ty+Math.sin(a)*50,'#3333ff',Math.cos(a)*6,Math.sin(a)*6,22,3);
+    spawnParticle(tx+Math.cos(a)*35,ty+Math.sin(a)*35,'#000000',Math.cos(a)*4,Math.sin(a)*4,20,4);
   }
   // Black flash burst — bigger, more dramatic
-  spawnBurst(tx,ty,'#000000',20,8);
-  spawnBurst(tx,ty,'#2222ff',15,7);
-  spawnBurst(tx,ty,'#ffffff',8,4);
-  // Expanding dark ring explosion
-  explosions.push({x:tx,y:ty,radius:0,maxRadius:60,color:'#111133',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
+  spawnBurst(tx,ty,'#000000',30,12);
+  spawnBurst(tx,ty,'#1111cc',20,8);
+  spawnBurst(tx,ty,'#ffffff',10,5);
+  // Multiple expanding dark ring explosions
+  explosions.push({x:tx,y:ty,radius:0,maxRadius:80,color:'#000022',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  explosions.push({x:tx,y:ty,radius:0,maxRadius:50,color:'#2222ff',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
   // Big, bold text
   spawnDmgNum(tx,ty-target.radius-35,'BLACK FLASH!!','#4444ff',true);
   SFX.crit();
@@ -2849,9 +2854,9 @@ function attackNaoya(f,enemy,chaos){
   f.naoyaFrameCount=(f.naoyaFrameCount+framesPerDash)%24;
   f.naoyaFrameStack=Math.min(24,f.naoyaFrameStack+1);
 
-  // Speed scales with frame stack — high risk/high reward
-  const stackSpeedBonus=1+f.naoyaFrameStack*0.06; // up to +144% speed at max
-  const baseDashSpeed=isPhase2?18:14;
+  // Speed scales with frame stack — high risk/high reward (nerfed: less speed scaling)
+  const stackSpeedBonus=1+f.naoyaFrameStack*0.035; // up to +84% speed at max (was 144%)
+  const baseDashSpeed=isPhase2?15:12; // nerfed from 18/14
   f.naoyaDashing=true;
   f.naoyaDashTimer=isPhase2?12:16;
   f.naoyaDashAngle=angle(f,enemy);
@@ -2869,9 +2874,9 @@ function attackNaoya(f,enemy,chaos){
     SFX.warning();
   }
 
-  // Cooldown — faster at higher stacks
-  const baseCd=f.baseAtkInterval*(isPhase2?0.7:1);
-  const stackCdReduction=Math.max(0.4,1-f.naoyaFrameStack*0.025); // up to 40% faster
+  // Cooldown — slightly faster at higher stacks (nerfed)
+  const baseCd=f.baseAtkInterval*(isPhase2?0.8:1); // was 0.7
+  const stackCdReduction=Math.max(0.6,1-f.naoyaFrameStack*0.015); // up to 24% faster (was 40%)
   f.naoyaProjectionCD=Math.round((isElecElem?baseCd*0.7:baseCd)*stackCdReduction);
 
   SFX.punch();
@@ -4529,9 +4534,9 @@ function updateRelicGojo(f,enemy,dt){
       const beamDmg=f.atk*3.5;
       projectiles.push({
         x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
-        vx:Math.cos(ba)*12,vy:Math.sin(ba)*12,
+        vx:Math.cos(ba)*5,vy:Math.sin(ba)*5, // slow-moving Hollow Purple
         owner:f,target:null,color:'#9944ff',
-        life:80,radius:28,dmg:beamDmg,
+        life:160,radius:28,dmg:beamDmg,
         explosive:false,homing:false,isGojoPurple:true,
       });
       spawnBurst(f.x,f.y,'#9944ff',35,10);
@@ -5511,8 +5516,8 @@ function updateRelicNaoya(f,enemy,dt){
       const d=dist(f,enemy);
       if(d<f.radius+enemy.radius+18){
         // Projection hit — collision damage scales with frame stack (high risk/high reward)
-        const stackDmgBonus=1+f.naoyaFrameStack*0.04; // up to +96% damage at max stack
-        const dashDmg=f.atk*(f.naoyaPhase===2?1.3:1.5)*stackDmgBonus;
+        const stackDmgBonus=1+f.naoyaFrameStack*0.025; // up to +60% damage at max stack (was 96%)
+        const dashDmg=f.atk*(f.naoyaPhase===2?1.0:1.2)*stackDmgBonus; // nerfed from 1.3/1.5
         dealDamage(f,enemy,dashDmg,true);
         spawnBurst(enemy.x,enemy.y,'#00cc88',12,6);
         SFX.heavyHit();
@@ -5520,12 +5525,12 @@ function updateRelicNaoya(f,enemy,dt){
         // 24-frame rule: stun enemy briefly (they "broke the rule")
         const stunDur=isCryoElem?25:15;
         enemy.stunTimer=Math.max(enemy.stunTimer,stunDur);
-        // Projection freeze — 1fps lock with visible rectangle when special/domain active
+        // Projection hit during special — brief stun, NOT perma-freeze
+        // Kyle: enemies should follow the projection rule (slowed movement), not be locked solid
         if(f.naoyaSlowActive||f.naoyaDomainActive){
-          const freezeDur=f.naoyaDomainActive?70:45;
-          enemy.projectionFrozenTimer=Math.max(enemy.projectionFrozenTimer,freezeDur);
-          spawnDmgNum(enemy.x,enemy.y-enemy.radius-40,'FRAME LOCK!','#00ffaa',false);
-          SFX.freeze();
+          const stunDur2=f.naoyaDomainActive?25:18;
+          enemy.stunTimer=Math.max(enemy.stunTimer,stunDur2);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-40,'FRAME BREAK!','#00ffaa',false);
         }
         if(isCryoElem){
           enemy.freezeTimer=Math.max(enemy.freezeTimer,20);
@@ -5577,9 +5582,11 @@ function updateRelicNaoya(f,enemy,dt){
   // Phase 1 Special: 24-Frame Slow-Mo
   if(f.naoyaSlowActive){
     f.naoyaSlowTimer-=dt;
-    // Speed boost for Naoya during slow-mo
+    // Naoya special can't charge while active
+    f.specialBar=0;
+    // Speed boost for Naoya during slow-mo (but also slowed somewhat — follows the rule)
     if(!f.naoyaDashing){
-      f.speed=f.baseSpeed*1.5;
+      f.speed=f.baseSpeed*1.2; // reduced from 1.5 — Naoya also follows projection rules
     }
     // Green aura particles
     if(battleTime%3<1){
@@ -5605,6 +5612,8 @@ function updateRelicNaoya(f,enemy,dt){
   // Phase 2 Special: Domain — Time Cell Moon Palace
   if(f.naoyaDomainActive){
     f.naoyaDomainTimer-=dt;
+    // Naoya special can't charge while domain active
+    f.specialBar=0;
     // Domain aura
     if(battleTime%2<1){
       const a=Math.random()*Math.PI*2;
@@ -5885,6 +5894,11 @@ function updateBattle(dt){
     if(f.slowTimer>0)f.slowTimer-=dt;
     if(f.freezeTimer>0)f.freezeTimer-=dt;
     if(f.projectionFrozenTimer>0){f.projectionFrozenTimer-=dt;f.stunTimer=Math.max(f.stunTimer,2);} // locked in projection frame
+    // Safety: if no active Naoya/Sandy slow source exists, restore sandyTimeScale
+    if(f.sandyTimeScale<1){
+      const hasSlowSource=fighters.some(s=>s&&s!==f&&s.alive&&(s.sandyActive||s.naoyaSlowActive||s.naoyaDomainActive));
+      if(!hasSlowSource)f.sandyTimeScale=1;
+    }
     if(f.higurumaDisableTimer>0){f.higurumaDisableTimer-=dt;f.attackTimer=Math.max(f.attackTimer,10);}
     if(f.higurumaSwingCD>0)f.higurumaSwingCD-=dt;
     if(f.higurumaElecBurstCD>0)f.higurumaElecBurstCD-=dt;
@@ -6238,8 +6252,8 @@ function updateBattle(dt){
         const dashSpd=9+chaos*0.4;
         f.vx=Math.cos(f.kashimoDartDashAngle)*dashSpd;
         f.vy=Math.sin(f.kashimoDartDashAngle)*dashSpd;
-        // Electricity trail
-        spawnParticle(f.x,f.y,pick(['#ffcc00','#ffee66','#fff']),0,0,6,2);
+        // Electricity trail (every other frame to reduce particle load)
+        if(battleTime%2<1)spawnParticle(f.x,f.y,pick(['#ffcc00','#ffee66','#fff']),0,0,6,2);
         // Hit enemy during dash (only if passing close — not guaranteed)
         if(enemy.alive&&dist(f,enemy)<f.radius+enemy.radius+12){
           const dashDmg=f.atk*(0.5+chaos*0.04);
@@ -12164,7 +12178,7 @@ function drawBattle(){
   clearBtns();
   const f1=fighters[0],f2=fighters[1];
   X.save();
-  if(shakeTimer>0)X.translate((Math.random()*2-1)*shakeAmt,(Math.random()*2-1)*shakeAmt);
+  if(shakeTimer>0&&!(typeof battleCountdown!=='undefined'&&battleCountdown>0))X.translate((Math.random()*2-1)*shakeAmt,(Math.random()*2-1)*shakeAmt);
   X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
 
   // Arena
