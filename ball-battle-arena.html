@@ -9899,11 +9899,13 @@ function drawBall(f){
   }
 
   // Special meter below ball
-  const spW=f.radius*2.2,spH=4,spX=f.x-spW/2,spY=f.y+f.radius+10;
+  const spW=f.radius*2.4,spH=5,spX=f.x-spW/2,spY=f.y+f.radius+10;
   const spR=f.specialBar/f.specialMax;
-  X.fillStyle='#111';X.fillRect(spX,spY,spW,spH);
-  X.fillStyle=spR>=1?'#ffcc00':'#7b68ee';X.fillRect(spX,spY,spW*spR,spH);
-  X.strokeStyle='#333';X.lineWidth=0.5;X.strokeRect(spX,spY,spW,spH);
+  X.fillStyle='#1a1a1a';X.fillRect(spX,spY,spW,spH);
+  const spGrad=X.createLinearGradient(spX,spY,spX+spW*spR,spY);
+  spGrad.addColorStop(0,spR>=1?'#ffcc00':'#5544aa');spGrad.addColorStop(1,spR>=1?'#ffaa00':'#7b68ee');
+  X.fillStyle=spGrad;X.fillRect(spX,spY,spW*spR,spH);
+  X.strokeStyle='#444';X.lineWidth=0.5;X.strokeRect(spX,spY,spW,spH);
   if(spR>=1){X.font='bold 7px Consolas,monospace';X.fillStyle='#ffcc00';X.textAlign='center';X.fillText('RELIC',f.x,spY+spH+8);}
 
   // Character-specific scaling stats — bigger font for readability
@@ -11949,6 +11951,16 @@ function drawSelectDesktop(){
         X.fillStyle='#222';X.fillRect(sx+55,sy+si*statGap-7,cardW-78,5);X.fillStyle=ch.color;X.fillRect(sx+55,sy+si*statGap-7,(cardW-78)*Math.min(1,barVal),5);
       });
     }
+    // Lore combo chain link indicator
+    const lc=findLoreCombo(ch.id);
+    if(lc){
+      const lcPartner=lc.pair.find(id=>id!==ch.id);
+      const lcChar=CHARS.find(c=>c.id===lcPartner);
+      if(lcChar){
+        X.font='bold 8px Consolas,monospace';X.textAlign='center';
+        X.fillStyle='#ff880066';X.fillText('\u26D3 '+lcChar.name,cx+cardW/2,cy+cardH-4);
+      }
+    }
     addBtn('p1c'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{p1Char=i;});
     addBtn('p2c'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{p2Char=i;});
   });
@@ -11990,6 +12002,11 @@ function drawSelectDesktop(){
   X.font='11px Consolas,monospace';
   if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText('P1: '+(COMBO_EFFECTS[key]||''),W/4,comboY);}
   if(p2Elem>0){const key=CHARS[p2Char].id+'_'+ELEMENTS[p2Elem].id;X.fillStyle=ELEMENTS[p2Elem].color;X.textAlign='center';X.fillText('P2: '+(COMBO_EFFECTS[key]||''),W*3/4,comboY);}
+
+  // Sponsor / Lore Combo info
+  const sponsorY=comboY+16;
+  drawSponsorInfo(W/4,sponsorY,CHARS[p1Char].id,'center');
+  drawSponsorInfo(W*3/4,sponsorY,CHARS[p2Char].id,'center');
 
   addBtn('battle',W/2-100,H-70,200,48,'BATTLE!','#ff4444',startBattle);
   addBtn('back',20,H-50,80,35,'Back','#666',()=>{screen='title';});
@@ -12063,6 +12080,9 @@ function drawSelectMobile(){
       X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+6,cy+36);
       X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+6,cy+46);
       if(isSel){X.font='bold 9px Consolas,monospace';X.fillStyle=labelColor;X.textAlign='right';X.fillText(label,cx+cardW-6,cy+14);}
+      // Lore combo chain link
+      const lcm=findLoreCombo(ch.id);
+      if(lcm){const lcmP=lcm.pair.find(id=>id!==ch.id);const lcmC=CHARS.find(c=>c.id===lcmP);if(lcmC){X.font='bold 7px Consolas,monospace';X.textAlign='left';X.fillStyle='#ff880044';X.fillText('\u26D3'+lcmC.name,cx+6,cy+57);}}
       addBtn(prefix+i,cx,cy,cardW,cardH,'','transparent',()=>{cb(i);});
     });
     const rows=Math.ceil(displayChars.length/cols);
@@ -12104,6 +12124,11 @@ function drawSelectMobile(){
   X.font='8px Consolas,monospace';
   if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W/4+10,comboY);}
   if(p2Elem>0){const key=CHARS[p2Char].id+'_'+ELEMENTS[p2Elem].id;X.fillStyle=ELEMENTS[p2Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W*3/4-10,comboY);}
+
+  // Sponsor / Lore Combo info
+  const sponsorY=comboY+12;
+  drawSponsorInfo(W/4+10,sponsorY,CHARS[p1Char].id,'center');
+  drawSponsorInfo(W*3/4-10,sponsorY,CHARS[p2Char].id,'center');
 
   addBtn('battle',W/2-80,H-55,160,40,'BATTLE!','#ff4444',startBattle);
   addBtn('back',10,H-48,60,32,'Back','#666',()=>{screen='title';});
@@ -12175,6 +12200,27 @@ function drawElementIcon(cx,cy,elemId,size){
       X.beginPath();X.arc(cx,cy,s*0.15,0,Math.PI*2);X.fillStyle='#aaeeff';X.fill();
       break;
   }
+}
+function drawSponsorInfo(cx,cy,charId,align){
+  // Show lore combo / sponsor info for a character
+  const combo=findLoreCombo(charId);
+  if(!combo)return 0; // no height used
+  const sponsorId=combo.pair.find(id=>id!==charId);
+  const sponsorChar=CHARS.find(c=>c.id===sponsorId);
+  if(!sponsorChar)return 0;
+  const isL=align==='left'||align==='center';
+  const ta=align==='center'?'center':align;
+  // Chain link icon + sponsor name
+  X.font='bold 9px Consolas,monospace';X.textAlign=ta;
+  X.fillStyle='#ff880088';
+  const chainIcon='\u26D3'; // chain link
+  X.fillText(chainIcon+' LORE COMBO: '+combo.name,cx,cy);
+  X.font='8px Consolas,monospace';X.fillStyle='#886644';
+  X.fillText('Sponsor: '+sponsorChar.name+' ['+getTierLetter(sponsorId)+']',cx,cy+12);
+  // Draw mini sponsor ball preview
+  const bx=align==='right'?cx-60:align==='center'?cx+X.measureText('Sponsor: '+sponsorChar.name).width/2+12:cx+X.measureText('Sponsor: '+sponsorChar.name).width+12;
+  drawBallPreview(bx,cy+8,6,sponsorChar);
+  return 20; // height used
 }
 function drawElementPicker(sx,sy,selected,prefix,cb){
   ELEMENTS.forEach((el,i)=>{
@@ -12276,7 +12322,7 @@ function drawHPBar(bx,by,bw,bh,f,reverse){
   decays.forEach(d=>{
     const oldR=Math.max(0,d.oldHP/f.maxHp);
     const alpha=d.timer/30;
-    X.globalAlpha=alpha*0.6;
+    X.globalAlpha=alpha*0.85;
     X.fillStyle='#cc4444';
     if(reverse)X.fillRect(bx+bw*(1-oldR),by,bw*oldR,bh);
     else X.fillRect(bx,by,bw*oldR,bh);
@@ -13047,7 +13093,7 @@ function drawBattle(){
     X.fillRect(bossBx,barY,bossBarW*bossR,barH+2);X.strokeStyle='#888';X.lineWidth=2;X.strokeRect(bossBx,barY,bossBarW,barH+2);
     X.font='bold 12px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
     X.fillText('BOSS: '+boss.char.name+' — '+Math.ceil(boss.hp)+'/'+boss.maxHp,W/2,barY+13);
-    if(boss.elem.id!=='none'){X.font='9px Consolas,monospace';X.fillStyle=boss.elementActive?boss.elem.color:boss.elem.color+'66';X.fillText('['+boss.elem.name+']',W/2,barY-3);}
+    if(boss.elem.id!=='none'){X.font='bold 9px Consolas,monospace';X.fillStyle=boss.elementActive?boss.elem.color:boss.elem.color+'aa';X.fillText('['+boss.elem.name+']',W/2,barY-3);}
     // Boss relic bar
     const bspBarY=barY+barH+6,bspBarH=6;
     X.fillStyle='#111';X.fillRect(bossBx,bspBarY,bossBarW,bspBarH);
@@ -13068,7 +13114,7 @@ function drawBattle(){
       X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(t.hp)+'/'+t.maxHp,tx+3,tBarY+11);
       X.fillStyle=t.char.color;X.fillText(t.char.name.length>(isMobile?7:14)?t.char.name.slice(0,isMobile?7:14):t.char.name,tx,tBarY-3);
       // Show element name on mobile
-      if(t.elem.id!=='none'){X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.textAlign='right';X.fillStyle=t.elementActive?t.elem.color:t.elem.color+'88';X.fillText(t.elem.name,tx+tBarW,tBarY-3);X.textAlign='left';}
+      if(t.elem.id!=='none'){X.font='bold '+(isMobile?'7':'9')+'px Consolas,monospace';X.textAlign='right';X.fillStyle=t.elementActive?t.elem.color:t.elem.color+'bb';X.fillText(t.elem.name,tx+tBarW,tBarY-3);X.textAlign='left';}
       if(!t.alive){X.globalAlpha=0.5;X.fillStyle='#ff0000';X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillText('KO',tx+tBarW-16,tBarY+11);X.globalAlpha=1;}
     });
   } else {
@@ -13079,14 +13125,14 @@ function drawBattle(){
     X.font='bold 11px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(f1.hp)+'/'+f1.maxHp,p1bx+4,barY+12);
     // P1 name + mini weapon icon
     X.fillStyle=f1.char.color;X.fillText(f1.char.name,p1bx,barY-3);
-    if(f1.elem.id!=='none'){X.fillStyle=f1.elementActive?f1.elem.color:f1.elem.color+'66';X.fillText('['+f1.elem.name+']',p1bx+barW-60,barY-3);}
+    if(f1.elem.id!=='none'){X.fillStyle=f1.elementActive?f1.elem.color:f1.elem.color+'aa';X.fillText('['+f1.elem.name+']',p1bx+barW-60,barY-3);}
 
     const p2bx=isMobile?W-10-barW:W-40-barW;
     // P2 HP bar with damage decay
     drawHPBar(p2bx,barY,barW,barH,f2,true);
     X.font='bold 11px Consolas,monospace';X.textAlign='right';X.fillStyle='#fff';X.fillText(Math.ceil(f2.hp)+'/'+f2.maxHp,p2bx+barW-4,barY+12);
     X.fillStyle=f2.char.color;X.fillText(f2.char.name,p2bx+barW,barY-3);
-    if(f2.elem.id!=='none'){X.fillStyle=f2.elementActive?f2.elem.color:f2.elem.color+'66';X.textAlign='left';X.fillText('['+f2.elem.name+']',p2bx,barY-3);}
+    if(f2.elem.id!=='none'){X.fillStyle=f2.elementActive?f2.elem.color:f2.elem.color+'aa';X.textAlign='left';X.fillText('['+f2.elem.name+']',p2bx,barY-3);}
 
     // Special bars top
     const spBarY=barY+barH+4,spBarH=8;
@@ -13103,24 +13149,30 @@ function drawBattle(){
     if(roundNumber>1){
       X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#666';
       X.fillText('R'+roundNumber+' | '+p1RoundWins+'-'+p2RoundWins,W/2,barY+6);
-      if(p1WinBuffs.length>0){X.textAlign='left';X.fillStyle='#ffcc0088';X.font='8px Consolas,monospace';X.fillText(p1WinBuffs[p1WinBuffs.length-1].name+(p1WinBuffs.length>1?' x'+p1WinBuffs.length:''),p1bx,spBarY+spBarH+10);}
-      if(p2WinBuffs.length>0){X.textAlign='right';X.fillStyle='#ffcc0088';X.font='8px Consolas,monospace';X.fillText(p2WinBuffs[p2WinBuffs.length-1].name+(p2WinBuffs.length>1?' x'+p2WinBuffs.length:''),p2bx+barW,spBarY+spBarH+10);}
+      if(p1WinBuffs.length>0){X.textAlign='left';X.fillStyle='#ffcc00cc';X.font='bold 9px Consolas,monospace';X.fillText(p1WinBuffs[p1WinBuffs.length-1].name+(p1WinBuffs.length>1?' x'+p1WinBuffs.length:''),p1bx,spBarY+spBarH+10);}
+      if(p2WinBuffs.length>0){X.textAlign='right';X.fillStyle='#ffcc00cc';X.font='bold 9px Consolas,monospace';X.fillText(p2WinBuffs[p2WinBuffs.length-1].name+(p2WinBuffs.length>1?' x'+p2WinBuffs.length:''),p2bx+barW,spBarY+spBarH+10);}
     }
     // Sponsor bars (only show if char has a lore combo)
-    const lbY=spBarY+spBarH+2,lbH=4;
+    const lbY=spBarY+spBarH+2,lbH=6;
     if(findLoreCombo(f1.char.id)&&!f1.sponsorUsed){
       const lr1=f1.sponsorBar/f1.sponsorMax;
       X.fillStyle='#0a0a0a';X.fillRect(p1bx,lbY,barW,lbH);
-      X.fillStyle=lr1>=1?'#ff8800':'#664422';X.fillRect(p1bx,lbY,barW*lr1,lbH);
-      X.strokeStyle='#222';X.lineWidth=0.5;X.strokeRect(p1bx,lbY,barW,lbH);
-      if(lr1>=1){X.font='bold 6px Consolas,monospace';X.textAlign='left';X.fillStyle='#ff8800';X.fillText('COMBO!',p1bx+2,lbY+3.5);}
+      const lbg1=X.createLinearGradient(p1bx,lbY,p1bx+barW*lr1,lbY);
+      lbg1.addColorStop(0,'#664422');lbg1.addColorStop(1,lr1>=1?'#ff8800':'#885522');
+      X.fillStyle=lbg1;X.fillRect(p1bx,lbY,barW*lr1,lbH);
+      X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p1bx,lbY,barW,lbH);
+      if(lr1>=1){X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle='#ff8800';X.fillText('COMBO READY!',p1bx+2,lbY+5.5);}
+      else{const combo=findLoreCombo(f1.char.id);const sponsorId=combo.pair.find(id=>id!==f1.char.id);const sc=CHARS.find(c=>c.id===sponsorId);if(sc){X.font='7px Consolas,monospace';X.textAlign='left';X.fillStyle='#886644';X.fillText(sc.name,p1bx+2,lbY+5);}}
     }
     if(findLoreCombo(f2.char.id)&&!f2.sponsorUsed){
       const lr2=f2.sponsorBar/f2.sponsorMax;
       X.fillStyle='#0a0a0a';X.fillRect(p2bx,lbY,barW,lbH);
-      X.fillStyle=lr2>=1?'#ff8800':'#664422';X.fillRect(p2bx+barW*(1-lr2),lbY,barW*lr2,lbH);
-      X.strokeStyle='#222';X.lineWidth=0.5;X.strokeRect(p2bx,lbY,barW,lbH);
-      if(lr2>=1){X.font='bold 6px Consolas,monospace';X.textAlign='right';X.fillStyle='#ff8800';X.fillText('COMBO!',p2bx+barW-2,lbY+3.5);}
+      const lbg2=X.createLinearGradient(p2bx+barW*(1-lr2),lbY,p2bx+barW,lbY);
+      lbg2.addColorStop(0,lr2>=1?'#ff8800':'#885522');lbg2.addColorStop(1,'#664422');
+      X.fillStyle=lbg2;X.fillRect(p2bx+barW*(1-lr2),lbY,barW*lr2,lbH);
+      X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p2bx,lbY,barW,lbH);
+      if(lr2>=1){X.font='bold 8px Consolas,monospace';X.textAlign='right';X.fillStyle='#ff8800';X.fillText('COMBO READY!',p2bx+barW-2,lbY+5.5);}
+      else{const combo=findLoreCombo(f2.char.id);const sponsorId=combo.pair.find(id=>id!==f2.char.id);const sc=CHARS.find(c=>c.id===sponsorId);if(sc){X.font='7px Consolas,monospace';X.textAlign='right';X.fillStyle='#886644';X.fillText(sc.name,p2bx+barW-2,lbY+5);}}
     }
 
     X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';X.fillText('VS',W/2,barY+12);
@@ -13212,12 +13264,12 @@ function drawFighterInfo(f,px,py,maxW,align){
   if(f.projectionFrozenTimer>0)statuses.push({t:'FRAME LOCK',c:'#00ffaa'});
   if(f.elementActive)statuses.push({t:f.elem.name,c:f.elem.color});
 
-  X.font='8px Consolas,monospace';X.textAlign=isL?'left':'right';
+  X.font='bold 9px Consolas,monospace';X.textAlign=isL?'left':'right';
   statuses.forEach((s,i)=>{
-    X.fillStyle=s.c;X.fillText(s.t,ex+(isL?i*45:-i*45),ey);
+    X.fillStyle=s.c;X.fillText(s.t,ex+(isL?i*50:-i*50),ey);
   });
   if(statuses.length===0){
-    if(f.elem.id!=='none'){X.fillStyle='#555';X.fillText(f.elem.name+' @25%',ex,ey);}
+    if(f.elem.id!=='none'){X.fillStyle='#666';X.fillText(f.elem.name+' @25%',ex,ey);}
     else{X.fillStyle='#555';X.fillText('No Element',ex,ey);}
   }
 
@@ -13319,6 +13371,9 @@ function drawBossSelect(){
         X.font='8px Consolas,monospace';X.textAlign='left';X.fillStyle='#888';
         X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),cx+8,cy+(cardH>120?90:74));
       }
+      // Lore combo chain link indicator
+      const lcb=findLoreCombo(ch.id);
+      if(lcb){const lcbP=lcb.pair.find(id=>id!==ch.id);const lcbC=CHARS.find(c=>c.id===lcbP);if(lcbC){X.font='bold 7px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff880055';X.fillText('\u26D3'+lcbC.name,cx+cardW/2,cy+cardH-3);}}
       addBtn('bsel_'+i,cx,cy,cardW,cardH,'','transparent',()=>{
         if(origIdx===teamChar1||origIdx===teamChar2||origIdx===teamChar3)return;
         if(!_bossSelSlot)_bossSelSlot=1;
@@ -13458,6 +13513,24 @@ function drawBossSelect(){
         const bDesc=COMBO_EFFECTS[bKey]||'';
         if(bDesc){X.font='10px Consolas,monospace';X.textAlign='center';X.fillStyle=bossEl.color+'cc';X.fillText(bDesc,W/2,sumY);}
       }
+    }
+    // Sponsor / Lore Combo info for team members
+    const sponsorInfoY=isMobile?H-120:H-140;
+    const teamIds=[CHARS[teamChar1].id,CHARS[teamChar2].id,CHARS[teamChar3].id];
+    const teamWithCombos=teamIds.filter(id=>findLoreCombo(id));
+    if(teamWithCombos.length>0){
+      X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.textAlign='center';
+      X.fillStyle='#ff880088';X.fillText('\u26D3 LORE COMBOS IN YOUR TEAM',W/2,sponsorInfoY);
+      teamWithCombos.forEach((id,ti)=>{
+        const combo=findLoreCombo(id);
+        const sponsorId=combo.pair.find(sid=>sid!==id);
+        const ch=CHARS.find(c=>c.id===id);
+        const sc=CHARS.find(c=>c.id===sponsorId);
+        if(ch&&sc){
+          X.font=(isMobile?'8':'9')+'px Consolas,monospace';X.fillStyle='#886644';
+          X.fillText(ch.name+' + '+sc.name+' = '+combo.name,W/2,sponsorInfoY+14+ti*12);
+        }
+      });
     }
     // FIGHT button on page 3
     const fightY=isMobile?H-85:H-100;
