@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v9.2.0 — Night Build: boss buffs, tier rebalance, Black Flash visual, Rika bigger, Higuruma hammer, Naoya 1fps freeze
+// BALL BATTLE ARENA v9.3.0 — Night Build: personalized win buffs, cinematic cutscenes, source material fixes, Mahoraga boss
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -318,7 +318,7 @@ const CHARS=[
     playstyle:'Phase Shifter',
     stats:{hp:500,atk:22,speed:3.2,range:155,def:8,crit:14},
     baseAtkInterval:50,relicChargeRate:0.65,
-    specialName:'ULTRA CANNON MODE!',
+    specialName:'MAXIMUM OUTPUT!',
   },
   {
     id:'kashimo',name:'Kashimo',color:'#ffcc00',
@@ -715,6 +715,42 @@ let battleRealFrames=0; // real frames elapsed (for accurate duration display)
 let battleOver=false;
 let winner=null;
 let battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
+// Round tracking & personalized win buffs
+let p1RoundWins=0,p2RoundWins=0,roundNumber=1;
+let p1WinBuffs=[],p2WinBuffs=[]; // [{name,desc}] — history of applied buffs
+const PERSONALIZED_WIN_BUFFS={
+  yuji:{name:'Black Flash Instinct',desc:'Crit chance +8%',apply(f){f.crit+=8;}},
+  nanami:{name:'Overtime Extension',desc:'Overtime duration +25%',apply(f){f._nanamiOvertimeBonusPct=(f._nanamiOvertimeBonusPct||0)+0.25;}},
+  gojo:{name:'Infinity Acceleration',desc:'Infinity regen 25% faster',apply(f){f._gojoInfinityRegenMult=(f._gojoInfinityRegenMult||1)*0.75;}},
+  todo:{name:'Boogie Woogie Reflex',desc:'Swap cooldown -25%',apply(f){f._todoSwapCDMult=(f._todoSwapCDMult||1)*0.75;}},
+  toji:{name:'Cursed Tool Honing',desc:'Weapon damage +12%',apply(f){f.atk=Math.round(f.atk*1.12);f.baseAtk=Math.round(f.baseAtk*1.12);}},
+  choso:{name:'Blood Surge',desc:'Blood beam range +20%',apply(f){f._chosoRangeMult=(f._chosoRangeMult||1)*1.2;}},
+  higuruma:{name:'Swift Verdict',desc:'Special gauge charges 20% faster',apply(f){f._higurumaChargeMult=(f._higurumaChargeMult||1)*1.2;}},
+  naoya:{name:'Projection Mastery',desc:'Movement speed +10%',apply(f){f.speed=f.speed*1.1;f.baseSpeed=f.baseSpeed*1.1;}},
+  mechamaru:{name:'Cannon Overclock',desc:'Attack interval -15%',apply(f){f._mechaAtkIntervalMult=(f._mechaAtkIntervalMult||1)*0.85;}},
+  yuta:{name:'Rika Devotion',desc:'Rika stays 20% longer',apply(f){f._rikaDurationMult=(f._rikaDurationMult||1)*1.2;}},
+  ryu:{name:'Granite Blast Focus',desc:'Special charges 20% faster',apply(f){f._ryuChargeMult=(f._ryuChargeMult||1)*1.2;}},
+  mahoraga:{name:'Rapid Adaptation',desc:'Adaptation stacks +30% faster',apply(f){f.mahoAdaptPerStack=f.mahoAdaptPerStack*1.3;}},
+  katana:{name:'Iaijutsu Flow',desc:'Attack interval -12%',apply(f){f._katanaAtkIntervalMult=(f._katanaAtkIntervalMult||1)*0.88;}},
+  mantis:{name:'Blade Frenzy',desc:'Attack speed +12%',apply(f){f._mantisAtkIntervalMult=(f._mantisAtkIntervalMult||1)*0.88;}},
+  gorilla:{name:'Seismic Force',desc:'Knockback +20%',apply(f){f.gorillaKnockbackMult=(f.gorillaKnockbackMult||1)*1.2;}},
+  monowire:{name:'Extended Filament',desc:'Range +15%',apply(f){f.range=Math.round(f.range*1.15);}},
+  pls:{name:'Payload Expansion',desc:'+1 projectile per volley',apply(f){f._plsExtraProjectiles=(f._plsExtraProjectiles||0)+1;}},
+  berserk:{name:'Sustained Fury',desc:'Berserk rage +20% duration',apply(f){f._berserkDurationMult=(f._berserkDurationMult||1)*1.2;}},
+  sandy:{name:'Temporal Stretch',desc:'Sandevistan +15% duration',apply(f){f._sandyDurationMult=(f._sandyDurationMult||1)*1.15;}},
+  throw:{name:'Ricochet Edge',desc:'Throw weapons return 25% faster',apply(f){f._throwReturnMult=(f._throwReturnMult||1)*0.75;}},
+  smasher:{name:'Reinforced Plating',desc:'Defense +15%',apply(f){f.def=Math.round(f.def*1.15);f.baseDef=Math.round(f.baseDef*1.15);}},
+  kashimo:{name:'Lightning Charge',desc:'Special charges 15% faster',apply(f){f._kashimoChargeMult=(f._kashimoChargeMult||1)*1.15;}},
+};
+function applyWinBuffToFighter(f){
+  const buff=PERSONALIZED_WIN_BUFFS[f.char.id];
+  if(!buff)return;
+  const side=f.side;
+  const buffList=side===0?p1WinBuffs:p2WinBuffs;
+  const count=buffList.filter(b=>b.name===buff.name).length;
+  // Apply the buff once for each round won (stacks)
+  for(let i=0;i<count;i++)buff.apply(f);
+}
 let projectiles=[];
 let explosions=[];
 let shakeTimer=0,shakeAmt=0;
@@ -833,13 +869,15 @@ function getChaosLevel(f){
 function getAttackInterval(f){
   const chaos=getChaosLevel(f);
   const base=f.char.baseAtkInterval;
+  // Win buff attack interval multipliers
+  const winMult=f._mechaAtkIntervalMult||f._mantisAtkIntervalMult||f._katanaAtkIntervalMult||1;
   // Katana: minimal scaling — stays at roughly base interval
-  if(f.char.id==='katana')return Math.max(20,base/(1+chaos*0.1));
+  if(f.char.id==='katana')return Math.max(20,(base*winMult)/(1+chaos*0.1));
   // Berserk: fixed interval like PLS — scaling affects pellets/spread, not fire rate
-  if(f.char.id==='berserk')return base;
+  if(f.char.id==='berserk')return base*winMult;
   // Gojo: chaos = faster attack charge (his main scaling)
-  if(f.char.id==='gojo')return Math.max(15,base/(1+chaos*0.4));
-  return Math.max(4, base/(1+chaos*0.5));
+  if(f.char.id==='gojo')return Math.max(15,(base*winMult)/(1+chaos*0.4));
+  return Math.max(4, (base*winMult)/(1+chaos*0.5));
 }
 
 // ============================================================
@@ -1768,6 +1806,18 @@ function attackPLS(f,enemy,chaos){
     homing:false,isPlsOrb:true,
   });
   SFX.missile();
+  // Win buff: extra projectiles with slight spread
+  const extraCount=f._plsExtraProjectiles||0;
+  for(let ei=0;ei<extraCount;ei++){
+    const spreadA=a+(ei%2===0?1:-1)*(0.25+ei*0.1);
+    projectiles.push({
+      x:f.x+Math.cos(spreadA)*f.radius,y:f.y+Math.sin(spreadA)*f.radius,
+      vx:Math.cos(spreadA)*speed,vy:Math.sin(spreadA)*speed,
+      owner:f,target:enemy,color:'#33ff66',life:100,radius:12+chaos,
+      dmg:f.atk*(0.6+chaos*0.06),explosive:true,explosionRadius:explosionRadius*1.2,
+      homing:false,isPlsOrb:true,
+    });
+  }
   // Green energy crescent at staff tip
   spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#66ff66',10,5);
   spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#aaffaa',5,3);
@@ -2291,17 +2341,18 @@ function attackMechamaru(f,enemy,chaos){
   }
   // PHASE 3: True Form — small pistol only
   else if(f.mechaPhase===3){
+    // True form (Kokichi Muta) — desperate cursed energy bursts, nearly defenseless
     f.weaponExtend=1;f.weaponFlash=8;
-    SFX.mechaPistol();
+    SFX.mechaBlast();
     const a=angle(f,enemy);
     projectiles.push({
       x:f.x+Math.cos(a)*f.radius,y:f.y+Math.sin(a)*f.radius,
-      vx:Math.cos(a)*7,vy:Math.sin(a)*7,
-      owner:f,target:null,color:'#aaaaaa',
-      life:45,radius:3,dmg:f.atk*0.3,
+      vx:Math.cos(a)*5,vy:Math.sin(a)*5,
+      owner:f,target:null,color:'#77aaff',
+      life:35,radius:4,dmg:f.atk*0.2,
       explosive:false,homing:false,
     });
-    spawnSparks(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#ffcc00',3);
+    spawnBurst(f.x+Math.cos(a)*f.radius,f.y+Math.sin(a)*f.radius,'#77aaff',3,2);
   }
 }
 
@@ -3001,7 +3052,7 @@ function updateRelicTodo(f,enemy,dt){
       if(targets.length>0){
         const t=targets[Math.floor(Math.random()*targets.length)];
         todoPerformSwap(f,t.x,t.y,t);
-        f.todoSwapCD=120; // 2 second cooldown (was 1s)
+        f.todoSwapCD=Math.round(120*(f._todoSwapCDMult||1)); // 2 second cooldown, win buff reduces
       }
     }
   }
@@ -3494,9 +3545,10 @@ function relicPLS(f,enemy){
 
 function relicSandy(f,enemy){
   // Sandevistan: slow enemy time 75%, +30% dodge, speed boost, afterimage trail
-  f.specialTimer=360; // ~6 seconds
+  const sandyDur=Math.round(360*(f._sandyDurationMult||1));
+  f.specialTimer=sandyDur; // ~6 seconds base, win buff extends
   f.sandyActive=true;
-  f.sandyTimer=360;
+  f.sandyTimer=sandyDur;
   f.sandyDodgeBoost=0.18; // +18% dodge
   // Slow ALL other fighters (enemies AND teammates) — only Sandy-immune fighters resist
   fighters.forEach(other=>{
@@ -3567,7 +3619,7 @@ function relicKatana(f,enemy){
 
 function relicBerserk(f,enemy){
   // Berserk Mode: invincible, fast reload, red glow, 4 seconds
-  f.specialTimer=240;
+  f.specialTimer=Math.round(240*(f._berserkDurationMult||1));
   f.berserkInvincible=true;
   f.berserkReloadTimer=0; // instant reload
   f.speed=f.baseSpeed*1.4+f.berserkSpeedBoost;
@@ -3586,13 +3638,13 @@ function relicBerserk(f,enemy){
 function relicGojo(f,enemy){
   if(f.gojoAwakened&&!f.gojoDomainActive){
     // Awakened Relic: DOMAIN EXPANSION — INFINITE VOID
-    // "NAH I'D WIN" → freeze all, void background, charge purple, fire
+    // Domain Expansion: Infinite Void → freeze all, void background, charge purple, fire
     f.specialTimer=360; // ~6 seconds
     f.gojoDomainActive=true;
     f.gojoDomainTimer=360;
     f.gojoDomainChargeTimer=240; // charge for 4 sec, then fires
     f.gojoDomainBg=true;
-    showRelicText('NAH I\'D WIN',f.char.color);
+    showRelicText('DOMAIN EXPANSION: INFINITE VOID',f.char.color);
     SFX.gojoDomain();
     // Freeze ALL other fighters
     fighters.forEach(other=>{
@@ -3814,8 +3866,9 @@ function relicKashimo(f,enemy){
 function relicNanami(f,enemy){
   // "I'M WORKING OVERTIME." — massive crit + damage buff, rapid slashes
   f.nanamiOvertimeActive=true;
-  f.nanamiOvertimeTimer=420; // 7 seconds
-  f.specialTimer=420;
+  const nanamiDurMult=f._nanamiOvertimeBonusPct?(1+f._nanamiOvertimeBonusPct):1;
+  f.nanamiOvertimeTimer=Math.round(420*nanamiDurMult); // 7 seconds base, extended by win buff
+  f.specialTimer=f.nanamiOvertimeTimer;
   // Boost stats
   f.atk=Math.round(f.baseAtk*1.4);
   f.speed=f.baseSpeed*1.6;
@@ -3957,7 +4010,7 @@ function relicNaoya(f,enemy){
 function relicYuta(f,enemy){
   SFX.yutaDomain();
   f.yutaDomainActive=true;
-  f.yutaDomainTimer=480; // 8 seconds
+  f.yutaDomainTimer=Math.round(480*(f._rikaDurationMult||1)); // 8 seconds base, win buff extends
   f.yutaDomainSwords=[];
 
   // Spawn domain swords from copied techniques
@@ -4588,7 +4641,7 @@ function updateChosoBeam(f,enemy,dt){
     // Beam hit detection — wide hitbox (beam is thick)
     if(f.chosoBeamHitCD<=0){
       const chaos=getChaosLevel(f);
-      const beamLen=450;
+      const beamLen=Math.round(450*(f._chosoRangeMult||1));
       const bx=f.x+Math.cos(f.chosoBeamAngle)*f.radius;
       const by=f.y+Math.sin(f.chosoBeamAngle)*f.radius;
       if(enemy.alive){
@@ -5112,12 +5165,12 @@ function updateRelicNanami(f,enemy,dt){
     f.specialTimer=0;
     f.atk=f.baseAtk;
     f.speed=f.baseSpeed;
-    // Re-apply element stat boosts if active
+    // Re-apply element stat boosts if active (nerfed values)
     if(f.elementActive){
       switch(f.elem.id){
-        case 'fire':f.atk=f.baseAtk*1.3;break;
-        case 'electric':f.speed=f.baseSpeed*1.2;f.crit=f.crit;break;
-        case 'toxic':f.atk=f.baseAtk*1.15;break;
+        case 'fire':f.atk=f.baseAtk*1.18;break;
+        case 'electric':f.speed=f.baseSpeed*1.12;f.crit=f.crit;break;
+        case 'toxic':f.atk=f.baseAtk*1.08;break;
       }
     }
     spawnBurst(f.x,f.y,'#d4a843',15,5);
@@ -5776,18 +5829,20 @@ function updateBattle(dt){
       addLog('  >> '+(COMBO_EFFECTS[comboKey]||''));
       spawnBurst(f.x,f.y,f.elem.color,20,5);
       switch(f.elem.id){
-        case 'fire':f.atk=f.baseAtk*1.3;break;
-        case 'electric':f.speed=f.baseSpeed*1.2;f.crit+=8;break;
-        case 'toxic':f.atk=f.baseAtk*1.15;break;
-        case 'cryo':f.def=f.baseDef+5;break;
+        case 'fire':f.atk=f.baseAtk*1.18;break; // nerfed from 1.3 (char-specific buffs compensate)
+        case 'electric':f.speed=f.baseSpeed*1.12;f.crit+=5;break; // nerfed from 1.2/+8
+        case 'toxic':f.atk=f.baseAtk*1.08;break; // nerfed from 1.15
+        case 'cryo':f.def=f.baseDef+3;break; // nerfed from +5
       }
     }
     if(f.elementFlash>0)f.elementFlash-=dt;
 
     // Special bar passive fill (slow time-based + attack bonus is the main driver)
-    f.specialBar=Math.min(f.specialMax,f.specialBar+0.025*(f.char.relicChargeRate||1)*dt);
+    // Win buff charge multipliers: higuruma, ryu, kashimo
+    const charChargeMult=f._higurumaChargeMult||f._ryuChargeMult||f._kashimoChargeMult||1;
+    f.specialBar=Math.min(f.specialMax,f.specialBar+0.025*(f.char.relicChargeRate||1)*charChargeMult*dt);
     // Kashimo: time-based charge (~25 seconds), combat contributes minimally
-    if(f.char.id==='kashimo')f.specialBar=Math.min(f.specialMax,f.specialBar+0.067*dt);
+    if(f.char.id==='kashimo')f.specialBar=Math.min(f.specialMax,f.specialBar+0.067*(f._kashimoChargeMult||1)*dt);
 
     // Check if should use relic special
     if(f.specialBar>=f.specialMax&&!f.specialActive&&enemy.alive){
@@ -6007,8 +6062,8 @@ function updateBattle(dt){
         }
         triggerScreenFlash('#88aa44',8);
         shakeTimer=20;shakeAmt=12;
-        addLog((f.side===0?'P1':'P2')+' ULTIMATE MECH!');
-        spawnDmgNum(f.x,f.y-f.radius-30,'ULTIMATE MECH!','#ffcc00',true);
+        addLog((f.side===0?'P1':'P2')+' ULTIMATE MECHAMARU!');
+        spawnDmgNum(f.x,f.y-f.radius-30,'ULTIMATE MECHAMARU!','#ffcc00',true);
       }
       // Transition animation
       if(f.mechaTransitionAnim>0)f.mechaTransitionAnim-=dt;
@@ -6381,7 +6436,7 @@ function updateBattle(dt){
         f.gojoInfinityRegenCD-=dt;
         if(f.gojoInfinityRegenCD<=0){
           f.gojoInfinityCharges=Math.min(f.gojoInfinityMax,f.gojoInfinityCharges+1);
-          f.gojoInfinityRegenCD=f.gojoAwakened?240:360; // much slower regen
+          f.gojoInfinityRegenCD=Math.round((f.gojoAwakened?240:360)*(f._gojoInfinityRegenMult||1)); // much slower regen, win buff speeds it up
           spawnParticle(f.x+rand(-10,10),f.y+rand(-10,10),'#8888ff',0,-1,15,2);
         }
       }
@@ -6787,14 +6842,14 @@ function updateBattle(dt){
           SFX.explode();
           // Agaou returns after wall explosion with normal miss cooldown
           const chaos=getChaosLevel(p.owner);
-          const scaledCD=Math.max(tw.missCD*0.3,tw.missCD/(1+chaos*0.3));
+          const scaledCD=Math.max(tw.missCD*0.3,tw.missCD/(1+chaos*0.3))*(p.owner._throwReturnMult||1);
           tw.returnCD=scaledCD;tw.available=false;
         } else {
           // Embed weapon on ground
           const ex=clamp(p.x,ARENA.x+5,ARENA.x+ARENA.w-5);
           const ey=clamp(p.y,ARENA.y+5,ARENA.y+ARENA.h-5);
           const chaos=getChaosLevel(p.owner);
-          const scaledCD=Math.max(tw.missCD*0.3,tw.missCD/(1+chaos*0.3)); // faster returns at higher chaos
+          const scaledCD=Math.max(tw.missCD*0.3,tw.missCD/(1+chaos*0.3))*(p.owner._throwReturnMult||1); // faster returns at higher chaos
           p.owner.throwEmbedded.push({x:ex,y:ey,weaponIdx:p.throwIdx,active:true,life:scaledCD,color:tw.color});
           tw.returnCD=scaledCD;
           tw.available=false;
@@ -11194,7 +11249,7 @@ function drawTitle(){
   }
 
   const btnW=200,btnH=50;
-  addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;});
+  addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];});
   addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('P10 v8.5 // soloforte.ai',W/2,H-20);
@@ -11588,10 +11643,18 @@ function startBattle(){
     t3.y=ARENA.y+ARENA.h*0.75;
     boss.radius=55; // Boss is bigger
     fighters=[t1,t2,t3,boss];
+    // Apply personalized win buffs for boss mode
+    fighters.forEach(f=>applyWinBuffToFighter(f));
     addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' + '+CHARS[teamChar3].name+' vs '+CHARS[bossChar].name);
   } else {
     fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
-    addLog('Battle Start!');addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
+    // Apply personalized win buffs from previous rounds
+    fighters.forEach(f=>applyWinBuffToFighter(f));
+    addLog('Round '+roundNumber+(p1RoundWins+p2RoundWins>0?' (P1:'+p1RoundWins+' P2:'+p2RoundWins+')':''));
+    addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
+    // Log active win buffs
+    if(p1WinBuffs.length>0)addLog('P1 buff: '+p1WinBuffs[p1WinBuffs.length-1].name);
+    if(p2WinBuffs.length>0)addLog('P2 buff: '+p2WinBuffs[p2WinBuffs.length-1].name);
   }
 }
 
@@ -12353,6 +12416,13 @@ function drawBattle(){
     X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p2bx,spBarY,barW,spBarH);
     if(sp2>=1){X.font='bold 8px Consolas,monospace';X.textAlign='right';X.fillStyle='#fff';X.fillText('RELIC READY!',p2bx+barW-3,spBarY+7);}
 
+    // Round indicator & win buffs
+    if(roundNumber>1){
+      X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#666';
+      X.fillText('R'+roundNumber+' | '+p1RoundWins+'-'+p2RoundWins,W/2,barY+6);
+      if(p1WinBuffs.length>0){X.textAlign='left';X.fillStyle='#ffcc0088';X.font='8px Consolas,monospace';X.fillText(p1WinBuffs[p1WinBuffs.length-1].name+(p1WinBuffs.length>1?' x'+p1WinBuffs.length:''),p1bx,spBarY+spBarH+10);}
+      if(p2WinBuffs.length>0){X.textAlign='right';X.fillStyle='#ffcc0088';X.font='8px Consolas,monospace';X.fillText(p2WinBuffs[p2WinBuffs.length-1].name+(p2WinBuffs.length>1?' x'+p2WinBuffs.length:''),p2bx+barW,spBarY+spBarH+10);}
+    }
     // Sponsor bars (only show if char has a lore combo)
     const lbY=spBarY+spBarH+2,lbH=4;
     if(findLoreCombo(f1.char.id)&&!f1.sponsorUsed){
@@ -12723,8 +12793,18 @@ function drawResult(){
 
   X.font='bold '+(isMobile?'16':'20')+'px Consolas,monospace';X.fillStyle='#fff';X.textAlign='center';X.fillText(winner.char.name,W/2,by+60);
   if(winner.elem.id!=='none'){X.font='13px Consolas,monospace';X.fillStyle=winner.elem.color;X.fillText(winner.elem.name+' Element',W/2,by+80);}
+  // Round score & win buff preview
+  X.font='bold 12px Consolas,monospace';X.fillStyle='#7b68ee';X.textAlign='center';
+  X.fillText('Round '+roundNumber+'  |  P1: '+p1RoundWins+'  P2: '+p2RoundWins,W/2,by+95);
+  const winBuff=PERSONALIZED_WIN_BUFFS[winner.char.id];
+  if(winBuff){
+    X.font='11px Consolas,monospace';X.fillStyle='#ffcc00';
+    X.fillText('Win Buff: '+winBuff.name,W/2,by+110);
+    X.font='10px Consolas,monospace';X.fillStyle='#aaa';
+    X.fillText(winBuff.desc+' (on rematch)',W/2,by+122);
+  }
 
-  const statsY=by+110;
+  const statsY=by+140;
   X.font='bold 14px Consolas,monospace';X.fillStyle='#7b68ee';X.textAlign='center';X.fillText('BATTLE STATS',W/2,statsY);
   X.font='12px Consolas,monospace';
   const f1=fighters[0],f2=fighters[1];
@@ -12734,9 +12814,18 @@ function drawResult(){
   X.font='11px Consolas,monospace';X.fillStyle='#666';X.textAlign='center';X.fillText('Duration: '+(battleRealFrames/60).toFixed(1)+'s',W/2,statsY+125);
 
   const btnY=statsY+150,btnW=isMobile?140:160;
-  addBtn('rematch',W/2-btnW-10,btnY,btnW,42,'Rematch','#ff4444',()=>{startBattle();});
-  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{screen=gameMode==='boss'?'bossSelect':'select';});
-  addBtn('titleback',W/2-60,btnY+55,120,35,'Title','#555',()=>{screen='title';});
+  addBtn('rematch',W/2-btnW-10,btnY,btnW,42,'Rematch','#ff4444',()=>{
+    // Track round win and record personalized buff
+    if(winner){
+      const wSide=winner.side;
+      if(wSide===0){p1RoundWins++;const b=PERSONALIZED_WIN_BUFFS[winner.char.id];if(b)p1WinBuffs.push({name:b.name,desc:b.desc});}
+      else{p2RoundWins++;const b=PERSONALIZED_WIN_BUFFS[winner.char.id];if(b)p2WinBuffs.push({name:b.name,desc:b.desc});}
+    }
+    roundNumber++;
+    startBattle();
+  });
+  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];screen=gameMode==='boss'?'bossSelect':'select';});
+  addBtn('titleback',W/2-60,btnY+55,120,35,'Title','#555',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];screen='title';});
   buttons.forEach(drawBtn);
 }
 
