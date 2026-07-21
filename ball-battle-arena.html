@@ -385,6 +385,15 @@ const CHARS=[
     baseAtkInterval:28,relicChargeRate:0.9,
     specialName:'BOOGIE WOOGIE STORM',
   },
+  {
+    id:'mahoraga',name:'Mahoraga',color:'#1a1a2e',
+    desc:'BOSS. Adaptation wheel reduces damage per type. Sword of Extermination. Shinjuku mode.',
+    playstyle:'Boss — 3v1',
+    stats:{hp:2400,atk:34,speed:3.0,range:120,def:18,crit:15},
+    baseAtkInterval:55,relicChargeRate:0.6,
+    specialName:'NEGATION SHIELD',
+    isBoss:true,
+  },
 ];
 
 // ============================================================
@@ -493,6 +502,7 @@ const TIER_MAP={
   gojo:11,  // S+ (boss)
   yuta:10,  // S (boss)
   smasher:10, // S (boss)
+  mahoraga:10, // S (boss)
   higuruma:8, toji:8, kashimo:8, // A+
   nanami:7, choso:7, naoya:7, sandy:7, // A
   mechamaru:6, // A-
@@ -505,9 +515,14 @@ const TIER_MAP={
 const TIER_LETTER={11:'S+',10:'S',9:'S-',8:'A+',7:'A',6:'A-',5:'B+',4:'B',3:'B-',2:'C+',1:'C'};
 function getTierLetter(charId){return TIER_LETTER[TIER_MAP[charId]||1]||'C';}
 function getTierNum(charId){return TIER_MAP[charId]||1;}
-// Sponsor rule: caller must be at least 2 tier numbers below sponsor (full letter gap)
-// Exception: lore combos can trigger within same franchise regardless
-// Lore combos: specific canon pairs with cutscene attacks
+// Sponsor rules (Kyle sync #137):
+// C tier (1-2): can call sponsors from C-(1) to B-(3)
+// B tier (3-5): can call sponsors from B-(3) to A-(6)
+// A tier (6-8): can call sponsors from A-(6) to A+(8), ONLY when fighting S-rank (9+) enemies
+// S tier (9+): NO sponsors at all
+// Sponsor cannot already be in the arena
+// Lore combos: specific canon pairs with cutscene attacks (follow same tier rules)
+// Ally combos (future 2v2/boss): allies ult at same time → special cutscene
 const LORE_COMBOS=[
   {
     pair:['gojo','yuta'], franchise:'JJK', name:'TRIPLE PINCER — INFINITE LOVE',
@@ -537,14 +552,35 @@ function getLoreSponsor(charId){
   if(!combo)return null;
   return combo.pair.find(id=>id!==charId);
 }
+// Sponsor tier range: returns {min,max} tier numbers the caller can sponsor from, or null if no sponsors
+function getSponsorRange(callerTier){
+  if(callerTier>=9)return null; // S tier+ = no sponsors
+  if(callerTier>=6)return {min:6,max:8}; // A tier = A- to A+ range
+  if(callerTier>=3)return {min:3,max:6}; // B tier = B- to A- range
+  return {min:1,max:3}; // C tier = C to B- range
+}
 function canCallSponsor(callerCharId,enemyCharId){
+  const callerTier=getTierNum(callerCharId);
+  const enemyTier=getTierNum(enemyCharId);
+  // S tier+ cannot call sponsors
+  if(callerTier>=9)return false;
+  // A tier can ONLY call sponsors when fighting S-rank (9+) enemies
+  if(callerTier>=6&&enemyTier<9)return false;
+  // Must have a lore combo partner
   const combo=findLoreCombo(callerCharId);
   if(!combo)return false;
-  // Dabura exception: A+ can't call Dabura vs bosses
   const sponsorId=getLoreSponsor(callerCharId);
   if(!sponsorId)return false;
-  // Don't allow sponsor if enemy is on the same pair (mirror match weirdness)
+  // Don't allow sponsor if enemy is on the same pair (mirror match)
   if(combo.pair.includes(enemyCharId))return false;
+  // Sponsor must be within allowed tier range
+  const range=getSponsorRange(callerTier);
+  if(!range)return false;
+  const sponsorTier=getTierNum(sponsorId);
+  if(sponsorTier<range.min||sponsorTier>range.max)return false;
+  // Sponsor cannot be in the arena (check all fighters)
+  const inArena=fighters.some(f=>f&&f.alive&&f.char.id===sponsorId);
+  if(inArena)return false;
   return true;
 }
 
@@ -1093,6 +1129,26 @@ function createFighter(charIdx,elemIdx,side){
     todoSpecialSwapCD:0, // swap cooldown during storm
     todoBuffStacks:0, // stacked buff count from special
     todoBuffTimer:0, // buff decay timer (5-8s after special ends)
+    // Mahoraga state — Adaptation Wheel
+    mahoAdapt:{}, // {attackType: reductionStacks} — tracks damage type → stacking DR
+    mahoAdaptMax:0.95, // max 95% reduction per type
+    mahoAdaptPerStack:0.12, // 12% per stack (caps at ~8 stacks = 96% → clamped to 95%)
+    mahoWheelAnim:0, // wheel spin animation timer (visual feedback when adapting)
+    mahoWheelAngle:0, // current wheel rotation angle
+    mahoLastAdaptType:'', // last type adapted to (for visual)
+    mahoShinjuku:false, // Shinjuku mode at 15-20% HP — bypasses all defenses
+    mahoShinjukuAnim:0, // transition animation timer
+    mahoNegationActive:false, // Negation Shield special active
+    mahoNegationTimer:0, // shield duration (3 seconds = 180 frames)
+    mahoNegationFlash:0, // visual flash effect
+    mahoSwordSwing:0, // melee sword swing animation
+    mahoSwordAngle:0, // sword aim direction
+    mahoSlamCD:0, // ground slam cooldown (Sword of Extermination)
+    mahoSlamActive:false, // currently slamming
+    mahoSlamTimer:0, // slam animation timer
+    mahoSlamPos:null, // {x,y} slam target
+    mahoSwipeCD:0, // wide arc swipe cooldown
+    mahoAdaptPulse:0, // visual pulse when adaptation triggers
   };
 }
 
@@ -1109,6 +1165,8 @@ function updatePhysics(f,dt){
   if(f.chosoPiercingFreeze>0)spdMult=0; // Choso frozen while aiming
   if(f.mechaMouthBlastActive)spdMult=0; // Mechamaru frozen while firing mouth blast
   if(f.kashimoAmberActive)spdMult=0; // Kashimo frozen during AMBER charge
+  if(f.mahoSlamActive)spdMult=0; // Mahoraga frozen during slam
+  if(f.mahoShinjukuAnim>0)spdMult=0; // Mahoraga frozen during Shinjuku transition
   if(f.slowTimer>0)spdMult*=0.55;
   if(f.captureTimer>0)spdMult=0.05; // nearly immobile when captured
 
@@ -1362,6 +1420,33 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(defender.tojiDmgTakenDebuff)dmg*=1.1;
   // Yuji Cryo: takes more damage (glass cannon)
   if(defender.char&&defender.char.id==='yuji'&&defender.yujiIceDmgMult>1)dmg*=defender.yujiIceDmgMult;
+  // Mahoraga Negation Shield — blocks ALL damage while active
+  if(defender.char.id==='mahoraga'&&defender.mahoNegationActive){
+    spawnDmgNum(defender.x,defender.y-defender.radius-15,'NEGATED','#00ffaa',true);
+    spawnBurst(defender.x,defender.y,'#00ffaa',8,4);
+    return 0;
+  }
+  // Mahoraga Adaptation Wheel — stacking damage reduction per attack type
+  if(defender.char.id==='mahoraga'&&!defender.mahoShinjuku){
+    const atkType=attacker.char.id; // adapt per character type
+    if(!defender.mahoAdapt[atkType])defender.mahoAdapt[atkType]=0;
+    const reduction=Math.min(defender.mahoAdaptMax,defender.mahoAdapt[atkType]*defender.mahoAdaptPerStack);
+    if(reduction>0){
+      dmg*=(1-reduction);
+      if(reduction>=0.5){
+        spawnDmgNum(defender.x+rand(-10,10),defender.y-defender.radius-25,'ADAPTED','#00ff88',false);
+      }
+    }
+    // Increment adaptation stacks for this attack type
+    defender.mahoAdapt[atkType]++;
+    defender.mahoWheelAnim=30; // spin wheel visual
+    defender.mahoLastAdaptType=atkType;
+    defender.mahoAdaptPulse=15;
+  }
+  // Mahoraga Shinjuku mode — attacker bypasses ALL defender defenses (already applied above via reduced def)
+  if(attacker.char.id==='mahoraga'&&attacker.mahoShinjuku){
+    dmg*=1.5; // 50% more damage in Shinjuku mode
+  }
   defender.hp-=dmg;
   defender.hitFlash=8;
   attacker.totalHits++;
@@ -1400,6 +1485,27 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       for(let r=0;r<3;r++){explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:60+r*25,color:'#5577ff',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});}
       shakeTimer=25;shakeAmt=14;triggerScreenFlash('#5577ff',15);
       addLog('GOJO REVIVES!');
+      return dmg;
+    }
+    // Mahoraga Shinjuku mode — at 18% HP, doesn't die, enters Shinjuku
+    if(defender.char.id==='mahoraga'&&!defender.mahoShinjuku&&defender.hp<=0){
+      defender.hp=defender.maxHp*0.18;
+      defender.mahoShinjuku=true;
+      defender.mahoShinjukuAnim=90;
+      defender.mahoAdapt={}; // reset all adaptations — fresh start
+      defender.stunTimer=0;defender.freezeTimer=0;defender.projectionFrozenTimer=0;defender.captureTimer=0;
+      // Shinjuku stats: faster, stronger, bypasses defenses
+      defender.speed=defender.baseSpeed*1.5;
+      defender.atk=Math.round(defender.baseAtk*1.6);
+      defender.def=Math.round(defender.baseDef*0.6); // trades defense for offense
+      defender.specialBar=0;
+      SFX.relicActivate();
+      showRelicText('SHINJUKU MODE','#ff2244');
+      spawnBurst(defender.x,defender.y,'#ff2244',50,12);
+      spawnBurst(defender.x,defender.y,'#1a1a2e',30,8);
+      for(let r=0;r<4;r++){explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:80+r*30,color:'#ff2244',life:25,maxLife:25,dmg:defender.atk*0.3,owner:defender,target:null,hit:false});}
+      shakeTimer=30;shakeAmt=18;triggerScreenFlash('#ff2244',20);
+      addLog('MAHORAGA — SHINJUKU MODE!');
       return dmg;
     }
     // Naoya resurrection — dies and becomes Cursed Spirit (Phase 2)
@@ -1478,7 +1584,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:f.char.id==='mahoraga'?0.85:0.55;
   return Math.abs(diff)<arc;
 }
 
@@ -1525,6 +1631,7 @@ function performWeaponAttack(f,enemy){
     case 'naoya':attackNaoya(f,enemy,chaos);break;
     case 'yuta':attackYuta(f,enemy,chaos);break;
     case 'todo':attackTodo(f,enemy,chaos);break;
+    case 'mahoraga':attackMahoraga(f,enemy,chaos);break;
   }
 }
 
@@ -2742,6 +2849,24 @@ function attackTodo(f,enemy,chaos){
   enemy.vx+=Math.cos(ka)*4;enemy.vy+=Math.sin(ka)*4;
 }
 
+function attackMahoraga(f,enemy,chaos){
+  // Sword of Extermination — heavy melee strikes
+  const d=dist(f,enemy);
+  if(d>f.radius+enemy.radius+60+chaos*3)return; // melee collision range (big sword)
+  f.weaponExtend=1;f.weaponFlash=12;
+  SFX.critSlash();
+  // Heavy sword damage — scales with Shinjuku mode
+  const swordDmg=f.atk*(f.mahoShinjuku?2.0:1.3)*(1+chaos*0.1);
+  dealDamage(f,enemy,swordDmg,true);
+  spawnBurst(enemy.x,enemy.y,'#1a1a2e',10,5);
+  spawnSparks(enemy.x,enemy.y,f.mahoShinjuku?'#ff2244':'#888888',8);
+  // Knockback
+  const ka=angle(f,enemy);
+  const knockForce=f.mahoShinjuku?8:5;
+  enemy.vx+=Math.cos(ka)*knockForce;enemy.vy+=Math.sin(ka)*knockForce;
+  // Shinjuku: attacks bypass all defenses (applied in dealDamage)
+}
+
 function relicTodo(f,enemy){
   SFX.relicActivate();
   f.todoSpecialActive=true;
@@ -2767,6 +2892,44 @@ function relicTodo(f,enemy){
   shakeTimer=15;shakeAmt=8;
   spawnDmgNum(f.x,f.y-f.radius-30,'BOOGIE WOOGIE STORM','#dd7733',false);
   addLog((f.side===0?'P1':'P2')+' BOOGIE WOOGIE STORM!');
+}
+
+function relicMahoraga(f,enemy){
+  // Negation Shield: blocks all incoming damage for 3 seconds
+  // Also rapidly drops adaptation counters (5-7 stacks removed)
+  f.mahoNegationActive=true;
+  f.mahoNegationTimer=180; // 3 seconds
+  f.mahoNegationFlash=30;
+  f.specialTimer=180;
+
+  // Drop adaptation counters by 5-7 for all types
+  const dropAmount=5+Math.floor(Math.random()*3);
+  for(const key in f.mahoAdapt){
+    f.mahoAdapt[key]=Math.max(0,f.mahoAdapt[key]-dropAmount);
+  }
+
+  // Burst shockwave that pushes enemies away
+  fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
+    const d=dist(f,e);
+    if(d<200){
+      const ka=angle(f,e);
+      const pushForce=12*(1-d/200);
+      e.vx+=Math.cos(ka)*pushForce;
+      e.vy+=Math.sin(ka)*pushForce;
+      e.stunTimer=Math.max(e.stunTimer,20);
+    }
+  });
+
+  SFX.relicActivate();
+  spawnBurst(f.x,f.y,'#00ffaa',40,12);
+  spawnBurst(f.x,f.y,'#1a1a2e',25,8);
+  for(let r=0;r<3;r++){
+    explosions.push({x:f.x,y:f.y,radius:0,maxRadius:100+r*40,color:'#00ffaa',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+  }
+  triggerScreenFlash('#00ffaa',15);
+  shakeTimer=20;shakeAmt=12;
+  spawnDmgNum(f.x,f.y-f.radius-30,'NEGATION SHIELD','#00ffaa',false);
+  addLog((f.side===0?'P1':'P2')+' NEGATION SHIELD!');
 }
 
 function todoPerformSwap(f,targetX,targetY,swapTarget){
@@ -3273,6 +3436,7 @@ function useSpecial(f,enemy){
     case 'naoya':relicNaoya(f,enemy);break;
     case 'yuta':relicYuta(f,enemy);break;
     case 'todo':relicTodo(f,enemy);break;
+    case 'mahoraga':relicMahoraga(f,enemy);break;
   }
 }
 
@@ -4895,7 +5059,7 @@ function updateRelicKashimo(f,enemy,dt){
     f.weaponFlash=12;
     // Deal massive damage every few frames
     if(battleTime%4<1&&enemy.alive){
-      const isBoss=enemy.char&&(enemy.char.id==='smasher'||enemy.char.id==='gojo'||enemy.char.id==='sukuna');
+      const isBoss=enemy.char&&(enemy.char.id==='smasher'||enemy.char.id==='gojo'||enemy.char.id==='sukuna'||enemy.char.id==='mahoraga');
       const floodDmg=isBoss?enemy.maxHp*0.14:enemy.maxHp*1.5; // one-tap normals, 60-70% boss HP over flood
       const elecMult=f.elementActive&&f.elem.id==='electric'?1.5:1;
       dealDamage(f,enemy,floodDmg*elecMult/15); // spread over 15 ticks
@@ -6289,10 +6453,109 @@ function updateBattle(dt){
       // Chaos scaling: faster attack charge time
     }
 
+    // Mahoraga per-frame: adaptation wheel visual, Negation Shield, Shinjuku mode, Sword of Extermination
+    if(f.char.id==='mahoraga'){
+      // Wheel animation
+      if(f.mahoWheelAnim>0){
+        f.mahoWheelAnim-=dt;
+        f.mahoWheelAngle+=0.15*dt; // spin the adaptation wheel
+      }
+      if(f.mahoAdaptPulse>0)f.mahoAdaptPulse-=dt;
+      // Shinjuku transition animation
+      if(f.mahoShinjukuAnim>0){
+        f.mahoShinjukuAnim-=dt;
+        f.vx=0;f.vy=0; // freeze during transition
+        // Red aura particles
+        if(battleTime%2<1){
+          const pa=Math.random()*Math.PI*2;
+          spawnParticle(f.x+Math.cos(pa)*40,f.y+Math.sin(pa)*40,'#ff2244',
+            Math.cos(pa+Math.PI)*2,Math.sin(pa+Math.PI)*2,15,3);
+        }
+      }
+      // Negation Shield timer
+      if(f.mahoNegationActive){
+        f.mahoNegationTimer-=dt;
+        if(f.mahoNegationFlash>0)f.mahoNegationFlash-=dt;
+        // Drop adaptation counters by 1 each frame (rapid reset)
+        for(const key in f.mahoAdapt){
+          if(f.mahoAdapt[key]>0)f.mahoAdapt[key]=Math.max(0,f.mahoAdapt[key]-0.05*dt);
+        }
+        // Green shield particles
+        if(battleTime%3<1){
+          const pa=Math.random()*Math.PI*2;
+          spawnParticle(f.x+Math.cos(pa)*30,f.y+Math.sin(pa)*30,'#00ffaa',
+            Math.cos(pa)*1,Math.sin(pa)*1,10,2);
+        }
+        if(f.mahoNegationTimer<=0){
+          f.mahoNegationActive=false;
+        }
+      }
+      // Ground slam cooldown
+      if(f.mahoSlamCD>0)f.mahoSlamCD-=dt;
+      if(f.mahoSwipeCD>0)f.mahoSwipeCD-=dt;
+      // Slam attack — area damage
+      if(f.mahoSlamActive){
+        f.mahoSlamTimer-=dt;
+        f.vx=0;f.vy=0;
+        if(f.mahoSlamTimer<=20&&f.mahoSlamPos){
+          // Impact frame — damage all enemies in radius
+          const slamR=f.mahoShinjuku?120:80;
+          const slamDmg=f.atk*(f.mahoShinjuku?2.5:1.8);
+          fighters.filter(e=>e.side!==f.side&&e.alive&&dist(f.mahoSlamPos,e)<slamR).forEach(e=>{
+            dealDamage(f,e,slamDmg,true);
+            e.stunTimer=Math.max(e.stunTimer,40); // stun on slam
+            const ka=angle(f.mahoSlamPos,e);
+            e.vx+=Math.cos(ka)*8;e.vy+=Math.sin(ka)*8;
+          });
+          spawnBurst(f.mahoSlamPos.x,f.mahoSlamPos.y,'#ff2244',30,10);
+          spawnBurst(f.mahoSlamPos.x,f.mahoSlamPos.y,'#1a1a2e',20,7);
+          explosions.push({x:f.mahoSlamPos.x,y:f.mahoSlamPos.y,radius:0,maxRadius:slamR,color:'#ff2244',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
+          shakeTimer=15;shakeAmt=12;
+          SFX.heavyHit();
+          f.mahoSlamPos=null;
+        }
+        if(f.mahoSlamTimer<=0){
+          f.mahoSlamActive=false;
+          f.mahoSlamCD=f.mahoShinjuku?120:180; // faster in Shinjuku
+        }
+      }
+      // Auto-slam: periodically slam toward closest enemy
+      if(!f.mahoSlamActive&&f.mahoSlamCD<=0&&enemy&&enemy.alive){
+        f.mahoSlamActive=true;
+        f.mahoSlamTimer=40;
+        f.mahoSlamPos={x:enemy.x,y:enemy.y};
+        SFX.rocketLaunch();
+        addLog('SWORD OF EXTERMINATION!');
+      }
+      // Wide arc swipe — hits all enemies in front
+      if(f.mahoSwipeCD<=0&&enemy&&enemy.alive&&dist(f,enemy)<f.range*1.5){
+        f.mahoSwipeCD=f.mahoShinjuku?90:150;
+        const swipeDmg=f.atk*(f.mahoShinjuku?2.0:1.4);
+        const swipeAngle=angle(f,enemy);
+        // Hit enemies in 120-degree arc
+        fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
+          const ea=angle(f,e);
+          let diff=ea-swipeAngle;
+          while(diff>Math.PI)diff-=Math.PI*2;
+          while(diff<-Math.PI)diff+=Math.PI*2;
+          if(Math.abs(diff)<Math.PI/3&&dist(f,e)<f.range*1.5){
+            dealDamage(f,e,swipeDmg,true);
+            const ka=angle(f,e);
+            e.vx+=Math.cos(ka)*5;e.vy+=Math.sin(ka)*5;
+          }
+        });
+        f.mahoSwordSwing=20;
+        f.mahoSwordAngle=swipeAngle;
+        spawnSparks(f.x+Math.cos(swipeAngle)*f.radius,f.y+Math.sin(swipeAngle)*f.radius,'#ff2244',12);
+        SFX.critSlash();
+      }
+      if(f.mahoSwordSwing>0)f.mahoSwordSwing-=dt;
+    }
+
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='mahoraga'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
@@ -6306,7 +6569,7 @@ function updateBattle(dt){
         else if(f.char.id==='berserk'&&f.berserkReloadTimer>0){/* reloading */}
         else if(f.char.id==='katana'&&f.katanaDashing){/* mid counter-dash */}
         else if(f.char.id==='naoya'&&(f.naoyaDashing||f.naoyaTransitionTimer>0)){/* mid projection dash or transforming */}
-        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='ryu'||f.char.id==='naoya'||isWeaponFacingEnemy(f,enemy)){
+        else if(f.char.id==='pls'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='ryu'||f.char.id==='naoya'||f.char.id==='mahoraga'||isWeaponFacingEnemy(f,enemy)){
           f.attackTimer=getAttackInterval(f);
           performWeaponAttack(f,enemy);
         }
@@ -8847,6 +9110,85 @@ function drawBall(f){
     });
   }
 
+  // Mahoraga visual effects
+  if(f.char.id==='mahoraga'){
+    // Adaptation wheel above head
+    const wheelR=18;
+    const wheelX=f.x,wheelY=f.y-f.radius-28;
+    X.save();
+    X.translate(wheelX,wheelY);
+    X.rotate(f.mahoWheelAngle);
+    // Wheel body
+    X.strokeStyle=f.mahoShinjuku?'#ff2244':'#00ffaa';
+    X.lineWidth=2;
+    X.beginPath();X.arc(0,0,wheelR,0,Math.PI*2);X.stroke();
+    // 8 spokes
+    for(let i=0;i<8;i++){
+      const sa=Math.PI*2*i/8;
+      X.beginPath();X.moveTo(0,0);X.lineTo(Math.cos(sa)*wheelR,Math.sin(sa)*wheelR);X.stroke();
+    }
+    // Center dot
+    X.fillStyle=f.mahoShinjuku?'#ff2244':'#00ffaa';
+    X.beginPath();X.arc(0,0,4,0,Math.PI*2);X.fill();
+    // Adaptation pulse
+    if(f.mahoAdaptPulse>0){
+      X.strokeStyle='rgba(0,255,170,'+(f.mahoAdaptPulse/15)*0.8+')';
+      X.lineWidth=3;
+      X.beginPath();X.arc(0,0,wheelR+8*(1-f.mahoAdaptPulse/15),0,Math.PI*2);X.stroke();
+    }
+    X.restore();
+    // Negation Shield aura
+    if(f.mahoNegationActive){
+      const shieldAlpha=0.3+Math.sin(battleTime*0.3)*0.15;
+      X.strokeStyle='rgba(0,255,170,'+shieldAlpha+')';
+      X.lineWidth=4;
+      X.beginPath();X.arc(f.x,f.y,f.radius+12,0,Math.PI*2);X.stroke();
+      X.strokeStyle='rgba(0,255,170,'+(shieldAlpha*0.5)+')';
+      X.lineWidth=2;
+      X.beginPath();X.arc(f.x,f.y,f.radius+20,0,Math.PI*2);X.stroke();
+    }
+    // Shinjuku mode: red aura
+    if(f.mahoShinjuku){
+      const redAlpha=0.2+Math.sin(battleTime*0.2)*0.1;
+      X.strokeStyle='rgba(255,34,68,'+redAlpha+')';
+      X.lineWidth=3;
+      X.beginPath();X.arc(f.x,f.y,f.radius+8,0,Math.PI*2);X.stroke();
+      // "SHINJUKU" text
+      X.font='bold 10px Consolas,monospace';X.textAlign='center';
+      X.fillStyle='rgba(255,34,68,'+(0.5+Math.sin(battleTime*0.15)*0.3)+')';
+      X.fillText('SHINJUKU',f.x,f.y+f.radius+18);
+    }
+    // Sword of Extermination swing visual
+    if(f.mahoSwordSwing>0){
+      const swProg=f.mahoSwordSwing/20;
+      const swLen=f.mahoShinjuku?80:60;
+      X.save();
+      X.translate(f.x,f.y);
+      X.rotate(f.mahoSwordAngle);
+      // Sword arc sweep
+      X.strokeStyle='rgba(255,34,68,'+(swProg*0.8)+')';
+      X.lineWidth=4+swProg*4;
+      X.beginPath();
+      X.arc(0,0,swLen,-Math.PI/3*swProg,Math.PI/3*swProg);
+      X.stroke();
+      X.restore();
+    }
+    // Slam warning circle
+    if(f.mahoSlamActive&&f.mahoSlamPos){
+      const slamAlpha=0.3+Math.sin(battleTime*0.5)*0.2;
+      const slamR=f.mahoShinjuku?120:80;
+      X.strokeStyle='rgba(255,34,68,'+slamAlpha+')';
+      X.lineWidth=3;
+      X.setLineDash([8,4]);
+      X.beginPath();X.arc(f.mahoSlamPos.x,f.mahoSlamPos.y,slamR,0,Math.PI*2);X.stroke();
+      X.setLineDash([]);
+      // Cross-hair at slam target
+      X.strokeStyle='rgba(255,34,68,0.6)';X.lineWidth=2;
+      X.beginPath();X.moveTo(f.mahoSlamPos.x-15,f.mahoSlamPos.y);X.lineTo(f.mahoSlamPos.x+15,f.mahoSlamPos.y);X.stroke();
+      X.beginPath();X.moveTo(f.mahoSlamPos.x,f.mahoSlamPos.y-15);X.lineTo(f.mahoSlamPos.x,f.mahoSlamPos.y+15);X.stroke();
+    }
+  }
+
   // HP text in center
   X.font='bold 13px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
   X.strokeStyle='#000';X.lineWidth=3;
@@ -9031,6 +9373,11 @@ function drawBall(f){
       const mode=f.higurumaDomainActive?'DOMAIN':f.higurumaSwingCD>0?'SWING':'HAMMER';
       X.fillText(mode+(f.higurumaDisableTimer>0?' DIS':''),f.x,statY);
       break;}
+    case 'mahoraga':{
+      const adaptCount=Object.values(f.mahoAdapt).reduce((s,v)=>s+v,0);
+      const mode=f.mahoShinjuku?'SHINJUKU':f.mahoNegationActive?'SHIELD':'SWORD';
+      X.fillText(mode+' A:'+adaptCount,f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -9071,6 +9418,7 @@ function drawWeapon(f){
     case 'naoya':drawNaoyaWeapon(r,ext,flash,f);break;
     case 'yuta':drawYutaWeapon(r,ext,flash,f);break;
     case 'todo':drawTodoWeapon(r,ext,flash,f);break;
+    case 'mahoraga':drawMahoragaWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -9617,6 +9965,33 @@ function drawTodoWeapon(r,ext,flash,f){
     X.globalAlpha=0.6;X.fillStyle='#ffcc44';
     X.beginPath();X.arc(r+10+extend,0,15,0,Math.PI*2);X.fill();
     X.globalAlpha=1;
+  }
+}
+
+function drawMahoragaWeapon(r,ext,flash,f){
+  // Sword of Extermination — massive dark blade
+  const extend=ext*15;
+  const bladeLen=f.mahoShinjuku?70:55;
+  const col=flash?'#ff4444':f.mahoShinjuku?'#ff2244':'#444466';
+  // Handle
+  X.fillStyle='#333344';X.fillRect(r-6,-3,14,6);
+  // Guard (crosspiece)
+  X.fillStyle='#555577';X.fillRect(r+6,-8,4,16);
+  // Blade body
+  const g=X.createLinearGradient(r+10,0,r+10+bladeLen+extend,0);
+  g.addColorStop(0,col);g.addColorStop(0.5,f.mahoShinjuku?'#cc1133':'#333355');g.addColorStop(1,'#111122');
+  X.fillStyle=g;
+  X.beginPath();
+  X.moveTo(r+10,-4);X.lineTo(r+10+bladeLen+extend,0);X.lineTo(r+10,4);X.closePath();X.fill();
+  // Edge glow
+  X.strokeStyle=f.mahoShinjuku?'rgba(255,34,68,0.6)':'rgba(100,100,170,0.4)';
+  X.lineWidth=1.5;
+  X.beginPath();X.moveTo(r+10,-4);X.lineTo(r+10+bladeLen+extend,0);X.stroke();
+  // Shinjuku: red flames on blade
+  if(f.mahoShinjuku&&battleTime%3<1){
+    const fx=r+10+Math.random()*bladeLen;
+    X.fillStyle='rgba(255,34,68,0.5)';
+    X.beginPath();X.arc(fx,(Math.random()-0.5)*6,3,0,Math.PI*2);X.fill();
   }
 }
 
