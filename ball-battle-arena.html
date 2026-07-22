@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.4.0 — Mobile char select rework: 4-page sequential flow (P1 char→elem→P2 char→elem→Battle), merged tier pages (S/A/B/C), bigger arrows, no overlap, lore combo names removed
+// BALL BATTLE ARENA v10.4.1 — Fix rendering: save/restore around drawBallPreview, try-catch on select screen, version watermark on title
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -13646,7 +13646,7 @@ function drawTitle(){
   addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;selectTierPage=0;});
   addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('P10 v8.5 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.4.1 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -13982,7 +13982,9 @@ function drawSelectMobile(){
       X.strokeStyle=isSel?playerColor:ch.color+'44';X.lineWidth=isSel?2.5:1;X.stroke();
 
       // Ball preview
-      drawBallPreview(cx+ballR+5,cy+cardH/2,ballR,ch);
+      X.save();
+      try{drawBallPreview(cx+ballR+5,cy+cardH/2,ballR,ch);}catch(e){console.error('drawBallPreview error:',ch.id,e);}
+      X.restore();
 
       // Sub-tier label (A+, B-, etc.)
       const tierStr=getTierLetter(ch.id);
@@ -15709,7 +15711,7 @@ function loop(time){
   const dpr=window.devicePixelRatio||1;X.setTransform(dpr,0,0,dpr,0,0);X.save();X.scale(sc,sc);
   switch(screen){
     case 'title':drawTitle();break;
-    case 'select':drawSelect();break;
+    case 'select':try{drawSelect();}catch(e){console.error('BBA select error:',e);}break;
     case 'bossSelect':drawBossSelect();break;
     case 'battle':
       try{
