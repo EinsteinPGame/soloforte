@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.2.1 — Fix zoom bug on battle start, sponsor display, UI polish
+// BALL BATTLE ARENA v10.3.0 — Megumi Fushiguro complete rework: Shadow Meter system
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -397,7 +397,7 @@ const CHARS=[
   },
   {
     id:'megumi',name:'Megumi Fushiguro',color:'#1a3a6a',
-    desc:'Ten Shadows Technique: summons shadow shikigami. Domain: Chimera Shadow Garden.',
+    desc:'Ten Shadows Technique: Divine Dogs + Shadow Meter shikigami. Domain: Chimera Shadow Garden.',
     playstyle:'Shadows & Shikigami',
     stats:{hp:550,atk:28,speed:4.0,range:110,def:8,crit:16},
     baseAtkInterval:38,relicChargeRate:0.85,
@@ -585,7 +585,7 @@ const LORE_COMBOS=[
   },
   {
     pair:['megumi','yuji'], franchise:'JJK', name:'TOKYO METROPOLITAN CURSE TECHNICAL SCHOOL',
-    desc:'Yuji punches while Megumi\'s Nue strikes from above — combined assault',
+    desc:'Yuji punches while Megumi\'s Divine Dogs and Nue strike from all sides — combined assault',
     dmgMult:2.5,
     cutsceneFrames:75,
     color1:'#1a3a6a', color2:'#ff69b4',
@@ -809,7 +809,7 @@ const PERSONALIZED_WIN_BUFFS={
   smasher:{name:'Reinforced Plating',desc:'Defense +15%',apply(f){f.def=Math.round(f.def*1.15);f.baseDef=Math.round(f.baseDef*1.15);}},
   kashimo:{name:'Lightning Charge',desc:'Special charges 15% faster',apply(f){f._kashimoChargeMult=(f._kashimoChargeMult||1)*1.15;}},
   yuki:{name:'Gravitational Density',desc:'Mass meter max +15',apply(f){f.yukiMassMax=(f.yukiMassMax||100)+15;}},
-  megumi:{name:'Shadow Resonance',desc:'Nue summon every 2 hits instead of 3',apply(f){f._megumiNueInterval=(f._megumiNueInterval||3)-1;}},
+  megumi:{name:'Shadow Resonance',desc:'Shadow meter gains +25%',apply(f){f._megumiMeterGainMult=(f._megumiMeterGainMult||1)*1.25;}},
   mahito:{name:'Soul Sculptor',desc:'Transfigure chance +10%',apply(f){f._mahitoTransfigureBonus=(f._mahitoTransfigureBonus||0)+0.10;}},
 };
 
@@ -1424,13 +1424,36 @@ function createFighter(charIdx,elemIdx,side){
     todoSpecialSwapCD:0, // swap cooldown during storm
     todoBuffStacks:0, // stacked buff count from special
     todoBuffTimer:0, // buff decay timer (5-8s after special ends)
-    // Megumi Fushiguro state — Shadows & Shikigami
-    megumiHitCount:0, // tracks hits for Nue summon (every 3rd)
-    megumiNueInterval:3, // hits needed to summon Nue
+    // Megumi Fushiguro state — Shadow Meter + Divine Dogs + Shikigami
+    megumiShadowMeter:0, // 0-12 range, thresholds at 3,5,7,9,11
+    megumiMeterScaling:1.0, // increases over time for volatility
     megumiDomainActive:false, // Chimera Shadow Garden active
     megumiDomainTimer:0, // domain duration (8s = 480 frames)
-    megumiCloneCD:0, // cooldown between shadow clone spawns
     megumiShadowAlpha:1, // transparency during domain
+    // Divine Dogs
+    megumiDog1:{alive:true,hp:150,maxHp:150,x:0,y:0,moveAngle:0,turnTimer:0,atkCD:0,posInit:false},
+    megumiDog2:{alive:true,hp:150,maxHp:150,x:0,y:0,moveAngle:0,turnTimer:0,atkCD:0,posInit:false},
+    megumiTotality:false, // when one dog dies, other becomes Totality
+    // Active shikigami (only one at a time besides dogs, null if none)
+    megumiActiveShikigami:null, // 'nue','toad','serpent','elephant','deer'
+    megumiShikigamiTimer:0, // active shikigami action timer
+    megumiShikigamiCD:0, // cooldown between shikigami actions
+    // Rabbit Escape passive
+    megumiRabbits:[], // [{x,y,hp,maxHp,moveAngle,life}]
+    megumiRabbitKills:0, // enemy kills on rabbits, at 5 Megumi takes damage
+    megumiRabbitCD:0, // cooldown for spawning rabbits
+    // Nue specific
+    megumiNueTarget:null, // enemy being shocked
+    megumiNueTimer:0,
+    // Toad specific
+    megumiToadHoldTimer:0,
+    megumiToadTargetHeld:false,
+    // Domain all-shikigami timers
+    megumiDomainNueCD:0,
+    megumiDomainToadCD:0,
+    megumiDomainSerpentCD:0,
+    megumiDomainElephantCD:0,
+    megumiDomainDeerCD:0,
     // Mahito state — Control & Transfigure
     mahitoHitCount:0, // tracks hits for blade arm morph (every 5th)
     mahitoTransfigured:false, // enemy currently transfigured
@@ -3484,41 +3507,70 @@ function attackMegumi(f,enemy,chaos){
   // Shadow trail effect
   spawnBurst(f.x+(enemy.x-f.x)*0.5,f.y+(enemy.y-f.y)*0.5,'#0a1a3a',4,2);
 
-  // Every 3rd hit (or adjusted by win buff) summons a mini Nue
-  f.megumiHitCount++;
-  const nueInterval=f._megumiNueInterval||f.megumiNueInterval||3;
-  if(f.megumiHitCount>=nueInterval){
-    f.megumiHitCount=0;
-    // Spawn Nue lightning from above the enemy
-    const nueX=enemy.x+rand(-20,20);
-    const nueY=enemy.y-80;
-    projectiles.push({
-      x:nueX,y:nueY,
-      vx:0,vy:6,
-      owner:f,target:null,color:'#44ccff',
-      life:30,radius:8,dmg:f.atk*0.6*dmgMult,
-      explosive:false,homing:false,isMegumiNue:true,
-    });
-    spawnBurst(nueX,nueY,'#44ccff',10,4);
-    spawnDmgNum(nueX,nueY-10,'NUE!','#44ccff',false);
-    SFX.electricZap&&SFX.electricZap()||SFX.punch();
-  }
+  // Shadow meter goes UP on hit — scaling increases over time
+  const gainMult=(f._megumiMeterGainMult||1)*f.megumiMeterScaling;
+  f.megumiShadowMeter=Math.min(12,f.megumiShadowMeter+0.35*gainMult);
+  megumiCheckShikigamiThresholds(f);
 
   // Knockback
   const ka=angle(f,enemy);
   enemy.vx+=Math.cos(ka)*2;enemy.vy+=Math.sin(ka)*2;
 }
 
+// Shadow meter threshold check — summon/dismiss shikigami based on meter level
+function megumiCheckShikigamiThresholds(f){
+  if(f.megumiDomainActive)return; // during domain all shikigami active, no switching
+  const meter=f.megumiShadowMeter;
+  const thresholds=[
+    {level:11,name:'deer'},
+    {level:9,name:'elephant'},
+    {level:7,name:'serpent'},
+    {level:5,name:'toad'},
+    {level:3,name:'nue'},
+  ];
+  let bestShikigami=null;
+  for(const t of thresholds){
+    if(meter>=t.level){bestShikigami=t.name;break;}
+  }
+  // If threshold changed, dismiss old and summon new
+  if(bestShikigami!==f.megumiActiveShikigami){
+    const prev=f.megumiActiveShikigami;
+    f.megumiActiveShikigami=bestShikigami;
+    f.megumiShikigamiTimer=0;
+    f.megumiShikigamiCD=0;
+    f.megumiToadTargetHeld=false;
+    if(bestShikigami){
+      spawnDmgNum(f.x,f.y-f.radius-30,bestShikigami.toUpperCase()+'!','#4466aa',true);
+      spawnBurst(f.x,f.y,'#1a3a6a',15,6);
+    }
+    if(prev&&!bestShikigami){
+      spawnDmgNum(f.x,f.y-f.radius-20,'Dismissed','#666',false);
+    }
+  }
+}
+
+// Apply shadow meter loss (from taking damage or shikigami taking damage)
+function megumiMeterLoss(f,amount){
+  f.megumiShadowMeter=Math.max(0,f.megumiShadowMeter-amount*f.megumiMeterScaling);
+  megumiCheckShikigamiThresholds(f);
+}
+
 function relicMegumi(f,enemy){
-  // CHIMERA SHADOW GARDEN — domain expansion
+  // CHIMERA SHADOW GARDEN — domain expansion: all shikigami at once
   SFX.relicActivate();
   SFX.megaExplosion();
 
   f.megumiDomainActive=true;
   f.megumiDomainTimer=480; // 8 seconds
-  f.megumiCloneCD=0;
   f.megumiShadowAlpha=0.4; // semi-transparent
   f.specialTimer=480;
+
+  // Reset all domain shikigami cooldowns so they act immediately
+  f.megumiDomainNueCD=0;
+  f.megumiDomainToadCD=0;
+  f.megumiDomainSerpentCD=0;
+  f.megumiDomainElephantCD=0;
+  f.megumiDomainDeerCD=0;
 
   // Speed boost during domain
   f.speed=f.baseSpeed*1.3;
@@ -3538,21 +3590,61 @@ function updateRelicMegumi(f,enemy,dt){
   // Speed stays boosted
   f.speed=f.baseSpeed*1.3;
 
-  // Shadow clones spawn and attack
-  f.megumiCloneCD-=dt;
-  if(f.megumiCloneCD<=0&&enemy&&enemy.alive){
-    f.megumiCloneCD=40+Math.random()*30; // spawn clone every ~1s
-    const cloneX=ARENA.x+Math.random()*ARENA.w;
-    const cloneY=ARENA.y+Math.random()*ARENA.h;
-    const cloneAngle=Math.atan2(enemy.y-cloneY,enemy.x-cloneX);
-    projectiles.push({
-      x:cloneX,y:cloneY,
-      vx:Math.cos(cloneAngle)*5,vy:Math.sin(cloneAngle)*5,
-      owner:f,target:null,color:'#1a3a6a',
-      life:60,radius:10,dmg:f.atk*0.35,
-      explosive:false,homing:false,isMegumiClone:true,
-    });
-    spawnBurst(cloneX,cloneY,'#1a3a6a',6,3);
+  // All shikigami act simultaneously during domain
+  if(enemy&&enemy.alive){
+    // NUE — periodic electric shocks
+    f.megumiDomainNueCD-=dt;
+    if(f.megumiDomainNueCD<=0){
+      f.megumiDomainNueCD=50+Math.random()*20;
+      const nueX=enemy.x+rand(-20,20);const nueY=enemy.y-80;
+      projectiles.push({x:nueX,y:nueY,vx:0,vy:6,owner:f,target:null,color:'#44ccff',life:30,radius:8,dmg:f.atk*0.5,explosive:false,homing:false,isMegumiNue:true});
+      spawnBurst(nueX,nueY,'#44ccff',10,4);
+      spawnDmgNum(nueX,nueY-10,'NUE!','#44ccff',false);
+      SFX.electricZap&&SFX.electricZap()||SFX.punch();
+    }
+    // TOAD — periodic hold (slow enemy)
+    f.megumiDomainToadCD-=dt;
+    if(f.megumiDomainToadCD<=0){
+      f.megumiDomainToadCD=90+Math.random()*30;
+      enemy.vx*=0.1;enemy.vy*=0.1;
+      const toadDmg=f.atk*0.2;
+      dealDamage(f,enemy,toadDmg,false);
+      spawnBurst(enemy.x,enemy.y,'#44aa44',10,5);
+      spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'TOAD HOLD!','#44aa44',false);
+    }
+    // GREAT SERPENT — periodic heavy strike
+    f.megumiDomainSerpentCD-=dt;
+    if(f.megumiDomainSerpentCD<=0){
+      f.megumiDomainSerpentCD=70+Math.random()*30;
+      const serpDmg=f.atk*1.2;
+      dealDamage(f,enemy,serpDmg,true);
+      spawnBurst(enemy.x,enemy.y,'#886644',15,7);
+      spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'SERPENT!','#886644',true);
+      const ka=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+      enemy.vx+=Math.cos(ka)*4;enemy.vy+=Math.sin(ka)*4;
+      shakeTimer=Math.max(shakeTimer,3);shakeAmt=Math.max(shakeAmt,3);
+    }
+    // MAX ELEPHANT — periodic flood (AoE knockback)
+    f.megumiDomainElephantCD-=dt;
+    if(f.megumiDomainElephantCD<=0){
+      f.megumiDomainElephantCD=120+Math.random()*30;
+      const floodDmg=f.atk*0.7;
+      dealDamage(f,enemy,floodDmg,false);
+      const ka2=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+      enemy.vx+=Math.cos(ka2)*8;enemy.vy+=Math.sin(ka2)*8;
+      spawnBurst(enemy.x,enemy.y,'#4488cc',20,10);
+      spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'FLOOD!','#4488cc',true);
+      shakeTimer=Math.max(shakeTimer,5);shakeAmt=Math.max(shakeAmt,5);
+    }
+    // ROUND DEER — periodic heal
+    f.megumiDomainDeerCD-=dt;
+    if(f.megumiDomainDeerCD<=0){
+      f.megumiDomainDeerCD=100+Math.random()*30;
+      const healAmt=f.maxHp*0.05;
+      f.hp=Math.min(f.maxHp,f.hp+healAmt);
+      spawnBurst(f.x,f.y,'#88ee88',10,5);
+      spawnDmgNum(f.x,f.y-f.radius-15,'+'+Math.round(healAmt),'#88ee88',false);
+    }
   }
 
   // Domain shadow overlay pulsing
@@ -3569,6 +3661,280 @@ function updateRelicMegumi(f,enemy,dt){
     f.speed=f.baseSpeed;
     f.specialActive=false;
     addLog((f.side===0?'P1':'P2')+' Chimera Shadow Garden fades.');
+  }
+}
+
+// ============================================================
+// MEGUMI — Divine Dogs, Rabbit Escape, Shikigami updates (always runs)
+// ============================================================
+function updateMegumiAlways(f,enemy,dt){
+  // Increase meter scaling over time (more volatile as fight progresses)
+  f.megumiMeterScaling=Math.min(3.0,1.0+battleTime*0.00005);
+
+  // Shadow meter loss when Megumi takes damage — hook into hp change
+  // (handled via wrapper in main loop damage hooks)
+
+  // === RABBIT ESCAPE PASSIVE ===
+  if(f.megumiRabbitCD>0)f.megumiRabbitCD-=dt;
+  if(enemy&&enemy.alive){
+    const dToEnemy=Math.hypot(f.x-enemy.x,f.y-enemy.y);
+    // Spawn rabbits when enemy gets close (within 100px)
+    if(dToEnemy<100&&f.megumiRabbitCD<=0&&f.megumiRabbits.length<6){
+      f.megumiRabbitCD=60; // 1 second cooldown
+      for(let i=0;i<2;i++){
+        const rAngle=Math.random()*Math.PI*2;
+        f.megumiRabbits.push({
+          x:f.x+Math.cos(rAngle)*30,
+          y:f.y+Math.sin(rAngle)*30,
+          hp:30,maxHp:30,
+          moveAngle:rAngle,
+          life:300, // 5 seconds max
+        });
+      }
+      spawnBurst(f.x,f.y,'#ccccff',8,4);
+      spawnDmgNum(f.x,f.y-f.radius-15,'RABBITS!','#ccccff',false);
+    }
+  }
+  // Update rabbits
+  for(let ri=f.megumiRabbits.length-1;ri>=0;ri--){
+    const rb=f.megumiRabbits[ri];
+    rb.life-=dt;
+    // Rabbits scatter randomly (distractions)
+    rb.moveAngle+=(Math.random()-0.5)*0.5;
+    rb.x+=Math.cos(rb.moveAngle)*2.5*dt;
+    rb.y+=Math.sin(rb.moveAngle)*2.5*dt;
+    // Bounce off arena walls
+    if(rb.x<ARENA.x+10||rb.x>ARENA.x+ARENA.w-10)rb.moveAngle=Math.PI-rb.moveAngle;
+    if(rb.y<ARENA.y+10||rb.y>ARENA.y+ARENA.h-10)rb.moveAngle=-rb.moveAngle;
+    rb.x=Math.max(ARENA.x+5,Math.min(ARENA.x+ARENA.w-5,rb.x));
+    rb.y=Math.max(ARENA.y+5,Math.min(ARENA.y+ARENA.h-5,rb.y));
+    // Enemy can kill rabbits by touching them
+    if(enemy&&enemy.alive){
+      const dRb=Math.hypot(rb.x-enemy.x,rb.y-enemy.y);
+      if(dRb<enemy.radius+10){
+        rb.hp-=enemy.atk*0.3*dt;
+        if(rb.hp<=0){
+          spawnBurst(rb.x,rb.y,'#ccccff',5,3);
+          f.megumiRabbits.splice(ri,1);
+          f.megumiRabbitKills++;
+          // Punishment: every 5 rabbit kills, Megumi takes damage
+          if(f.megumiRabbitKills>=5){
+            f.megumiRabbitKills=0;
+            const penalty=f.maxHp*0.05;
+            f.hp-=penalty;
+            spawnDmgNum(f.x,f.y-f.radius-20,'-'+Math.round(penalty),'#ff4444',true);
+            spawnBurst(f.x,f.y,'#ff4444',8,4);
+          }
+          continue;
+        }
+      }
+    }
+    // Rabbits hit by enemy projectiles
+    for(let pi=projectiles.length-1;pi>=0;pi--){
+      const p=projectiles[pi];
+      if(p&&p.owner&&p.owner.side!==f.side){
+        const dp=Math.hypot(p.x-rb.x,p.y-rb.y);
+        if(dp<12+p.radius){
+          rb.hp-=p.dmg*0.5;
+          projectiles.splice(pi,1);
+          if(rb.hp<=0){
+            spawnBurst(rb.x,rb.y,'#ccccff',5,3);
+            f.megumiRabbits.splice(ri,1);
+            f.megumiRabbitKills++;
+            if(f.megumiRabbitKills>=5){
+              f.megumiRabbitKills=0;
+              const penalty=f.maxHp*0.05;
+              f.hp-=penalty;
+              spawnDmgNum(f.x,f.y-f.radius-20,'-'+Math.round(penalty),'#ff4444',true);
+              spawnBurst(f.x,f.y,'#ff4444',8,4);
+            }
+            break;
+          }
+        }
+      }
+    }
+    // Expire old rabbits
+    if(rb.life<=0){
+      f.megumiRabbits.splice(ri,1);
+    }
+  }
+
+  // === DIVINE DOGS ===
+  const dogs=[f.megumiDog1,f.megumiDog2];
+  const anyDogAlive=f.megumiDog1.alive||f.megumiDog2.alive;
+  for(const dog of dogs){
+    if(!dog.alive)continue;
+    // Initialize position near Megumi
+    if(!dog.posInit){dog.x=f.x+rand(-30,30);dog.y=f.y+rand(-30,30);dog.posInit=true;}
+    // Random movement — wander, hunt enemy
+    dog.turnTimer-=dt;
+    if(dog.turnTimer<=0){
+      dog.moveAngle+=(Math.random()-0.5)*Math.PI*1.2;
+      dog.turnTimer=30+Math.random()*50;
+    }
+    const dogSpd=3.0*dt;
+    dog.x+=Math.cos(dog.moveAngle)*dogSpd;
+    dog.y+=Math.sin(dog.moveAngle)*dogSpd;
+    // Tether to Megumi (250px)
+    const dToMeg=Math.hypot(dog.x-f.x,dog.y-f.y);
+    if(dToMeg>250){
+      dog.moveAngle=Math.atan2(f.y-dog.y,f.x-dog.x)+(Math.random()-0.5)*0.3;
+      dog.x+=(f.x-dog.x)*0.03;dog.y+=(f.y-dog.y)*0.03;
+    }
+    // Hunt enemy
+    if(enemy&&enemy.alive){
+      const dToE=Math.hypot(dog.x-enemy.x,dog.y-enemy.y);
+      if(dToE>enemy.radius+30){
+        dog.moveAngle=Math.atan2(enemy.y-dog.y,enemy.x-dog.x)+(Math.random()-0.5)*0.2;
+      }
+    }
+    // Bounce off walls
+    if(dog.x<ARENA.x+15||dog.x>ARENA.x+ARENA.w-15)dog.moveAngle=Math.PI-dog.moveAngle;
+    if(dog.y<ARENA.y+15||dog.y>ARENA.y+ARENA.h-15)dog.moveAngle=-dog.moveAngle;
+    dog.x=Math.max(ARENA.x+10,Math.min(ARENA.x+ARENA.w-10,dog.x));
+    dog.y=Math.max(ARENA.y+10,Math.min(ARENA.y+ARENA.h-10,dog.y));
+    // Dog attacks enemy
+    if(dog.atkCD>0)dog.atkCD-=dt;
+    if(dog.atkCD<=0&&enemy&&enemy.alive){
+      const dToE2=Math.hypot(dog.x-enemy.x,dog.y-enemy.y);
+      const dogRange=f.megumiTotality?55:45;
+      if(dToE2<enemy.radius+dogRange){
+        dog.atkCD=f.megumiTotality?25:35;
+        const dogDmg=f.atk*(f.megumiTotality?0.8:0.4);
+        dealDamage(f,enemy,dogDmg,true);
+        SFX.slash();
+        spawnBurst(enemy.x,enemy.y,f.megumiTotality?'#2244aa':'#1a3a6a',8,4);
+        spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,f.megumiTotality?'TOTALITY!':'DOG!',f.megumiTotality?'#4488ff':'#4466aa',false);
+        // Shadow meter gain from dog attacks
+        const gainMult2=(f._megumiMeterGainMult||1)*f.megumiMeterScaling;
+        f.megumiShadowMeter=Math.min(12,f.megumiShadowMeter+0.2*gainMult2);
+        megumiCheckShikigamiThresholds(f);
+        // Knockback
+        const ka=Math.atan2(enemy.y-dog.y,enemy.x-dog.x);
+        enemy.vx+=Math.cos(ka)*2;enemy.vy+=Math.sin(ka)*2;
+      }
+    }
+    // Dog takes damage from enemy body contact
+    if(enemy&&enemy.alive){
+      const dDE=Math.hypot(dog.x-enemy.x,dog.y-enemy.y);
+      if(dDE<enemy.radius+20&&(!dog._bodyCD||dog._bodyCD<=0)){
+        const dmgTaken=enemy.atk*0.35;
+        dog.hp-=dmgTaken;
+        dog._bodyCD=30;
+        megumiMeterLoss(f,0.15);
+        spawnBurst(dog.x,dog.y,'#ff4444',5,3);
+        if(dog.hp<=0){dog.hp=0;dog.alive=false;megumiDogDied(f,dog);continue;}
+      }
+      if(dog._bodyCD>0)dog._bodyCD-=dt;
+    }
+    // Dog hit by projectiles
+    for(let pi=projectiles.length-1;pi>=0;pi--){
+      const p=projectiles[pi];
+      if(p&&p.owner&&p.owner.side!==f.side){
+        const dp=Math.hypot(p.x-dog.x,p.y-dog.y);
+        if(dp<20+(p.radius||5)){
+          dog.hp-=p.dmg*0.4;
+          megumiMeterLoss(f,0.1);
+          spawnBurst(dog.x,dog.y,p.color,4,3);
+          projectiles.splice(pi,1);
+          if(dog.hp<=0){dog.hp=0;dog.alive=false;megumiDogDied(f,dog);break;}
+        }
+      }
+    }
+  }
+
+  // === ACTIVE SHIKIGAMI ACTIONS (outside domain) ===
+  if(!f.megumiDomainActive&&f.megumiActiveShikigami&&enemy&&enemy.alive){
+    f.megumiShikigamiCD-=dt;
+    if(f.megumiShikigamiCD<=0){
+      switch(f.megumiActiveShikigami){
+        case 'nue':{
+          // Nue: owl flies in, shocks enemy, flies away
+          f.megumiShikigamiCD=70+Math.random()*20;
+          const nueX=enemy.x+rand(-20,20);const nueY=enemy.y-80;
+          projectiles.push({x:nueX,y:nueY,vx:0,vy:6,owner:f,target:null,color:'#44ccff',life:30,radius:8,dmg:f.atk*0.5,explosive:false,homing:false,isMegumiNue:true});
+          spawnBurst(nueX,nueY,'#44ccff',10,4);
+          spawnDmgNum(nueX,nueY-10,'NUE!','#44ccff',false);
+          SFX.electricZap&&SFX.electricZap()||SFX.punch();
+          break;
+        }
+        case 'toad':{
+          // Toad: hold enemy (crowd control) + light damage
+          f.megumiShikigamiCD=100+Math.random()*30;
+          enemy.vx*=0.1;enemy.vy*=0.1;
+          f.megumiToadTargetHeld=true;
+          f.megumiToadHoldTimer=45; // hold for ~0.75s
+          const toadDmg=f.atk*0.25;
+          dealDamage(f,enemy,toadDmg,false);
+          spawnBurst(enemy.x,enemy.y,'#44aa44',10,5);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'TOAD!','#44aa44',false);
+          break;
+        }
+        case 'serpent':{
+          // Great Serpent: high damage single strike
+          f.megumiShikigamiCD=80+Math.random()*25;
+          const serpDmg=f.atk*1.3;
+          dealDamage(f,enemy,serpDmg,true);
+          spawnBurst(enemy.x,enemy.y,'#886644',15,7);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'SERPENT!','#886644',true);
+          const ka=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+          enemy.vx+=Math.cos(ka)*5;enemy.vy+=Math.sin(ka)*5;
+          shakeTimer=Math.max(shakeTimer,4);shakeAmt=Math.max(shakeAmt,4);
+          SFX.punch();
+          break;
+        }
+        case 'elephant':{
+          // Max Elephant: flood — AoE damage + knockback
+          f.megumiShikigamiCD=130+Math.random()*30;
+          const floodDmg=f.atk*0.8;
+          dealDamage(f,enemy,floodDmg,false);
+          const ka2=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+          enemy.vx+=Math.cos(ka2)*10;enemy.vy+=Math.sin(ka2)*10;
+          spawnBurst(enemy.x,enemy.y,'#4488cc',25,12);
+          spawnDmgNum(enemy.x,enemy.y-enemy.radius-15,'FLOOD!','#4488cc',true);
+          shakeTimer=Math.max(shakeTimer,6);shakeAmt=Math.max(shakeAmt,6);
+          SFX.megaExplosion();
+          break;
+        }
+        case 'deer':{
+          // Round Deer: heal Megumi (reverse cursed energy)
+          f.megumiShikigamiCD=110+Math.random()*30;
+          const healAmt=f.maxHp*0.08;
+          f.hp=Math.min(f.maxHp,f.hp+healAmt);
+          spawnBurst(f.x,f.y,'#88ee88',12,6);
+          spawnDmgNum(f.x,f.y-f.radius-15,'+'+Math.round(healAmt),'#88ee88',false);
+          break;
+        }
+      }
+    }
+    // Toad hold effect (slow enemy while held)
+    if(f.megumiToadTargetHeld){
+      f.megumiToadHoldTimer-=dt;
+      if(enemy&&enemy.alive){enemy.vx*=0.85;enemy.vy*=0.85;}
+      if(f.megumiToadHoldTimer<=0)f.megumiToadTargetHeld=false;
+    }
+  }
+
+  // Shadow meter loss when Megumi takes damage — check hp delta
+  if(!f._megumiLastHp)f._megumiLastHp=f.hp;
+  if(f.hp<f._megumiLastHp){
+    const lost=f._megumiLastHp-f.hp;
+    megumiMeterLoss(f,lost/f.maxHp*2.0);
+  }
+  f._megumiLastHp=f.hp;
+}
+
+function megumiDogDied(f,deadDog){
+  spawnDmgNum(deadDog.x,deadDog.y-20,'DOG DOWN!','#ff4444',true);
+  spawnBurst(deadDog.x,deadDog.y,'#1a3a6a',15,6);
+  // If one dog still alive, it becomes DIVINE DOG: TOTALITY
+  const otherDog=(deadDog===f.megumiDog1)?f.megumiDog2:f.megumiDog1;
+  if(otherDog.alive&&!f.megumiTotality){
+    f.megumiTotality=true;
+    otherDog.hp=Math.min(otherDog.maxHp*1.5,otherDog.hp+otherDog.maxHp*0.5);
+    otherDog.maxHp=Math.round(otherDog.maxHp*1.5);
+    spawnDmgNum(otherDog.x,otherDog.y-25,'TOTALITY!','#4488ff',true);
+    spawnBurst(otherDog.x,otherDog.y,'#4488ff',20,8);
   }
 }
 
@@ -6814,6 +7180,9 @@ function updateBattle(dt){
         }
       }
     }
+
+    // Megumi per-frame: Divine Dogs, Rabbit Escape, shikigami (runs always)
+    if(f.char.id==='megumi') updateMegumiAlways(f,enemy,dt);
 
     // Todo per-frame: passive swap + cooldowns run always
     if(f.char.id==='todo'&&!f.specialActive){
@@ -10329,6 +10698,68 @@ function drawBall(f){
     X.restore();
   }
 
+  // Megumi Divine Dogs drawing (independent fighters)
+  if(f.char.id==='megumi'){
+    const dogs=[f.megumiDog1,f.megumiDog2];
+    for(const dog of dogs){
+      if(!dog.alive||!dog.posInit)continue;
+      X.save();
+      const dx=dog.x,dy=dog.y;
+      const isTot=f.megumiTotality;
+      const dogSize=isTot?(f.radius*1.1):(f.radius*0.75);
+      // Dog body
+      const dg=X.createRadialGradient(dx,dy,2,dx,dy,dogSize);
+      if(dog===f.megumiDog1){
+        dg.addColorStop(0,'#aabbdd');dg.addColorStop(0.5,'#334466');dg.addColorStop(1,'rgba(20,40,80,0.3)');
+      }else{
+        dg.addColorStop(0,'#222222');dg.addColorStop(0.5,'#111111');dg.addColorStop(1,'rgba(0,0,0,0.3)');
+      }
+      if(isTot){dg.addColorStop(0,'#4488ff');dg.addColorStop(0.5,'#2244aa');dg.addColorStop(1,'rgba(30,50,130,0.4)');}
+      X.fillStyle=dg;X.beginPath();X.ellipse(dx,dy,dogSize,dogSize*0.7,0,0,Math.PI*2);X.fill();
+      // Eyes
+      X.fillStyle=isTot?'#ffcc00':'#ccddff';
+      X.beginPath();X.arc(dx-dogSize*0.25,dy-dogSize*0.15,dogSize*0.1,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(dx+dogSize*0.25,dy-dogSize*0.15,dogSize*0.1,0,Math.PI*2);X.fill();
+      // Ears
+      X.strokeStyle=isTot?'#4488ff':'#1a3a6a';X.lineWidth=2;
+      X.beginPath();X.moveTo(dx-dogSize*0.4,dy-dogSize*0.3);X.lineTo(dx-dogSize*0.55,dy-dogSize*0.65);X.lineTo(dx-dogSize*0.2,dy-dogSize*0.35);X.stroke();
+      X.beginPath();X.moveTo(dx+dogSize*0.4,dy-dogSize*0.3);X.lineTo(dx+dogSize*0.55,dy-dogSize*0.65);X.lineTo(dx+dogSize*0.2,dy-dogSize*0.35);X.stroke();
+      // Totality glow
+      if(isTot){
+        X.shadowColor='#4488ff';X.shadowBlur=12;
+        X.strokeStyle='rgba(68,136,255,0.5)';X.lineWidth=2;
+        X.beginPath();X.ellipse(dx,dy,dogSize+4,dogSize*0.7+4,0,0,Math.PI*2);X.stroke();
+        X.shadowBlur=0;
+      }
+      // HP bar
+      const hpW2=dogSize*2,hpH2=3;
+      const hpX2=dx-hpW2/2,hpY2=dy-dogSize*0.7-8;
+      X.fillStyle='#333';X.fillRect(hpX2,hpY2,hpW2,hpH2);
+      const dogHpPct=Math.max(0,dog.hp/dog.maxHp);
+      X.fillStyle=dogHpPct>0.5?'#4466aa':'#ff4444';X.fillRect(hpX2,hpY2,hpW2*dogHpPct,hpH2);
+      X.strokeStyle='#555';X.lineWidth=0.5;X.strokeRect(hpX2,hpY2,hpW2,hpH2);
+      // Label
+      X.font='bold 7px Consolas,monospace';X.textAlign='center';X.fillStyle=isTot?'#4488ff':'#4466aa';
+      X.fillText(isTot?'TOTALITY':'DOG',dx,hpY2-2);
+      X.restore();
+    }
+    // Draw rabbits
+    for(const rb of f.megumiRabbits){
+      X.save();
+      X.fillStyle='#ccccff';
+      X.beginPath();X.ellipse(rb.x,rb.y,6,5,0,0,Math.PI*2);X.fill();
+      // Ears
+      X.strokeStyle='#aaaaee';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(rb.x-2,rb.y-4);X.lineTo(rb.x-4,rb.y-10);X.stroke();
+      X.beginPath();X.moveTo(rb.x+2,rb.y-4);X.lineTo(rb.x+4,rb.y-10);X.stroke();
+      // Eyes
+      X.fillStyle='#4444aa';
+      X.beginPath();X.arc(rb.x-2,rb.y-1,1,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(rb.x+2,rb.y-1,1,0,Math.PI*2);X.fill();
+      X.restore();
+    }
+  }
+
   // Todo face — buzz cut, scar, massive build, intense confident grin
   if(f.char.id==='todo'){
     X.save();
@@ -11149,7 +11580,9 @@ function drawBall(f){
       break;}
     case 'megumi':{
       const dom=f.megumiDomainActive?'DOMAIN ':'';
-      X.fillText(dom+'Nue:'+(f.megumiHitCount||0)+'/'+(f._megumiNueInterval||f.megumiNueInterval||3),f.x,statY);
+      const shiki=f.megumiActiveShikigami?(f.megumiActiveShikigami.toUpperCase()+' '):'';
+      const dogs=f.megumiTotality?'TOT':(f.megumiDog1.alive&&f.megumiDog2.alive?'DD':(f.megumiDog1.alive||f.megumiDog2.alive?'D1':'--'));
+      X.fillText(dom+shiki+dogs+' M:'+Math.floor(f.megumiShadowMeter),f.x,statY);
       break;}
     case 'mahito':{
       const dom=f.mahitoDomainActive?'DOMAIN ':'';
@@ -11838,6 +12271,19 @@ function drawMegumiWeapon(r,ext,flash,f){
     X.fillStyle='#6688cc';X.fill();
   }
   X.shadowBlur=0;
+
+  // Shadow meter glow — intensity scales with meter
+  if(f&&f.megumiShadowMeter>0){
+    X.save();
+    X.rotate(-f.weaponAngle);
+    const meterFrac=f.megumiShadowMeter/12;
+    X.globalAlpha=0.1+meterFrac*0.25+Math.sin(battleTime*0.1)*0.05;
+    X.shadowColor='#1a3a6a';X.shadowBlur=5+meterFrac*10;
+    X.beginPath();X.arc(0,0,f.radius+5+meterFrac*8,0,Math.PI*2);
+    X.fillStyle='rgba(26,58,106,0.15)';X.fill();
+    X.shadowBlur=0;X.globalAlpha=1;
+    X.restore();
+  }
 
   // Shadow aura during domain
   if(f&&f.megumiDomainActive){
@@ -14929,7 +15375,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'yuta':{const cp=f.yutaCopiedTech?f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%':'---';const dom=f.yutaDomainActive?'DOMAIN ':'';statLine=dom+'COPY:'+cp;break;}
     case 'todo':{const storm=f.todoSpecialActive?'STORM ':'';const stk=f.todoBuffStacks>0?'x'+f.todoBuffStacks:'';statLine=storm+'SWAP'+stk;break;}
     case 'yuki':{const bh=f.yukiBHActive?'BH ':'';const ovr=f.yukiOverloaded?'OVR ':'';statLine=bh+ovr+'Mass:'+Math.round(f.yukiMass||0);break;}
-    case 'megumi':{const dom=f.megumiDomainActive?'DOMAIN ':'';const nue='Nue:'+(f.megumiHitCount||0)+'/'+(f._megumiNueInterval||f.megumiNueInterval||3);statLine=dom+nue;break;}
+    case 'megumi':{const dom=f.megumiDomainActive?'DOMAIN ':'';const shiki=f.megumiActiveShikigami?(f.megumiActiveShikigami.toUpperCase()+' '):'';const dogs=f.megumiTotality?'TOT':(f.megumiDog1.alive&&f.megumiDog2.alive?'DD':(f.megumiDog1.alive||f.megumiDog2.alive?'D1':'--'));statLine=dom+shiki+dogs+' M:'+Math.floor(f.megumiShadowMeter);break;}
     case 'mahito':{const dom=f.mahitoDomainActive?'DOMAIN ':'';const isb=f.mahitoPassiveTriggered?'ISB ':'';statLine=dom+isb+'Hits:'+f.mahitoHitCount+'/5';break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
