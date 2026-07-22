@@ -14993,6 +14993,130 @@ function drawTitle(){
 }
 
 // ============================================================
+// LORE COMBOS VIEWER
+// ============================================================
+function drawLoreCombos(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  X.strokeStyle='#1a1a3a';X.lineWidth=1;
+  for(let i=0;i<W;i+=40){X.beginPath();X.moveTo(i,0);X.lineTo(i,H);X.stroke();}
+  for(let i=0;i<H;i+=40){X.beginPath();X.moveTo(0,i);X.lineTo(W,i);X.stroke();}
+
+  X.font='bold '+(isMobile?'22':'30')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.shadowColor='#aa44cc';X.shadowBlur=15;
+  X.fillStyle='#aa44cc';
+  X.fillText('LORE COMBOS',W/2,isMobile?35:45);
+  X.shadowBlur=0;
+
+  X.font=(isMobile?'11':'13')+'px Consolas,Courier New,monospace';
+  X.fillStyle='#888';
+  X.fillText(LORE_COMBOS.length+' ally combos // trigger when both allies ult within 2s',W/2,isMobile?58:75);
+
+  // Group by franchise
+  const groups=[
+    {label:'JUJUTSU KAISEN',color:'#5577ff',combos:LORE_COMBOS.filter(c=>c.franchise==='JJK')},
+    {label:'CYBERPUNK 2077',color:'#ff3333',combos:LORE_COMBOS.filter(c=>c.franchise==='CYBERPUNK')},
+    {label:'CROSS-FRANCHISE',color:'#ffcc00',combos:LORE_COMBOS.filter(c=>c.franchise==='CROSSOVER')},
+  ];
+
+  // Pagination
+  const cardH=isMobile?62:72;
+  const startY=isMobile?78:100;
+  const availH=H-startY-(isMobile?50:60);
+  const perPage=Math.max(1,Math.floor(availH/(cardH+4)));
+  // Flatten for pagination
+  const allEntries=[];
+  groups.forEach(g=>{
+    allEntries.push({type:'header',label:g.label,color:g.color});
+    g.combos.forEach(c=>allEntries.push({type:'combo',combo:c,groupColor:g.color}));
+  });
+  const totalPages=Math.ceil(allEntries.length/perPage);
+  if(selectPage>=totalPages)selectPage=totalPages-1;
+  if(selectPage<0)selectPage=0;
+  const pageStart=selectPage*perPage;
+  const pageEntries=allEntries.slice(pageStart,pageStart+perPage);
+
+  let cy=startY;
+  const cardW=Math.min(isMobile?W-20:500,W-40);
+  const cardX=W/2-cardW/2;
+  const br=isMobile?14:18;
+  const fontSize=isMobile?11:13;
+
+  pageEntries.forEach(entry=>{
+    if(entry.type==='header'){
+      X.font='bold '+(isMobile?'13':'15')+'px Consolas,Courier New,monospace';
+      X.textAlign='left';X.fillStyle=entry.color;
+      X.fillText('--- '+entry.label+' ---',cardX+8,cy+14);
+      cy+=isMobile?24:28;
+      return;
+    }
+    const c=entry.combo;
+    const ch1=CHARS.find(ch=>ch.id===c.pair[0]);
+    const ch2=CHARS.find(ch=>ch.id===c.pair[1]);
+    // Card background
+    X.save();
+    drawRoundRect(cardX,cy,cardW,cardH-4,8);
+    X.fillStyle='#111128';X.fill();
+    X.strokeStyle=entry.groupColor+'66';X.lineWidth=1.5;X.stroke();
+
+    // Character balls
+    const ballY=cy+cardH/2-2;
+    const b1x=cardX+br+8;
+    const b2x=cardX+br*3+12;
+    if(ch1){
+      const g1=X.createRadialGradient(b1x-br*0.2,ballY-br*0.2,br*0.1,b1x,ballY,br);
+      g1.addColorStop(0,lighten(ch1.color,40));g1.addColorStop(1,ch1.color);
+      X.beginPath();X.arc(b1x,ballY,br,0,Math.PI*2);X.fillStyle=g1;X.fill();
+      X.strokeStyle=darken(ch1.color,20);X.lineWidth=1;X.stroke();
+      X.beginPath();X.arc(b1x-br*0.25,ballY-br*0.25,br*0.15,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.3)';X.fill();
+    }
+    if(ch2){
+      const g2=X.createRadialGradient(b2x-br*0.2,ballY-br*0.2,br*0.1,b2x,ballY,br);
+      g2.addColorStop(0,lighten(ch2.color,40));g2.addColorStop(1,ch2.color);
+      X.beginPath();X.arc(b2x,ballY,br,0,Math.PI*2);X.fillStyle=g2;X.fill();
+      X.strokeStyle=darken(ch2.color,20);X.lineWidth=1;X.stroke();
+      X.beginPath();X.arc(b2x-br*0.25,ballY-br*0.25,br*0.15,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.3)';X.fill();
+    }
+
+    // Combo name + multiplier
+    const textX=b2x+br+12;
+    X.font='bold '+fontSize+'px Consolas,Courier New,monospace';
+    X.textAlign='left';X.textBaseline='middle';
+    X.fillStyle='#fff';
+    X.fillText(c.name,textX,cy+16);
+    X.font=fontSize+'px Consolas,Courier New,monospace';
+    X.fillStyle='#ffcc00';
+    X.fillText('x'+c.dmgMult.toFixed(1)+' DMG',cardX+cardW-70,cy+16);
+
+    // Character names
+    X.fillStyle='#aaa';X.font=(fontSize-1)+'px Consolas,Courier New,monospace';
+    const names=(ch1?ch1.name:'?')+' + '+(ch2?ch2.name:'?');
+    X.fillText(names,textX,cy+34);
+
+    // Description
+    X.fillStyle='#777';X.font=(fontSize-2)+'px Consolas,Courier New,monospace';
+    const maxDescW=cardX+cardW-textX-10;
+    const descText=c.desc.length*6>maxDescW?c.desc.substring(0,Math.floor(maxDescW/6))+'...':c.desc;
+    X.fillText(descText,textX,cy+50);
+
+    X.restore();
+    cy+=cardH;
+  });
+
+  // Page nav
+  const navY=H-(isMobile?40:48);
+  if(totalPages>1){
+    X.font='bold 14px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#888';
+    X.fillText('Page '+(selectPage+1)+'/'+totalPages,W/2,navY);
+    if(selectPage>0)addBtn('lcPrev',W/2-120,navY-14,50,28,'< PREV','#aa44cc',()=>{selectPage--;});
+    if(selectPage<totalPages-1)addBtn('lcNext',W/2+70,navY-14,50,28,'NEXT >','#aa44cc',()=>{selectPage++;});
+  }
+
+  addBtn('lcBack',10,10,80,30,'< BACK','#888',()=>{screen='title';});
+  buttons.forEach(drawBtn);
+}
+
+// ============================================================
 // SELECT SCREEN
 // ============================================================
 function drawSelect(){
@@ -18846,6 +18970,7 @@ function loop(time){
   const dpr=window.devicePixelRatio||1;X.setTransform(dpr,0,0,dpr,0,0);X.save();X.scale(sc,sc);
   switch(screen){
     case 'title':drawTitle();break;
+    case 'loreCombos':drawLoreCombos();break;
     case 'select':try{drawSelect();}catch(e){console.error('BBA select error:',e);}break;
     case 'bossSelect':drawBossSelect();break;
     case 'teamSelect':draw2v2Select();break;
