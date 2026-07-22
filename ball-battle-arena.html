@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.13.0 — SIM ALL + ally combo reset fix
+// BALL BATTLE ARENA v10.13.1 — BR elimination announcements
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -2101,13 +2101,21 @@ function applyDotDamage(target,dmg,source){
 let wasDefeat=false; // boss won in boss mode
 function checkVictory(lastAttacker){
   if(gameMode==='br'){
-    // Battle Royale: last one standing wins
+    // Battle Royale: elimination announcements
+    const dead=fighters.filter(f=>!f.alive&&!f._eliminationLogged);
+    dead.forEach(f=>{
+      f._eliminationLogged=true;
+      const killerName=lastAttacker&&lastAttacker.alive?lastAttacker.char.name:'???';
+      addLog(f.char.name+' ELIMINATED by '+killerName+'!');
+      showRelicText(f.char.name+' OUT!','#ff4444');
+      SFX.ko();
+    });
     const alive=fighters.filter(f=>f.alive);
     if(alive.length<=1){
       battleOver=true;winner=alive[0]||lastAttacker;
       if(winner){addLog(winner.char.name+' WINS THE ROYALE!');showVoiceline(winner.char.id,'victory',winner.side);}
       wasDefeat=false;
-      SFX.ko();setTimeout(()=>SFX.victory(),500);
+      setTimeout(()=>SFX.victory(),500);
     }
     return;
   }
