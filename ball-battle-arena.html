@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.13.1 — BR elimination announcements
+// BALL BATTLE ARENA v10.14.0 — Generic ally combos + lore combos in 2v2/boss
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -614,25 +614,34 @@ function checkAllyCombo(f){
         triggerAllyCombo(f,ally,combo);
         return;
       }
+      // Generic ally combo — any two allies ulting within 2s
+      triggerAllyCombo(f,ally,null);
+      return;
     }
   }
 }
 
 function triggerAllyCombo(f1,f2,combo){
   allyComboActive=true;
-  const frames=combo.cutsceneFrames||75;
+  const isLore=!!combo;
+  const frames=isLore?(combo.cutsceneFrames||75):50;
   allyComboTimer=frames;
   const enemies=fighters.filter(e=>e&&e.side!==f1.side&&e.alive);
   const target=enemies.length>0?enemies.reduce((a,b)=>a.hp<b.hp?a:b):null;
   allyComboData={
-    combo,f1,f2,target,totalFrames:frames,hitDelivered:false,
-    color1:combo.color1,color2:combo.color2,
+    combo,f1,f2,target,totalFrames:frames,hitDelivered:false,isLore,
+    color1:isLore?combo.color1:f1.char.color,
+    color2:isLore?combo.color2:f2.char.color,
+    dmgMult:isLore?combo.dmgMult:1.5,
+    name:isLore?combo.name:'DOUBLE SPECIAL',
+    desc:isLore?combo.desc:f1.char.name+' + '+f2.char.name+' — synchronized attack!',
+    franchise:isLore?combo.franchise:'TEAM',
   };
   fighters.forEach(f=>{if(f){f._preComboVx=f.vx;f._preComboVy=f.vy;f.vx=0;f.vy=0;}});
   SFX.relicActivate();
-  triggerScreenFlash('#ffffff',15);
-  shakeTimer=25;shakeAmt=12;
-  addLog('ALLY COMBO: '+combo.name+'!');
+  triggerScreenFlash('#ffffff',isLore?15:10);
+  shakeTimer=isLore?25:15;shakeAmt=isLore?12:8;
+  addLog((isLore?'LORE COMBO: ':'ALLY COMBO: ')+allyComboData.name+'!');
 }
 
 function updateAllyCombo(dt){
@@ -642,8 +651,8 @@ function updateAllyCombo(dt){
   const progress=1-(allyComboTimer/ad.totalFrames);
   if(progress>=0.7&&!ad.hitDelivered&&ad.target&&ad.target.alive){
     ad.hitDelivered=true;
-    const dmg1=ad.f1.atk*ad.combo.dmgMult*0.6;
-    const dmg2=ad.f2.atk*ad.combo.dmgMult*0.6;
+    const dmg1=ad.f1.atk*ad.dmgMult*0.6;
+    const dmg2=ad.f2.atk*ad.dmgMult*0.6;
     dealDamage(ad.f1,ad.target,dmg1,false);
     if(ad.target.alive)dealDamage(ad.f2,ad.target,dmg2,false);
     triggerScreenFlash(ad.color1,12);
@@ -671,12 +680,12 @@ function drawAllyCombo(){
   const g=X.createLinearGradient(W/2-100,H/2,W/2+100,H/2);
   g.addColorStop(0,ad.color1);g.addColorStop(1,ad.color2);
   X.fillStyle=g;
-  X.fillText(ad.combo.franchise+' ALLY COMBO!',W/2,H/2-40);
+  X.fillText(ad.franchise+(ad.isLore?' LORE':' ALLY')+' COMBO!',W/2,H/2-40);
   X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';
-  X.fillText(ad.combo.name,W/2,H/2-15);
+  X.fillText(ad.name,W/2,H/2-15);
   X.shadowBlur=0;
   X.font=(isMobile?'9':'11')+'px Consolas,monospace';X.fillStyle='#ccc';
-  X.fillText(ad.combo.desc,W/2,H/2+10);
+  X.fillText(ad.desc,W/2,H/2+10);
   // Fighter names
   X.font='bold '+(isMobile?'10':'13')+'px Consolas,monospace';
   X.fillStyle=ad.f1.char.color;X.fillText(ad.f1.char.name,W/3,H/2+35);
