@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.11.0 — Tournament sponsor system
+// BALL BATTLE ARENA v10.11.1 — Boss fight tier-paged character select
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -14772,7 +14772,7 @@ function drawTitle(){
   addBtn('2v2',W/2-btnW/2,titleY+280,btnW,btnH,'2v2 BATTLE','#33cc66',()=>{gameMode='2v2';screen='teamSelect';t1Char1=0;t1Char2=1;t2Char1=2;t2Char2=3;t1Elem1=0;t1Elem2=0;t2Elem1=0;t2Elem2=0;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_2v2SelPage=1;_2v2SelSlot=1;});
   addBtn('br',W/2-btnW/2,titleY+340,btnW,btnH,'BATTLE ROYALE','#ff8800',()=>{gameMode='br';screen='brSelect';brChars=[0,1,2,3];brElems=[0,0,0,0];_brSelPage=1;_brSelSlot=0;});
   addBtn('tourn',W/2-btnW/2,titleY+400,btnW,btnH,'TOURNAMENT','#ffcc00',()=>{gameMode='tournament';screen='tournSetup';tournPhase='setup';tournBracket=[];tournMatches=[];tournRound=0;tournCurrentMatch=-1;tournAutoPlay=false;});
-  addBtn('boss',W/2-btnW/2,titleY+460,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
+  addBtn('boss',W/2-btnW/2,titleY+460,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;selectTierPage=0;selectPage=0;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('BBA v10.10.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
@@ -18201,49 +18201,108 @@ function drawBossSelect(){
   addBtn('bossHome',isMobile?65:85,arrowY,isMobile?40:50,arrowH,'Title','#555',()=>{screen='title';});
 
   if(_bossSelPage===1){
-    // ===== PAGE 1: PICK YOUR TEAM (characters only) =====
-    X.font='bold '+(isMobile?'16':'22')+'px Consolas,Courier New,monospace';
+    // ===== PAGE 1: PICK YOUR TEAM — tier-paged like 1v1 =====
+    X.font='bold '+(isMobile?'14':'20')+'px Consolas,Courier New,monospace';
     X.textAlign='center';X.fillStyle='#cc4444';
-    X.fillText('BOSS FIGHT — PICK YOUR TEAM (1/3)',W/2,isMobile?22:28);
-    const selectableChars=CHARS.filter(c=>!c.isBoss);
-    const gapX=isMobile?5:10,gapY=isMobile?5:6,padX=isMobile?5:15;
-    const availW=W-padX*2;
-    const n=selectableChars.length;
-    const maxCols=Math.floor((availW+gapX)/((isMobile?120:115)+gapX));
-    const cols=Math.min(n,Math.max(2,Math.min(maxCols,Math.ceil(Math.sqrt(n)))));
-    const rows=Math.ceil(n/cols);
-    const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
-    const bottomSpace=isMobile?70:85;
-    const cardH=Math.min(Math.floor(((H-50-bottomSpace)-(rows-1)*gapY)/rows),isMobile?90:130);
-    const totalW=cols*cardW+(cols-1)*gapX;
-    const startX=(W-totalW)/2;
-    const gridStartY=isMobile?32:40;
+    X.fillText('PICK YOUR TEAM (1/3)',W/2,isMobile?18:24);
+
+    // Tier pages (no bosses — those are on page 2)
+    const BOSS_TIER_PAGES=[
+      {letter:'S',label:'S TIER',tiers:[11,10,9],color:'#ffcc00'},
+      {letter:'A',label:'A TIER',tiers:[8,7,6],color:'#44cc88'},
+      {letter:'B',label:'B TIER',tiers:[5,4,3],color:'#6688cc'},
+      {letter:'C',label:'C TIER',tiers:[2,1],color:'#888888'},
+    ].filter(tp=>tp.tiers.some(t=>[...CHARS.keys()].some(i=>!CHARS[i].isBoss&&(TIER_MAP[CHARS[i].id]||1)===t)));
+    selectTierPage=clamp(selectTierPage,0,BOSS_TIER_PAGES.length-1);
+    const tp=BOSS_TIER_PAGES[selectTierPage];
+
+    // Tier navigation
+    const tierNavY=isMobile?30:36;
+    X.font='bold '+(isMobile?'14':'16')+'px Consolas,monospace';X.textAlign='center';X.fillStyle=tp.color;
+    X.fillText('\u25C0  '+tp.label+'  \u25B6',W/2,tierNavY+14);
+    if(selectTierPage>0)addBtn('btierL',W/2-(isMobile?110:130),tierNavY-4,50,28,'\u25C0','transparent',()=>{selectTierPage--;selectPage=0;});
+    if(selectTierPage<BOSS_TIER_PAGES.length-1)addBtn('btierR',W/2+(isMobile?60:80),tierNavY-4,50,28,'\u25B6','transparent',()=>{selectTierPage++;selectPage=0;});
+    // Tier dots
+    for(let i=0;i<BOSS_TIER_PAGES.length;i++){
+      const tdx=W/2+(i-(BOSS_TIER_PAGES.length-1)/2)*18;
+      X.beginPath();X.arc(tdx,tierNavY+24,selectTierPage===i?4:2.5,0,Math.PI*2);
+      X.fillStyle=selectTierPage===i?tp.color:'#444';X.fill();
+    }
+
+    // Slot indicator
+    const slotColors=['#4488ff','#33cc66','#ff8833'];
+    const slotLabels=['T1','T2','T3'];
+    const slotIdx=(_bossSelSlot||1)-1;
     X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#4488ff';X.fillText('Tap to assign: T1 (blue) / T2 (green) / T3 (orange)',W/2,gridStartY);
-    const charGridY=gridStartY+8;
-    selectableChars.forEach((ch,i)=>{
-      const origIdx=CHARS.indexOf(ch);
-      const row=Math.floor(i/cols),col=i%cols;
-      const cx=startX+col*(cardW+gapX),cy=charGridY+row*(cardH+gapY);
+    X.fillStyle=slotColors[slotIdx];X.fillText('Assigning: '+slotLabels[slotIdx]+' — Tap card to select',W/2,tierNavY+38);
+
+    // Team summary bar
+    const sumBarY=tierNavY+42;
+    const sumBarW=isMobile?W-20:W-60;
+    const sumBarX=(W-sumBarW)/2;
+    [{idx:teamChar1,c:'#4488ff',l:'T1'},{idx:teamChar2,c:'#33cc66',l:'T2'},{idx:teamChar3,c:'#ff8833',l:'T3'}].forEach((t,ti)=>{
+      const sx=sumBarX+ti*(sumBarW/3);
+      const sw=sumBarW/3-4;
+      drawRoundRect(sx,sumBarY,sw,isMobile?22:26,4);
+      X.fillStyle='#0d0d22';X.fill();X.strokeStyle=t.c;X.lineWidth=(_bossSelSlot||1)===(ti+1)?2:1;X.stroke();
+      const ch=CHARS[t.idx];
+      const br=isMobile?5:7;
+      drawBallPreview(sx+br+4,sumBarY+(isMobile?11:13),br,ch);
+      X.font='bold '+(isMobile?'7':'9')+'px Consolas,monospace';X.textAlign='left';X.fillStyle=t.c;
+      X.fillText(t.l+' '+ch.name,sx+br*2+8,sumBarY+(isMobile?14:16));
+      addBtn('bslot_'+ti,sx,sumBarY,sw,isMobile?22:26,'','transparent',()=>{_bossSelSlot=ti+1;});
+    });
+
+    // Character grid — build chars for current tier page
+    const allIndices=[];
+    tp.tiers.forEach(t=>{
+      [...CHARS.keys()].forEach(i=>{
+        if(!CHARS[i].isBoss&&(TIER_MAP[CHARS[i].id]||1)===t)allIndices.push(i);
+      });
+    });
+    const gridStartY=sumBarY+(isMobile?30:36);
+    const padX=isMobile?8:15,gapX=isMobile?6:10,gapY=isMobile?6:8;
+    const cardW=isMobile?125:140,cardH=isMobile?52:70;
+    const availW=W-padX*2;
+    const cols=Math.max(2,Math.floor((availW+gapX)/(cardW+gapX)));
+    const totalCardW=cols*cardW+(cols-1)*gapX;
+    const startX=(W-totalCardW)/2;
+    const maxGridH=H-gridStartY-(isMobile?70:90);
+    const rowH=cardH+gapY;
+    const maxRows=Math.floor(maxGridH/rowH);
+    const charsPerPage=maxRows*cols;
+    const totalPages=Math.max(1,Math.ceil(allIndices.length/charsPerPage));
+    selectPage=clamp(selectPage,0,totalPages-1);
+    const pageChars=allIndices.slice(selectPage*charsPerPage,(selectPage+1)*charsPerPage);
+    const ballR=isMobile?14:20;
+
+    pageChars.forEach((origIdx,ci)=>{
+      const row=Math.floor(ci/cols),col=ci%cols;
+      const cx=startX+col*(cardW+gapX),cy=gridStartY+row*rowH;
+      const ch=CHARS[origIdx];
       const isT1=teamChar1===origIdx,isT2=teamChar2===origIdx,isT3=teamChar3===origIdx;
       drawRoundRect(cx,cy,cardW,cardH,isMobile?5:8);
       X.fillStyle=isT1?'#112244':isT2?'#113322':isT3?'#221a11':'#111128';X.fill();
-      X.strokeStyle=isT1?'#4488ff':isT2?'#33cc66':isT3?'#ff8833':ch.color+'66';X.lineWidth=isT1||isT2||isT3?3:1.5;X.stroke();
-      if(isT1){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('T1',cx+5,cy+14);}
-      if(isT2){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#33cc66';X.textAlign='center';X.fillText('T2',cx+cardW/2,cy+14);}
-      if(isT3){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#ff8833';X.textAlign='right';X.fillText('T3',cx+cardW-5,cy+14);}
-      const compact=cardH<80;
-      const ballR=isMobile?(compact?9:12):(cardH>120?22:16);
-      drawBallPreview(cx+cardW/2,cy+(isMobile?(compact?20:28):cardH>120?35:28),ballR,ch);
-      X.font='bold '+(isMobile?(compact?'8':'9'):'10')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
-      X.fillText(ch.name,cx+cardW/2,cy+(isMobile?(compact?34:46):cardH>120?62:50));
-      X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
-      X.fillText(ch.playstyle,cx+cardW/2,cy+(isMobile?(compact?44:56):cardH>120?74:60));
-      if(!isMobile&&cardH>70){
-        X.font='8px Consolas,monospace';X.textAlign='left';X.fillStyle='#888';
-        X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),cx+8,cy+(cardH>120?90:74));
-      }
-      addBtn('bsel_'+i,cx,cy,cardW,cardH,'','transparent',()=>{
+      X.strokeStyle=isT1?'#4488ff':isT2?'#33cc66':isT3?'#ff8833':ch.color+'44';X.lineWidth=isT1||isT2||isT3?2.5:1;X.stroke();
+      X.save();
+      try{
+        const tierStr=getTierLetter(ch.id);
+        const tierCol2=tierStr.startsWith('S')?'#ffcc00':tierStr.startsWith('A')?'#44cc88':tierStr.startsWith('B')?'#6688cc':'#888';
+        X.font='bold '+(isMobile?'7':'9')+'px Consolas,monospace';X.textAlign='left';X.fillStyle=tierCol2;
+        X.fillText(tierStr,cx+4,cy+(isMobile?12:14));
+        if(isT1){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='right';X.fillText('T1',cx+cardW-5,cy+(isMobile?12:14));}
+        if(isT2){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#33cc66';X.textAlign='right';X.fillText('T2',cx+cardW-5,cy+(isMobile?12:14));}
+        if(isT3){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle='#ff8833';X.textAlign='right';X.fillText('T3',cx+cardW-5,cy+(isMobile?12:14));}
+        drawBallPreview(cx+ballR+5,cy+cardH/2,ballR,ch);
+        const textX=cx+ballR*2+12;
+        X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
+        X.fillText(ch.name.length>12?ch.name.slice(0,11)+'\u2026':ch.name,textX,cy+(isMobile?18:24));
+        X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
+        X.fillText(ch.playstyle,textX,cy+(isMobile?30:38));
+        if(!isMobile){X.font='8px Consolas,monospace';X.fillStyle='#666';X.fillText('HP:'+ch.stats.hp+' ATK:'+ch.stats.atk+' SPD:'+ch.stats.speed.toFixed(1),textX,cy+52);}
+      }catch(e){}
+      X.restore();
+      addBtn('bsel_'+origIdx,cx,cy,cardW,cardH,'','transparent',()=>{
         if(origIdx===teamChar1||origIdx===teamChar2||origIdx===teamChar3)return;
         if(!_bossSelSlot)_bossSelSlot=1;
         if(_bossSelSlot===1){teamChar1=origIdx;_bossSelSlot=2;}
@@ -18251,6 +18310,14 @@ function drawBossSelect(){
         else{teamChar3=origIdx;_bossSelSlot=1;}
       });
     });
+
+    // Sub-page arrows
+    if(totalPages>1){
+      X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#aaa';
+      X.fillText((selectPage+1)+'/'+totalPages,W/2,H-(isMobile?80:90));
+      if(selectPage>0)addBtn('bpgL',W/2-60,H-(isMobile?88:98),30,24,'\u25C0','transparent',()=>{selectPage--;});
+      if(selectPage<totalPages-1)addBtn('bpgR',W/2+30,H-(isMobile?88:98),30,24,'\u25B6','transparent',()=>{selectPage++;});
+    }
 
   } else if(_bossSelPage===2){
     // ===== PAGE 2: SELECT BOSS =====
