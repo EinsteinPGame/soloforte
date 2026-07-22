@@ -1042,6 +1042,13 @@ let _2v2SelPage=1,_2v2SelSlot=1; // select screen page & active slot
 let brChars=[0,1,2,3]; // 4 FFA fighters
 let brElems=[0,0,0,0]; // their elements
 let _brSelPage=1,_brSelSlot=0; // select page & active slot
+// Tournament state
+let tournBracket=[]; // [{charIdx,elemIdx,name,wins}] — 16 entrants
+let tournMatches=[]; // [{p1Idx,p2Idx,winner,round}] — match history
+let tournRound=0; // 0=R16, 1=QF, 2=SF, 3=Final
+let tournCurrentMatch=-1; // index into current round's matches
+let tournPhase='setup'; // 'setup','bracket','battle','result','champion'
+let tournAutoPlay=false; // auto-advance matches
 let teamSponsor1=-1,teamSponsor2=-1,teamSponsor3=-1; // team sponsors for boss mode
 let selectPage=0; // pagination for character select (0-indexed)
 let selectTab=0; // 0=Fighters, 1=Bosses
@@ -14764,7 +14771,8 @@ function drawTitle(){
   addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;selectTierPage=0;});
   addBtn('2v2',W/2-btnW/2,titleY+280,btnW,btnH,'2v2 BATTLE','#33cc66',()=>{gameMode='2v2';screen='teamSelect';t1Char1=0;t1Char2=1;t2Char1=2;t2Char2=3;t1Elem1=0;t1Elem2=0;t2Elem1=0;t2Elem2=0;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_2v2SelPage=1;_2v2SelSlot=1;});
   addBtn('br',W/2-btnW/2,titleY+340,btnW,btnH,'BATTLE ROYALE','#ff8800',()=>{gameMode='br';screen='brSelect';brChars=[0,1,2,3];brElems=[0,0,0,0];_brSelPage=1;_brSelSlot=0;});
-  addBtn('boss',W/2-btnW/2,titleY+400,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
+  addBtn('tourn',W/2-btnW/2,titleY+400,btnW,btnH,'TOURNAMENT','#ffcc00',()=>{gameMode='tournament';screen='tournSetup';tournPhase='setup';tournBracket=[];tournMatches=[];tournRound=0;tournCurrentMatch=-1;tournAutoPlay=false;});
+  addBtn('boss',W/2-btnW/2,titleY+460,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('BBA v10.10.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
@@ -15457,6 +15465,10 @@ function startIntroCutscene(){
     ic.p1Char=CHARS[brChars[0]];ic.p2Char=CHARS[brChars[1]];
     ic.p1Elem=brElems[0]>=0?ELEMENTS[brElems[0]]:null;
     ic.p2Elem=brElems[1]>=0?ELEMENTS[brElems[1]]:null;
+  } else if(gameMode==='tournament'){
+    ic.p1Char=CHARS[p1Char];ic.p2Char=CHARS[p2Char];
+    ic.p1Elem=p1Elem>=0?ELEMENTS[p1Elem]:null;
+    ic.p2Elem=p2Elem>=0?ELEMENTS[p2Elem]:null;
   } else {
     ic.p1Char=CHARS[p1Char];ic.p2Char=CHARS[p2Char];
     ic.p1Elem=p1Elem>=0?ELEMENTS[p1Elem]:null;
@@ -17603,7 +17615,11 @@ function drawBattle(){
       X.fillText('['+winTier+'] vs ['+loseTier+(loser?' '+loser.char.name:'')+']',W/2,ARENA.y+ARENA.h/2-5);
     }
     X.shadowBlur=0;
-    addBtn('result',W/2-80,ARENA.y+ARENA.h/2+20,160,40,'Continue','#7b68ee',()=>{screen='result';});
+    if(gameMode==='tournament'){
+      addBtn('result',W/2-80,ARENA.y+ARENA.h/2+20,160,40,'Back to Bracket','#ffcc00',()=>{tournFinishMatch(winner.side);});
+    } else {
+      addBtn('result',W/2-80,ARENA.y+ARENA.h/2+20,160,40,'Continue','#7b68ee',()=>{screen='result';});
+    }
     X.restore();
   }
   buttons.forEach(drawBtn);
@@ -17676,6 +17692,195 @@ function drawFighterInfo(f,px,py,maxW,align){
   // Relic status
   X.font='9px Consolas,monospace';X.fillStyle=f.specialActive?'#ffcc00':'#7b68ee';
   X.fillText(f.specialActive?'>> RELIC ACTIVE':'Relic: '+(f.specialBar>=f.specialMax?'READY':Math.floor(f.specialBar/f.specialMax*100)+'%'),px+(isL?5:maxW-5),py+56);
+}
+
+// ============================================================
+// TOURNAMENT FUNCTIONS
+// ============================================================
+function tournRandomize(){
+  const playable=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss);
+  const shuffled=playable.sort(()=>Math.random()-0.5).slice(0,16);
+  tournBracket=shuffled.map(i=>({charIdx:i,elemIdx:0,name:CHARS[i].name,alive:true}));
+}
+function tournGetRoundMatches(){
+  const alive=tournBracket.filter(e=>e.alive);
+  const matches=[];
+  for(let i=0;i<alive.length;i+=2){
+    if(i+1<alive.length)matches.push({p1:alive[i],p2:alive[i+1],winner:null});
+  }
+  return matches;
+}
+const TOURN_ROUND_NAMES=['ROUND OF 16','QUARTERFINALS','SEMIFINALS','GRAND FINAL'];
+
+function drawTournSetup(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  X.font='bold '+(isMobile?'18':'28')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.fillStyle='#ffcc00';
+  X.shadowColor='#ffcc00';X.shadowBlur=15;
+  X.fillText('TOURNAMENT',W/2,isMobile?35:50);
+  X.shadowBlur=0;
+  X.font=(isMobile?'10':'13')+'px Consolas,monospace';X.fillStyle='#888';
+  X.fillText('16-Player Single Elimination',W/2,isMobile?52:72);
+
+  const btnW=isMobile?180:220,btnH=isMobile?40:48;
+  // Randomize roster button
+  addBtn('tournRand',W/2-btnW/2,isMobile?80:120,btnW,btnH,'RANDOM ROSTER','#ffcc00',()=>{
+    tournRandomize();
+  });
+  // Show current roster if set
+  if(tournBracket.length===16){
+    const startY=isMobile?130:180;
+    X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#aaa';
+    X.fillText('BRACKET',W/2,startY-8);
+    const cols=4,rows=4;
+    const cardW=isMobile?Math.floor((W-30)/cols)-4:Math.floor((W-80)/cols)-6;
+    const cardH=isMobile?50:60;
+    const gapX=isMobile?4:6,gapY=isMobile?4:6;
+    const totalW=cols*cardW+(cols-1)*gapX;
+    const startX=(W-totalW)/2;
+    tournBracket.forEach((entry,i)=>{
+      const row=Math.floor(i/cols),col=i%cols;
+      const cx=startX+col*(cardW+gapX);
+      const cy=startY+row*(cardH+gapY);
+      const ch=CHARS[entry.charIdx];
+      drawRoundRect(cx,cy,cardW,cardH,4);
+      X.fillStyle='#111128';X.fill();X.strokeStyle=ch.color+'88';X.lineWidth=1.5;X.stroke();
+      const ballR=isMobile?8:10;
+      drawBallPreview(cx+ballR+4,cy+cardH/2,ballR,ch);
+      X.font='bold '+(isMobile?'7':'9')+'px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
+      X.fillText(ch.name.length>(isMobile?8:12)?ch.name.slice(0,isMobile?8:12):ch.name,cx+ballR*2+8,cy+(isMobile?18:22));
+      const tier=getTierLetter(ch.id);
+      const tc=tier.startsWith('S')?'#ffcc00':tier.startsWith('A')?'#44cc88':tier.startsWith('B')?'#6688cc':'#888';
+      X.font='bold '+(isMobile?'6':'8')+'px Consolas,monospace';X.fillStyle=tc;
+      X.fillText('['+tier+']',cx+ballR*2+8,cy+(isMobile?30:36));
+      // Seed number
+      X.font='bold '+(isMobile?'6':'7')+'px Consolas,monospace';X.fillStyle='#555';X.textAlign='right';
+      X.fillText('#'+(i+1),cx+cardW-3,cy+12);
+    });
+    // START button
+    const startBtnY=startY+4*(cardH+gapY)+10;
+    addBtn('tournStart',W/2-100,startBtnY,200,isMobile?38:45,'START TOURNAMENT','#ffcc00',()=>{
+      tournRound=0;tournCurrentMatch=0;tournMatches=[];tournPhase='bracket';
+      screen='tournBracket';
+    });
+  }
+  addBtn('tournBack',W/2-60,H-50,120,35,'Title','#555',()=>{screen='title';});
+  buttons.forEach(drawBtn);
+}
+
+function drawTournBracket(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  // Title
+  X.font='bold '+(isMobile?'14':'20')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.fillStyle='#ffcc00';
+  X.fillText(TOURN_ROUND_NAMES[Math.min(tournRound,3)],W/2,isMobile?20:28);
+  // Alive count
+  const aliveCount=tournBracket.filter(e=>e.alive).length;
+  X.font=(isMobile?'9':'11')+'px Consolas,monospace';X.fillStyle='#888';
+  X.fillText(aliveCount+' fighters remaining',W/2,isMobile?34:44);
+
+  // Draw bracket tree — simplified vertical list of matchups
+  const roundMatches=tournGetRoundMatches();
+  const matchH=isMobile?55:65;
+  const matchW=isMobile?W-20:W-60;
+  const startY=isMobile?48:58;
+  const matchGap=isMobile?6:8;
+  const maxVisible=Math.min(roundMatches.length,isMobile?8:8);
+  const scrollOffset=0;
+
+  roundMatches.slice(scrollOffset,scrollOffset+maxVisible).forEach((match,mi)=>{
+    const my=startY+mi*(matchH+matchGap);
+    const mx=(W-matchW)/2;
+    // Match card
+    drawRoundRect(mx,my,matchW,matchH,6);
+    const isCurrentMatch=mi===tournCurrentMatch;
+    X.fillStyle=isCurrentMatch?'#1a1a0a':'#0d0d22';X.fill();
+    X.strokeStyle=isCurrentMatch?'#ffcc00':'#222';X.lineWidth=isCurrentMatch?2:1;X.stroke();
+    // Match number
+    X.font='bold '+(isMobile?'7':'9')+'px Consolas,monospace';X.textAlign='left';X.fillStyle='#555';
+    X.fillText('M'+(mi+1),mx+5,my+12);
+    // P1
+    const ch1=CHARS[match.p1.charIdx];
+    const ballR=isMobile?10:12;
+    drawBallPreview(mx+30,my+matchH/2,ballR,ch1);
+    X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='left';
+    X.fillStyle=match.winner===match.p1?'#ffcc00':match.winner?'#555':'#fff';
+    X.fillText(ch1.name,mx+ballR*2+36,my+(isMobile?18:22));
+    const t1=getTierLetter(ch1.id);
+    X.font='bold '+(isMobile?'7':'8')+'px Consolas,monospace';X.fillStyle=t1.startsWith('S')?'#ffcc00':t1.startsWith('A')?'#44cc88':'#6688cc';
+    X.fillText('['+t1+']',mx+ballR*2+36,my+(isMobile?30:34));
+    if(match.winner===match.p1){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#ffcc00';X.fillText('\u2714',mx+ballR*2+36+X.measureText(ch1.name).width+5,my+(isMobile?18:22));}
+    // VS
+    X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';
+    X.fillText('VS',mx+matchW/2,my+matchH/2+4);
+    // P2
+    const ch2=CHARS[match.p2.charIdx];
+    drawBallPreview(mx+matchW-30,my+matchH/2,ballR,ch2);
+    X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='right';
+    X.fillStyle=match.winner===match.p2?'#ffcc00':match.winner?'#555':'#fff';
+    X.fillText(ch2.name,mx+matchW-ballR*2-36,my+(isMobile?18:22));
+    const t2=getTierLetter(ch2.id);
+    X.font='bold '+(isMobile?'7':'8')+'px Consolas,monospace';X.fillStyle=t2.startsWith('S')?'#ffcc00':t2.startsWith('A')?'#44cc88':'#6688cc';
+    X.fillText('['+t2+']',mx+matchW-ballR*2-36,my+(isMobile?30:34));
+    if(match.winner===match.p2){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#ffcc00';X.textAlign='right';X.fillText('\u2714',mx+matchW-ballR*2-36-5,my+(isMobile?18:22));}
+    // Click to watch this match
+    if(!match.winner){
+      addBtn('tournM'+mi,mx,my,matchW,matchH,'','transparent',()=>{
+        tournCurrentMatch=mi;
+        gameMode='tournament';
+        p1Char=match.p1.charIdx;p2Char=match.p2.charIdx;
+        p1Elem=match.p1.elemIdx;p2Elem=match.p2.elemIdx;
+        p1Sponsor=-1;p2Sponsor=-1;
+        startIntroCutscene();
+      });
+    }
+  });
+
+  // Next match button (auto)
+  const nextUnplayed=roundMatches.findIndex(m=>!m.winner);
+  if(nextUnplayed>=0){
+    const nbY=startY+Math.min(maxVisible,roundMatches.length)*(matchH+matchGap)+5;
+    addBtn('tournNext',W/2-80,nbY,160,isMobile?34:40,'NEXT MATCH','#ffcc00',()=>{
+      tournCurrentMatch=nextUnplayed;
+      const match=roundMatches[nextUnplayed];
+      gameMode='tournament';
+      p1Char=match.p1.charIdx;p2Char=match.p2.charIdx;
+      p1Elem=match.p1.elemIdx;p2Elem=match.p2.elemIdx;
+      p1Sponsor=-1;p2Sponsor=-1;
+      startIntroCutscene();
+    });
+  } else {
+    // All matches done — advance to next round
+    const nbY=startY+Math.min(maxVisible,roundMatches.length)*(matchH+matchGap)+5;
+    if(aliveCount>1){
+      addBtn('tournAdvance',W/2-80,nbY,160,isMobile?34:40,'NEXT ROUND','#ffcc00',()=>{
+        tournRound++;tournCurrentMatch=0;
+      });
+    } else {
+      // Champion!
+      const champ=tournBracket.find(e=>e.alive);
+      X.font='bold '+(isMobile?'18':'28')+'px Consolas,monospace';X.textAlign='center';
+      X.shadowColor='#ffcc00';X.shadowBlur=20;X.fillStyle='#ffcc00';
+      X.fillText('\u{1F3C6} CHAMPION: '+CHARS[champ.charIdx].name+' \u{1F3C6}',W/2,nbY+20);
+      X.shadowBlur=0;
+      addBtn('tournEnd',W/2-60,nbY+40,120,35,'Title','#555',()=>{screen='title';});
+    }
+  }
+  addBtn('tournBracketBack',10,H-45,isMobile?50:70,30,'Title','#555',()=>{screen='title';});
+  buttons.forEach(drawBtn);
+}
+
+function tournFinishMatch(winnerSide){
+  const roundMatches=tournGetRoundMatches();
+  const match=roundMatches[tournCurrentMatch];
+  if(!match)return;
+  const loser=winnerSide===0?match.p2:match.p1;
+  const win=winnerSide===0?match.p1:match.p2;
+  match.winner=win;
+  loser.alive=false;
+  tournMatches.push({p1:match.p1.name,p2:match.p2.name,winner:win.name,round:tournRound});
+  screen='tournBracket';
+  gameMode='tournament';
 }
 
 // ============================================================
@@ -18274,6 +18479,8 @@ function loop(time){
     case 'bossSelect':drawBossSelect();break;
     case 'teamSelect':draw2v2Select();break;
     case 'brSelect':drawBRSelect();break;
+    case 'tournSetup':drawTournSetup();break;
+    case 'tournBracket':drawTournBracket();break;
     case 'intro':
       battleAccum+=elapsed;
       while(battleAccum>=STEP_MS){updateIntroCutscene(1);battleAccum-=STEP_MS;}
