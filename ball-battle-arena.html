@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.8.5 — Cinematic intro cutscene redesigns (Kyle's designs)
+// BALL BATTLE ARENA v10.8.6 — Cutscene redesigns + Dabura wall-ray burst
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -1506,6 +1506,7 @@ function createFighter(charIdx,elemIdx,side){
     dabSwordAngle:0, // sword direction
     dabOrbCD:0, // light orb launch cooldown
     dabOrbs:[], // active light orbs [{x,y,vx,vy,timer,exploded}]
+    dabRays:[], // wall-hit ray bursts [{x,y,timer,maxTimer,dark}]
     dabPillarCD:0, // light pillar cooldown (phase 2+)
     dabPillars:[], // active light pillars [{x,y,timer,maxTimer}]
     dabDashCD:0, // speed dash cooldown (phase 3+)
@@ -8039,9 +8040,45 @@ function updateBattle(dt){
             shakeTimer=8;shakeAmt=5;
           }
         });
-        if(orb.timer<=0||orb.exploded||orb.x<-20||orb.x>W+20||orb.y<-20||orb.y>H+20){
+        // Wall hit → ray burst (explode into rays blasting all directions)
+        if(!orb.exploded&&(orb.x<=ARENA.x||orb.x>=ARENA.x+ARENA.w||orb.y<=ARENA.y||orb.y>=ARENA.y+ARENA.h)){
+          orb.exploded=true;
+          const wallX=Math.max(ARENA.x+5,Math.min(ARENA.x+ARENA.w-5,orb.x));
+          const wallY=Math.max(ARENA.y+5,Math.min(ARENA.y+ARENA.h-5,orb.y));
+          f.dabRays.push({x:wallX,y:wallY,timer:120,maxTimer:120,dark:f.dabDarkFlip});
+          spawnBurst(wallX,wallY,f.dabDarkFlip?'#aa44cc':'#ffee88',20,8);
+          shakeTimer=10;shakeAmt=6;
+          SFX.relicActivate();
+          addLog((f.side===0?'P1':'P2')+(f.dabDarkFlip?' DARK':' LIGHT')+' RAY BURST!');
+        }
+        if(orb.timer<=0||orb.exploded){
           f.dabOrbs.splice(i,1);
         }
+      }
+
+      // Ray bursts from wall hits — persistent damage in all directions
+      for(let ri=f.dabRays.length-1;ri>=0;ri--){
+        const ray=f.dabRays[ri];
+        ray.timer-=dt;
+        // Deal damage along 8 ray directions every 10 frames
+        if(Math.floor(ray.timer)%10<dt){
+          const rayLen=80;const numRays=8;
+          fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
+            for(let r=0;r<numRays;r++){
+              const ra=Math.PI*2*r/numRays;
+              // Check if enemy is along this ray (within 15px of ray line)
+              for(let d=0;d<rayLen;d+=15){
+                const rx=ray.x+Math.cos(ra)*d;const ry=ray.y+Math.sin(ra)*d;
+                if(Math.hypot(e.x-rx,e.y-ry)<e.radius+10){
+                  dealDamage(f,e,f.atk*0.25,false);
+                  spawnBurst(e.x,e.y,ray.dark?'#aa44cc':'#ffee88',3,2);
+                  break;
+                }
+              }
+            }
+          });
+        }
+        if(ray.timer<=0)f.dabRays.splice(ri,1);
       }
 
       // Light pillars (phase 2+)
@@ -12221,6 +12258,24 @@ function drawBall(f){
       og.addColorStop(0,'#ffffff');og.addColorStop(1,orbCol);
       X.fillStyle=og;X.fill();
       X.strokeStyle=orbCol;X.lineWidth=1;X.stroke();
+    });
+    // Ray bursts from wall hits
+    f.dabRays.forEach(ray=>{
+      const prog=ray.timer/ray.maxTimer;const pulse=Math.sin(battleTime*0.3)*0.15+0.5;
+      const rayCol=ray.dark?'#aa44cc':'#ffcc44';const rayLen=80;
+      X.globalAlpha=prog*pulse;
+      // Draw 8 rays from the burst point
+      for(let r=0;r<8;r++){
+        const ra=Math.PI*2*r/8+battleTime*0.02;
+        X.strokeStyle=rayCol;X.lineWidth=2+prog;X.shadowColor=rayCol;X.shadowBlur=6;
+        X.beginPath();X.moveTo(ray.x,ray.y);X.lineTo(ray.x+Math.cos(ra)*rayLen,ray.y+Math.sin(ra)*rayLen);X.stroke();
+      }
+      X.shadowBlur=0;
+      // Center glow
+      X.globalAlpha=prog*0.6;const rg=X.createRadialGradient(ray.x,ray.y,0,ray.x,ray.y,15);
+      rg.addColorStop(0,ray.dark?'#cc66ff':'#ffffff');rg.addColorStop(1,ray.dark?'#66228800':'#ffcc4400');
+      X.fillStyle=rg;X.beginPath();X.arc(ray.x,ray.y,15,0,Math.PI*2);X.fill();
+      X.globalAlpha=1;
     });
     // Light pillars
     f.dabPillars.forEach(p=>{
