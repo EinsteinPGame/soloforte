@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v9.4.0 — Dabura Karaba boss (S- tier, light/darkness phases, checkerboard domain)
+// BALL BATTLE ARENA v10.1.0 — Mahito (A tier, Idle Transfiguration, Self-Embodiment domain)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -208,6 +208,8 @@ const SFX={
   yutaSwordHit(){this._tone(800,0.08,'sawtooth',0.2);this._tone(1200,0.06,'square',0.15,0.02);this._tone(400,0.1,'sine',0.12,0.03)},
   // Todo — Boogie Woogie clap
   todoClap(){this._tone(1500,0.05,'square',0.3);this._tone(800,0.08,'triangle',0.2,0.02);this._noise(0.03,0.06)},
+  // Mahito — Transfigure soul touch
+  transfigure(){this._tone(400,0.15,'sine',0.2);this._tone(300,0.2,'sine',0.15,0.05);this._tone(200,0.25,'triangle',0.1,0.1);},
 };
 
 // ============================================================
@@ -402,6 +404,14 @@ const CHARS=[
     specialName:'CHIMERA SHADOW GARDEN',
   },
   {
+    id:'mahito',name:'Mahito',color:'#5a8a8a',
+    desc:'Idle Transfiguration: soul-touching strikes that shrink and warp enemies. Domain: Self-Embodiment of Perfection.',
+    playstyle:'Control & Transfigure',
+    stats:{hp:520,atk:24,speed:3.8,range:80,def:7,crit:14},
+    baseAtkInterval:38,relicChargeRate:0.85,
+    specialName:'SELF-EMBODIMENT OF PERFECTION',
+  },
+  {
     id:'mahoraga',name:'Mahoraga',color:'#1a1a2e',
     desc:'BOSS. Adaptation wheel reduces damage per type. Sword of Extermination. Shinjuku mode.',
     playstyle:'Boss — 3v1',
@@ -538,7 +548,7 @@ const TIER_MAP={
   mahoraga:10, // S (boss)
   dabura:9, // S- (boss)
   higuruma:8, toji:8, kashimo:8, yuki:8, megumi:8, // A+
-  nanami:7, choso:7, naoya:7, sandy:7, // A
+  nanami:7, choso:7, naoya:7, sandy:7, mahito:7, // A
   mechamaru:6, // A-
   yuji:5, todo:5, // B+
   ryu:4, berserk:4, // B
@@ -799,6 +809,7 @@ const PERSONALIZED_WIN_BUFFS={
   kashimo:{name:'Lightning Charge',desc:'Special charges 15% faster',apply(f){f._kashimoChargeMult=(f._kashimoChargeMult||1)*1.15;}},
   yuki:{name:'Gravitational Density',desc:'Mass meter max +15',apply(f){f.yukiMassMax=(f.yukiMassMax||100)+15;}},
   megumi:{name:'Shadow Resonance',desc:'Nue summon every 2 hits instead of 3',apply(f){f._megumiNueInterval=(f._megumiNueInterval||3)-1;}},
+  mahito:{name:'Soul Sculptor',desc:'Transfigure chance +10%',apply(f){f._mahitoTransfigureBonus=(f._mahitoTransfigureBonus||0)+0.10;}},
 };
 
 // ============================================================
@@ -946,6 +957,13 @@ const VOICELINES={
     victory:['I\'ll carry this burden.'],
     defeat:['Not yet...'],
     lowHp:['Not yet...']
+  },
+  mahito:{
+    intro:['The shape of your soul... how boring.','Humans are so fragile. Let me fix that.'],
+    special:['DOMAIN EXPANSION — SELF-EMBODIMENT OF PERFECTION!'],
+    victory:['Your soul belonged to me from the start.'],
+    defeat:['Hah... this body is just clay to reshape.'],
+    lowHp:['Hah... this body is just clay to reshape.']
   },
   mahoraga:{
     intro:['...','ADAPTATION BEGINS.'],
@@ -1144,6 +1162,9 @@ function createFighter(charIdx,elemIdx,side){
     attackPhase:0, // for multi-hit combos (gorilla: 0=left,1=right,2=downslam; mantis: 0=left,1=right)
     attackAnim:0, // visual animation timer
     attackSide:1, // mantis: 1=left slash, -1=right slash
+    // Mahito transfigure debuff (any fighter can be transfigured)
+    mahitoShrinkTimer:0,
+    mahitoTransfiguredBy:null,
     // Chaos & scaling
     totalHits:0,
     // Special / Relic
@@ -1408,6 +1429,13 @@ function createFighter(charIdx,elemIdx,side){
     megumiDomainTimer:0, // domain duration (8s = 480 frames)
     megumiCloneCD:0, // cooldown between shadow clone spawns
     megumiShadowAlpha:1, // transparency during domain
+    // Mahito state — Control & Transfigure
+    mahitoHitCount:0, // tracks hits for blade arm morph (every 5th)
+    mahitoTransfigured:false, // enemy currently transfigured
+    mahitoTransfigureTimer:0, // remaining transfigure debuff time
+    mahitoDomainActive:false, // Self-Embodiment of Perfection active
+    mahitoDomainTimer:0, // domain duration
+    mahitoPassiveTriggered:false, // Instant Spirit Body one-time passive
     // Yuki Tsukumo state — Mass & Garuda
     yukiMass:0, // 0-100 mass meter
     yukiMassMax:100,
@@ -1974,6 +2002,7 @@ function performWeaponAttack(f,enemy){
     case 'dabura':attackDabura(f,enemy,chaos);break;
     case 'yuki':attackYuki(f,enemy,chaos);break;
     case 'megumi':attackMegumi(f,enemy,chaos);break;
+    case 'mahito':attackMahito(f,enemy,chaos);break;
   }
 }
 
@@ -3541,6 +3570,88 @@ function updateRelicMegumi(f,enemy,dt){
   }
 }
 
+function attackMahito(f,enemy,chaos){
+  f.weaponExtend=1;f.weaponFlash=10;
+  const d=dist(f,enemy);
+  const effectiveRange=f.range+enemy.radius+chaos*5;
+  if(d>effectiveRange)return;
+
+  f.mahitoHitCount++;
+  const transfigureChance=f.mahitoDomainActive?1.0:(0.25+(f._mahitoTransfigureBonus||0));
+
+  // Every 5th hit: blade arm morph — extended range, 1.4x dmg
+  const isBladeArm=f.mahitoHitCount%5===0;
+  if(isBladeArm){
+    SFX.slash();
+    const dmg=f.atk*1.4*(1+chaos*0.06)*(f.mahitoDomainActive?1.2:1.0);
+    dealDamage(f,enemy,dmg,true);
+    spawnBurst(enemy.x,enemy.y,'#3a7a7a',10,5);
+    spawnDmgNum(enemy.x,enemy.y-20,'BLADE ARM!','#5a8a8a',false);
+  } else {
+    SFX.hit();
+    const dmg=f.atk*(1+chaos*0.06)*(f.mahitoDomainActive?1.2:1.0);
+    dealDamage(f,enemy,dmg,true);
+    spawnBurst(enemy.x,enemy.y,'#5a8a8a',5,3);
+  }
+
+  // Transfigure chance
+  let actualChance=transfigureChance;
+  if(enemy.char.id==='yuji'||f._mahitoVsYuji)actualChance*=0.5;
+  if(!enemy.mahitoTransfiguredBy&&Math.random()<actualChance){
+    enemy.mahitoTransfiguredBy=f;
+    enemy.mahitoShrinkTimer=120;
+    enemy.atk=Math.round(enemy.baseAtk*0.8);
+    spawnDmgNum(enemy.x,enemy.y-30,'TRANSFIGURED!','#5a8a8a',false);
+    SFX.transfigure();
+    addLog((f.side===0?'P1':'P2')+' transfigures '+(enemy.side===0?'P1':'P2')+'!');
+  }
+
+  // Domain: heal 2% of damage dealt
+  if(f.mahitoDomainActive){
+    const healAmt=f.atk*0.02;
+    f.hp=Math.min(f.maxHp,f.hp+healAmt);
+  }
+
+  // Knockback
+  const ka=angle(f,enemy);
+  enemy.vx+=Math.cos(ka)*1.5;enemy.vy+=Math.sin(ka)*1.5;
+}
+
+function relicMahito(f,enemy){
+  // SELF-EMBODIMENT OF PERFECTION — domain expansion
+  SFX.relicActivate();
+  SFX.megaExplosion();
+
+  f.mahitoDomainActive=true;
+  f.mahitoDomainTimer=360; // 6 seconds
+  f.specialTimer=360;
+
+  spawnBurst(f.x,f.y,'#5a8a8a',40,15);
+  spawnBurst(f.x,f.y,'#3a6a6a',30,10);
+  triggerScreenFlash('#5a8a8a',15);
+  shakeTimer=15;shakeAmt=10;
+  spawnDmgNum(f.x,f.y-f.radius-30,'SELF-EMBODIMENT OF PERFECTION','#5a8a8a',true);
+  addLog((f.side===0?'P1':'P2')+' SELF-EMBODIMENT OF PERFECTION!');
+}
+
+function updateRelicMahito(f,enemy,dt){
+  if(!f.mahitoDomainActive)return;
+  f.mahitoDomainTimer-=dt;
+
+  // Domain visual: teal circle pulsing
+  if(f.mahitoDomainTimer%20<10){
+    spawnBurst(f.x+rand(-60,60),f.y+rand(-60,60),'#5a8a8a',2,1);
+  }
+
+  // Enemy takes +20% more damage (applied in transfigure chance being 100%)
+
+  if(f.mahitoDomainTimer<=0){
+    f.mahitoDomainActive=false;
+    f.speed=f.baseSpeed;
+    addLog((f.side===0?'P1':'P2')+' domain faded');
+  }
+}
+
 function relicYuki(f,enemy){
   // STAR RAGE — BLACK HOLE
   SFX.relicActivate();
@@ -4190,6 +4301,7 @@ function useSpecial(f,enemy){
     case 'dabura':relicDabura(f,enemy);break;
     case 'yuki':relicYuki(f,enemy);break;
     case 'megumi':relicMegumi(f,enemy);break;
+    case 'mahito':relicMahito(f,enemy);break;
   }
 }
 
@@ -6566,6 +6678,27 @@ function updateBattle(dt){
       }
     }
 
+    // Mahito: Instant Spirit Body passive at <30% HP
+    if(f.char.id==='mahito'&&!f.mahitoPassiveTriggered&&f.hp<f.maxHp*0.3){
+      f.mahitoPassiveTriggered=true;
+      f.speed=f.baseSpeed*1.2;
+      f.baseSpeed*=1.2;
+      f.range=100;
+      spawnBurst(f.x,f.y,'#5a8a8a',20,8);
+      spawnDmgNum(f.x,f.y-f.radius-20,'INSTANT SPIRIT BODY!','#5a8a8a',true);
+      addLog((f.side===0?'P1':'P2')+' Instant Spirit Body activated!');
+      showVoiceline('mahito','lowHp',f.side);
+    }
+
+    // Mahito transfigure debuff tick
+    if(f.mahitoShrinkTimer>0){
+      f.mahitoShrinkTimer-=dt;
+      if(f.mahitoShrinkTimer<=0){
+        f.mahitoTransfiguredBy=null;
+        f.atk=f.baseAtk; // restore ATK
+      }
+    }
+
     // Element activation at 25% HP
     if(!f.elementActive&&f.elem.id!=='none'&&f.hp<=f.maxHp*0.25){
       f.elementActive=true;f.elementFlash=30;
@@ -6631,6 +6764,7 @@ function updateBattle(dt){
         // todo: handled outside specialActive block (always runs)
         case 'yuki':updateRelicYuki(f,enemy,dt);break;
         case 'megumi':updateRelicMegumi(f,enemy,dt);break;
+        case 'mahito':updateRelicMahito(f,enemy,dt);break;
       }
     }
 
@@ -8106,6 +8240,14 @@ function drawBall(f){
   // Megumi semi-transparent during Chimera Shadow Garden
   if(f.char.id==='megumi'&&f.megumiDomainActive)alpha*=(f.megumiShadowAlpha||0.4);
   X.globalAlpha=alpha;
+
+  if(f.mahitoShrinkTimer>0){
+    // Shrink visual: scale down the fighter slightly
+    X.save();
+    X.translate(f.x,f.y);
+    X.scale(0.8,0.8);
+    X.translate(-f.x,-f.y);
+  }
 
   // Shadow
   X.beginPath();X.ellipse(f.x,f.y+f.radius+8,f.radius*0.7,6,0,0,Math.PI*2);
@@ -11013,10 +11155,17 @@ function drawBall(f){
       const dom=f.megumiDomainActive?'DOMAIN ':'';
       X.fillText(dom+'Nue:'+(f.megumiHitCount||0)+'/'+(f._megumiNueInterval||f.megumiNueInterval||3),f.x,statY);
       break;}
+    case 'mahito':{
+      const dom=f.mahitoDomainActive?'DOMAIN ':'';
+      const passive=f.mahitoPassiveTriggered?'ISB ':'';
+      X.fillText(dom+passive+'Hits:'+f.mahitoHitCount+'/5',f.x,statY);
+      break;}
   }
 
   // Burn visual
   if(f.burnTimer>0){for(let i=0;i<3;i++){const ba=battleTime*0.2+i*2;X.beginPath();X.arc(f.x+Math.cos(ba)*f.radius*0.6,f.y+Math.sin(ba)*f.radius*0.6-2,3,0,Math.PI*2);X.fillStyle='#ff4400';X.fill();}}
+
+  if(f.mahitoShrinkTimer>0)X.restore();
 
   X.restore();
 }
@@ -11057,6 +11206,7 @@ function drawWeapon(f){
     case 'dabura':drawDaburaWeapon(r,ext,flash,f);break;
     case 'yuki':drawYukiWeapon(r,ext,flash,f);break;
     case 'megumi':drawMegumiWeapon(r,ext,flash,f);break;
+    case 'mahito':drawMahitoWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -11701,6 +11851,58 @@ function drawMegumiWeapon(r,ext,flash,f){
     X.shadowColor='#1a3a6a';X.shadowBlur=15;
     X.beginPath();X.arc(0,0,f.radius+10,0,Math.PI*2);
     X.fillStyle='rgba(26,58,106,0.2)';X.fill();
+    X.shadowBlur=0;X.globalAlpha=1;
+    X.restore();
+  }
+}
+
+function drawMahitoWeapon(r,ext,flash,f){
+  // Patchwork soul-hand — open palm with stitch marks
+  const extend=ext*5;
+  const col=flash?'#ffffff':'#7ab0b0';
+  const darkCol=flash?'#aadddd':'#5a8a8a';
+
+  // Palm base
+  X.fillStyle=darkCol;
+  X.beginPath();
+  X.ellipse(r+4+extend,0,8,6,0,0,Math.PI*2);
+  X.fill();
+
+  // Soul glow from center
+  X.shadowColor='#5a8a8a';X.shadowBlur=flash?12:6;
+  X.beginPath();
+  X.arc(r+4+extend,0,3,0,Math.PI*2);
+  X.fillStyle='#88dddd';X.fill();
+  X.shadowBlur=0;
+
+  // Stitch marks on palm
+  X.strokeStyle=col;X.lineWidth=1;
+  for(let i=0;i<3;i++){
+    const sy=-4+i*4;
+    X.beginPath();
+    X.moveTo(r+extend,sy);X.lineTo(r+8+extend,sy);
+    X.stroke();
+  }
+
+  // Fingers — 5 slightly splayed
+  for(let i=0;i<5;i++){
+    const fAngle=(i-2)*0.2;
+    const fLen=10+extend+Math.sin(battleTime*0.12+i)*2;
+    X.strokeStyle=col;X.lineWidth=2;
+    X.beginPath();
+    X.moveTo(r+8+extend,Math.sin(fAngle)*4);
+    X.lineTo(r+8+fLen,Math.sin(fAngle)*12);
+    X.stroke();
+  }
+
+  // Domain aura
+  if(f&&f.mahitoDomainActive){
+    X.save();
+    X.rotate(-f.weaponAngle);
+    X.globalAlpha=0.3+Math.sin(battleTime*0.1)*0.1;
+    X.shadowColor='#5a8a8a';X.shadowBlur=15;
+    X.beginPath();X.arc(0,0,f.radius+10,0,Math.PI*2);
+    X.fillStyle='rgba(90,138,138,0.2)';X.fill();
     X.shadowBlur=0;X.globalAlpha=1;
     X.restore();
   }
@@ -13626,6 +13828,14 @@ function startBattle(){
       fighters.forEach(f=>{f.atk=Math.round(f.atk*1.1);f.baseAtk=Math.round(f.baseAtk*1.1);});
       addLog('SPECIAL MATCHUP: FATHER & SON — Megumi vs Toji!');
     }
+    // Mahito vs Yuji: Soul Resonance — Yuji +15% ATK, Mahito transfigure halved
+    if(ids1v1.includes('mahito')&&ids1v1.includes('yuji')){
+      const yuji=fighters.find(f=>f.char.id==='yuji');
+      if(yuji){yuji.atk=Math.round(yuji.atk*1.15);yuji.baseAtk=Math.round(yuji.baseAtk*1.15);}
+      const mahito=fighters.find(f=>f.char.id==='mahito');
+      if(mahito)mahito._mahitoVsYuji=true;
+      addLog('SPECIAL MATCHUP: Soul Resonance! Yuji resists Transfiguration!');
+    }
     addLog('Round '+roundNumber+(p1RoundWins+p2RoundWins>0?' (P1:'+p1RoundWins+' P2:'+p2RoundWins+')':''));
     addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
     // Show intro voicelines
@@ -14214,6 +14424,23 @@ function drawBattle(){
       X.globalAlpha=1;
       X.restore();
     }
+    if(f.char.id==='mahito'&&f.mahitoDomainActive){
+      X.save();
+      X.globalAlpha=0.15+Math.sin(battleTime*0.08)*0.05;
+      X.beginPath();X.arc(f.x,f.y,130,0,Math.PI*2);
+      const dg=X.createRadialGradient(f.x,f.y,20,f.x,f.y,130);
+      dg.addColorStop(0,'#5a8a8a');dg.addColorStop(1,'rgba(90,138,138,0)');
+      X.fillStyle=dg;X.fill();
+      // Patchwork grid lines
+      X.strokeStyle='rgba(90,138,138,0.2)';X.lineWidth=1;
+      for(let gx=-120;gx<=120;gx+=30){
+        X.beginPath();X.moveTo(f.x+gx,f.y-130);X.lineTo(f.x+gx,f.y+130);X.stroke();
+      }
+      for(let gy=-120;gy<=120;gy+=30){
+        X.beginPath();X.moveTo(f.x-130,f.y+gy);X.lineTo(f.x+130,f.y+gy);X.stroke();
+      }
+      X.restore();
+    }
   });
 
   // Fighters
@@ -14702,6 +14929,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'todo':{const storm=f.todoSpecialActive?'STORM ':'';const stk=f.todoBuffStacks>0?'x'+f.todoBuffStacks:'';statLine=storm+'SWAP'+stk;break;}
     case 'yuki':{const bh=f.yukiBHActive?'BH ':'';const ovr=f.yukiOverloaded?'OVR ':'';statLine=bh+ovr+'Mass:'+Math.round(f.yukiMass||0);break;}
     case 'megumi':{const dom=f.megumiDomainActive?'DOMAIN ':'';const nue='Nue:'+(f.megumiHitCount||0)+'/'+(f._megumiNueInterval||f.megumiNueInterval||3);statLine=dom+nue;break;}
+    case 'mahito':{const dom=f.mahitoDomainActive?'DOMAIN ':'';const isb=f.mahitoPassiveTriggered?'ISB ':'';statLine=dom+isb+'Hits:'+f.mahitoHitCount+'/5';break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
