@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.8.8 — Smasher float/slam rework + intro cutscene redesigns
+// BALL BATTLE ARENA v10.8.9 — Ryu homing cannon buff + Smasher float/slam rework
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -2946,14 +2946,15 @@ function attackRyu(f,enemy,chaos){
     const cannonDmg=f.atk*(1.0+chaos*0.1)*dmgMult;
     const projSpeed=(7+chaos*0.2)*spdMult;
     const projRadius=blastRadius;
+    // Granite Blast — homing cursed energy blasts (source-accurate)
     projectiles.push({
       x:f.x+Math.cos(ba)*f.radius,y:f.y+Math.sin(ba)*f.radius,
       vx:Math.cos(ba)*projSpeed,vy:Math.sin(ba)*projSpeed,
-      owner:f,target:null,color:'#ff6622',
+      owner:f,target:enemy&&enemy.alive?enemy:null,color:'#ff6622',
       life:60,radius:projRadius,dmg:cannonDmg,
-      explosive:true,explosionRadius:30+chaos*2,homing:false,isRyuCannon:true,
+      explosive:true,explosionRadius:30+chaos*2,homing:true,homingStrength:0.04+chaos*0.005,isRyuCannon:true,
     });
-    // At higher chaos, add extra blasts (no homing — fire in spread)
+    // At higher chaos, add extra homing blasts in spread
     const splitCount=chaos>=3?Math.min(Math.floor(chaos/2),4):0;
     if(splitCount>0){
       for(let i=0;i<splitCount;i++){
@@ -2962,9 +2963,9 @@ function attackRyu(f,enemy,chaos){
         projectiles.push({
           x:f.x+Math.cos(sa)*f.radius,y:f.y+Math.sin(sa)*f.radius,
           vx:Math.cos(sa)*(projSpeed*0.8),vy:Math.sin(sa)*(projSpeed*0.8),
-          owner:f,target:null,color:'#ff4400',
+          owner:f,target:enemy&&enemy.alive?enemy:null,color:'#ff4400',
           life:45,radius:6+chaos*0.3,dmg:splitDmg,
-          explosive:false,homing:false,isRyuSplit:true,
+          explosive:false,homing:true,homingStrength:0.03,isRyuSplit:true,
         });
       }
     }
