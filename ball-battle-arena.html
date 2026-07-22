@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.8.2 — Animated signature move showcases in intro cutscenes
+// BALL BATTLE ARENA v10.8.3 — Bug fix batch: 7 fixes from deep dive audit
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -1127,7 +1127,7 @@ function getAttackInterval(f){
   const chaos=getChaosLevel(f);
   const base=f.char.baseAtkInterval;
   // Win buff attack interval multipliers
-  const winMult=f._mechaAtkIntervalMult||f._mantisAtkIntervalMult||f._katanaAtkIntervalMult||1;
+  const winMult=(f._mechaAtkIntervalMult||1)*(f._mantisAtkIntervalMult||1)*(f._katanaAtkIntervalMult||1);
   // Katana: minimal scaling — stays at roughly base interval
   if(f.char.id==='katana')return Math.max(20,(base*winMult)/(1+chaos*0.1));
   // Berserk: fixed interval like PLS — scaling affects pellets/spread, not fire rate
@@ -2892,7 +2892,7 @@ function ryuSpawnSplits(p){
   const tracking=p.ryuSplitTrack; // ice element: splits track
   // Find nearest enemy for tracking splits
   let splitTarget=null;
-  fighters.forEach(f=>{if(f&&f.alive&&f.side!==p.owner.side)splitTarget=f;});
+  fighters.forEach(f=>{if(f&&f.alive&&p.owner&&f.side!==p.owner.side)splitTarget=f;});
   for(let si=0;si<count;si++){
     const sa=(si/count)*Math.PI*2+rand(-0.15,0.15);
     const splitSpd=tracking?3.5:5; // slower when homing — menacing approach
@@ -5177,7 +5177,7 @@ function relicHiguruma(f,enemy){
   spawnDmgNum(f.x,f.y-f.radius-35,'DEADLY SENTENCING','#5a3a7a',true);
   // Time pause — freeze both fighters briefly so verdict is visible
   f.higurumaVerdictPause=90; // 1.5 seconds pause
-  fighters.forEach(ff=>{if(ff&&ff.alive)ff.stunTimer=Math.max(ff.stunTimer,90);});
+  fighters.forEach(ff=>{if(ff&&ff!==f&&ff.alive)ff.stunTimer=Math.max(ff.stunTimer,90);});
   // Show punishment verdict prominently after short delay
   const verdictLabel=outcome==='confiscate'?'VERDICT: CONFISCATION':outcome==='disable'?'VERDICT: ATTACK DISABLED':'VERDICT: EXECUTION';
   const verdictColor=outcome==='confiscate'?'#ffcc00':outcome==='disable'?'#ff6666':'#ff0000';
@@ -6520,7 +6520,7 @@ function updateRelicHiguruma(f,enemy,dt){
         // Waste enemy special charge + disable passive abilities briefly
         if(target&&target.alive){
           const prevBar=target.specialBar;
-          target.specialBar=isCryo?-target.specialMax*0.3:0; // cryo: negative = must earn back extra
+          target.specialBar=isCryo?0:0; // confiscate drains bar to 0
           target.specialActive=false;
           // Also disable passive abilities (blocks Todo swap, etc.) for 3 seconds
           target.higurumaDisableTimer=Math.max(target.higurumaDisableTimer,180);
@@ -8061,7 +8061,8 @@ function updateBattle(dt){
           const p=f.dabPillars[i];
           p.timer-=dt;
           // Warning phase: first 30 frames = warning indicator. Last 30 = damage
-          if(p.timer<=30&&p.timer>28){
+          if(p.timer<=30&&!p.hit){
+            p.hit=true;
             // Impact frame — damage enemies in pillar radius
             const pillarR=45;
             fighters.filter(e=>e.side!==f.side&&e.alive&&dist(p,e)<pillarR).forEach(e=>{
@@ -8246,7 +8247,7 @@ function updateBattle(dt){
     else if(!p.target){
       // No specific target — check all enemy fighters
       fighters.forEach(f=>{
-        if(f&&f.alive&&f!==p.owner&&f.side!==p.owner.side&&dist(p,f)<f.radius+p.radius){
+        if(f&&f.alive&&p.owner&&f!==p.owner&&f.side!==p.owner.side&&dist(p,f)<f.radius+p.radius){
           p.target=f;hit=true;
         }
       });
@@ -8258,7 +8259,7 @@ function updateBattle(dt){
 
     // Choso blood orbs explode when hit by ANY projectile
     fighters.forEach(cf=>{
-      if(cf&&cf.char.id==='choso'&&cf.chosoOrbs&&cf.side!==p.owner.side){
+      if(cf&&cf.char.id==='choso'&&cf.chosoOrbs&&p.owner&&cf.side!==p.owner.side){
         cf.chosoOrbs.forEach(orb=>{
           if(orb.alive&&Math.hypot(p.x-orb.x,p.y-orb.y)<p.radius+18){
             const chaos=getChaosLevel(cf);
@@ -9055,11 +9056,11 @@ function drawBall(f){
     X.beginPath();
     X.ellipse(hx,hy-r*0.38,r*0.55,r*0.22,0,Math.PI,0);
     X.fill();
-    // Stubble dots on top
+    // Stubble dots on top (deterministic positions to avoid flicker)
     X.fillStyle='#2a3020';
     for(let i=0;i<8;i++){
-      const sx=hx+(Math.random()-0.5)*r*0.8;
-      const sy=hy-r*0.45-(Math.random())*r*0.15;
+      const sx=hx+(Math.sin(i*5.1+0.7)-0.5)*r*0.8;
+      const sy=hy-r*0.45-(Math.sin(i*3.3+2.1)*0.5+0.5)*r*0.15;
       X.beginPath();X.arc(sx,sy,r*0.015,0,Math.PI*2);X.fill();
     }
     // Stern eyes
@@ -9373,7 +9374,12 @@ function drawBall(f){
       X.beginPath();X.moveTo(hx+r*0.15,hy-r*0.3);
       X.quadraticCurveTo(hx+r*0.22,hy-r*0.18,hx+r*0.32,hy-r*0.08);X.stroke();
     }
-    // Defense readiness indicator — visible shield ring when ready to deflect
+    X.restore();
+  }
+
+  // Katana defense readiness indicator — visible shield ring when ready to deflect
+  if(f.char.id==='katana'){
+    const hx=f.x,hy=f.y,r=f.radius;
     if(!f.katanaDashing&&!f.katanaRushing&&!f.specialActive){
       const defPulse=Math.sin(battleTime*0.1)*0.15+0.35;
       // Shield ring — obvious blue glow
@@ -9404,7 +9410,6 @@ function drawBall(f){
       X.beginPath();X.arc(hx,hy,r+8,0,Math.PI*2);X.stroke();
       X.setLineDash([]);
     }
-    X.restore();
   }
 
   // Adam Smasher face — massive cyborg, asymmetric half-human half-machine, red eye glow, heavy armor
