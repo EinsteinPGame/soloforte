@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.8.9 — Ryu homing cannon buff + Smasher float/slam rework
+// BALL BATTLE ARENA v10.9.0 — Bug fixes: PLS homing + Kashimo AMBER at 2x speed
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -5423,8 +5423,11 @@ function updateRelicPLS(f,enemy,dt){
     }
     return;
   }
-  // Rapid-fire homing shots — all 10 in ~1-2 seconds (fire every 3 frames instead of 6)
-  if(f.relicHomingShots>0&&battleTime%3<1){
+  // Rapid-fire homing shots — all 10 in ~1-2 seconds (fire every 3 frames)
+  if(!f._plsHomingCD)f._plsHomingCD=0;
+  f._plsHomingCD-=dt;
+  if(f.relicHomingShots>0&&f._plsHomingCD<=0){
+    f._plsHomingCD=3;
     f.relicHomingShots--;
     const a=angle(f,enemy)+(Math.random()-0.5)*0.3;
     projectiles.push({
@@ -6415,8 +6418,11 @@ function updateRelicKashimo(f,enemy,dt){
   else if(f.kashimoAmberPhase==='flood'){
     // Electricity floods the entire arena
     f.weaponFlash=12;
-    // Deal massive damage every few frames
-    if(battleTime%4<1&&enemy.alive){
+    // Deal massive damage every few frames (frame-counter for 2x speed reliability)
+    if(!f._kashimoFloodCD)f._kashimoFloodCD=0;
+    f._kashimoFloodCD-=dt;
+    if(f._kashimoFloodCD<=0&&enemy.alive){
+      f._kashimoFloodCD=4;
       const isBoss=enemy.char&&(enemy.char.id==='smasher'||enemy.char.id==='gojo'||enemy.char.id==='sukuna'||enemy.char.id==='mahoraga'||enemy.char.id==='dabura');
       const floodDmg=isBoss?enemy.maxHp*0.14:enemy.maxHp*1.5; // one-tap normals, 60-70% boss HP over flood
       const elecMult=f.elementActive&&f.elem.id==='electric'?1.5:1;
