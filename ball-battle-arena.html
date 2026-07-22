@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.8.6 — Cutscene redesigns + Dabura wall-ray burst
+// BALL BATTLE ARENA v10.8.7 — All intro cutscene redesigns (Choso, Dabura, Monowire, Gorilla, Throw, Katana, Berserk, Mantis, Mechamaru)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -15574,57 +15574,158 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>10&&t<65){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#4488ff';X.fillText('SANDEVISTAN',cx,cy+50*s);}
       break;}
     case 'katana':{
-      // Deflect slash arc
-      if(t>10){const kt=t-10;X.globalAlpha=Math.max(0,0.7-kt/40);X.strokeStyle='#ffcc00';X.lineWidth=3*s;X.shadowColor='#ffcc00';X.shadowBlur=6;
-        X.beginPath();X.arc(cx,cy,25*s,-0.5+kt*0.05,1.5+kt*0.05);X.stroke();X.shadowBlur=0;}
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc00';X.fillText('DEFLECT',cx,cy+50*s);}
-      break;}
-    case 'mantis':{
-      // Blade slash X
-      X.strokeStyle='#ee4444';X.lineWidth=2*s;X.globalAlpha=Math.min(0.6,t/20);
-      const sl=20*s;X.beginPath();X.moveTo(cx-sl,cy-sl);X.lineTo(cx+sl,cy+sl);X.stroke();
-      X.beginPath();X.moveTo(cx+sl,cy-sl);X.lineTo(cx-sl,cy+sl);X.stroke();
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ee4444';X.fillText('BLADES',cx,cy+50*s);}
-      break;}
-    case 'berserk':{
-      // Rage aura expanding
-      const pulse2=Math.sin(t*0.15)*0.2+0.4;X.globalAlpha=pulse2;
-      const rg2=X.createRadialGradient(cx,cy,10*s,cx,cy,40*s);rg2.addColorStop(0,'#cc440044');rg2.addColorStop(1,'#cc440000');
-      X.fillStyle=rg2;X.beginPath();X.arc(cx,cy,40*s,0,Math.PI*2);X.fill();
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc4400';X.fillText('BERSERK',cx,cy+50*s);}
-      break;}
-    case 'choso':{
-      // Blood orbs appear → Piercing Blood blasts → reflects around
-      // Phase 1 (0-25): blood orbs materialize in a ring
-      const orbCount=5;
-      for(let i=0;i<orbCount;i++){
-        const oa=Math.PI*2*i/orbCount-Math.PI/2;const orbR=30*s;
-        const orbAlpha=Math.min(0.7,t/(10+i*3));
-        const ox=cx+Math.cos(oa)*orbR;const oy=cy+Math.sin(oa)*orbR;
-        const destroyed=t>30+i*4;
-        if(!destroyed){
-          X.globalAlpha=orbAlpha;X.fillStyle='#cc2244';X.beginPath();X.arc(ox,oy,5*s,0,Math.PI*2);X.fill();
-          X.strokeStyle='#ff446688';X.lineWidth=1;X.beginPath();X.arc(ox,oy,7*s,0,Math.PI*2);X.stroke();
+      // Deflects bullets while running → jumps → downward slice
+      // Phase 1 (0-30): running at enemies, deflecting bullets
+      if(t<35){
+        const runX=cx-40*s+Math.min(1,t/30)*60*s;
+        // Runner
+        X.globalAlpha=0.7;X.fillStyle='#ffcc00';X.beginPath();X.arc(runX,cy+5*s,6*s,0,Math.PI*2);X.fill();
+        // Speed lines behind runner
+        X.strokeStyle='#ffcc0044';X.lineWidth=1.5*s;
+        for(let i=0;i<3;i++){X.beginPath();X.moveTo(runX-8*s-i*8*s,cy+5*s+(i-1)*4*s);X.lineTo(runX-18*s-i*8*s,cy+5*s+(i-1)*4*s);X.stroke();}
+        // Incoming bullets being deflected
+        const numBullets=Math.min(5,Math.floor(t/5));
+        for(let i=0;i<numBullets;i++){
+          const bt=t-i*5;const alpha=Math.max(0,0.6-bt/20);
+          X.globalAlpha=alpha;X.fillStyle='#ffaa22';
+          // Bullet coming from right
+          const bx=cx+35*s-bt*1.5*s;const by=cy-10*s+i*8*s;
+          X.beginPath();X.arc(bx,by,2*s,0,Math.PI*2);X.fill();
+          // Deflect spark near runner
+          if(bt>8&&bt<14){X.strokeStyle='#ffffff';X.lineWidth=2*s;X.shadowColor='#ffcc00';X.shadowBlur=4;
+            const da=Math.PI*0.5+i*0.4;X.beginPath();X.moveTo(runX+4*s,cy+2*s);
+            X.lineTo(runX+4*s+Math.cos(da)*12*s,cy+2*s+Math.sin(da)*12*s);X.stroke();X.shadowBlur=0;}
         }
       }
-      // Phase 2 (25-55): Piercing Blood beam fires from center and ricochets
-      if(t>25){const bt=t-25;
-        // Main beam
+      // Phase 2 (30-50): jump arc upward
+      if(t>30&&t<55){const jt=(t-30)/20;
+        const jumpX=cx+20*s+jt*10*s;const jumpY=cy-Math.sin(jt*Math.PI)*40*s;
+        X.globalAlpha=0.8;X.fillStyle='#ffcc00';X.beginPath();X.arc(jumpX,jumpY,6*s,0,Math.PI*2);X.fill();
+        // Katana glint
+        X.strokeStyle='#ffffff';X.lineWidth=2*s;X.save();X.translate(jumpX,jumpY);X.rotate(-Math.PI/4+jt*Math.PI*0.5);
+        X.beginPath();X.moveTo(0,-10*s);X.lineTo(0,10*s);X.stroke();X.restore();}
+      // Phase 3 (50+): downward slice — vertical slash line
+      if(t>50){const dt2=t-50;X.globalAlpha=Math.max(0,0.9-dt2/20);X.strokeStyle='#ffcc00';X.lineWidth=4*s;X.shadowColor='#ffcc00';X.shadowBlur=10;
+        const sliceLen=Math.min(50*s,dt2*5*s);
+        X.beginPath();X.moveTo(cx+28*s,cy-25*s);X.lineTo(cx+28*s,cy-25*s+sliceLen);X.stroke();X.shadowBlur=0;
+        // Impact shockwave at bottom
+        if(dt2>8){X.strokeStyle='#ffcc0066';X.lineWidth=2*s;X.beginPath();X.arc(cx+28*s,cy+25*s,(dt2-8)*2*s,0,Math.PI*2);X.stroke();}}
+      if(t>20&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc00';X.fillText('BLADE RUSH',cx,cy+50*s);}
+      break;}
+    case 'mantis':{
+      // Pulls blades out → slices target into many tiny pieces
+      // Phase 1 (0-20): blades extend from arms with metallic gleam
+      if(t<25){const ext=Math.min(1,t/15);
+        X.globalAlpha=ext*0.8;X.strokeStyle='#ee4444';X.lineWidth=3*s;X.shadowColor='#ff2222';X.shadowBlur=6;
+        // Left blade extends
+        X.beginPath();X.moveTo(cx-8*s,cy);X.lineTo(cx-8*s-ext*20*s,cy-ext*15*s);X.stroke();
+        // Right blade extends
+        X.beginPath();X.moveTo(cx+8*s,cy);X.lineTo(cx+8*s+ext*20*s,cy-ext*15*s);X.stroke();
+        X.shadowBlur=0;
+        // Metallic glint
+        if(t>10&&t<18){X.globalAlpha=0.8*(1-(t-10)/8);X.fillStyle='#fff';
+          X.beginPath();X.arc(cx-8*s-ext*12*s,cy-ext*9*s,2*s,0,Math.PI*2);X.fill();
+          X.beginPath();X.arc(cx+8*s+ext*12*s,cy-ext*9*s,2*s,0,Math.PI*2);X.fill();}
+      }
+      // Phase 2 (20-50): rapid slicing — many slash lines appearing
+      if(t>20){const st=t-20;
+        const numSlashes=Math.min(12,Math.floor(st/2));
+        for(let i=0;i<numSlashes;i++){
+          const age=st-i*2;const alpha=Math.max(0,0.7-age/15);
+          X.globalAlpha=alpha;X.strokeStyle=i%3===0?'#ff4444':'#ee666688';X.lineWidth=(2-age*0.05)*s;
+          const sa=Math.PI*2*i/12+i*0.7;const sLen=15*s+Math.sin(i*2.1)*8*s;
+          X.beginPath();X.moveTo(cx+Math.cos(sa)*5*s,cy+Math.sin(sa)*5*s);
+          X.lineTo(cx+Math.cos(sa)*sLen,cy+Math.sin(sa)*sLen);X.stroke();
+        }
+        // Target fragments — tiny pieces flying outward
+        if(st>10){const ft=st-10;const numPieces=Math.min(16,Math.floor(ft/1.5));
+          for(let i=0;i<numPieces;i++){
+            const pa=Math.PI*2*i/16;const dist=ft*1.2*s;
+            X.globalAlpha=Math.max(0,0.5-ft/40);X.fillStyle=i%2?'#aa3333':'#885555';
+            X.save();X.translate(cx+Math.cos(pa)*dist,cy+Math.sin(pa)*dist);X.rotate(pa+ft*0.1);
+            X.fillRect(-2*s,-2*s,4*s,3*s);X.restore();
+          }
+        }
+      }
+      if(t>20&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ee4444';X.fillText('MANTIS BLADES',cx,cy+50*s);}
+      break;}
+    case 'berserk':{
+      // Charges head-on tanking bullets → fires shotgun round after round
+      // Phase 1 (0-40): charging forward, bullets bouncing off
+      const chargeX=cx-35*s+Math.min(1,t/40)*50*s;
+      X.globalAlpha=0.8;X.fillStyle='#cc4400';X.beginPath();X.arc(chargeX,cy,8*s,0,Math.PI*2);X.fill();
+      // Rage aura around charger
+      const pulse2=Math.sin(t*0.2)*0.15+0.3;X.globalAlpha=pulse2;
+      const rg2=X.createRadialGradient(chargeX,cy,5*s,chargeX,cy,18*s);rg2.addColorStop(0,'#cc440066');rg2.addColorStop(1,'#cc440000');
+      X.fillStyle=rg2;X.beginPath();X.arc(chargeX,cy,18*s,0,Math.PI*2);X.fill();
+      // Incoming bullets bouncing off
+      if(t<40){const numBullets=Math.min(6,Math.floor(t/5));
+        for(let i=0;i<numBullets;i++){const bt=t-i*5;
+          X.globalAlpha=Math.max(0,0.5-bt/15);X.fillStyle='#ffaa22';
+          const bx=chargeX+10*s+bt*0.5*s;const by=cy-8*s+i*4*s;
+          X.beginPath();X.arc(bx,by,2*s,0,Math.PI*2);X.fill();
+          // Ricochet spark
+          if(bt<6){X.strokeStyle='#ffcc0088';X.lineWidth=1.5*s;
+            const ra=Math.PI*0.3+i*0.5;X.beginPath();X.moveTo(chargeX+6*s,cy-2*s+i*2*s);
+            X.lineTo(chargeX+6*s+Math.cos(ra)*8*s,cy-2*s+i*2*s+Math.sin(ra)*8*s);X.stroke();}
+        }
+      }
+      // Phase 2 (20+): firing shotgun — muzzle flashes and blast lines
+      if(t>20){const ft=t-20;
+        const numShots=Math.min(6,Math.floor(ft/8));
+        for(let i=0;i<numShots;i++){const st=ft-i*8;
+          if(st>0&&st<12){
+            X.globalAlpha=Math.max(0,0.8-st/12);
+            // Muzzle flash
+            X.fillStyle='#ffaa00';X.beginPath();X.arc(chargeX+12*s,cy-2*s,4*s*(1-st/12),0,Math.PI*2);X.fill();
+            // Shotgun spread lines
+            for(let j=0;j<5;j++){const sa=-0.4+j*0.2;
+              X.strokeStyle='#ff660088';X.lineWidth=2*s;X.beginPath();X.moveTo(chargeX+12*s,cy-2*s);
+              X.lineTo(chargeX+12*s+Math.cos(sa)*(10+st*2)*s,cy-2*s+Math.sin(sa)*(10+st*2)*s);X.stroke();}
+          }
+        }
+      }
+      if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc4400';X.fillText('BERSERK',cx,cy+50*s);}
+      break;}
+    case 'choso':{
+      // Blood orbs ring → Piercing Blood beam reflects between orbs → orbs explode one by one following beam path
+      const orbCount=5;
+      const orbPositions=[];
+      for(let i=0;i<orbCount;i++){
+        const oa=Math.PI*2*i/orbCount-Math.PI/2;const orbR=30*s;
+        orbPositions.push({x:cx+Math.cos(oa)*orbR,y:cy+Math.sin(oa)*orbR});
+      }
+      // Phase 1 (0-20): blood orbs materialize in a ring
+      for(let i=0;i<orbCount;i++){
+        const orbAlpha=Math.min(0.7,t/(8+i*2));
+        // Orb explodes when beam reaches it
+        const explodeTime=30+i*6;
+        if(t<explodeTime){
+          X.globalAlpha=orbAlpha;X.fillStyle='#cc2244';X.beginPath();X.arc(orbPositions[i].x,orbPositions[i].y,5*s,0,Math.PI*2);X.fill();
+          X.strokeStyle='#ff446688';X.lineWidth=1;X.beginPath();X.arc(orbPositions[i].x,orbPositions[i].y,7*s,0,Math.PI*2);X.stroke();
+        } else {
+          // Explosion particles when beam hits this orb
+          const et=t-explodeTime;
+          X.globalAlpha=Math.max(0,0.8-et/12);
+          for(let d=0;d<6;d++){const da=Math.PI*2*d/6+et*0.2;
+            X.fillStyle='#ff2244';X.beginPath();X.arc(orbPositions[i].x+Math.cos(da)*et*1.5*s,orbPositions[i].y+Math.sin(da)*et*1.5*s,2.5*s,0,Math.PI*2);X.fill();}
+        }
+      }
+      // Phase 2 (20+): Piercing Blood beam fires from center, reflects between each orb in sequence
+      if(t>20){const bt=t-20;
         X.globalAlpha=Math.min(0.8,bt/5);X.strokeStyle='#ff2244';X.lineWidth=3*s;X.shadowColor='#ff0022';X.shadowBlur=8;
-        // Beam path: center → right → bounce down → bounce left → bounce up
-        const beamLen=bt*3*s;
-        const segments=[{x1:cx,y1:cy,x2:cx+40*s,y2:cy-10*s},{x1:cx+40*s,y1:cy-10*s,x2:cx+30*s,y2:cy+25*s},
-          {x1:cx+30*s,y1:cy+25*s,x2:cx-25*s,y2:cy+15*s},{x1:cx-25*s,y1:cy+15*s,x2:cx-35*s,y2:cy-20*s}];
+        // Beam path: center → orb0 → orb1 → orb2 → orb3 → orb4
+        const beamLen=bt*4*s;
+        let pts=[{x:cx,y:cy}];for(let i=0;i<orbCount;i++)pts.push(orbPositions[i]);
         let drawn=0;
-        X.beginPath();X.moveTo(cx,cy);
-        for(const seg of segments){
-          const segLen=Math.hypot(seg.x2-seg.x1,seg.y2-seg.y1);
-          if(drawn+segLen<beamLen){X.lineTo(seg.x2,seg.y2);drawn+=segLen;
-            // Ricochet spark
-            X.stroke();X.beginPath();X.moveTo(seg.x2,seg.y2);
-            X.globalAlpha=0.5;X.fillStyle='#ff6644';X.beginPath();X.arc(seg.x2,seg.y2,3*s,0,Math.PI*2);X.fill();
-            X.beginPath();X.moveTo(seg.x2,seg.y2);
-          } else {const frac=(beamLen-drawn)/segLen;X.lineTo(seg.x1+(seg.x2-seg.x1)*frac,seg.y1+(seg.y2-seg.y1)*frac);break;}
+        X.beginPath();X.moveTo(pts[0].x,pts[0].y);
+        for(let i=1;i<pts.length;i++){
+          const segLen=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);
+          if(drawn+segLen<beamLen){X.lineTo(pts[i].x,pts[i].y);drawn+=segLen;
+            // Ricochet spark at each orb
+            X.stroke();X.globalAlpha=0.6;X.fillStyle='#ff6644';X.beginPath();X.arc(pts[i].x,pts[i].y,4*s,0,Math.PI*2);X.fill();
+            X.globalAlpha=Math.min(0.8,bt/5);X.beginPath();X.moveTo(pts[i].x,pts[i].y);
+          } else {const frac=(beamLen-drawn)/segLen;X.lineTo(pts[i-1].x+(pts[i].x-pts[i-1].x)*frac,pts[i-1].y+(pts[i].y-pts[i-1].y)*frac);break;}
         }
         X.stroke();X.shadowBlur=0;
       }
@@ -15701,22 +15802,115 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<75){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8844';X.fillText('GRANITE BLAST',cx,cy+50*s);}
       break;}
     case 'mechamaru':{
-      // Cannon charging — tech lines
-      X.globalAlpha=0.4;X.strokeStyle='#44ccaa';X.lineWidth=1.5*s;
-      for(let i=0;i<3;i++){X.beginPath();X.arc(cx,cy,15*s+i*8*s,0,Math.PI*2*Math.min(1,t/40));X.stroke();}
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#44ccaa';X.fillText('ULTRA CANNON',cx,cy+50*s);}
+      // Giant mech behind many tiny Phase 1 mechs all blasting randomly
+      // Giant mech silhouette in background
+      X.globalAlpha=Math.min(0.3,t/30);X.fillStyle='#44ccaa';
+      // Giant mech body (simplified geometric)
+      X.fillRect(cx-15*s,cy-35*s,30*s,45*s); // torso
+      X.fillRect(cx-8*s,cy-45*s,16*s,12*s); // head
+      X.fillRect(cx-28*s,cy-30*s,14*s,35*s); // left arm
+      X.fillRect(cx+14*s,cy-30*s,14*s,35*s); // right arm
+      // Giant mech eyes
+      X.globalAlpha=Math.min(0.6,t/20);X.fillStyle='#88ffdd';
+      X.beginPath();X.arc(cx-3*s,cy-40*s,2.5*s,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(cx+3*s,cy-40*s,2.5*s,0,Math.PI*2);X.fill();
+      // Tiny Phase 1 mechs scattered in front
+      const numMinis=Math.min(8,Math.floor(t/5));
+      for(let i=0;i<numMinis;i++){
+        const mx=cx-30*s+i*9*s+Math.sin(i*3.7)*5*s;const my=cy+10*s+Math.sin(i*2.3+t*0.05)*8*s;
+        X.globalAlpha=0.6;X.fillStyle='#44ccaa';
+        X.fillRect(mx-2*s,my-3*s,4*s,6*s); // mini body
+        X.fillStyle='#88ffdd';X.beginPath();X.arc(mx,my-4*s,1.5*s,0,Math.PI*2);X.fill(); // mini head
+        // Random blasting — each mini fires a beam in a random-ish direction
+        const blastAngle=Math.sin(i*5.3+t*0.15)*Math.PI*0.6-Math.PI*0.3;
+        const blastLen=(8+Math.sin(t*0.2+i*2)*4)*s;
+        const blastAlpha=0.3+Math.sin(t*0.3+i*4)*0.2;
+        X.globalAlpha=blastAlpha;X.strokeStyle='#44ffaa';X.lineWidth=1.5*s;X.shadowColor='#44ffaa';X.shadowBlur=4;
+        X.beginPath();X.moveTo(mx+Math.cos(blastAngle)*3*s,my+Math.sin(blastAngle)*3*s);
+        X.lineTo(mx+Math.cos(blastAngle)*blastLen,my+Math.sin(blastAngle)*blastLen);X.stroke();X.shadowBlur=0;
+      }
+      // Giant mech cannon charge (builds over time)
+      if(t>30){const ct=t-30;X.globalAlpha=Math.min(0.6,ct/15);X.fillStyle='#88ffdd';X.shadowColor='#44ffaa';X.shadowBlur=12;
+        X.beginPath();X.arc(cx,cy-20*s,Math.min(8,ct*0.5)*s,0,Math.PI*2);X.fill();X.shadowBlur=0;
+        // Cannon beam fires
+        if(ct>15){const bt=ct-15;X.globalAlpha=Math.max(0,0.7-bt/20);X.strokeStyle='#44ffaa';X.lineWidth=4*s;X.shadowColor='#44ffaa';X.shadowBlur=10;
+          X.beginPath();X.moveTo(cx,cy-20*s);X.lineTo(cx,cy-20*s-bt*4*s);X.stroke();X.shadowBlur=0;}
+      }
+      if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#44ccaa';X.fillText('ULTRA CANNON',cx,cy+50*s);}
       break;}
     case 'gorilla':{
-      // Ground pound shockwave rings
-      if(t>10){const gt2=t-10;X.globalAlpha=Math.max(0,0.5-gt2/50);X.strokeStyle='#ff8844';X.lineWidth=3*s;
-        X.beginPath();X.arc(cx,cy+10*s,gt2*1.5*s,0,Math.PI*2);X.stroke();}
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8844';X.fillText('SEISMIC',cx,cy+50*s);}
+      // Lifts enemies up → throws them → shockwave clap
+      // Phase 1 (0-20): grabs and lifts 2 enemies overhead
+      const enemies=[{x:cx-18*s,startY:cy+5*s},{x:cx+18*s,startY:cy+5*s}];
+      if(t<25){const lift=Math.min(1,t/18);
+        enemies.forEach((e,i)=>{
+          const ey=e.startY-lift*35*s;
+          X.globalAlpha=0.5;X.fillStyle='#888';X.beginPath();X.arc(e.x,ey,5*s,0,Math.PI*2);X.fill();
+          // Lift lines
+          if(lift>0.3){X.strokeStyle='#ff884444';X.lineWidth=1.5*s;X.beginPath();X.moveTo(e.x,ey+5*s);X.lineTo(e.x,e.startY);X.stroke();}
+        });
+        // Gorilla in center
+        X.globalAlpha=0.8;X.fillStyle='#ff8844';X.beginPath();X.arc(cx,cy+8*s,9*s,0,Math.PI*2);X.fill();
+      }
+      // Phase 2 (20-40): throws enemies outward
+      if(t>20&&t<45){const tt=t-20;
+        enemies.forEach((e,i)=>{
+          const throwDir=i===0?-1:1;const throwX=e.x+throwDir*tt*2*s;const throwY=e.startY-35*s+tt*tt*0.06*s;
+          X.globalAlpha=Math.max(0,0.6-tt/30);X.fillStyle='#888';X.beginPath();X.arc(throwX,throwY,5*s,0,Math.PI*2);X.fill();
+          // Trail
+          X.strokeStyle='#88888844';X.lineWidth=1*s;X.beginPath();X.moveTo(e.x,e.startY-35*s);X.lineTo(throwX,throwY);X.stroke();
+        });
+      }
+      // Phase 3 (35+): shockwave clap — hands together, expanding ring
+      if(t>35){const ct=t-35;
+        // Clap flash
+        if(ct<8){X.globalAlpha=0.9*(1-ct/8);X.fillStyle='#ffffff';X.beginPath();X.arc(cx,cy,8*s*(1-ct/8),0,Math.PI*2);X.fill();}
+        // Expanding shockwave rings
+        X.globalAlpha=Math.max(0,0.7-ct/25);X.strokeStyle='#ff8844';X.lineWidth=3*s;X.shadowColor='#ff6622';X.shadowBlur=8;
+        X.beginPath();X.arc(cx,cy,ct*2.5*s,0,Math.PI*2);X.stroke();
+        if(ct>5){X.globalAlpha=Math.max(0,0.5-(ct-5)/20);X.lineWidth=2*s;X.beginPath();X.arc(cx,cy,(ct-5)*2.5*s,0,Math.PI*2);X.stroke();}
+        X.shadowBlur=0;
+      }
+      if(t>20&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8844';X.fillText('GORILLA ARMS',cx,cy+50*s);}
       break;}
     case 'monowire':{
-      // Wire whip arc
-      X.globalAlpha=0.6;X.strokeStyle='#ff8800';X.lineWidth=2*s;X.shadowColor='#ff8800';X.shadowBlur=6;
-      const wa=t*0.12;X.beginPath();X.moveTo(cx,cy);X.quadraticCurveTo(cx+Math.cos(wa)*40*s,cy+Math.sin(wa)*30*s,cx+Math.cos(wa+0.5)*25*s,cy+Math.sin(wa+0.5)*25*s);X.stroke();X.shadowBlur=0;
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8800';X.fillText('NETRUNNER',cx,cy+50*s);}
+      // Dashes around target → wire decapitates 4 limbs → goes for the head
+      // Target dummy in center
+      const limbsHit=t>25?Math.min(5,Math.floor((t-25)/8)):0;
+      if(limbsHit<5){
+        X.globalAlpha=0.4;X.fillStyle='#777';X.beginPath();X.arc(cx,cy-5*s,6*s,0,Math.PI*2);X.fill(); // head
+        X.strokeStyle='#777';X.lineWidth=2*s;
+        X.beginPath();X.moveTo(cx,cy+1*s);X.lineTo(cx,cy+18*s);X.stroke(); // body
+        if(limbsHit<1){X.beginPath();X.moveTo(cx-12*s,cy+6*s);X.lineTo(cx,cy+6*s);X.stroke();} // left arm
+        if(limbsHit<2){X.beginPath();X.moveTo(cx,cy+6*s);X.lineTo(cx+12*s,cy+6*s);X.stroke();} // right arm
+        if(limbsHit<3){X.beginPath();X.moveTo(cx,cy+18*s);X.lineTo(cx-8*s,cy+28*s);X.stroke();} // left leg
+        if(limbsHit<4){X.beginPath();X.moveTo(cx,cy+18*s);X.lineTo(cx+8*s,cy+28*s);X.stroke();} // right leg
+      }
+      // Phase 1 (0-25): dashing around target — afterimage circles
+      const dashCount=Math.min(6,Math.floor(t/4));
+      for(let i=0;i<dashCount;i++){
+        const da=Math.PI*2*i/6;const dr=28*s;const dt2=t-i*4;
+        const dx=cx+Math.cos(da+t*0.05)*dr;const dy=cy+8*s+Math.sin(da+t*0.05)*dr*0.6;
+        X.globalAlpha=Math.max(0,0.5-dt2*0.01);X.fillStyle='#ff8800';X.beginPath();X.arc(dx,dy,4*s,0,Math.PI*2);X.fill();
+        // Wire trail
+        X.strokeStyle='#ff880066';X.lineWidth=1*s;
+        if(i>0){const pa=Math.PI*2*(i-1)/6;
+          X.beginPath();X.moveTo(cx+Math.cos(pa+t*0.05)*dr,cy+8*s+Math.sin(pa+t*0.05)*dr*0.6);X.lineTo(dx,dy);X.stroke();}
+      }
+      // Phase 2 (25-65): wire slices — each limb cut with flash
+      if(t>25){
+        const limbTargets=[{x:cx-12*s,y:cy+6*s,l:'ARM'},{x:cx+12*s,y:cy+6*s,l:'ARM'},{x:cx-8*s,y:cy+28*s,l:'LEG'},{x:cx+8*s,y:cy+28*s,l:'LEG'},{x:cx,y:cy-5*s,l:'HEAD'}];
+        for(let i=0;i<limbsHit;i++){
+          const ct=t-25-i*8;
+          // Wire slash line
+          if(ct<10){X.globalAlpha=Math.max(0,0.8-ct/10);X.strokeStyle='#ff8800';X.lineWidth=2.5*s;X.shadowColor='#ff8800';X.shadowBlur=8;
+            X.beginPath();X.moveTo(limbTargets[i].x-8*s,limbTargets[i].y-5*s);X.lineTo(limbTargets[i].x+8*s,limbTargets[i].y+5*s);X.stroke();X.shadowBlur=0;}
+          // Severed piece falls
+          if(ct>3){const ft=ct-3;X.globalAlpha=Math.max(0,0.5-ft/15);X.fillStyle='#888';
+            X.beginPath();X.arc(limbTargets[i].x+(i%2?1:-1)*ft*s,limbTargets[i].y+ft*0.8*s,3*s,0,Math.PI*2);X.fill();}
+        }
+      }
+      if(t>20&&t<75){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8800';X.fillText('MONOWIRE',cx,cy+50*s);}
       break;}
     case 'pls':{
       // Projectile salvo — lines shooting outward
@@ -15726,17 +15920,89 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#33cc33';X.fillText('LAUNCH SYSTEM',cx,cy+50*s);}
       break;}
     case 'throw':{
-      // Throwing weapons orbiting
-      for(let i=0;i<3;i++){const oa=t*0.08+Math.PI*2*i/3;const ox=cx+Math.cos(oa)*25*s;const oy=cy+Math.sin(oa)*18*s;
-        X.globalAlpha=0.6;X.beginPath();X.arc(ox,oy,4*s,0,Math.PI*2);X.fillStyle=['#cc4444','#44cc44','#4488ff'][i];X.fill();}
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ccaa44';X.fillText('ARSENAL',cx,cy+50*s);}
+      // Time slows (slow-mo) → throws knives at 3 surrounding enemies → time speeds up → they fall
+      // Time-slow blue tint overlay
+      const slowPhase=t<40;
+      if(slowPhase){X.globalAlpha=0.08;X.fillStyle='#4466cc';X.fillRect(cx-55*s,cy-45*s,110*s,90*s);}
+      // 3 enemies surrounding at 120° intervals
+      const enemyAngles=[Math.PI*0.2,Math.PI*0.9,Math.PI*1.6];const enemyDist=35*s;
+      const thrower={x:cx,y:cy+5*s};
+      // Thrower in center
+      X.globalAlpha=0.8;X.fillStyle='#ccaa44';X.beginPath();X.arc(thrower.x,thrower.y,6*s,0,Math.PI*2);X.fill();
+      // Enemies + knives
+      enemyAngles.forEach((ea,i)=>{
+        const ex=cx+Math.cos(ea)*enemyDist;const ey=cy+Math.sin(ea)*enemyDist;
+        const knifeThrown=t>10+i*8;const enemyDead=t>45+i*3;
+        // Enemy (alive or falling)
+        if(!enemyDead){
+          X.globalAlpha=0.5;X.fillStyle='#aa4444';X.beginPath();X.arc(ex,ey,5*s,0,Math.PI*2);X.fill();
+        } else {
+          // Enemy falls — drops down and fades
+          const dt2=t-45-i*3;X.globalAlpha=Math.max(0,0.5-dt2/15);X.fillStyle='#aa4444';
+          X.beginPath();X.arc(ex,ey+dt2*1.5*s,5*s,0,Math.PI*2);X.fill();
+        }
+        // Knife in flight (slow-mo: visible traveling)
+        if(knifeThrown){const kt=t-10-i*8;
+          const knifeProgress=slowPhase?Math.min(1,kt/20):1; // slow travel in slow-mo, instant in speed-up
+          const kx=thrower.x+(ex-thrower.x)*knifeProgress;const ky=thrower.y+(ey-thrower.y)*knifeProgress;
+          X.globalAlpha=0.8;X.fillStyle='#ccaa44';X.save();X.translate(kx,ky);X.rotate(ea);
+          X.beginPath();X.moveTo(6*s,0);X.lineTo(-3*s,-2*s);X.lineTo(-3*s,2*s);X.closePath();X.fill();X.restore();
+          // Knife trail
+          X.strokeStyle='#ccaa4466';X.lineWidth=1*s;X.globalAlpha=0.3;
+          X.beginPath();X.moveTo(thrower.x,thrower.y);X.lineTo(kx,ky);X.stroke();
+        }
+      });
+      // Time speed-up visual (40+): motion blur lines, chromatic effect
+      if(t>40){const st=t-40;
+        X.globalAlpha=Math.max(0,0.3-st/20);X.strokeStyle='#ffcc44';X.lineWidth=2*s;
+        for(let i=0;i<8;i++){const la=Math.PI*2*i/8;
+          X.beginPath();X.moveTo(cx+Math.cos(la)*10*s,cy+Math.sin(la)*10*s);
+          X.lineTo(cx+Math.cos(la)*(20+st)*s,cy+Math.sin(la)*(20+st)*s);X.stroke();}
+      }
+      if(t>10&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';
+        X.fillStyle=slowPhase?'#4466cc':'#ccaa44';X.fillText(slowPhase?'SLOW-MO':'ARSENAL',cx,cy+50*s);}
       break;}
     case 'dabura':{
-      // Light/dark duality — split circle
-      X.globalAlpha=0.4;
-      X.beginPath();X.arc(cx,cy,25*s,Math.PI*0.5,Math.PI*1.5);X.fillStyle='#ffcc44';X.fill();
-      X.beginPath();X.arc(cx,cy,25*s,Math.PI*1.5,Math.PI*0.5);X.fillStyle='#442266';X.fill();
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc44';X.fillText('KARABA',cx,cy+50*s);}
+      // Sword swing → pillar of light → exploding rays flickering between dark and light
+      // Phase 1 (0-20): sword swing arc
+      if(t<25){const sw=Math.min(1,t/15);
+        X.globalAlpha=sw*0.8;X.strokeStyle='#cc88ff';X.lineWidth=3*s;X.shadowColor='#aa44ff';X.shadowBlur=8;
+        X.save();X.translate(cx,cy);X.rotate(-Math.PI*0.8+sw*Math.PI*1.2);
+        X.beginPath();X.moveTo(0,0);X.lineTo(22*s,0);X.stroke();
+        // Blade tip glow
+        X.fillStyle='#ffcc44';X.beginPath();X.arc(22*s,0,3*s,0,Math.PI*2);X.fill();
+        X.restore();X.shadowBlur=0;
+        // Swing arc trail
+        if(t>5){X.globalAlpha=0.3;X.strokeStyle='#cc88ff44';X.lineWidth=1.5*s;
+          X.beginPath();X.arc(cx,cy,22*s,-Math.PI*0.8,-Math.PI*0.8+sw*Math.PI*1.2);X.stroke();}
+      }
+      // Phase 2 (20-45): pillar of light erupts where sword struck
+      if(t>20){const pt=t-20;
+        const pillarH=Math.min(60*s,pt*3*s);const pillarW=12*s;
+        // Flickering between dark and light
+        const flicker=Math.sin(pt*0.8)>0;
+        X.globalAlpha=Math.min(0.7,pt/8);
+        X.fillStyle=flicker?'#ffcc44':'#442266';
+        X.fillRect(cx+15*s-pillarW/2,cy+20*s-pillarH,pillarW,pillarH);
+        // Pillar edge glow (opposite color)
+        X.strokeStyle=flicker?'#442266':'#ffcc44';X.lineWidth=2*s;X.shadowColor=flicker?'#ffcc44':'#aa44ff';X.shadowBlur=10;
+        X.strokeRect(cx+15*s-pillarW/2,cy+20*s-pillarH,pillarW,pillarH);X.shadowBlur=0;
+      }
+      // Phase 3 (35+): exploding rays in all directions, flickering dark/light
+      if(t>35){const rt=t-35;
+        const numRays=8;
+        for(let i=0;i<numRays;i++){
+          const ra=Math.PI*2*i/numRays;const rayLen=rt*2*s;
+          // Alternate dark/light per ray, with flickering
+          const rayFlicker=Math.sin(rt*0.6+i*1.5)>0;
+          X.globalAlpha=Math.max(0,0.7-rt/30);X.strokeStyle=rayFlicker?'#ffcc44':'#7733aa';X.lineWidth=3*s;
+          X.shadowColor=rayFlicker?'#ffcc44':'#aa44ff';X.shadowBlur=6;
+          X.beginPath();X.moveTo(cx+15*s+Math.cos(ra)*5*s,cy-10*s+Math.sin(ra)*5*s);
+          X.lineTo(cx+15*s+Math.cos(ra)*rayLen,cy-10*s+Math.sin(ra)*rayLen);X.stroke();
+        }
+        X.shadowBlur=0;
+      }
+      if(t>20&&t<75){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc88ff';X.fillText('KARABA',cx,cy+50*s);}
       break;}
     case 'megumi':{
       // Shikigami shadows — small dark orbs orbiting
