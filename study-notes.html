@@ -1,0 +1,1397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Study Notes - All Subjects</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:#0a0a1a;color:#e0e0e0;min-height:100vh}
+.header{background:linear-gradient(135deg,#1a1a3a,#2a1a4a);padding:20px;text-align:center;border-bottom:2px solid #333}
+.header h1{font-size:1.8em;background:linear-gradient(90deg,#7b68ee,#00ccff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.header p{color:#888;font-size:0.85em;margin-top:4px}
+.subject-tabs{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;padding:16px;background:#111122}
+.subject-tab{padding:10px 18px;border:2px solid #333;border-radius:8px;cursor:pointer;font-size:0.9em;font-weight:600;transition:all 0.2s;background:transparent;color:#aaa}
+.subject-tab:hover{border-color:#7b68ee;color:#7b68ee}
+.subject-tab.active{background:#7b68ee;color:#fff;border-color:#7b68ee}
+.year-toggle{display:flex;justify-content:center;gap:12px;padding:12px;background:#0d0d22}
+.year-btn{padding:8px 24px;border:2px solid #444;border-radius:20px;cursor:pointer;font-weight:600;background:transparent;color:#aaa;transition:all 0.2s}
+.year-btn:hover{border-color:#00ccff;color:#00ccff}
+.year-btn.active{background:#00ccff;color:#000;border-color:#00ccff}
+.search-bar{padding:12px 20px;background:#0d0d22}
+.search-bar input{width:100%;padding:10px 16px;border:2px solid #333;border-radius:8px;background:#1a1a2e;color:#fff;font-size:0.95em;outline:none}
+.search-bar input:focus{border-color:#7b68ee}
+.search-bar input::placeholder{color:#555}
+.content{max-width:900px;margin:0 auto;padding:16px}
+.topic-card{background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;margin-bottom:12px;overflow:hidden;transition:border-color 0.2s}
+.topic-card:hover{border-color:#7b68ee44}
+.topic-header{padding:16px;cursor:pointer;display:flex;align-items:center;gap:12px}
+.topic-header:hover{background:#1e1e38}
+.topic-num{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85em;flex-shrink:0}
+.topic-title{flex:1}
+.topic-title h3{font-size:1em;color:#fff;margin-bottom:2px}
+.topic-title .summary{font-size:0.82em;color:#888;line-height:1.4}
+.keywords{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.keyword{padding:2px 8px;background:#2a2a4a;border-radius:4px;font-size:0.72em;color:#7b68ee}
+.expand-icon{color:#555;font-size:1.2em;transition:transform 0.3s;flex-shrink:0}
+.topic-card.open .expand-icon{transform:rotate(180deg);color:#7b68ee}
+.topic-details{display:none;padding:0 16px 16px;border-top:1px solid #2a2a4a;animation:slideDown 0.3s ease}
+.topic-card.open .topic-details{display:block}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.detail-section{margin-top:12px}
+.detail-section h4{color:#7b68ee;font-size:0.9em;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.detail-section h4::before{content:'';width:3px;height:14px;background:#7b68ee;border-radius:2px}
+.detail-section p,.detail-section ul{font-size:0.85em;color:#ccc;line-height:1.7}
+.detail-section ul{padding-left:20px}
+.detail-section li{margin-bottom:4px}
+/* Fraction rendering */
+.frac{display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;margin:0 3px;font-size:0.85em}
+.frac .num{border-bottom:1.5px solid #ccc;padding:0 4px 2px;line-height:1.2}
+.frac .den{padding:2px 4px 0;line-height:1.2}
+.formula{background:#1e1e38;padding:8px 14px;border-radius:6px;margin:8px 0;font-family:'Courier New',monospace;color:#00ccff;display:inline-block}
+/* Diagram containers */
+.diagram{background:#12122a;border:1px solid #2a2a4a;border-radius:8px;padding:16px;margin:10px 0;text-align:center}
+.diagram canvas{max-width:100%;border-radius:4px}
+.diagram .caption{font-size:0.75em;color:#666;margin-top:6px}
+/* SVG diagrams */
+.diagram svg{max-width:100%;height:auto}
+.no-results{text-align:center;padding:40px;color:#555;font-size:0.95em}
+.stats-bar{display:flex;justify-content:center;gap:20px;padding:8px;background:#0a0a18;font-size:0.75em;color:#555}
+@media(max-width:600px){
+  .subject-tab{padding:8px 12px;font-size:0.8em}
+  .header h1{font-size:1.3em}
+  .content{padding:10px}
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Study Notes</h1>
+  <p>Lower Secondary — All Subjects, All Topics</p>
+</div>
+<div class="subject-tabs" id="subjectTabs"></div>
+<div class="year-toggle">
+  <button class="year-btn active" onclick="setYear(1)">Year 1</button>
+  <button class="year-btn" onclick="setYear(2)">Year 2</button>
+</div>
+<div class="search-bar">
+  <input type="text" id="searchInput" placeholder="Search topics, keywords, or content..." oninput="filterTopics()">
+</div>
+<div class="stats-bar" id="statsBar"></div>
+<div class="content" id="content"></div>
+
+<script>
+// ============================================================
+// STUDY DATA — Singapore Lower Secondary (Sec 1 & 2)
+// ============================================================
+const SUBJECTS = [
+  { id:'math', name:'Mathematics', color:'#4488ff', icon:'#' },
+  { id:'science', name:'Science', color:'#33cc66', icon:'S' },
+  { id:'geography', name:'Geography', color:'#ff8844', icon:'G' },
+  { id:'history', name:'History', color:'#cc4444', icon:'H' },
+  { id:'english', name:'English', color:'#cc66ff', icon:'E' },
+  { id:'literature', name:'Literature', color:'#ffcc44', icon:'L' },
+];
+
+const DATA = {
+  math: {
+    1: [
+      {
+        title: 'Primes, HCF & LCM',
+        summary: 'Prime numbers, prime factorisation, highest common factor and lowest common multiple.',
+        keywords: ['prime', 'HCF', 'LCM', 'factor', 'multiple'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Prime number:</b> A number greater than 1 with exactly 2 factors (1 and itself). E.g. 2, 3, 5, 7, 11...</li>
+<li><b>Composite number:</b> Has more than 2 factors. E.g. 4, 6, 8, 9, 10...</li>
+<li><b>Prime factorisation:</b> Expressing a number as a product of its prime factors using a factor tree or repeated division</li>
+<li><b>HCF:</b> Largest number that divides two or more numbers exactly. Find by taking the <b>lowest</b> power of common prime factors</li>
+<li><b>LCM:</b> Smallest number that is a multiple of two or more numbers. Find by taking the <b>highest</b> power of all prime factors</li>
+</ul></div>
+<div class="detail-section"><h4>Example</h4>
+<p>Find HCF and LCM of 24 and 36:</p>
+<p>24 = 2<sup>3</sup> x 3<br>36 = 2<sup>2</sup> x 3<sup>2</sup></p>
+<p>HCF = 2<sup>2</sup> x 3 = <b>12</b><br>LCM = 2<sup>3</sup> x 3<sup>2</sup> = <b>72</b></p>
+</div>`
+      },
+      {
+        title: 'Integers & Order of Operations',
+        summary: 'Negative numbers, number line, and BODMAS/BIDMAS rules for operations.',
+        keywords: ['integers', 'negative', 'BODMAS', 'operations', 'number line'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Integers:</b> Whole numbers including negatives: ..., -3, -2, -1, 0, 1, 2, 3, ...</li>
+<li><b>Rules for signs:</b><br>(+) x (+) = (+)<br>(+) x (-) = (-)<br>(-) x (-) = (+)</li>
+<li><b>BODMAS:</b> Brackets, Orders (powers), Division, Multiplication, Addition, Subtraction</li>
+</ul></div>
+<div class="detail-section"><h4>Tips</h4>
+<p>When subtracting a negative, it becomes addition: 5 - (-3) = 5 + 3 = 8</p>
+</div>`
+      },
+      {
+        title: 'Fractions, Decimals & Percentages',
+        summary: 'Operations with fractions, converting between fractions/decimals/percentages.',
+        keywords: ['fractions', 'decimals', 'percentages', 'conversion', 'mixed numbers'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Equivalent fractions:</b> <span class="frac"><span class="num">1</span><span class="den">2</span></span> = <span class="frac"><span class="num">2</span><span class="den">4</span></span> = <span class="frac"><span class="num">3</span><span class="den">6</span></span></li>
+<li><b>Adding fractions:</b> Find common denominator first. <span class="frac"><span class="num">1</span><span class="den">3</span></span> + <span class="frac"><span class="num">1</span><span class="den">4</span></span> = <span class="frac"><span class="num">4</span><span class="den">12</span></span> + <span class="frac"><span class="num">3</span><span class="den">12</span></span> = <span class="frac"><span class="num">7</span><span class="den">12</span></span></li>
+<li><b>Multiplying fractions:</b> Multiply numerators and denominators. <span class="frac"><span class="num">2</span><span class="den">3</span></span> x <span class="frac"><span class="num">3</span><span class="den">5</span></span> = <span class="frac"><span class="num">6</span><span class="den">15</span></span> = <span class="frac"><span class="num">2</span><span class="den">5</span></span></li>
+<li><b>Dividing fractions:</b> Multiply by the reciprocal (flip the second fraction)</li>
+<li><b>Converting:</b> Fraction to decimal = divide. Decimal to % = multiply by 100</li>
+</ul></div>
+<div class="detail-section"><h4>Common Conversions</h4>
+<p><span class="frac"><span class="num">1</span><span class="den">4</span></span> = 0.25 = 25% &nbsp;&nbsp; <span class="frac"><span class="num">1</span><span class="den">3</span></span> = 0.333... = 33.3% &nbsp;&nbsp; <span class="frac"><span class="num">3</span><span class="den">4</span></span> = 0.75 = 75%</p>
+</div>`
+      },
+      {
+        title: 'Ratio & Proportion',
+        summary: 'Simplifying ratios, dividing quantities in a given ratio, direct proportion.',
+        keywords: ['ratio', 'proportion', 'simplify', 'divide', 'share'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Ratio:</b> Compares quantities of the same kind. 2:3 means for every 2 parts of one, there are 3 parts of another</li>
+<li><b>Simplifying:</b> Divide all parts by their HCF. 12:18 = 2:3</li>
+<li><b>Dividing in a ratio:</b> Total parts = sum of ratio. Each share = (total amount / total parts) x ratio part</li>
+<li><b>Direct proportion:</b> When one quantity increases, the other increases at the same rate. y = kx</li>
+</ul></div>
+<div class="detail-section"><h4>Example</h4>
+<p>Divide $180 in the ratio 2:3:4</p>
+<p>Total parts = 2 + 3 + 4 = 9<br>
+Each part = $180 / 9 = $20<br>
+Shares: $40, $60, $80</p>
+</div>`
+      },
+      {
+        title: 'Algebraic Expressions',
+        summary: 'Using letters to represent unknowns, simplifying and evaluating expressions.',
+        keywords: ['algebra', 'variable', 'simplify', 'expand', 'factorise'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Variable:</b> A letter representing an unknown value (e.g. x, y, n)</li>
+<li><b>Like terms:</b> Terms with same variables and powers. 3x + 5x = 8x</li>
+<li><b>Expansion:</b> 2(x + 3) = 2x + 6 — multiply each term inside brackets</li>
+<li><b>Factorisation:</b> Reverse of expansion. 6x + 9 = 3(2x + 3) — take out common factor</li>
+<li><b>Substitution:</b> Replace variable with a value to evaluate</li>
+</ul></div>`
+      },
+      {
+        title: 'Linear Equations',
+        summary: 'Solving equations with one unknown, forming equations from word problems.',
+        keywords: ['equation', 'solve', 'linear', 'unknown', 'balance'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Goal:</b> Isolate the unknown on one side</li>
+<li><b>Balance method:</b> Whatever you do to one side, do to the other</li>
+<li><b>Steps:</b> Expand brackets → collect like terms → solve</li>
+</ul></div>
+<div class="detail-section"><h4>Example</h4>
+<p>Solve 3(x + 2) = 21</p>
+<p>3x + 6 = 21<br>3x = 15<br>x = 5</p>
+</div>`
+      },
+      {
+        title: 'Angles & Parallel Lines',
+        summary: 'Types of angles, angle properties with parallel lines and transversals.',
+        keywords: ['angles', 'parallel', 'transversal', 'alternate', 'corresponding'],
+        details: `<div class="detail-section"><h4>Angle Properties</h4>
+<ul>
+<li><b>Complementary:</b> Two angles adding to 90 degrees</li>
+<li><b>Supplementary:</b> Two angles adding to 180 degrees</li>
+<li><b>Vertically opposite:</b> Equal angles formed by two intersecting lines</li>
+<li><b>Corresponding angles (F-shape):</b> Equal when lines are parallel</li>
+<li><b>Alternate angles (Z-shape):</b> Equal when lines are parallel</li>
+<li><b>Co-interior angles (C/U-shape):</b> Add up to 180 degrees when lines are parallel</li>
+</ul></div>
+<div class="diagram">
+<svg width="300" height="160" viewBox="0 0 300 160">
+<line x1="40" y1="50" x2="260" y2="50" stroke="#4488ff" stroke-width="2"/>
+<line x1="40" y1="110" x2="260" y2="110" stroke="#4488ff" stroke-width="2"/>
+<line x1="80" y1="20" x2="220" y2="140" stroke="#ff6644" stroke-width="2"/>
+<text x="100" y="45" fill="#ffcc00" font-size="12">a</text>
+<text x="145" y="62" fill="#ffcc00" font-size="12">b</text>
+<text x="137" y="105" fill="#33cc66" font-size="12">c</text>
+<text x="182" y="122" fill="#33cc66" font-size="12">d</text>
+<text x="270" y="50" fill="#888" font-size="11">l1</text>
+<text x="270" y="110" fill="#888" font-size="11">l2</text>
+<text x="7" y="50" fill="#888" font-size="10">parallel</text>
+<text x="7" y="110" fill="#888" font-size="10">parallel</text>
+</svg>
+<div class="caption">a = c (alternate), a = d (corresponding), b + c = 180 (co-interior)</div>
+</div>`
+      },
+      {
+        title: 'Triangles & Polygons',
+        summary: 'Properties of triangles, angle sum, types of polygons and their properties.',
+        keywords: ['triangle', 'polygon', 'angle sum', 'isosceles', 'equilateral'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Angle sum of triangle:</b> 180 degrees</li>
+<li><b>Exterior angle:</b> Equals sum of 2 opposite interior angles</li>
+<li><b>Types:</b> Equilateral (all equal), Isosceles (2 equal), Scalene (none equal)</li>
+<li><b>Polygon angle sum:</b> (n - 2) x 180 degrees, where n = number of sides</li>
+<li><b>Regular polygon:</b> All sides and angles equal. Each angle = <span class="frac"><span class="num">(n-2) x 180</span><span class="den">n</span></span></li>
+</ul></div>`
+      },
+      {
+        title: 'Perimeter, Area & Volume',
+        summary: 'Formulas for area of 2D shapes and volume/surface area of 3D solids.',
+        keywords: ['perimeter', 'area', 'volume', 'surface area', 'cylinder'],
+        details: `<div class="detail-section"><h4>Area Formulas</h4>
+<ul>
+<li><b>Rectangle:</b> A = length x width</li>
+<li><b>Triangle:</b> A = <span class="frac"><span class="num">1</span><span class="den">2</span></span> x base x height</li>
+<li><b>Parallelogram:</b> A = base x height</li>
+<li><b>Trapezium:</b> A = <span class="frac"><span class="num">1</span><span class="den">2</span></span>(a + b) x h</li>
+<li><b>Circle:</b> A = pi r<sup>2</sup>, Circumference = 2 pi r</li>
+</ul></div>
+<div class="detail-section"><h4>Volume Formulas</h4>
+<ul>
+<li><b>Cuboid:</b> V = l x w x h</li>
+<li><b>Cylinder:</b> V = pi r<sup>2</sup> h</li>
+<li><b>Prism:</b> V = cross-section area x length</li>
+</ul></div>`
+      },
+      {
+        title: 'Data Handling & Statistics',
+        summary: 'Mean, median, mode, range, and representing data in charts and tables.',
+        keywords: ['mean', 'median', 'mode', 'range', 'bar chart', 'pie chart'],
+        details: `<div class="detail-section"><h4>Averages</h4>
+<ul>
+<li><b>Mean:</b> Sum of all values / number of values</li>
+<li><b>Median:</b> Middle value when arranged in order. For even count: average of 2 middle values</li>
+<li><b>Mode:</b> Most frequent value</li>
+<li><b>Range:</b> Highest - Lowest (measure of spread)</li>
+</ul></div>
+<div class="detail-section"><h4>Data Representation</h4>
+<ul>
+<li><b>Bar chart:</b> Bars represent categories</li>
+<li><b>Pie chart:</b> Sectors represent proportion of whole (total = 360 degrees)</li>
+<li><b>Line graph:</b> Shows trends over time</li>
+<li><b>Frequency table:</b> Organises data into groups</li>
+</ul></div>`
+      },
+    ],
+    2: [
+      {
+        title: 'Algebraic Manipulation',
+        summary: 'Advanced expansion, factorisation including cross method, and algebraic fractions.',
+        keywords: ['expansion', 'factorisation', 'cross method', 'algebraic fractions', 'identity'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Expansion of two brackets:</b> (x + 2)(x + 3) = x<sup>2</sup> + 5x + 6 (FOIL method)</li>
+<li><b>Special products:</b><br>
+(a + b)<sup>2</sup> = a<sup>2</sup> + 2ab + b<sup>2</sup><br>
+(a - b)<sup>2</sup> = a<sup>2</sup> - 2ab + b<sup>2</sup><br>
+(a + b)(a - b) = a<sup>2</sup> - b<sup>2</sup></li>
+<li><b>Factorisation:</b> Take out common factor first, then try cross method or special identities</li>
+<li><b>Algebraic fractions:</b> Same rules as numerical fractions — find LCD to add/subtract</li>
+</ul></div>`
+      },
+      {
+        title: 'Simultaneous Equations',
+        summary: 'Solving two equations with two unknowns using elimination or substitution.',
+        keywords: ['simultaneous', 'elimination', 'substitution', 'two unknowns'],
+        details: `<div class="detail-section"><h4>Methods</h4>
+<ul>
+<li><b>Elimination:</b> Make coefficients of one variable equal, then add/subtract equations</li>
+<li><b>Substitution:</b> Express one variable in terms of the other, substitute into second equation</li>
+</ul></div>
+<div class="detail-section"><h4>Example (Elimination)</h4>
+<p>2x + y = 7 ... (1)<br>x - y = 2 ... (2)</p>
+<p>Add (1) + (2): 3x = 9, so x = 3<br>Sub into (2): 3 - y = 2, so y = 1</p>
+</div>`
+      },
+      {
+        title: 'Linear Inequalities',
+        summary: 'Solving inequalities and representing solutions on number lines.',
+        keywords: ['inequality', 'number line', 'solve', 'greater than', 'less than'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Solve like equations</b> — but flip the sign when multiplying/dividing by a negative</li>
+<li><b>Notation:</b> Open circle = not included (< or >), Closed circle = included (or equal to)</li>
+</ul></div>
+<div class="detail-section"><h4>Example</h4>
+<p>Solve -2x + 3 > 7</p>
+<p>-2x > 4<br>x < -2 (flip sign because dividing by -2)</p>
+</div>`
+      },
+      {
+        title: 'Linear Graphs & Coordinates',
+        summary: 'Gradient, y-intercept, equation of a straight line y = mx + c.',
+        keywords: ['gradient', 'y-intercept', 'coordinate', 'slope', 'linear graph'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Gradient (m):</b> <span class="frac"><span class="num">rise</span><span class="den">run</span></span> = <span class="frac"><span class="num">y2 - y1</span><span class="den">x2 - x1</span></span></li>
+<li><b>y-intercept (c):</b> Where the line crosses the y-axis (x = 0)</li>
+<li><b>Equation:</b> y = mx + c</li>
+<li><b>Parallel lines:</b> Same gradient</li>
+<li><b>Horizontal line:</b> y = k (gradient = 0)</li>
+<li><b>Vertical line:</b> x = k (gradient undefined)</li>
+</ul></div>`
+      },
+      {
+        title: 'Pythagoras\' Theorem',
+        summary: 'Finding unknown sides in right-angled triangles using a squared + b squared = c squared.',
+        keywords: ['Pythagoras', 'hypotenuse', 'right angle', 'theorem'],
+        details: `<div class="detail-section"><h4>The Theorem</h4>
+<p>In a right-angled triangle:</p>
+<p class="formula">a<sup>2</sup> + b<sup>2</sup> = c<sup>2</sup></p>
+<p>where c is the <b>hypotenuse</b> (longest side, opposite the right angle)</p>
+</div>
+<div class="diagram">
+<svg width="200" height="160" viewBox="0 0 200 160">
+<polygon points="30,130 170,130 170,30" fill="none" stroke="#4488ff" stroke-width="2"/>
+<rect x="160" y="120" width="10" height="10" fill="none" stroke="#4488ff" stroke-width="1"/>
+<text x="95" y="148" fill="#ccc" font-size="13" text-anchor="middle">a</text>
+<text x="180" y="85" fill="#ccc" font-size="13">b</text>
+<text x="85" y="75" fill="#ffcc00" font-size="14" text-anchor="middle">c</text>
+</svg>
+<div class="caption">c (hypotenuse) is always the longest side</div>
+</div>`
+      },
+      {
+        title: 'Trigonometry',
+        summary: 'SOH CAH TOA — sine, cosine, tangent ratios in right-angled triangles.',
+        keywords: ['sine', 'cosine', 'tangent', 'SOH CAH TOA', 'trigonometry'],
+        details: `<div class="detail-section"><h4>Trigonometric Ratios</h4>
+<ul>
+<li><b>sin(A)</b> = <span class="frac"><span class="num">Opposite</span><span class="den">Hypotenuse</span></span> &nbsp;&nbsp; (SOH)</li>
+<li><b>cos(A)</b> = <span class="frac"><span class="num">Adjacent</span><span class="den">Hypotenuse</span></span> &nbsp;&nbsp; (CAH)</li>
+<li><b>tan(A)</b> = <span class="frac"><span class="num">Opposite</span><span class="den">Adjacent</span></span> &nbsp;&nbsp; (TOA)</li>
+</ul></div>
+<div class="detail-section"><h4>When to Use</h4>
+<ul>
+<li>Finding a side: rearrange the formula</li>
+<li>Finding an angle: use inverse (sin<sup>-1</sup>, cos<sup>-1</sup>, tan<sup>-1</sup>)</li>
+<li>Always identify which sides are O, A, H relative to the angle you're working with</li>
+</ul></div>`
+      },
+      {
+        title: 'Congruence & Similarity',
+        summary: 'Conditions for congruent triangles (SSS, SAS, ASA, RHS) and similar figures.',
+        keywords: ['congruent', 'similar', 'SSS', 'SAS', 'scale factor'],
+        details: `<div class="detail-section"><h4>Congruent Triangles</h4>
+<ul>
+<li><b>SSS:</b> All 3 sides equal</li>
+<li><b>SAS:</b> 2 sides and included angle equal</li>
+<li><b>ASA/AAS:</b> 2 angles and 1 side equal</li>
+<li><b>RHS:</b> Right angle, hypotenuse, and 1 other side equal</li>
+</ul></div>
+<div class="detail-section"><h4>Similar Figures</h4>
+<ul>
+<li>Same shape, different size</li>
+<li>Corresponding angles are equal</li>
+<li>Corresponding sides are in the same ratio (scale factor k)</li>
+<li>Area ratio = k<sup>2</sup>, Volume ratio = k<sup>3</sup></li>
+</ul></div>`
+      },
+      {
+        title: 'Probability',
+        summary: 'Chance of events occurring, sample space, combined events.',
+        keywords: ['probability', 'sample space', 'event', 'chance', 'tree diagram'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Probability:</b> P(event) = <span class="frac"><span class="num">Number of favourable outcomes</span><span class="den">Total number of outcomes</span></span></li>
+<li>0 = impossible, 1 = certain</li>
+<li><b>P(not A) = 1 - P(A)</b></li>
+<li><b>Independent events:</b> P(A and B) = P(A) x P(B)</li>
+<li><b>Tree diagrams:</b> Multiply along branches, add between branches</li>
+</ul></div>`
+      },
+      {
+        title: 'Set Language & Notation',
+        summary: 'Sets, Venn diagrams, union, intersection, complement.',
+        keywords: ['set', 'Venn diagram', 'union', 'intersection', 'complement'],
+        details: `<div class="detail-section"><h4>Key Notation</h4>
+<ul>
+<li><b>A U B:</b> Union — elements in A OR B (or both)</li>
+<li><b>A n B:</b> Intersection — elements in BOTH A and B</li>
+<li><b>A':</b> Complement — elements NOT in A</li>
+<li><b>Empty set:</b> {} or O with slash — no elements</li>
+<li><b>Universal set:</b> All possible elements under consideration</li>
+</ul></div>`
+      },
+    ],
+  },
+  science: {
+    1: [
+      {
+        title: 'Scientific Investigation',
+        summary: 'The scientific method: hypothesis, variables, fair testing, and data collection.',
+        keywords: ['hypothesis', 'variable', 'fair test', 'experiment', 'conclusion'],
+        details: `<div class="detail-section"><h4>The Scientific Method</h4>
+<ul>
+<li><b>1. Observation:</b> Notice something interesting</li>
+<li><b>2. Hypothesis:</b> A testable prediction (If... then... because...)</li>
+<li><b>3. Experiment:</b> Design a fair test</li>
+<li><b>4. Results:</b> Collect and record data</li>
+<li><b>5. Conclusion:</b> Analyse data and accept/reject hypothesis</li>
+</ul></div>
+<div class="detail-section"><h4>Variables</h4>
+<ul>
+<li><b>Independent:</b> What you change (1 only)</li>
+<li><b>Dependent:</b> What you measure</li>
+<li><b>Controlled:</b> What you keep the same (for fair test)</li>
+</ul></div>`
+      },
+      {
+        title: 'Cells — The Building Blocks of Life',
+        summary: 'Plant and animal cell structures, organelles and their functions.',
+        keywords: ['cell', 'nucleus', 'mitochondria', 'chloroplast', 'cell wall'],
+        details: `<div class="detail-section"><h4>Animal Cell</h4>
+<ul>
+<li><b>Nucleus:</b> Controls cell activities, contains DNA</li>
+<li><b>Cell membrane:</b> Controls what enters/exits the cell</li>
+<li><b>Cytoplasm:</b> Jelly-like substance where chemical reactions occur</li>
+<li><b>Mitochondria:</b> Powerhouse — produces energy through respiration</li>
+<li><b>Ribosomes:</b> Makes proteins</li>
+</ul></div>
+<div class="detail-section"><h4>Plant Cell (extra parts)</h4>
+<ul>
+<li><b>Cell wall:</b> Rigid outer layer for support and shape</li>
+<li><b>Chloroplast:</b> Contains chlorophyll for photosynthesis</li>
+<li><b>Large vacuole:</b> Stores cell sap, maintains turgor pressure</li>
+</ul></div>
+<div class="diagram">
+<svg width="360" height="200" viewBox="0 0 360 200">
+<!-- Animal cell -->
+<ellipse cx="100" cy="100" rx="80" ry="70" fill="none" stroke="#4488ff" stroke-width="2"/>
+<ellipse cx="100" cy="90" rx="25" ry="20" fill="none" stroke="#ffcc00" stroke-width="2"/>
+<circle cx="100" cy="88" r="5" fill="#ffcc00"/>
+<circle cx="70" cy="115" r="8" fill="none" stroke="#33cc66" stroke-width="1.5"/>
+<circle cx="130" cy="110" r="8" fill="none" stroke="#33cc66" stroke-width="1.5"/>
+<circle cx="85" cy="130" r="7" fill="none" stroke="#33cc66" stroke-width="1.5"/>
+<text x="100" y="180" fill="#4488ff" font-size="11" text-anchor="middle">Animal Cell</text>
+<text x="100" y="88" fill="#ffcc00" font-size="8" text-anchor="middle"></text>
+<!-- Plant cell -->
+<rect x="210" y="25" width="140" height="150" rx="8" fill="none" stroke="#33cc66" stroke-width="2.5"/>
+<rect x="218" y="33" width="124" height="134" rx="4" fill="none" stroke="#4488ff" stroke-width="1.5" stroke-dasharray="4,3"/>
+<ellipse cx="280" cy="80" rx="22" ry="18" fill="none" stroke="#ffcc00" stroke-width="2"/>
+<circle cx="280" cy="78" r="5" fill="#ffcc00"/>
+<rect x="240" y="110" width="60" height="35" rx="3" fill="none" stroke="#cc66ff" stroke-width="1.5"/>
+<circle cx="250" cy="60" r="7" fill="none" stroke="#33cc66" stroke-width="1.5"/>
+<circle cx="310" cy="95" r="7" fill="none" stroke="#33cc66" stroke-width="1.5"/>
+<text x="280" y="195" fill="#33cc66" font-size="11" text-anchor="middle">Plant Cell</text>
+<!-- Labels -->
+<text x="140" y="90" fill="#ffcc00" font-size="8">nucleus</text>
+<text x="140" y="115" fill="#33cc66" font-size="8">mitochondria</text>
+<text x="210" y="18" fill="#33cc66" font-size="8">cell wall</text>
+<text x="268" y="155" fill="#cc66ff" font-size="8">vacuole</text>
+<text x="240" y="55" fill="#33cc66" font-size="8">chloroplast</text>
+</svg>
+<div class="caption">Comparison of animal and plant cell structures</div>
+</div>`
+      },
+      {
+        title: 'Diversity of Living Things',
+        summary: 'Classification of organisms into kingdoms, species identification.',
+        keywords: ['classification', 'kingdom', 'species', 'vertebrate', 'invertebrate'],
+        details: `<div class="detail-section"><h4>Five Kingdoms</h4>
+<ul>
+<li><b>Animals:</b> Multicellular, no cell wall, heterotrophs (eat food)</li>
+<li><b>Plants:</b> Multicellular, cell wall, autotrophs (make food via photosynthesis)</li>
+<li><b>Fungi:</b> Cell wall (chitin), decomposers, absorb nutrients</li>
+<li><b>Bacteria:</b> Single-celled, no nucleus (prokaryote)</li>
+<li><b>Protists:</b> Mostly single-celled, have nucleus (eukaryote)</li>
+</ul></div>
+<div class="detail-section"><h4>Vertebrate Groups</h4>
+<ul>
+<li><b>Fish:</b> Scales, gills, cold-blooded, lay eggs in water</li>
+<li><b>Amphibians:</b> Moist skin, cold-blooded, eggs in water, metamorphosis</li>
+<li><b>Reptiles:</b> Dry scales, cold-blooded, eggs on land</li>
+<li><b>Birds:</b> Feathers, warm-blooded, lay eggs, most can fly</li>
+<li><b>Mammals:</b> Hair/fur, warm-blooded, live birth, produce milk</li>
+</ul></div>`
+      },
+      {
+        title: 'Materials & Their Properties',
+        summary: 'Elements, compounds, mixtures, and physical vs chemical changes.',
+        keywords: ['element', 'compound', 'mixture', 'physical change', 'chemical change'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Element:</b> Pure substance made of one type of atom (e.g. oxygen, iron)</li>
+<li><b>Compound:</b> Two or more elements chemically bonded (e.g. water = H2O)</li>
+<li><b>Mixture:</b> Two or more substances NOT chemically bonded (can be separated)</li>
+<li><b>Physical change:</b> No new substance formed (melting, dissolving)</li>
+<li><b>Chemical change:</b> New substance formed (burning, rusting) — usually irreversible</li>
+</ul></div>
+<div class="detail-section"><h4>Separation Techniques</h4>
+<ul>
+<li><b>Filtration:</b> Separates insoluble solid from liquid</li>
+<li><b>Evaporation:</b> Recovers dissolved solid from solution</li>
+<li><b>Distillation:</b> Separates liquids with different boiling points</li>
+<li><b>Chromatography:</b> Separates coloured substances (e.g. ink)</li>
+</ul></div>`
+      },
+      {
+        title: 'Measurement & Units',
+        summary: 'SI units, measuring instruments, accuracy and precision.',
+        keywords: ['SI units', 'measurement', 'accuracy', 'precision', 'instruments'],
+        details: `<div class="detail-section"><h4>Base SI Units</h4>
+<ul>
+<li><b>Length:</b> metre (m)</li>
+<li><b>Mass:</b> kilogram (kg)</li>
+<li><b>Time:</b> second (s)</li>
+<li><b>Temperature:</b> kelvin (K) or degrees Celsius</li>
+<li><b>Electric current:</b> ampere (A)</li>
+</ul></div>
+<div class="detail-section"><h4>Prefixes</h4>
+<p>kilo (k) = 1000, centi (c) = 0.01, milli (m) = 0.001, micro = 0.000001</p>
+</div>`
+      },
+      {
+        title: 'Forces & Pressure',
+        summary: 'Types of forces, balanced/unbalanced forces, pressure in solids and fluids.',
+        keywords: ['force', 'pressure', 'Newton', 'gravity', 'friction'],
+        details: `<div class="detail-section"><h4>Forces</h4>
+<ul>
+<li><b>Force:</b> A push or pull measured in Newtons (N)</li>
+<li><b>Gravity:</b> Pulls objects towards Earth. Weight = mass x g (g = 10 N/kg)</li>
+<li><b>Friction:</b> Opposes motion between surfaces</li>
+<li><b>Balanced forces:</b> No change in motion (object stays still or constant speed)</li>
+<li><b>Unbalanced forces:</b> Object accelerates in direction of resultant force</li>
+</ul></div>
+<div class="detail-section"><h4>Pressure</h4>
+<p class="formula">Pressure = <span class="frac"><span class="num">Force</span><span class="den">Area</span></span> (Pa = N/m<sup>2</sup>)</p>
+<ul>
+<li>Smaller area = greater pressure (e.g. sharp knife, high heels)</li>
+<li>Larger area = less pressure (e.g. snowshoes, caterpillar tracks)</li>
+</ul></div>`
+      },
+      {
+        title: 'Energy',
+        summary: 'Forms of energy, energy conversion, conservation of energy, and efficiency.',
+        keywords: ['kinetic', 'potential', 'conservation', 'efficiency', 'energy conversion'],
+        details: `<div class="detail-section"><h4>Forms of Energy</h4>
+<ul>
+<li><b>Kinetic energy (KE):</b> Energy of motion</li>
+<li><b>Gravitational potential energy (GPE):</b> Energy due to height</li>
+<li><b>Chemical energy:</b> Stored in food, fuel, batteries</li>
+<li><b>Thermal (heat) energy:</b> Related to temperature</li>
+<li><b>Electrical energy:</b> From electric current</li>
+<li><b>Light energy, Sound energy, Nuclear energy</b></li>
+</ul></div>
+<div class="detail-section"><h4>Conservation of Energy</h4>
+<p>Energy cannot be created or destroyed — only converted from one form to another.</p>
+<p class="formula">Efficiency = <span class="frac"><span class="num">useful energy output</span><span class="den">total energy input</span></span> x 100%</p>
+</div>`
+      },
+    ],
+    2: [
+      {
+        title: 'Electricity',
+        summary: 'Current, voltage, resistance, series and parallel circuits, Ohm\'s law.',
+        keywords: ['current', 'voltage', 'resistance', 'circuit', 'Ohm\'s law'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Current (I):</b> Flow of electric charge, measured in Amperes (A)</li>
+<li><b>Voltage (V):</b> Energy per unit charge, measured in Volts (V). "Push" of electricity</li>
+<li><b>Resistance (R):</b> Opposition to current flow, measured in Ohms (ohm)</li>
+</ul></div>
+<div class="detail-section"><h4>Ohm's Law</h4>
+<p class="formula">V = I x R</p>
+<p>Voltage = Current x Resistance</p>
+</div>
+<div class="detail-section"><h4>Series vs Parallel</h4>
+<ul>
+<li><b>Series:</b> One path. Current same everywhere. Voltage splits. Total R = R1 + R2</li>
+<li><b>Parallel:</b> Multiple paths. Voltage same across branches. Current splits. <span class="frac"><span class="num">1</span><span class="den">R</span></span> = <span class="frac"><span class="num">1</span><span class="den">R1</span></span> + <span class="frac"><span class="num">1</span><span class="den">R2</span></span></li>
+</ul></div>
+<div class="diagram">
+<svg width="360" height="150" viewBox="0 0 360 150">
+<!-- Series circuit -->
+<rect x="20" y="20" width="140" height="110" rx="6" fill="none" stroke="#4488ff" stroke-width="2"/>
+<rect x="55" y="20" width="30" height="12" fill="#ffcc00" stroke="#ffcc00"/>
+<text x="70" y="14" fill="#ffcc00" font-size="9" text-anchor="middle">Battery</text>
+<rect x="52" y="105" width="20" height="10" fill="none" stroke="#ff6644" stroke-width="2"/>
+<text x="62" y="103" fill="#ff6644" font-size="8" text-anchor="middle">R1</text>
+<rect x="100" y="105" width="20" height="10" fill="none" stroke="#ff6644" stroke-width="2"/>
+<text x="110" y="103" fill="#ff6644" font-size="8" text-anchor="middle">R2</text>
+<text x="90" y="145" fill="#4488ff" font-size="10" text-anchor="middle">Series</text>
+<!-- Parallel circuit -->
+<line x1="210" y1="30" x2="340" y2="30" stroke="#4488ff" stroke-width="2"/>
+<line x1="210" y1="120" x2="340" y2="120" stroke="#4488ff" stroke-width="2"/>
+<line x1="210" y1="30" x2="210" y2="120" stroke="#4488ff" stroke-width="2"/>
+<line x1="340" y1="30" x2="340" y2="120" stroke="#4488ff" stroke-width="2"/>
+<line x1="250" y1="30" x2="250" y2="120" stroke="#4488ff" stroke-width="2"/>
+<line x1="300" y1="30" x2="300" y2="120" stroke="#4488ff" stroke-width="2"/>
+<rect x="242" y="65" width="16" height="10" fill="none" stroke="#ff6644" stroke-width="2"/>
+<text x="250" y="62" fill="#ff6644" font-size="8" text-anchor="middle">R1</text>
+<rect x="292" y="65" width="16" height="10" fill="none" stroke="#ff6644" stroke-width="2"/>
+<text x="300" y="62" fill="#ff6644" font-size="8" text-anchor="middle">R2</text>
+<rect x="258" y="22" width="24" height="8" fill="#ffcc00"/>
+<text x="275" y="145" fill="#4488ff" font-size="10" text-anchor="middle">Parallel</text>
+</svg>
+<div class="caption">Series: one path, current same. Parallel: multiple paths, voltage same.</div>
+</div>`
+      },
+      {
+        title: 'Light',
+        summary: 'Reflection, refraction, lenses, and the electromagnetic spectrum.',
+        keywords: ['reflection', 'refraction', 'lens', 'spectrum', 'light ray'],
+        details: `<div class="detail-section"><h4>Reflection</h4>
+<ul>
+<li>Angle of incidence = Angle of reflection</li>
+<li>Both measured from the <b>normal</b> (perpendicular to surface)</li>
+<li><b>Regular reflection:</b> Smooth surface (mirror) — clear image</li>
+<li><b>Diffuse reflection:</b> Rough surface — scattered light</li>
+</ul></div>
+<div class="detail-section"><h4>Refraction</h4>
+<ul>
+<li>Light bends when passing between different media (e.g. air to water)</li>
+<li><b>Denser medium:</b> Light bends TOWARDS normal (slows down)</li>
+<li><b>Less dense medium:</b> Light bends AWAY from normal (speeds up)</li>
+</ul></div>
+<div class="diagram">
+<svg width="300" height="140" viewBox="0 0 300 140">
+<!-- Reflection -->
+<line x1="20" y1="100" x2="280" y2="100" stroke="#666" stroke-width="2"/>
+<line x1="150" y1="30" x2="150" y2="100" stroke="#888" stroke-width="1" stroke-dasharray="5,5"/>
+<line x1="80" y1="30" x2="150" y2="100" stroke="#ffcc00" stroke-width="2"/>
+<line x1="150" y1="100" x2="220" y2="30" stroke="#ff6644" stroke-width="2"/>
+<text x="95" y="55" fill="#ffcc00" font-size="10">incident</text>
+<text x="175" y="55" fill="#ff6644" font-size="10">reflected</text>
+<text x="155" y="50" fill="#888" font-size="9">normal</text>
+<text x="110" y="85" fill="#ccc" font-size="9">i</text>
+<text x="170" y="85" fill="#ccc" font-size="9">r</text>
+<text x="150" y="130" fill="#888" font-size="10" text-anchor="middle">i = r (angle of incidence = angle of reflection)</text>
+</svg>
+<div class="caption">Law of Reflection</div>
+</div>`
+      },
+      {
+        title: 'Sound',
+        summary: 'How sound travels, speed of sound, pitch, loudness, and echoes.',
+        keywords: ['sound wave', 'pitch', 'loudness', 'echo', 'vibration'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Sound</b> is produced by vibrations and travels as a longitudinal wave</li>
+<li><b>Needs a medium:</b> Cannot travel through a vacuum</li>
+<li><b>Speed:</b> Fastest in solids > liquids > gases (about 340 m/s in air)</li>
+<li><b>Pitch:</b> Determined by frequency (higher frequency = higher pitch)</li>
+<li><b>Loudness:</b> Determined by amplitude (larger amplitude = louder)</li>
+<li><b>Echo:</b> Reflection of sound off a hard surface</li>
+</ul></div>`
+      },
+      {
+        title: 'Heat & Temperature',
+        summary: 'Conduction, convection, radiation, and the effects of heat on matter.',
+        keywords: ['conduction', 'convection', 'radiation', 'heat transfer', 'expansion'],
+        details: `<div class="detail-section"><h4>Heat Transfer Methods</h4>
+<ul>
+<li><b>Conduction:</b> Heat through solids by vibrating particles. Metals = good conductors</li>
+<li><b>Convection:</b> Heat through fluids (liquids/gases) by circulation currents. Hot rises, cool sinks</li>
+<li><b>Radiation:</b> Heat through electromagnetic waves. No medium needed (how Sun heats Earth)</li>
+</ul></div>
+<div class="detail-section"><h4>Effects of Heat</h4>
+<ul>
+<li><b>Expansion:</b> Most materials expand when heated (bridges have expansion gaps)</li>
+<li><b>Change of state:</b> Melting, boiling, evaporation, condensation, freezing</li>
+</ul></div>`
+      },
+      {
+        title: 'Transport in Living Things',
+        summary: 'Human circulatory system, blood vessels, plant transport (xylem & phloem).',
+        keywords: ['heart', 'blood', 'artery', 'vein', 'xylem', 'phloem'],
+        details: `<div class="detail-section"><h4>Human Circulatory System</h4>
+<ul>
+<li><b>Heart:</b> 4 chambers — left/right atria and ventricles. Pumps blood</li>
+<li><b>Arteries:</b> Carry blood AWAY from heart. Thick walls, high pressure</li>
+<li><b>Veins:</b> Carry blood TO heart. Thin walls, valves prevent backflow</li>
+<li><b>Capillaries:</b> Tiny vessels for exchange. One-cell thick walls</li>
+</ul></div>
+<div class="detail-section"><h4>Plant Transport</h4>
+<ul>
+<li><b>Xylem:</b> Transports water + minerals UP from roots (one-way, dead cells)</li>
+<li><b>Phloem:</b> Transports sugars (food) UP and DOWN (two-way, living cells)</li>
+<li><b>Transpiration:</b> Water loss through stomata in leaves — pulls water up</li>
+</ul></div>`
+      },
+      {
+        title: 'Human Digestive System',
+        summary: 'Organs of digestion, enzymes, absorption of nutrients in the small intestine.',
+        keywords: ['digestion', 'enzyme', 'stomach', 'intestine', 'absorption'],
+        details: `<div class="detail-section"><h4>The Journey of Food</h4>
+<ul>
+<li><b>Mouth:</b> Teeth break food (mechanical). Amylase breaks down starch (chemical)</li>
+<li><b>Oesophagus:</b> Peristalsis pushes food down</li>
+<li><b>Stomach:</b> Acid (pH 2) + pepsin breaks down protein</li>
+<li><b>Small intestine:</b> Most digestion + absorption. Villi increase surface area</li>
+<li><b>Large intestine:</b> Absorbs water</li>
+<li><b>Rectum:</b> Stores waste before excretion</li>
+</ul></div>
+<div class="detail-section"><h4>Key Enzymes</h4>
+<ul>
+<li><b>Amylase:</b> Starch to maltose (mouth, small intestine)</li>
+<li><b>Protease/Pepsin:</b> Protein to amino acids (stomach, small intestine)</li>
+<li><b>Lipase:</b> Fats to fatty acids + glycerol (small intestine)</li>
+</ul></div>`
+      },
+      {
+        title: 'Respiration & Photosynthesis',
+        summary: 'Aerobic/anaerobic respiration, photosynthesis equation, gas exchange.',
+        keywords: ['respiration', 'photosynthesis', 'oxygen', 'carbon dioxide', 'glucose'],
+        details: `<div class="detail-section"><h4>Photosynthesis</h4>
+<p class="formula">Carbon dioxide + Water --light--> Glucose + Oxygen</p>
+<p class="formula">6CO<sub>2</sub> + 6H<sub>2</sub>O --> C<sub>6</sub>H<sub>12</sub>O<sub>6</sub> + 6O<sub>2</sub></p>
+<p>Occurs in chloroplasts. Needs: light, chlorophyll, CO2, water</p>
+</div>
+<div class="detail-section"><h4>Aerobic Respiration</h4>
+<p class="formula">Glucose + Oxygen --> Carbon dioxide + Water + Energy</p>
+<p>Occurs in mitochondria. Releases energy for life processes.</p>
+</div>
+<div class="detail-section"><h4>Anaerobic Respiration</h4>
+<ul>
+<li><b>In humans:</b> Glucose to lactic acid + less energy (during intense exercise)</li>
+<li><b>In yeast:</b> Glucose to ethanol + CO2 + less energy (fermentation)</li>
+</ul></div>`
+      },
+    ],
+  },
+  geography: {
+    1: [
+      {
+        title: 'Our Dynamic Planet',
+        summary: 'Earth\'s structure, plate tectonics, earthquakes and volcanoes.',
+        keywords: ['tectonic plates', 'earthquake', 'volcano', 'crust', 'mantle'],
+        details: `<div class="detail-section"><h4>Earth\'s Structure</h4>
+<ul>
+<li><b>Crust:</b> Thin outer layer (5-70 km). Oceanic (thinner, denser) and Continental (thicker, less dense)</li>
+<li><b>Mantle:</b> Thick layer of semi-solid rock. Convection currents drive plate movement</li>
+<li><b>Outer core:</b> Liquid iron and nickel</li>
+<li><b>Inner core:</b> Solid iron and nickel (very hot but compressed)</li>
+</ul></div>
+<div class="detail-section"><h4>Plate Boundaries</h4>
+<ul>
+<li><b>Convergent (destructive):</b> Plates move together. Subduction, mountains, volcanoes, earthquakes</li>
+<li><b>Divergent (constructive):</b> Plates move apart. New crust formed, mid-ocean ridges</li>
+<li><b>Transform (conservative):</b> Plates slide past. Earthquakes (e.g. San Andreas Fault)</li>
+</ul></div>`
+      },
+      {
+        title: 'Weather & Climate',
+        summary: 'Elements of weather, climate zones, factors affecting climate.',
+        keywords: ['weather', 'climate', 'temperature', 'rainfall', 'humidity'],
+        details: `<div class="detail-section"><h4>Weather vs Climate</h4>
+<ul>
+<li><b>Weather:</b> Short-term atmospheric conditions (today's forecast)</li>
+<li><b>Climate:</b> Average weather conditions over 30+ years</li>
+</ul></div>
+<div class="detail-section"><h4>Elements of Weather</h4>
+<ul>
+<li>Temperature, rainfall, humidity, wind speed/direction, cloud cover, air pressure</li>
+</ul></div>
+<div class="detail-section"><h4>Factors Affecting Climate</h4>
+<ul>
+<li><b>Latitude:</b> Closer to equator = hotter</li>
+<li><b>Altitude:</b> Higher = cooler (about 6.5C per 1000m)</li>
+<li><b>Distance from sea:</b> Maritime = milder; Continental = extreme</li>
+<li><b>Ocean currents:</b> Warm/cold currents affect coastal temperatures</li>
+</ul></div>`
+      },
+      {
+        title: 'Tropical Rainforests',
+        summary: 'Characteristics, layers, biodiversity, and human impact on rainforests.',
+        keywords: ['rainforest', 'biodiversity', 'deforestation', 'canopy', 'tropical'],
+        details: `<div class="detail-section"><h4>Characteristics</h4>
+<ul>
+<li>Hot and wet all year (25-28C, 2000mm+ rainfall)</li>
+<li>Found near equator: Amazon, Congo, Southeast Asia</li>
+<li>Highest biodiversity of any biome</li>
+</ul></div>
+<div class="detail-section"><h4>Layers</h4>
+<ul>
+<li><b>Emergent:</b> Tallest trees (40-60m), exposed to wind</li>
+<li><b>Canopy:</b> Main continuous layer (25-35m), most wildlife</li>
+<li><b>Understory:</b> Smaller trees and shrubs, little light</li>
+<li><b>Forest floor:</b> Very dark, decomposition</li>
+</ul></div>
+<div class="detail-section"><h4>Threats</h4>
+<ul>
+<li>Deforestation for logging, agriculture, mining</li>
+<li>Loss of biodiversity, soil erosion, climate change</li>
+</ul></div>`
+      },
+      {
+        title: 'Water Resources',
+        summary: 'Water cycle, water scarcity, water management and conservation.',
+        keywords: ['water cycle', 'evaporation', 'condensation', 'scarcity', 'conservation'],
+        details: `<div class="detail-section"><h4>The Water Cycle</h4>
+<ul>
+<li><b>Evaporation:</b> Water to vapour (from oceans, rivers, lakes)</li>
+<li><b>Condensation:</b> Vapour to water droplets (clouds form)</li>
+<li><b>Precipitation:</b> Rain, snow, sleet, hail</li>
+<li><b>Surface runoff:</b> Water flows over land to rivers/sea</li>
+<li><b>Infiltration:</b> Water seeps into ground (groundwater)</li>
+</ul></div>
+<div class="detail-section"><h4>Singapore's Water (Four National Taps)</h4>
+<ul>
+<li>Local catchment water</li>
+<li>Imported water (from Johor, Malaysia)</li>
+<li>NEWater (reclaimed water)</li>
+<li>Desalinated water</li>
+</ul></div>`
+      },
+      {
+        title: 'Housing in Singapore',
+        summary: 'Housing challenges, HDB development, urban planning solutions.',
+        keywords: ['HDB', 'urban planning', 'housing', 'land scarcity', 'new towns'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Challenge:</b> Small land area (about 733 km<sup>2</sup>) with growing population</li>
+<li><b>Solution:</b> Public housing (HDB) — over 80% of residents live in HDB flats</li>
+<li><b>New towns:</b> Self-sufficient townships with amenities, transport links</li>
+<li><b>Land reclamation:</b> Creating new land (e.g. Marina Bay, Tuas)</li>
+</ul></div>`
+      },
+    ],
+    2: [
+      {
+        title: 'Sustainable Development',
+        summary: 'Sustainability concepts, balancing economic growth with environmental protection.',
+        keywords: ['sustainability', 'development', 'environment', 'resources', 'climate change'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>Sustainable development:</b> Meeting present needs without compromising future generations</li>
+<li><b>Three pillars:</b> Economic, Social, Environmental</li>
+<li><b>Climate change:</b> Enhanced greenhouse effect due to human activities (burning fossil fuels)</li>
+<li><b>Singapore Green Plan 2030:</b> National sustainability blueprint</li>
+</ul></div>`
+      },
+      {
+        title: 'Food Resources',
+        summary: 'Food security, factors affecting food production, Singapore\'s food supply.',
+        keywords: ['food security', 'agriculture', 'food production', 'import', '30 by 30'],
+        details: `<div class="detail-section"><h4>Food Security</h4>
+<ul>
+<li><b>Definition:</b> When all people have access to sufficient, safe, nutritious food</li>
+<li><b>Threats:</b> Climate change, population growth, land degradation, water scarcity</li>
+</ul></div>
+<div class="detail-section"><h4>Singapore's Approach</h4>
+<ul>
+<li>Imports over 90% of food</li>
+<li><b>30 by 30 goal:</b> Produce 30% of nutritional needs locally by 2030</li>
+<li>Urban farming, vertical farms, aquaculture</li>
+<li>Diversifying food sources (many countries, not dependent on one)</li>
+</ul></div>`
+      },
+      {
+        title: 'Health & Diseases',
+        summary: 'Infectious vs non-infectious diseases, healthcare access, and prevention.',
+        keywords: ['infectious', 'non-infectious', 'healthcare', 'prevention', 'pandemic'],
+        details: `<div class="detail-section"><h4>Types of Disease</h4>
+<ul>
+<li><b>Infectious:</b> Caused by pathogens (bacteria, virus, fungi). Can spread between people. E.g. dengue, COVID-19, TB</li>
+<li><b>Non-infectious:</b> Cannot spread. Caused by lifestyle, genetics, environment. E.g. diabetes, cancer, heart disease</li>
+</ul></div>
+<div class="detail-section"><h4>Factors Affecting Health</h4>
+<ul>
+<li>Access to healthcare</li>
+<li>Clean water and sanitation</li>
+<li>Nutrition and diet</li>
+<li>Education and awareness</li>
+<li>Income and living conditions</li>
+</ul></div>`
+      },
+      {
+        title: 'Tourism',
+        summary: 'Impacts of tourism (economic, social, environmental), sustainable tourism.',
+        keywords: ['tourism', 'economic impact', 'cultural impact', 'sustainable tourism'],
+        details: `<div class="detail-section"><h4>Benefits of Tourism</h4>
+<ul>
+<li><b>Economic:</b> Creates jobs, brings foreign revenue, develops infrastructure</li>
+<li><b>Social:</b> Cultural exchange, preserves heritage, improves facilities</li>
+</ul></div>
+<div class="detail-section"><h4>Negative Impacts</h4>
+<ul>
+<li><b>Environmental:</b> Pollution, habitat destruction, overcrowding</li>
+<li><b>Social:</b> Loss of local culture, cost of living increases, conflict</li>
+<li><b>Economic:</b> Leakage (profits go abroad), seasonal jobs, overdependence</li>
+</ul></div>`
+      },
+      {
+        title: 'Sustainability of Water',
+        summary: 'Water sustainability challenges, Singapore\'s water management strategies.',
+        keywords: ['water sustainability', 'NEWater', 'desalination', 'conservation', 'catchment'],
+        details: `<div class="detail-section"><h4>Challenges</h4>
+<ul>
+<li>Growing demand vs limited supply</li>
+<li>Climate change affecting rainfall patterns</li>
+<li>Water pollution reducing usable water</li>
+</ul></div>
+<div class="detail-section"><h4>Singapore's Strategies</h4>
+<ul>
+<li><b>ABC Waters Programme:</b> Active, Beautiful, Clean — integrating water bodies into living spaces</li>
+<li><b>NEWater:</b> Ultra-clean, high-grade reclaimed water</li>
+<li><b>Desalination:</b> Converting seawater to freshwater</li>
+<li><b>Water conservation:</b> WELS labelling, water pricing, public education</li>
+<li><b>Target:</b> 130 litres per capita per day by 2030</li>
+</ul></div>`
+      },
+    ],
+  },
+  history: {
+    1: [
+      {
+        title: 'Understanding History',
+        summary: 'What is history, primary vs secondary sources, historical inquiry.',
+        keywords: ['primary source', 'secondary source', 'evidence', 'inquiry', 'perspective'],
+        details: `<div class="detail-section"><h4>Key Concepts</h4>
+<ul>
+<li><b>History:</b> The study of the past through evidence</li>
+<li><b>Primary sources:</b> Created during the time period studied (diaries, photos, artefacts)</li>
+<li><b>Secondary sources:</b> Created after the event by studying primary sources (textbooks, documentaries)</li>
+<li><b>Historical inquiry:</b> Asking questions, gathering evidence, forming conclusions</li>
+<li><b>Perspective:</b> Different people can have different views of the same event</li>
+</ul></div>`
+      },
+      {
+        title: 'Early Singapore (14th Century)',
+        summary: 'Singapura, Sang Nila Utama, early trade and the Malay world.',
+        keywords: ['Singapura', 'Sang Nila Utama', 'Temasek', 'trade', 'Malay world'],
+        details: `<div class="detail-section"><h4>Key Events</h4>
+<ul>
+<li><b>Temasek:</b> Ancient name for Singapore, meaning "sea town"</li>
+<li><b>Sang Nila Utama:</b> Legendarily founded Singapura after seeing a lion (Singa = lion, Pura = city)</li>
+<li><b>Trade hub:</b> Strategic location on major shipping routes between China and India</li>
+<li><b>Part of Srivijaya and later Majapahit empires</b></li>
+</ul></div>`
+      },
+      {
+        title: 'Colonial Singapore (1819-1942)',
+        summary: 'Stamford Raffles, British colonisation, immigrant communities, and development.',
+        keywords: ['Raffles', 'British', 'colonial', 'immigrants', 'trade port'],
+        details: `<div class="detail-section"><h4>Key Events</h4>
+<ul>
+<li><b>1819:</b> Sir Stamford Raffles arrived and signed treaty with Sultan Hussein</li>
+<li><b>Free port:</b> No taxes on trade — attracted merchants from China, India, Southeast Asia</li>
+<li><b>Immigration:</b> Chinese, Indian, Malay communities grew. Each settled in different areas</li>
+<li><b>Straits Settlements (1826):</b> Singapore, Penang, Malacca — under British control</li>
+<li><b>Infrastructure:</b> Roads, harbour, Raffles Institution (1823), railway</li>
+</ul></div>`
+      },
+      {
+        title: 'Japanese Occupation (1942-1945)',
+        summary: 'Fall of Singapore, life under Japanese rule, impact on society.',
+        keywords: ['Japanese occupation', 'World War 2', 'Syonan-to', 'Sook Ching', 'surrender'],
+        details: `<div class="detail-section"><h4>Key Events</h4>
+<ul>
+<li><b>15 Feb 1942:</b> British surrendered Singapore to Japan — largest British surrender in history</li>
+<li><b>Renamed Syonan-to</b> ("Light of the South")</li>
+<li><b>Sook Ching:</b> Systematic massacre of Chinese males suspected of being anti-Japanese</li>
+<li><b>Hardship:</b> Food rationing, banana money (worthless currency), fear and suffering</li>
+<li><b>15 Aug 1945:</b> Japan surrendered after atomic bombs on Hiroshima and Nagasaki</li>
+</ul></div>
+<div class="detail-section"><h4>Impact</h4>
+<ul>
+<li>Shattered belief that British were invincible protectors</li>
+<li>Strengthened desire for self-governance among locals</li>
+<li>Trauma and loss shaped national consciousness</li>
+</ul></div>`
+      },
+    ],
+    2: [
+      {
+        title: 'Road to Self-Governance',
+        summary: 'Post-war political developments, formation of political parties, 1959 elections.',
+        keywords: ['self-governance', 'PAP', 'Lee Kuan Yew', 'elections', 'independence'],
+        details: `<div class="detail-section"><h4>Key Events</h4>
+<ul>
+<li><b>Post-war:</b> Growing desire for independence from Britain</li>
+<li><b>1954:</b> People's Action Party (PAP) formed — Lee Kuan Yew, Goh Keng Swee, etc.</li>
+<li><b>1955:</b> Rendel Constitution — partial self-governance, first elections</li>
+<li><b>1959:</b> Full internal self-governance. PAP won elections. Lee Kuan Yew became first PM</li>
+</ul></div>`
+      },
+      {
+        title: 'Merger & Separation',
+        summary: 'Singapore joins Malaysia (1963) and separates to become independent (1965).',
+        keywords: ['merger', 'Malaysia', 'separation', 'independence', '9 August 1965'],
+        details: `<div class="detail-section"><h4>Key Events</h4>
+<ul>
+<li><b>1963:</b> Singapore merged with Malaya, Sabah, and Sarawak to form Malaysia</li>
+<li><b>Reasons for merger:</b> Common market, defence, ending communist threat</li>
+<li><b>Tensions:</b> Racial politics, disagreements over economic policies, communal riots (1964)</li>
+<li><b>9 Aug 1965:</b> Singapore separated from Malaysia — became independent Republic of Singapore</li>
+<li><b>Lee Kuan Yew's tears:</b> Emotional press conference — uncertain future for small nation</li>
+</ul></div>`
+      },
+      {
+        title: 'Building a Nation',
+        summary: 'Challenges of independence: defence, economy, housing, education, national identity.',
+        keywords: ['nation building', 'HDB', 'NS', 'industrialisation', 'meritocracy'],
+        details: `<div class="detail-section"><h4>Key Challenges & Solutions</h4>
+<ul>
+<li><b>Defence:</b> National Service (NS) introduced 1967 — citizen army</li>
+<li><b>Economy:</b> Industrialisation — attract MNCs, create jobs. Jurong Industrial Estate</li>
+<li><b>Housing:</b> HDB mass housing programme — home ownership scheme</li>
+<li><b>Education:</b> Bilingual policy — English + mother tongue. Meritocracy</li>
+<li><b>National identity:</b> Pledge, national symbols, racial harmony (after 1964 riots)</li>
+</ul></div>`
+      },
+      {
+        title: 'Governance in Singapore',
+        summary: 'Government structure, Parliament, rule of law, and citizen participation.',
+        keywords: ['Parliament', 'government', 'rule of law', 'Constitution', 'democracy'],
+        details: `<div class="detail-section"><h4>Government Structure</h4>
+<ul>
+<li><b>Executive:</b> President + Cabinet (PM and Ministers) — runs the country</li>
+<li><b>Legislature:</b> Parliament — makes laws</li>
+<li><b>Judiciary:</b> Courts — interprets and enforces laws</li>
+</ul></div>
+<div class="detail-section"><h4>Key Principles</h4>
+<ul>
+<li><b>Rule of law:</b> Everyone is equal before the law, including the government</li>
+<li><b>Meritocracy:</b> Rewards based on ability and effort, not background</li>
+<li><b>Multi-racialism:</b> Respect and harmony among all races</li>
+</ul></div>`
+      },
+    ],
+  },
+  english: {
+    1: [
+      {
+        title: 'Comprehension Skills',
+        summary: 'Understanding texts, identifying main ideas, making inferences.',
+        keywords: ['comprehension', 'inference', 'main idea', 'context clues', 'summary'],
+        details: `<div class="detail-section"><h4>Key Skills</h4>
+<ul>
+<li><b>Literal comprehension:</b> Finding information directly stated in the text</li>
+<li><b>Inference:</b> Reading between the lines — what the text implies but doesn't say</li>
+<li><b>Context clues:</b> Using surrounding words to figure out unknown vocabulary</li>
+<li><b>Summary:</b> Identifying main points and expressing them concisely</li>
+</ul></div>
+<div class="detail-section"><h4>Tips</h4>
+<ul>
+<li>Read the questions FIRST, then the passage</li>
+<li>Underline key words in questions</li>
+<li>Use your own words for inference questions</li>
+<li>For "why" questions: give reason + evidence from text</li>
+</ul></div>`
+      },
+      {
+        title: 'Narrative Writing',
+        summary: 'Story structure, descriptive language, dialogue, and engaging openings.',
+        keywords: ['narrative', 'plot', 'character', 'setting', 'climax'],
+        details: `<div class="detail-section"><h4>Story Structure</h4>
+<ul>
+<li><b>Exposition:</b> Introduce characters, setting, situation</li>
+<li><b>Rising action:</b> Build tension, develop conflict</li>
+<li><b>Climax:</b> The turning point — most exciting moment</li>
+<li><b>Falling action:</b> Events after the climax</li>
+<li><b>Resolution:</b> How the story ends, problem solved</li>
+</ul></div>
+<div class="detail-section"><h4>Tips for Good Writing</h4>
+<ul>
+<li>Show, don't tell: "Her hands trembled" vs "She was scared"</li>
+<li>Use sensory details (sight, sound, smell, touch, taste)</li>
+<li>Vary sentence length for effect</li>
+<li>Start with action or dialogue, not "One day..."</li>
+</ul></div>`
+      },
+      {
+        title: 'Grammar Essentials',
+        summary: 'Tenses, subject-verb agreement, parts of speech, sentence structures.',
+        keywords: ['tenses', 'grammar', 'subject-verb agreement', 'parts of speech'],
+        details: `<div class="detail-section"><h4>Key Tenses</h4>
+<ul>
+<li><b>Simple present:</b> Habits, facts — "She walks to school"</li>
+<li><b>Simple past:</b> Completed actions — "She walked to school"</li>
+<li><b>Present continuous:</b> Happening now — "She is walking"</li>
+<li><b>Past continuous:</b> Was happening — "She was walking"</li>
+<li><b>Present perfect:</b> Past action with present relevance — "She has walked"</li>
+</ul></div>
+<div class="detail-section"><h4>Subject-Verb Agreement</h4>
+<ul>
+<li>Singular subject = singular verb: "The dog runs"</li>
+<li>Plural subject = plural verb: "The dogs run"</li>
+<li>Tricky: "Everyone" is singular. "Neither A nor B" — verb matches B</li>
+</ul></div>`
+      },
+      {
+        title: 'Vocabulary & Word Power',
+        summary: 'Expanding vocabulary, word roots, prefixes, suffixes, and idioms.',
+        keywords: ['vocabulary', 'prefix', 'suffix', 'idiom', 'synonym'],
+        details: `<div class="detail-section"><h4>Word Building</h4>
+<ul>
+<li><b>Prefixes:</b> un- (not), re- (again), pre- (before), mis- (wrongly), dis- (opposite)</li>
+<li><b>Suffixes:</b> -tion (noun), -ly (adverb), -ful (full of), -less (without), -able (can be)</li>
+<li><b>Root words:</b> Help decode unfamiliar words</li>
+</ul></div>
+<div class="detail-section"><h4>Commonly Tested Vocabulary</h4>
+<ul>
+<li><b>Synonyms:</b> Words with similar meanings (big/large/enormous)</li>
+<li><b>Antonyms:</b> Words with opposite meanings (hot/cold)</li>
+<li><b>Idioms:</b> "Break the ice", "Bite the bullet", "Under the weather"</li>
+</ul></div>`
+      },
+    ],
+    2: [
+      {
+        title: 'Argumentative & Expository Writing',
+        summary: 'Structuring arguments, thesis statements, evidence, and counterarguments.',
+        keywords: ['argumentative', 'expository', 'thesis', 'evidence', 'counterargument'],
+        details: `<div class="detail-section"><h4>Essay Structure</h4>
+<ul>
+<li><b>Introduction:</b> Hook + background + thesis statement (your position)</li>
+<li><b>Body paragraphs:</b> PEEL — Point, Evidence/Example, Explanation, Link back</li>
+<li><b>Counterargument:</b> Acknowledge the other side, then rebut</li>
+<li><b>Conclusion:</b> Restate thesis, summarise key points, final thought</li>
+</ul></div>
+<div class="detail-section"><h4>Tips</h4>
+<ul>
+<li>Use linking words: Furthermore, However, In contrast, Therefore</li>
+<li>Give SPECIFIC examples, not vague generalisations</li>
+<li>Address "To what extent" by discussing both sides</li>
+</ul></div>`
+      },
+      {
+        title: 'Visual Text & Non-Fiction',
+        summary: 'Analysing advertisements, posters, infographics, and persuasive techniques.',
+        keywords: ['visual text', 'advertisement', 'persuasion', 'audience', 'purpose'],
+        details: `<div class="detail-section"><h4>Analysing Visual Texts</h4>
+<ul>
+<li><b>Purpose:</b> What is the text trying to achieve? (inform, persuade, entertain)</li>
+<li><b>Audience:</b> Who is it targeting?</li>
+<li><b>Techniques:</b> Colour, font, images, slogans, testimonials, statistics</li>
+<li><b>Language:</b> Emotive words, imperatives ("Buy now!"), rhetorical questions</li>
+</ul></div>`
+      },
+      {
+        title: 'Oral Communication',
+        summary: 'Reading aloud, spoken interaction, presentation skills.',
+        keywords: ['oral', 'pronunciation', 'fluency', 'presentation', 'discussion'],
+        details: `<div class="detail-section"><h4>Reading Aloud</h4>
+<ul>
+<li>Clear pronunciation and articulation</li>
+<li>Appropriate pace — not too fast, not too slow</li>
+<li>Expression and intonation — match the mood of the text</li>
+<li>Pause at commas and full stops</li>
+</ul></div>
+<div class="detail-section"><h4>Spoken Interaction Tips</h4>
+<ul>
+<li>Listen carefully to the question/prompt</li>
+<li>Give developed responses with reasons and examples</li>
+<li>Express personal opinions: "In my view...", "I believe..."</li>
+<li>Stay on topic but show depth of thinking</li>
+</ul></div>`
+      },
+      {
+        title: 'Editing & Proofreading',
+        summary: 'Identifying and correcting grammatical errors in context.',
+        keywords: ['editing', 'proofreading', 'grammar', 'spelling', 'punctuation'],
+        details: `<div class="detail-section"><h4>Common Error Types</h4>
+<ul>
+<li><b>Tense errors:</b> Mixing past and present tense in same paragraph</li>
+<li><b>Subject-verb agreement:</b> "The group of students were" → "was"</li>
+<li><b>Wrong word form:</b> "He walk quick" → "He walked quickly"</li>
+<li><b>Preposition errors:</b> "depend of" → "depend on"</li>
+<li><b>Article errors:</b> "a" vs "an" vs "the" vs no article</li>
+</ul></div>`
+      },
+    ],
+  },
+  literature: {
+    1: [
+      {
+        title: 'Introduction to Literature',
+        summary: 'What is literature, literary devices, how to analyse texts.',
+        keywords: ['literature', 'literary devices', 'analysis', 'theme', 'tone'],
+        details: `<div class="detail-section"><h4>Why Study Literature?</h4>
+<ul>
+<li>Develops empathy — understanding different perspectives</li>
+<li>Improves critical thinking and analytical skills</li>
+<li>Enhances language ability and vocabulary</li>
+</ul></div>
+<div class="detail-section"><h4>Key Literary Devices</h4>
+<ul>
+<li><b>Simile:</b> Comparison using "like" or "as" — "brave as a lion"</li>
+<li><b>Metaphor:</b> Direct comparison — "time is money"</li>
+<li><b>Personification:</b> Giving human qualities to non-human — "the wind whispered"</li>
+<li><b>Imagery:</b> Descriptive language appealing to senses</li>
+<li><b>Symbolism:</b> Object represents a deeper meaning</li>
+</ul></div>`
+      },
+      {
+        title: 'Poetry Analysis',
+        summary: 'Understanding poems: structure, rhyme, rhythm, figurative language.',
+        keywords: ['poetry', 'rhyme', 'rhythm', 'stanza', 'figurative language'],
+        details: `<div class="detail-section"><h4>Analysing a Poem</h4>
+<ul>
+<li><b>Speaker:</b> Who is speaking? (not always the poet)</li>
+<li><b>Subject:</b> What is the poem about?</li>
+<li><b>Tone/Mood:</b> How does it feel? (sad, joyful, angry, reflective)</li>
+<li><b>Structure:</b> Stanzas, line breaks, rhyme scheme</li>
+<li><b>Language:</b> Metaphors, similes, imagery, sound devices</li>
+</ul></div>
+<div class="detail-section"><h4>Sound Devices</h4>
+<ul>
+<li><b>Alliteration:</b> Repeated consonant sounds — "silent, still, sleeping"</li>
+<li><b>Onomatopoeia:</b> Words that sound like what they describe — "buzz", "crash"</li>
+<li><b>Rhyme:</b> End rhyme (AABB, ABAB), internal rhyme</li>
+</ul></div>`
+      },
+      {
+        title: 'Prose & Short Stories',
+        summary: 'Analysing prose: characters, plot, setting, themes, and narrative techniques.',
+        keywords: ['prose', 'character', 'plot', 'theme', 'narrator'],
+        details: `<div class="detail-section"><h4>Elements of Prose</h4>
+<ul>
+<li><b>Plot:</b> The sequence of events (exposition, climax, resolution)</li>
+<li><b>Character:</b> Who they are, what motivates them, how they change</li>
+<li><b>Setting:</b> When and where — can reflect mood/theme</li>
+<li><b>Theme:</b> The central message or idea the author explores</li>
+<li><b>Point of view:</b> First person (I), Third person (he/she), Omniscient (all-knowing)</li>
+</ul></div>
+<div class="detail-section"><h4>Analysis Framework — WHAT + HOW + WHY</h4>
+<ul>
+<li><b>WHAT:</b> What happens / what the author says</li>
+<li><b>HOW:</b> What techniques/language are used</li>
+<li><b>WHY:</b> What effect does it create / what is the purpose</li>
+</ul></div>`
+      },
+    ],
+    2: [
+      {
+        title: 'Drama & Plays',
+        summary: 'Understanding dramatic texts: stage directions, dialogue, conflict.',
+        keywords: ['drama', 'play', 'dialogue', 'stage direction', 'conflict'],
+        details: `<div class="detail-section"><h4>Key Elements</h4>
+<ul>
+<li><b>Dialogue:</b> What characters say — reveals personality and relationships</li>
+<li><b>Stage directions:</b> Instructions for actors (movement, tone, setting)</li>
+<li><b>Dramatic irony:</b> When audience knows something the characters don't</li>
+<li><b>Conflict:</b> Internal (within a character) or external (between characters/forces)</li>
+<li><b>Monologue/Soliloquy:</b> Character speaks thoughts aloud</li>
+</ul></div>`
+      },
+      {
+        title: 'Unseen Text Analysis',
+        summary: 'How to approach and write about texts you haven\'t studied before.',
+        keywords: ['unseen text', 'analysis', 'close reading', 'evidence', 'response'],
+        details: `<div class="detail-section"><h4>Approach</h4>
+<ul>
+<li><b>1. Read twice:</b> First for overall meaning, second for details</li>
+<li><b>2. Identify:</b> What type of text? Who is the speaker/narrator?</li>
+<li><b>3. Look for patterns:</b> Repeated words, images, contrasts</li>
+<li><b>4. Analyse language:</b> Why did the writer choose these specific words?</li>
+</ul></div>
+<div class="detail-section"><h4>Writing Your Response (PEE)</h4>
+<ul>
+<li><b>Point:</b> State your observation/argument</li>
+<li><b>Evidence:</b> Quote from the text</li>
+<li><b>Explanation:</b> Analyse the effect of the quote — HOW and WHY it works</li>
+</ul></div>`
+      },
+      {
+        title: 'Themes in Literature',
+        summary: 'Common themes: identity, family, conflict, growing up, justice.',
+        keywords: ['theme', 'identity', 'conflict', 'coming of age', 'justice'],
+        details: `<div class="detail-section"><h4>Common Themes</h4>
+<ul>
+<li><b>Identity:</b> Who am I? How do I fit in? Cultural identity</li>
+<li><b>Family:</b> Relationships, expectations, generational conflict</li>
+<li><b>Growing up:</b> Loss of innocence, responsibility, change</li>
+<li><b>Conflict:</b> War, social injustice, personal struggles</li>
+<li><b>Nature:</b> Beauty, destruction, humanity's relationship with environment</li>
+<li><b>Justice:</b> Fairness, inequality, moral choices</li>
+</ul></div>
+<div class="detail-section"><h4>Discussing Themes</h4>
+<p>A theme is NOT the same as a topic. Topic = love. Theme = "Love requires sacrifice and understanding."</p>
+<p>Always link themes to specific evidence from the text.</p>
+</div>`
+      },
+    ],
+  },
+};
+
+// ============================================================
+// APP LOGIC
+// ============================================================
+let currentSubject = 'math';
+let currentYear = 1;
+
+function init() {
+  // Build subject tabs
+  const tabsEl = document.getElementById('subjectTabs');
+  SUBJECTS.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'subject-tab' + (s.id === currentSubject ? ' active' : '');
+    btn.style.setProperty('--sc', s.color);
+    btn.textContent = s.name;
+    btn.onclick = () => setSubject(s.id);
+    btn.dataset.id = s.id;
+    tabsEl.appendChild(btn);
+  });
+  render();
+}
+
+function setSubject(id) {
+  currentSubject = id;
+  document.querySelectorAll('.subject-tab').forEach(t => t.classList.toggle('active', t.dataset.id === id));
+  render();
+}
+
+function setYear(y) {
+  currentYear = y;
+  document.querySelectorAll('.year-btn').forEach((b, i) => b.classList.toggle('active', i === y - 1));
+  render();
+}
+
+function filterTopics() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  document.querySelectorAll('.topic-card').forEach(card => {
+    if (!q) { card.style.display = ''; return; }
+    const text = card.textContent.toLowerCase();
+    card.style.display = text.includes(q) ? '' : 'none';
+  });
+  updateStats();
+}
+
+function updateStats() {
+  const visible = document.querySelectorAll('.topic-card:not([style*="display: none"])').length;
+  const total = document.querySelectorAll('.topic-card').length;
+  const sub = SUBJECTS.find(s => s.id === currentSubject);
+  document.getElementById('statsBar').textContent =
+    sub.name + ' — Year ' + currentYear + ' — ' + visible + (visible !== total ? '/' + total : '') + ' topics';
+}
+
+function render() {
+  const el = document.getElementById('content');
+  const topics = DATA[currentSubject]?.[currentYear] || [];
+  const sub = SUBJECTS.find(s => s.id === currentSubject);
+
+  if (topics.length === 0) {
+    el.innerHTML = '<div class="no-results">No topics available yet for this selection.</div>';
+    updateStats();
+    return;
+  }
+
+  el.innerHTML = topics.map((t, i) => `
+    <div class="topic-card" onclick="toggleTopic(this)">
+      <div class="topic-header">
+        <div class="topic-num" style="background:${sub.color}22;color:${sub.color}">${i + 1}</div>
+        <div class="topic-title">
+          <h3>${t.title}</h3>
+          <div class="summary">${t.summary}</div>
+          <div class="keywords">${t.keywords.map(k => '<span class="keyword">' + k + '</span>').join('')}</div>
+        </div>
+        <span class="expand-icon">&#9660;</span>
+      </div>
+      <div class="topic-details">${t.details}</div>
+    </div>
+  `).join('');
+
+  document.getElementById('searchInput').value = '';
+  updateStats();
+}
+
+function toggleTopic(card) {
+  card.classList.toggle('open');
+}
+
+init();
+</script>
+</body>
+</html>
