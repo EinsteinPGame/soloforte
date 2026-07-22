@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.1.0 — Mahito (A tier, Idle Transfiguration, Self-Embodiment domain)
+// BALL BATTLE ARENA v10.1.1 — Remove matchup buffs and win buffs (Kyle directive)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -3596,7 +3596,7 @@ function attackMahito(f,enemy,chaos){
 
   // Transfigure chance
   let actualChance=transfigureChance;
-  if(enemy.char.id==='yuji'||f._mahitoVsYuji)actualChance*=0.5;
+  if(enemy.char.id==='yuji')actualChance*=0.5;
   if(!enemy.mahitoTransfiguredBy&&Math.random()<actualChance){
     enemy.mahitoTransfiguredBy=f;
     enemy.mahitoShrinkTimer=120;
@@ -4737,13 +4737,7 @@ function relicHiguruma(f,enemy){
   // Roll outcome — 3 tiers
   const roll=Math.random();
   let outcome;
-  const vsGojo=f._higurumaVsGojo&&enemy&&enemy.char.id==='gojo';
-  // Gojo matchup: Infinity is judged harshly — Execution chance boosted
-  if(vsGojo){
-    if(roll<0.35){outcome='confiscate';}
-    else if(roll<0.65){outcome='disable';}
-    else{outcome='execute';}
-  } else if(roll<0.55){
+  if(roll<0.55){
     outcome='confiscate'; // highest chance: waste enemy special charge
   } else if(roll<0.88){
     outcome='disable'; // medium: enemy can't attack, only move
@@ -13794,8 +13788,8 @@ function startBattle(){
     t3.y=ARENA.y+ARENA.h*0.75;
     boss.radius=55; // Boss is bigger
     fighters=[t1,t2,t3,boss];
-    // Apply personalized win buffs for boss mode
-    fighters.forEach(f=>applyWinBuffToFighter(f));
+    // Apply personalized win buffs for boss mode (DISABLED — will re-enable for tournament mode)
+    // fighters.forEach(f=>applyWinBuffToFighter(f));
     addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' + '+CHARS[teamChar3].name+' vs '+CHARS[bossChar].name);
     // Boss intro voiceline
     showVoiceline(CHARS[bossChar].id,'intro',1);
@@ -13804,45 +13798,13 @@ function startBattle(){
     // Assign selected sponsors
     if(p1Sponsor>=0)fighters[0].selectedSponsor=CHARS[p1Sponsor].id;
     if(p2Sponsor>=0)fighters[1].selectedSponsor=CHARS[p2Sponsor].id;
-    // Apply personalized win buffs from previous rounds
-    fighters.forEach(f=>applyWinBuffToFighter(f));
-    // Special matchup interactions
-    const ids1v1=[fighters[0].char.id,fighters[1].char.id];
-    // Naoya vs Toji: Speed Duel — both get +15% speed, battle text announces it
-    if(ids1v1.includes('naoya')&&ids1v1.includes('toji')){
-      fighters.forEach(f=>{f.speed*=1.15;f.baseSpeed*=1.15;});
-      addLog('SPEED DUEL! Naoya vs Toji — both fighters are faster!');
-    }
-    // Gojo vs Higuruma: Infinity vs Verdict — Higuruma's confiscation has +20% chance to hit Execution
-    if(ids1v1.includes('gojo')&&ids1v1.includes('higuruma')){
-      const hig=fighters.find(f=>f.char.id==='higuruma');
-      if(hig)hig._higurumaVsGojo=true;
-      addLog('SPECIAL MATCHUP: Sorcerer vs Judge!');
-    }
-    // Choso vs Todo: Blood orbs persist at swap origin when Todo swaps near them
-    if(ids1v1.includes('choso')&&ids1v1.includes('todo')){
-      addLog('SPECIAL MATCHUP: Blood vs Boogie Woogie!');
-    }
-    // Megumi vs Toji: Father & Son — both get +10% attack
-    if(ids1v1.includes('megumi')&&ids1v1.includes('toji')){
-      fighters.forEach(f=>{f.atk=Math.round(f.atk*1.1);f.baseAtk=Math.round(f.baseAtk*1.1);});
-      addLog('SPECIAL MATCHUP: FATHER & SON — Megumi vs Toji!');
-    }
-    // Mahito vs Yuji: Soul Resonance — Yuji +15% ATK, Mahito transfigure halved
-    if(ids1v1.includes('mahito')&&ids1v1.includes('yuji')){
-      const yuji=fighters.find(f=>f.char.id==='yuji');
-      if(yuji){yuji.atk=Math.round(yuji.atk*1.15);yuji.baseAtk=Math.round(yuji.baseAtk*1.15);}
-      const mahito=fighters.find(f=>f.char.id==='mahito');
-      if(mahito)mahito._mahitoVsYuji=true;
-      addLog('SPECIAL MATCHUP: Soul Resonance! Yuji resists Transfiguration!');
-    }
+    // Apply personalized win buffs from previous rounds (DISABLED — will re-enable for tournament mode)
+    // fighters.forEach(f=>applyWinBuffToFighter(f));
     addLog('Round '+roundNumber+(p1RoundWins+p2RoundWins>0?' (P1:'+p1RoundWins+' P2:'+p2RoundWins+')':''));
     addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
     // Show intro voicelines
     showVoiceline(CHARS[p1Char].id,'intro',0);
-    // Log active win buffs
-    if(p1WinBuffs.length>0)addLog('P1 buff: '+p1WinBuffs[p1WinBuffs.length-1].name);
-    if(p2WinBuffs.length>0)addLog('P2 buff: '+p2WinBuffs[p2WinBuffs.length-1].name);
+    // Win buff logging removed (win buffs disabled for regular play)
   }
 }
 
@@ -15207,13 +15169,7 @@ function drawResult(){
   // Round score & win buff preview
   X.font='bold 12px Consolas,monospace';X.fillStyle='#7b68ee';X.textAlign='center';
   X.fillText('Round '+roundNumber+'  |  P1: '+p1RoundWins+'  P2: '+p2RoundWins,W/2,by+95);
-  const winBuff=PERSONALIZED_WIN_BUFFS[winner.char.id];
-  if(winBuff){
-    X.font='11px Consolas,monospace';X.fillStyle='#ffcc00';
-    X.fillText('Win Buff: '+winBuff.name,W/2,by+110);
-    X.font='10px Consolas,monospace';X.fillStyle='#aaa';
-    X.fillText(winBuff.desc+' (on rematch)',W/2,by+122);
-  }
+  // Win buff display removed (win buffs disabled for regular play)
 
   const statsY=by+140;
   X.font='bold 14px Consolas,monospace';X.fillStyle='#7b68ee';X.textAlign='center';X.fillText('BATTLE STATS',W/2,statsY);
@@ -15229,8 +15185,8 @@ function drawResult(){
     // Track round win and record personalized buff
     if(winner){
       const wSide=winner.side;
-      if(wSide===0){p1RoundWins++;const b=PERSONALIZED_WIN_BUFFS[winner.char.id];if(b)p1WinBuffs.push({name:b.name,desc:b.desc});}
-      else{p2RoundWins++;const b=PERSONALIZED_WIN_BUFFS[winner.char.id];if(b)p2WinBuffs.push({name:b.name,desc:b.desc});}
+      if(wSide===0){p1RoundWins++;}
+      else{p2RoundWins++;}
     }
     roundNumber++;
     startBattle();
