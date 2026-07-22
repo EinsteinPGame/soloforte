@@ -541,10 +541,10 @@ const TIER_MAP={
 const TIER_LETTER={11:'S+',10:'S',9:'S-',8:'A+',7:'A',6:'A-',5:'B+',4:'B',3:'B-',2:'C+',1:'C'};
 function getTierLetter(charId){return TIER_LETTER[TIER_MAP[charId]||1]||'C';}
 function getTierNum(charId){return TIER_MAP[charId]||1;}
-// Sponsor rules (Kyle sync #137):
-// C tier (1-2): can call sponsors from C-(1) to B-(3)
-// B tier (3-5): can call sponsors from B-(3) to A-(6)
-// A tier (6-8): can call sponsors from A-(6) to A+(8), ONLY when fighting S-rank (9+) enemies
+// Sponsor rules (Kyle sync #141 — updated 2026-07-22):
+// C tier (1-2): can call sponsors from all C (1-2) + B- (3)
+// B tier (3-5): can call sponsors from all B (3-5) + A- (6)
+// A tier (6-8): can call sponsors from all A (6-8) only
 // S tier (9+): NO sponsors at all
 // Sponsor cannot already be in the arena
 // Lore combos: specific canon pairs with cutscene attacks (follow same tier rules)
@@ -581,9 +581,9 @@ function getLoreSponsor(charId){
 // Sponsor tier range: returns {min,max} tier numbers the caller can sponsor from, or null if no sponsors
 function getSponsorRange(callerTier){
   if(callerTier>=9)return null; // S tier+ = no sponsors
-  if(callerTier>=6)return {min:6,max:8}; // A tier = A- to A+ range
-  if(callerTier>=3)return {min:3,max:6}; // B tier = B- to A- range
-  return {min:1,max:3}; // C tier = C to B- range
+  if(callerTier>=6)return {min:6,max:8}; // A tier = all A only
+  if(callerTier>=3)return {min:3,max:6}; // B tier = all B + A-
+  return {min:1,max:3}; // C tier = all C + B-
 }
 function getEligibleSponsors(callerCharId,excludeIds){
   // Returns array of CHARS indices eligible as sponsors for this char
@@ -606,11 +606,8 @@ function canCallSponsor(callerCharId,enemyCharId,sponsorCharId){
   // sponsorCharId = the selected sponsor's id (from fighter.selectedSponsor)
   if(!sponsorCharId)return false;
   const callerTier=getTierNum(callerCharId);
-  const enemyTier=getTierNum(enemyCharId);
   // S tier+ cannot call sponsors
   if(callerTier>=9)return false;
-  // A tier can ONLY call sponsors when fighting S-rank (9+) enemies
-  if(callerTier>=6&&enemyTier<9)return false;
   // Sponsor must be within allowed tier range
   const range=getSponsorRange(callerTier);
   if(!range)return false;
@@ -787,6 +784,172 @@ const PERSONALIZED_WIN_BUFFS={
   kashimo:{name:'Lightning Charge',desc:'Special charges 15% faster',apply(f){f._kashimoChargeMult=(f._kashimoChargeMult||1)*1.15;}},
   yuki:{name:'Gravitational Density',desc:'Mass meter max +15',apply(f){f.yukiMassMax=(f.yukiMassMax||100)+15;}},
 };
+
+// ============================================================
+// VOICELINES — intro, special, victory, defeat per character
+// ============================================================
+const VOICELINES={
+  // === Cyberpunk chars ===
+  mantis:{
+    intro:['Time to cut.','Blades ready.'],
+    special:['You can\'t dodge what you can\'t see!'],
+    victory:['Another one down.','Clean cuts only.'],
+    defeat:['Not... sharp enough...']
+  },
+  gorilla:{
+    intro:['These fists break everything.','Let\'s go. Bare knuckle.'],
+    special:['FEEL THE IMPACT!'],
+    victory:['That\'s raw power.','Nothing stands.'],
+    defeat:['Can\'t... keep swinging...']
+  },
+  monowire:{
+    intro:['One touch is all I need.','Connected.'],
+    special:['You\'re in my network now.'],
+    victory:['Captured and deleted.','System purged.'],
+    defeat:['Connection... severed...']
+  },
+  pls:{
+    intro:['Targets acquired.','Locked and loaded.'],
+    special:['Full payload deployed!'],
+    victory:['Area secured.','All targets eliminated.'],
+    defeat:['Systems... offline...']
+  },
+  sandy:{
+    intro:['Try to keep up.','Everything moves in slow motion.'],
+    special:['SANDEVISTAN — ENGAGED!'],
+    victory:['You never even saw me.','Too slow.'],
+    defeat:['Burned out... too fast...']
+  },
+  throw:{
+    intro:['Now you see me...','Three blades. Three kills.'],
+    special:['Vanishing act!'],
+    victory:['You never saw the last one.','Precision kills.'],
+    defeat:['Missed... my mark...']
+  },
+  katana:{
+    intro:['One strike. One cut.','Draw.'],
+    special:['JUDGEMENT CUT!'],
+    victory:['The blade speaks.','Clean.'],
+    defeat:['My blade... wasn\'t fast enough...']
+  },
+  berserk:{
+    intro:['COME ON!!','I don\'t stop.'],
+    special:['BERSERK MODE — NO LIMITS!'],
+    victory:['THAT\'S WHAT I THOUGHT!','Still standing.'],
+    defeat:['Rage... fading...']
+  },
+  smasher:{
+    intro:['You\'re nothing but meat.','Flatline.'],
+    special:['TOTAL ANNIHILATION!'],
+    victory:['Meat. All of you.','Pathetic organics.'],
+    defeat:['Impossible... I am... perfection...']
+  },
+  // === JJK chars ===
+  gojo:{
+    intro:['Throughout heaven and earth, I alone am the honoured one.','Don\'t worry. I\'m the strongest.'],
+    special:['DOMAIN EXPANSION — INFINITE VOID!'],
+    victory:['Nah, I\'d win.','Are you done already?'],
+    defeat:['This... is getting interesting...']
+  },
+  choso:{
+    intro:['You hurt my brothers. Unforgivable.','Blood doesn\'t lie.'],
+    special:['FLOWING RED SCALE — SUPERNOVA!'],
+    victory:['For my brothers.','Blood is thicker than cursed energy.'],
+    defeat:['Brothers... I\'m sorry...']
+  },
+  toji:{
+    intro:['I don\'t need cursed energy.','The strongest non-sorcerer.'],
+    special:['INVERTED SPEAR OF HEAVEN!'],
+    victory:['Cursed energy is a crutch.','That\'s heavenly restriction.'],
+    defeat:['So this... is my limit...']
+  },
+  mechamaru:{
+    intro:['17 years of cursed energy... all in this body.','Activating combat mode.'],
+    special:['MAXIMUM OUTPUT — ULTRA CANNON!'],
+    victory:['For Miwa. For everyone.','Mission complete.'],
+    defeat:['My body... can\'t take any more...']
+  },
+  kashimo:{
+    intro:['400 years I\'ve waited for this.','Show me you\'re worth it.'],
+    special:['MYTHICAL BEAST AMBER — ONE SHOT!'],
+    victory:['Not worthy of my time.','I wanted more from you.'],
+    defeat:['Finally... a worthy opponent...']
+  },
+  nanami:{
+    intro:['I\'m a working man. Let\'s make this quick.','Seven-three ratio.'],
+    special:['OVERTIME — NO HOLDING BACK!'],
+    victory:['Work is done. Time to clock out.','Ratio technique never fails.'],
+    defeat:['Hanamaki... the bread was good...']
+  },
+  ryu:{
+    intro:['Dessert will be served shortly.','The strongest output in history.'],
+    special:['GRANITE BLAST — FULL POWER!'],
+    victory:['Dessert is served.','That was the strongest punch in history.'],
+    defeat:['My output... wasn\'t enough...']
+  },
+  higuruma:{
+    intro:['The court is now in session.','Guilty until proven innocent.'],
+    special:['DOMAIN EXPANSION — DEADLY SENTENCING!'],
+    victory:['Verdict: Guilty.','Justice is served.'],
+    defeat:['The court... is adjourned...']
+  },
+  yuji:{
+    intro:['I\'m gonna kill you! Nah, just kidding.','I\'ll give you a proper death.'],
+    special:['BLACK FLASH — 120% POWER!'],
+    victory:['That\'s what training with Todo gets you!','I won\'t lose anyone else.'],
+    defeat:['I still... have people to save...']
+  },
+  naoya:{
+    intro:['You\'re beneath me.','24 frames per second. That\'s all I need.'],
+    special:['PROJECTION SORCERY — MAXIMUM FRAMES!'],
+    victory:['Know your place.','Speed is everything.'],
+    defeat:['This form... wasn\'t enough...']
+  },
+  yuta:{
+    intro:['Rika... let\'s go.','I\'ll show you the power of love.'],
+    special:['DOMAIN EXPANSION — AUTHENTIC MUTUAL LOVE!'],
+    victory:['Rika and I are unstoppable.','Don\'t mess with the ones I love.'],
+    defeat:['Rika... protect them...']
+  },
+  todo:{
+    intro:['WHAT KIND OF WOMAN IS YOUR TYPE?!','My best friend!'],
+    special:['BOOGIE WOOGIE — FINAL CLAP!'],
+    victory:['THAT\'S MY BEST FRIEND!','My soul burned bright!'],
+    defeat:['My soul... is still burning...']
+  },
+  yuki:{
+    intro:['Star Rage — let\'s make this heavy.','Mass equals power.'],
+    special:['STAR RAGE — VIRTUAL MASS BLACK HOLE!'],
+    victory:['That\'s the weight of a star.','Garuda delivered.'],
+    defeat:['My mass... wasn\'t enough...']
+  },
+  mahoraga:{
+    intro:['...','ADAPTATION BEGINS.'],
+    special:['SWORD OF EXTERMINATION!'],
+    victory:['ADAPTED. OVERCOME. EXTERMINATED.','ALL PHENOMENA... NEGATED.'],
+    defeat:['CANNOT... ADAPT... FURTHER...']
+  },
+  dabura:{
+    intro:['Light and shadow dance at my command.','Karaba... the sun rises.'],
+    special:['RADIANT DOMAIN — MODULO!'],
+    victory:['The light has judged you.','Darkness falls on the unworthy.'],
+    defeat:['The light... dims...']
+  },
+};
+
+// Voiceline display state
+let voicelineText='';let voicelineTimer=0;let voicelineColor='#fff';let voicelineSide=-1;
+function showVoiceline(charId,type,side){
+  const lines=VOICELINES[charId];
+  if(!lines||!lines[type]||lines[type].length===0)return;
+  const arr=lines[type];
+  voicelineText=arr[Math.floor(Math.random()*arr.length)];
+  voicelineTimer=180; // 3 seconds
+  const ch=CHARS.find(c=>c.id===charId);
+  voicelineColor=ch?ch.color:'#fff';
+  voicelineSide=side;
+}
+
 function applyWinBuffToFighter(f){
   const buff=PERSONALIZED_WIN_BUFFS[f.char.id];
   if(!buff)return;
@@ -1445,6 +1608,16 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     &&defender.captureTimer<=0&&defender.stunTimer<=0&&defender.freezeTimer<=0
     &&!(attacker.specialActive)&&!(attacker.higurumaSwordActive)
     &&!defender.tojiEnemyDebuff){
+    // Dabura vs Gojo: light attacks partially penetrate Infinity (30% damage bleeds through)
+    if(attacker.char.id==='dabura'&&attacker.dabLightMode){
+      defender.gojoInfinityCharges--;
+      const bleedDmg=Math.round(baseDmg*0.3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'LIGHT PIERCE','#ffcc44',true);
+      spawnBurst(defender.x,defender.y,'#ffcc44',8,4);
+      spawnBurst(defender.x,defender.y,'#8888ff',5,2);
+      defender.specialBar=Math.min(defender.specialMax,defender.specialBar+2*(defender.char.relicChargeRate||1));
+      return bleedDmg;
+    }
     defender.gojoInfinityCharges--;
     spawnDmgNum(defender.x,defender.y-defender.radius-15,'INFINITY','#8888ff',true);
     spawnBurst(defender.x,defender.y,'#8888ff',10,4);
@@ -1694,12 +1867,16 @@ function checkVictory(lastAttacker){
     const winLabel=gameMode==='boss'?(winner.char.isBoss?'BOSS':'TEAM'):(winner.side===0?'P1':'P2');
     addLog(winLabel+' '+winner.char.name+' WINS!');
     wasDefeat=gameMode==='boss'&&winner.char.isBoss;
+    showVoiceline(winner.char.id,'victory',winner.side);
+    // Show defeat line for losers in boss mode
+    if(wasDefeat&&side0Alive.length===0){const loser=fighters.find(f=>f.side===0);if(loser)setTimeout(()=>showVoiceline(loser.char.id,'defeat',0),1500);}
     SFX.ko();setTimeout(()=>wasDefeat?SFX.defeat():SFX.victory(),500);
   } else if(side1Alive.length===0){
     battleOver=true;winner=lastAttacker||side0Alive[0];
     const winLabel=gameMode==='boss'?(winner.char.isBoss?'BOSS':'TEAM'):(winner.side===0?'P1':'P2');
     addLog(winLabel+' '+winner.char.name+' WINS!');
     wasDefeat=false;
+    showVoiceline(winner.char.id,'victory',winner.side);
     SFX.ko();setTimeout(()=>SFX.victory(),500);
   }
 }
@@ -3397,6 +3574,23 @@ function todoPerformSwap(f,targetX,targetY,swapTarget){
     f.todoPapers.push({x:oldX,y:oldY,life:180});
   }
 
+  // Choso vs Todo: swap near blood orbs scatters them away (repositions orbs)
+  fighters.forEach(cf=>{
+    if(!cf||!cf.alive||cf.char.id!=='choso'||!cf.chosoOrbs||cf.side===f.side)return;
+    cf.chosoOrbs.forEach(orb=>{
+      if(!orb.alive)return;
+      const orbDist=Math.hypot(orb.x-f.x,orb.y-f.y);
+      if(orbDist<80){
+        // Scatter orb away from swap point
+        const scatterAngle=Math.atan2(orb.y-f.y,orb.x-f.x);
+        orb.x=Math.max(ARENA.x+10,Math.min(ARENA.x+ARENA.w-10,orb.x+Math.cos(scatterAngle)*60));
+        orb.y=Math.max(ARENA.y+10,Math.min(ARENA.y+ARENA.h-10,orb.y+Math.sin(scatterAngle)*60));
+        spawnBurst(orb.x,orb.y,'#8b0000',6,3);
+        spawnDmgNum(orb.x,orb.y-15,'SCATTERED','#dd7733',false);
+      }
+    });
+  });
+
   if(f.todoSpecialActive)f.todoBuffStacks++;
 }
 
@@ -3829,6 +4023,7 @@ function useSpecial(f,enemy){
   f.specialBar=0;f.specialActive=true;
   const spName=f.char.specialName;
   showRelicText(spName,f.char.color);
+  showVoiceline(f.char.id,'special',f.side);
   addLog((f.side===0?'P1':'P2')+' '+spName+'!');
   shakeTimer=15;shakeAmt=8;
 
@@ -4292,7 +4487,13 @@ function relicHiguruma(f,enemy){
   // Roll outcome — 3 tiers
   const roll=Math.random();
   let outcome;
-  if(roll<0.55){
+  const vsGojo=f._higurumaVsGojo&&enemy&&enemy.char.id==='gojo';
+  // Gojo matchup: Infinity is judged harshly — Execution chance boosted
+  if(vsGojo){
+    if(roll<0.35){outcome='confiscate';}
+    else if(roll<0.65){outcome='disable';}
+    else{outcome='execute';}
+  } else if(roll<0.55){
     outcome='confiscate'; // highest chance: waste enemy special charge
   } else if(roll<0.88){
     outcome='disable'; // medium: enemy can't attack, only move
@@ -12683,6 +12884,8 @@ function startBattle(){
     // Apply personalized win buffs for boss mode
     fighters.forEach(f=>applyWinBuffToFighter(f));
     addLog('BOSS FIGHT!');addLog(CHARS[teamChar1].name+' + '+CHARS[teamChar2].name+' + '+CHARS[teamChar3].name+' vs '+CHARS[bossChar].name);
+    // Boss intro voiceline
+    showVoiceline(CHARS[bossChar].id,'intro',1);
   } else {
     fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
     // Assign selected sponsors
@@ -12690,8 +12893,27 @@ function startBattle(){
     if(p2Sponsor>=0)fighters[1].selectedSponsor=CHARS[p2Sponsor].id;
     // Apply personalized win buffs from previous rounds
     fighters.forEach(f=>applyWinBuffToFighter(f));
+    // Special matchup interactions
+    const ids1v1=[fighters[0].char.id,fighters[1].char.id];
+    // Naoya vs Toji: Speed Duel — both get +15% speed, battle text announces it
+    if(ids1v1.includes('naoya')&&ids1v1.includes('toji')){
+      fighters.forEach(f=>{f.speed*=1.15;f.baseSpeed*=1.15;});
+      addLog('SPEED DUEL! Naoya vs Toji — both fighters are faster!');
+    }
+    // Gojo vs Higuruma: Infinity vs Verdict — Higuruma's confiscation has +20% chance to hit Execution
+    if(ids1v1.includes('gojo')&&ids1v1.includes('higuruma')){
+      const hig=fighters.find(f=>f.char.id==='higuruma');
+      if(hig)hig._higurumaVsGojo=true;
+      addLog('SPECIAL MATCHUP: Sorcerer vs Judge!');
+    }
+    // Choso vs Todo: Blood orbs persist at swap origin when Todo swaps near them
+    if(ids1v1.includes('choso')&&ids1v1.includes('todo')){
+      addLog('SPECIAL MATCHUP: Blood vs Boogie Woogie!');
+    }
     addLog('Round '+roundNumber+(p1RoundWins+p2RoundWins>0?' (P1:'+p1RoundWins+' P2:'+p2RoundWins+')':''));
     addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
+    // Show intro voicelines
+    showVoiceline(CHARS[p1Char].id,'intro',0);
     // Log active win buffs
     if(p1WinBuffs.length>0)addLog('P1 buff: '+p1WinBuffs[p1WinBuffs.length-1].name);
     if(p2WinBuffs.length>0)addLog('P2 buff: '+p2WinBuffs[p2WinBuffs.length-1].name);
@@ -13426,6 +13648,30 @@ function drawBattle(){
     X.globalAlpha=1;
   }
 
+  // Voiceline subtitle display
+  if(voicelineTimer>0){
+    voicelineTimer--;
+    const va=Math.min(1,voicelineTimer/30);
+    X.globalAlpha=va;
+    X.font='italic '+(isMobile?'11':'15')+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.textBaseline='middle';
+    const vx=W/2;
+    const vy=ARENA.y+ARENA.h-20;
+    // Dark pill background
+    const tw=X.measureText('"'+voicelineText+'"').width+20;
+    X.fillStyle='rgba(0,0,0,0.7)';
+    X.beginPath();
+    const pillH=22,pillR=11;
+    X.moveTo(vx-tw/2+pillR,vy-pillH/2);X.arcTo(vx+tw/2,vy-pillH/2,vx+tw/2,vy+pillH/2,pillR);X.arcTo(vx+tw/2,vy+pillH/2,vx-tw/2,vy+pillH/2,pillR);X.arcTo(vx-tw/2,vy+pillH/2,vx-tw/2,vy-pillH/2,pillR);X.arcTo(vx-tw/2,vy-pillH/2,vx+tw/2,vy-pillH/2,pillR);
+    X.fill();
+    // Quote text
+    X.fillStyle=voicelineColor;
+    X.shadowColor=voicelineColor;X.shadowBlur=8;
+    X.fillText('"'+voicelineText+'"',vx,vy);
+    X.shadowBlur=0;
+    X.globalAlpha=1;
+  }
+
   // Sponsor lore combo cutscene overlay
   drawSponsorCutscene();
 
@@ -13985,6 +14231,13 @@ function drawResult(){
 
   X.font='bold '+(isMobile?'16':'20')+'px Consolas,monospace';X.fillStyle='#fff';X.textAlign='center';X.fillText(winner.char.name,W/2,by+60);
   if(winner.elem.id!=='none'){X.font='13px Consolas,monospace';X.fillStyle=winner.elem.color;X.fillText(winner.elem.name+' Element',W/2,by+80);}
+  // Winner voiceline quote
+  const vl=VOICELINES[winner.char.id];
+  if(vl){const vtype=isDefeat?'defeat':'victory';const varr=vl[vtype];if(varr&&varr.length>0){
+    if(!winner._resultVoiceline)winner._resultVoiceline=varr[Math.floor(Math.random()*varr.length)];
+    X.font='italic '+(isMobile?'9':'12')+'px Consolas,monospace';X.fillStyle=winner.char.color;X.globalAlpha=0.8;
+    X.fillText('"'+winner._resultVoiceline+'"',W/2,by+(winner.elem.id!=='none'?90:82));X.globalAlpha=1;
+  }}
   // Round score & win buff preview
   X.font='bold 12px Consolas,monospace';X.fillStyle='#7b68ee';X.textAlign='center';
   X.fillText('Round '+roundNumber+'  |  P1: '+p1RoundWins+'  P2: '+p2RoundWins,W/2,by+95);
