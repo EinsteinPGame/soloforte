@@ -102,6 +102,7 @@ function sfxHit(){playSound(300,0.1,'sawtooth',0.12)}
 function sfxKill(){playSound(600,0.15,'triangle',0.15);setTimeout(()=>playSound(900,0.1,'triangle',0.1),80)}
 function sfxMelee(){playSound(400,0.12,'sawtooth',0.15)}
 function sfxSlowmo(){playSound(100,0.3,'sine',0.08)}
+function sfxMachineGun(){playSound(150,0.06,'sawtooth',0.12);playSound(90,0.08,'square',0.06)}
 function sfxBoss(){playSound(80,0.5,'sawtooth',0.12)}
 function sfxLevelComplete(){playSound(523,0.15,'triangle',0.12);setTimeout(()=>playSound(659,0.15,'triangle',0.12),150);setTimeout(()=>playSound(784,0.3,'triangle',0.12),300)}
 
@@ -156,9 +157,10 @@ const MOVE_SPEED=0.035;
 const TILE=1; // world units per tile
 
 const WEAPONS=[
-  {name:'PISTOL',damage:25,fireRate:0.3,color:'#ff0',spread:0.02,pierce:false,sfx:sfxShoot},
-  {name:'SMG',damage:12,fireRate:0.08,color:'#0f0',spread:0.06,pierce:false,sfx:sfxSMG},
-  {name:'SNIPER',damage:80,fireRate:0.8,color:'#f0f',spread:0,pierce:true,sfx:sfxSniper}
+  {name:'PISTOL',damage:25,fireRate:0.3,color:'#ff0',spread:0.02,pierce:false,sfx:sfxShoot,projectile:false},
+  {name:'SMG',damage:12,fireRate:0.08,color:'#0f0',spread:0.06,pierce:false,sfx:sfxSMG,projectile:false},
+  {name:'SNIPER',damage:80,fireRate:0.8,color:'#f0f',spread:0,pierce:true,sfx:sfxSniper,projectile:false},
+  {name:'MACHINE GUN',damage:18,fireRate:0.12,color:'#f80',spread:0.04,pierce:false,sfx:sfxMachineGun,projectile:true,bulletSpeed:0.18,bulletR:0.1,bulletLife:2}
 ];
 
 // Maps - 20x15 tile grids (same as before)
@@ -395,14 +397,15 @@ if(isMobile){
 
 function switchWeapon(){
   if(gameState!=='game')return;
-  let next=(currentWeapon+1)%3;
-  while(!isWeaponUnlocked(next)&&next!==currentWeapon)next=(next+1)%3;
+  let next=(currentWeapon+1)%WEAPONS.length;
+  while(!isWeaponUnlocked(next)&&next!==currentWeapon)next=(next+1)%WEAPONS.length;
   currentWeapon=next;
 }
 function isWeaponUnlocked(idx){
   if(idx===0)return true;
   if(idx===1)return save.level>=3;
   if(idx===2)return save.level>=6;
+  if(idx===3)return save.level>=9;
   return false;
 }
 function triggerMelee(){
@@ -544,7 +547,7 @@ function update(dt){
   // Muzzle flash
   if(player.muzzleFlash>0)player.muzzleFlash-=realDt*8;
 
-  // Shooting - hitscan
+  // Shooting
   if(player.fireCooldown>0)player.fireCooldown-=realDt;
   if(mouseDown&&player.fireCooldown<=0&&!meleeActive&&(pointerLocked||gameMode==='classic')){
     const wp=WEAPONS[currentWeapon];
@@ -554,9 +557,26 @@ function update(dt){
     shotsFired++;
     wp.sfx();
     player.muzzleFlash=1;
-    shakeMag=Math.max(shakeMag,currentWeapon===2?4:2);
+    shakeMag=Math.max(shakeMag,currentWeapon===2?4:currentWeapon===3?3:2);
 
-    // Raycast for hit detection
+    if(wp.projectile){
+      // Machine gun: visible projectile bullets with tracer trails
+      const bvx=Math.cos(shootAngle)*wp.bulletSpeed;
+      const bvy=Math.sin(shootAngle)*wp.bulletSpeed;
+      bullets.push({
+        x:player.x+Math.cos(shootAngle)*0.3,
+        y:player.y+Math.sin(shootAngle)*0.3,
+        vx:bvx,vy:bvy,
+        damage:wp.damage,color:wp.color,
+        enemy:false,r:wp.bulletR,life:wp.bulletLife,
+        pierce:wp.pierce,
+        tracer:true,trail:[]
+      });
+      // Shell casing particle
+      const casingAngle=player.angle+(Math.random()>0.5?1:-1)*Math.PI/2;
+      addParticles(player.x,player.y,1,'#cc8800',0.02);
+    }else{
+    // Hitscan weapons (pistol, SMG, sniper)
     const dx=Math.cos(shootAngle),dy=Math.sin(shootAngle);
     let rx=player.x,ry=player.y;
     let hit=false;
@@ -590,6 +610,7 @@ function update(dt){
         }
       }
       if(hit)break;
+    }
     }
   }
 
@@ -646,11 +667,14 @@ function update(dt){
   if(boss){bossActive=true;bossHP=boss.hp;bossMaxHP=boss.maxHp;}
   else bossActive=false;
 
-  // Update bullets (enemy projectiles)
+  // Update bullets (enemy + player projectiles)
   for(let i=bullets.length-1;i>=0;i--){
     const b=bullets[i];
-    const spd=b.enemy?ts:1;
+    const spd=b.enemy?ts:(b.tracer?1:1);
     b.x+=b.vx*spd;b.y+=b.vy*spd;
+    // Tracer trail — store positions for slow-mo rendering
+    if(b.tracer&&b.trail){b.trail.push({x:b.x,y:b.y,t:8});if(b.trail.length>12)b.trail.shift();}
+    if(b.trail){for(const t of b.trail)t.t-=realDt*3;}
     b.life-=gdt;
     if(isWall(b.x,b.y)){addParticles(b.x,b.y,3,b.color,0.03);bullets.splice(i,1);continue;}
     if(b.enemy){
@@ -888,8 +912,27 @@ function renderClassic(){
 
   // Draw bullets
   for(const b of bullets){
+    // Tracer trail in slow-mo — glowing line behind projectile
+    if(b.tracer&&b.trail&&b.trail.length>1&&timeScale<0.5){
+      for(let ti=1;ti<b.trail.length;ti++){
+        const t0=b.trail[ti-1],t1=b.trail[ti];
+        const alpha=Math.max(0,Math.min(1,ti/b.trail.length*0.6));
+        X.strokeStyle=b.color;X.globalAlpha=alpha;X.lineWidth=Math.max(1,(b.r||0.08)*viewScale*(ti/b.trail.length));
+        X.shadowColor=b.color;X.shadowBlur=timeScale<0.15?12:6;
+        X.beginPath();X.moveTo(t0.x*viewScale,t0.y*viewScale);X.lineTo(t1.x*viewScale,t1.y*viewScale);X.stroke();
+        X.shadowBlur=0;
+      }
+      X.globalAlpha=1;
+    }
     X.fillStyle=b.color;X.shadowColor=b.color;X.shadowBlur=timeScale<0.3?8:3;
-    X.beginPath();X.arc(b.x*viewScale,b.y*viewScale,(b.r||0.08)*viewScale*1.5,0,Math.PI*2);X.fill();
+    const bSize=b.tracer?(b.r||0.08)*viewScale*2:(b.r||0.08)*viewScale*1.5;
+    X.beginPath();X.arc(b.x*viewScale,b.y*viewScale,bSize,0,Math.PI*2);X.fill();
+    // Extra glow ring for tracer bullets in bullet time
+    if(b.tracer&&timeScale<0.3){
+      X.strokeStyle=b.color;X.globalAlpha=0.4;X.lineWidth=1.5;
+      X.beginPath();X.arc(b.x*viewScale,b.y*viewScale,bSize*1.8,0,Math.PI*2);X.stroke();
+      X.globalAlpha=1;
+    }
     X.shadowBlur=0;
   }
 
@@ -1080,9 +1123,15 @@ function render(){
       }
     }else if(s.type==='bullet'){
       const b=s.obj;
-      const h=Math.max(4,20/Math.max(dist,0.3));
+      const h=Math.max(4,(b.tracer?28:20)/Math.max(dist,0.3));
       X.save();X.fillStyle=b.color;X.shadowColor=b.color;X.shadowBlur=timeScale<0.5?12:6;
       X.beginPath();X.arc(screenX,horizon,h/2,0,Math.PI*2);X.fill();
+      // Tracer glow ring in bullet time
+      if(b.tracer&&timeScale<0.3){
+        X.strokeStyle=b.color;X.globalAlpha=0.5;X.lineWidth=2;
+        X.beginPath();X.arc(screenX,horizon,h,0,Math.PI*2);X.stroke();
+        X.globalAlpha=1;
+      }
       X.shadowBlur=0;X.restore();
     }else if(s.type==='particle'){
       const p=s.obj;
@@ -1162,7 +1211,7 @@ function drawWeaponView(){
     X.fillStyle='#555';X.fillRect(wx-14,wy+10,28,22);
     X.fillStyle='#2a2a2a';X.fillRect(wx-5,wy-65,10,15);
     X.fillStyle='#333';X.fillRect(wx+10,wy-20,15,8);
-  }else{
+  }else if(currentWeapon===2){
     // Sniper
     X.fillStyle='#2a2a4a';X.fillRect(wx-6,wy-70,12,80);
     X.fillStyle='#3a3a5a';X.fillRect(wx-3,wy-80,6,15);
@@ -1170,12 +1219,29 @@ function drawWeaponView(){
     // Scope
     X.strokeStyle='#88f';X.lineWidth=2;
     X.beginPath();X.arc(wx,wy-55,8,0,Math.PI*2);X.stroke();
+  }else if(currentWeapon===3){
+    // Machine Gun — chunky, heavy, intimidating
+    X.fillStyle='#3a2a1a';X.fillRect(wx-14,wy-60,28,75); // body
+    X.fillStyle='#4a3a2a';X.fillRect(wx-18,wy+15,36,18); // stock
+    X.fillStyle='#2a1a0a';X.fillRect(wx-6,wy-75,12,20); // barrel
+    X.fillStyle='#1a0a00';X.fillRect(wx-4,wy-85,8,15); // barrel tip
+    // Barrel heat glow
+    const heat=Math.max(0,1-player.fireCooldown/0.12);
+    if(heat>0.3){X.fillStyle=`rgba(255,${Math.floor(120-heat*80)},0,${heat*0.4})`;X.fillRect(wx-5,wy-85,10,15);}
+    // Ammo belt detail
+    X.fillStyle='#886600';
+    for(let ab=0;ab<4;ab++){X.fillRect(wx+14,wy-40+ab*12,8,5);}
+    // Grip
+    X.fillStyle='#333';X.fillRect(wx-8,wy+5,16,12);
   }
   // Muzzle flash
   if(flash>0.3){
-    X.fillStyle=`rgba(255,200,50,${flash})`;
-    X.shadowColor='#ff0';X.shadowBlur=30;
-    X.beginPath();X.arc(wx,wy-50-(currentWeapon===2?25:0),12*flash,0,Math.PI*2);X.fill();
+    const flashColor=currentWeapon===3?`rgba(255,140,30,${flash})`:`rgba(255,200,50,${flash})`;
+    const flashGlow=currentWeapon===3?'#f80':'#ff0';
+    X.fillStyle=flashColor;
+    X.shadowColor=flashGlow;X.shadowBlur=currentWeapon===3?40:30;
+    const barrelY=currentWeapon===3?35:currentWeapon===2?25:0;
+    X.beginPath();X.arc(wx,wy-50-barrelY,(currentWeapon===3?16:12)*flash,0,Math.PI*2);X.fill();
     X.shadowBlur=0;
   }
   X.restore();
