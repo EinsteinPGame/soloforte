@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.10.0 — 2v2 Team Battle mode (Team 1 vs Team 2, 4 players)
+// BALL BATTLE ARENA v10.10.0 — 2v2 Team Battle + Battle Royale modes
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -1038,6 +1038,10 @@ let teamElem1=0,teamElem2=0,teamElem3=0,bossElem=0; // elements
 let t1Char1=0,t1Char2=1,t2Char1=2,t2Char2=3; // Team 1 & Team 2 characters
 let t1Elem1=0,t1Elem2=0,t2Elem1=0,t2Elem2=0; // Team 1 & Team 2 elements
 let _2v2SelPage=1,_2v2SelSlot=1; // select screen page & active slot
+// Battle Royale state
+let brChars=[0,1,2,3]; // 4 FFA fighters
+let brElems=[0,0,0,0]; // their elements
+let _brSelPage=1,_brSelSlot=0; // select page & active slot
 let teamSponsor1=-1,teamSponsor2=-1,teamSponsor3=-1; // team sponsors for boss mode
 let selectPage=0; // pagination for character select (0-indexed)
 let selectTab=0; // 0=Fighters, 1=Bosses
@@ -1996,6 +2000,17 @@ function applyDotDamage(target,dmg,source){
 
 let wasDefeat=false; // boss won in boss mode
 function checkVictory(lastAttacker){
+  if(gameMode==='br'){
+    // Battle Royale: last one standing wins
+    const alive=fighters.filter(f=>f.alive);
+    if(alive.length<=1){
+      battleOver=true;winner=alive[0]||lastAttacker;
+      if(winner){addLog(winner.char.name+' WINS THE ROYALE!');showVoiceline(winner.char.id,'victory',winner.side);}
+      wasDefeat=false;
+      SFX.ko();setTimeout(()=>SFX.victory(),500);
+    }
+    return;
+  }
   const side0Alive=fighters.filter(f=>f.side===0&&f.alive);
   const side1Alive=fighters.filter(f=>f.side===1&&f.alive);
   if(side0Alive.length===0){
@@ -7015,7 +7030,7 @@ function updateBattle(dt){
   fighters.forEach((f,i)=>{
     // In boss mode, find the best enemy (closest alive)
     let enemy;
-    if(gameMode==='boss'||gameMode==='2v2'){
+    if(gameMode==='boss'||gameMode==='2v2'||gameMode==='br'){
       const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
       enemy=enemies.length>0?enemies.reduce((a,b)=>dist(f,a)<dist(f,b)?a:b):null;
       if(!enemy)return;
@@ -14748,7 +14763,8 @@ function drawTitle(){
   const btnW=200,btnH=50;
   addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;selectTierPage=0;});
   addBtn('2v2',W/2-btnW/2,titleY+280,btnW,btnH,'2v2 BATTLE','#33cc66',()=>{gameMode='2v2';screen='teamSelect';t1Char1=0;t1Char2=1;t2Char1=2;t2Char2=3;t1Elem1=0;t1Elem2=0;t2Elem1=0;t2Elem2=0;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_2v2SelPage=1;_2v2SelSlot=1;});
-  addBtn('boss',W/2-btnW/2,titleY+340,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
+  addBtn('br',W/2-btnW/2,titleY+340,btnW,btnH,'BATTLE ROYALE','#ff8800',()=>{gameMode='br';screen='brSelect';brChars=[0,1,2,3];brElems=[0,0,0,0];_brSelPage=1;_brSelSlot=0;});
+  addBtn('boss',W/2-btnW/2,titleY+400,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('BBA v10.10.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
@@ -15437,6 +15453,10 @@ function startIntroCutscene(){
     ic.p1Char=CHARS[t1Char1];ic.p2Char=CHARS[t2Char1];
     ic.p1Elem=t1Elem1>=0?ELEMENTS[t1Elem1]:null;
     ic.p2Elem=t2Elem1>=0?ELEMENTS[t2Elem1]:null;
+  } else if(gameMode==='br'){
+    ic.p1Char=CHARS[brChars[0]];ic.p2Char=CHARS[brChars[1]];
+    ic.p1Elem=brElems[0]>=0?ELEMENTS[brElems[0]]:null;
+    ic.p2Elem=brElems[1]>=0?ELEMENTS[brElems[1]]:null;
   } else {
     ic.p1Char=CHARS[p1Char];ic.p2Char=CHARS[p2Char];
     ic.p1Elem=p1Elem>=0?ELEMENTS[p1Elem]:null;
@@ -16439,7 +16459,6 @@ function startBattle(){
     const a2=createFighter(t1Char2,t1Elem2,0);
     const b1=createFighter(t2Char1,t2Elem1,1);
     const b2=createFighter(t2Char2,t2Elem2,1);
-    // Position: Team 1 left side, Team 2 right side
     a1.x=ARENA.x+ARENA.w*0.2;a1.y=ARENA.y+ARENA.h*0.35;
     a2.x=ARENA.x+ARENA.w*0.2;a2.y=ARENA.y+ARENA.h*0.65;
     b1.x=ARENA.x+ARENA.w*0.8;b1.y=ARENA.y+ARENA.h*0.35;
@@ -16447,6 +16466,21 @@ function startBattle(){
     fighters=[a1,a2,b1,b2];
     addLog('2v2 TEAM BATTLE!');addLog('Team 1: '+CHARS[t1Char1].name+' + '+CHARS[t1Char2].name);addLog('Team 2: '+CHARS[t2Char1].name+' + '+CHARS[t2Char2].name);
     showVoiceline(CHARS[t1Char1].id,'intro',0);
+  } else if(gameMode==='br'){
+    // Battle Royale: each fighter on own side (FFA)
+    const positions=[
+      {x:ARENA.x+ARENA.w*0.25,y:ARENA.y+ARENA.h*0.25},
+      {x:ARENA.x+ARENA.w*0.75,y:ARENA.y+ARENA.h*0.25},
+      {x:ARENA.x+ARENA.w*0.25,y:ARENA.y+ARENA.h*0.75},
+      {x:ARENA.x+ARENA.w*0.75,y:ARENA.y+ARENA.h*0.75},
+    ];
+    fighters=brChars.map((charIdx,i)=>{
+      const f=createFighter(charIdx,brElems[i],i); // each on unique side
+      f.x=positions[i].x;f.y=positions[i].y;
+      return f;
+    });
+    addLog('BATTLE ROYALE!');addLog(brChars.map(c=>CHARS[c].name).join(' vs '));
+    showVoiceline(CHARS[brChars[0]].id,'intro',0);
   } else {
     fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
     // Assign selected sponsors
@@ -17267,7 +17301,9 @@ function drawBattle(){
     // Fighter names + tiers below
     if(fighters.length>=2){
       X.font='bold '+(isMobile?11:14)+'px Consolas,monospace';X.textAlign='center';
-      if(gameMode==='2v2'){
+      if(gameMode==='br'){
+        X.fillStyle='#ff8800';X.fillText(fighters.map(f=>f.char.name).join(' vs '),W/2,H/2+50);
+      } else if(gameMode==='2v2'){
         const tm1=fighters.filter(f=>f.side===0),tm2=fighters.filter(f=>f.side===1);
         X.fillStyle='#33cc66';X.fillText(tm1.map(f=>f.char.name).join(' + '),W*0.25,H/2+50);
         X.fillStyle='#ff6644';X.fillText(tm2.map(f=>f.char.name).join(' + '),W*0.75,H/2+50);
@@ -17315,7 +17351,34 @@ function drawBattle(){
 
   // === HUD ===
   const barH=16,barY=15;
-  if(gameMode==='2v2'){
+  if(gameMode==='br'){
+    // Battle Royale HUD: all fighter bars in a row
+    const brCount=fighters.length;
+    const brGap=isMobile?4:8;
+    const brBarW=Math.floor((W-(isMobile?20:80)-(brCount-1)*brGap)/brCount);
+    const brStartX=isMobile?10:40;
+    fighters.forEach((f,fi)=>{
+      const bx=brStartX+fi*(brBarW+brGap);
+      // Name
+      X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.textAlign='left';X.fillStyle=f.char.color;
+      X.fillText(f.char.name.length>(isMobile?7:12)?f.char.name.slice(0,isMobile?7:12):f.char.name,bx,barY-2);
+      if(f.elem.id!=='none'){X.font='bold '+(isMobile?'6':'8')+'px Consolas,monospace';X.textAlign='right';X.fillStyle=f.elementActive?f.elem.color:f.elem.color+'bb';X.fillText(f.elem.name,bx+brBarW,barY-2);X.textAlign='left';}
+      // HP bar
+      drawHPBar(bx,barY,brBarW,barH-2,f,false);
+      X.font='bold '+(isMobile?'7':'9')+'px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
+      X.fillText(Math.ceil(f.hp)+'/'+f.maxHp,bx+2,barY+10);
+      if(!f.alive){X.globalAlpha=0.5;X.fillStyle='#ff0000';X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillText('KO',bx+brBarW-14,barY+10);X.globalAlpha=1;}
+      // Special bar
+      const spBy=barY+barH;
+      X.fillStyle='#111';X.fillRect(bx,spBy,brBarW,5);
+      const sp=f.specialBar/f.specialMax;X.fillStyle=sp>=1?'#ffcc00':'#7b68ee';X.fillRect(bx,spBy,brBarW*sp,5);
+      X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(bx,spBy,brBarW,5);
+    });
+    // Alive count
+    const aliveCount=fighters.filter(f=>f.alive).length;
+    X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8800';
+    X.fillText(aliveCount+'/'+brCount+' ALIVE',W/2,barY+barH+16);
+  } else if(gameMode==='2v2'){
     // 2v2 HUD: Team 1 bars left, Team 2 bars right
     const team1=fighters.filter(f=>f.side===0);
     const team2=fighters.filter(f=>f.side===1);
@@ -17473,7 +17536,7 @@ function drawBattle(){
   }
 
   // Speed controls
-  const spdCtrlY=gameMode==='boss'?barY+66:gameMode==='2v2'?barY+60:barY+barH+16;
+  const spdCtrlY=gameMode==='boss'?barY+66:gameMode==='2v2'?barY+60:gameMode==='br'?barY+barH+22:barY+barH+16;
   const sbX=W/2-60;
   [{l:'1x',s:1},{l:'2x',s:2},{l:'3x',s:3}].forEach((sb,i)=>{
     addBtn('spd'+i,sbX+i*42,spdCtrlY,38,18,sb.l,battleSpeed===sb.s?'#ffcc00':'#555',()=>{battleSpeed=sb.s;});
@@ -17482,7 +17545,7 @@ function drawBattle(){
   // Info panel below arena
   const infoY=ARENA.y+ARENA.h+6,infoH=70;
   drawRoundRect(ARENA.x,infoY,ARENA.w,infoH,6);X.fillStyle='#0a0a20';X.fill();X.strokeStyle='#1a1a4a';X.lineWidth=1;X.stroke();
-  if(gameMode==='boss'||gameMode==='2v2'){
+  if(gameMode==='boss'||gameMode==='2v2'||gameMode==='br'){
     // Multi-fighter info: show all fighters
     const infoW=(ARENA.w-20)/Math.min(fighters.length,4);
     fighters.forEach((f,fi)=>{
@@ -17519,14 +17582,17 @@ function drawBattle(){
     // Winner text
     X.font='bold '+(isMobile?'28':'42')+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
     X.shadowColor=winner.char.color;X.shadowBlur=30;X.fillStyle=winner.char.color;
-    const winText=gameMode==='2v2'?(winner.side===0?'TEAM 1':'TEAM 2')+' WINS!':winner.char.name+' WINS!';
+    const winText=gameMode==='br'?winner.char.name+' WINS THE ROYALE!':gameMode==='2v2'?(winner.side===0?'TEAM 1':'TEAM 2')+' WINS!':winner.char.name+' WINS!';
     X.fillText(winText,W/2,ARENA.y+ARENA.h/2-30);
     X.strokeStyle='#000';X.lineWidth=3;X.strokeText(winText,W/2,ARENA.y+ARENA.h/2-30);
     X.fillText(winText,W/2,ARENA.y+ARENA.h/2-30);
     // Tier/team labels
     X.font='bold '+(isMobile?'13':'16')+'px Consolas,monospace';
     X.shadowBlur=10;X.fillStyle='#aaa';
-    if(gameMode==='2v2'){
+    if(gameMode==='br'){
+      const eliminated=fighters.filter(f=>!f.alive).map(f=>f.char.name).join(', ');
+      X.fillText('['+getTierLetter(winner.char.id)+'] '+winner.char.name+(eliminated?' defeated '+eliminated:''),W/2,ARENA.y+ARENA.h/2-5);
+    } else if(gameMode==='2v2'){
       const wTeam=fighters.filter(f=>f.side===winner.side);
       const lTeam=fighters.filter(f=>f.side!==winner.side);
       X.fillText(wTeam.map(f=>f.char.name).join(' + ')+' vs '+lTeam.map(f=>f.char.name).join(' + '),W/2,ARENA.y+ARENA.h/2-5);
@@ -17610,6 +17676,115 @@ function drawFighterInfo(f,px,py,maxW,align){
   // Relic status
   X.font='9px Consolas,monospace';X.fillStyle=f.specialActive?'#ffcc00':'#7b68ee';
   X.fillText(f.specialActive?'>> RELIC ACTIVE':'Relic: '+(f.specialBar>=f.specialMax?'READY':Math.floor(f.specialBar/f.specialMax*100)+'%'),px+(isL?5:maxW-5),py+56);
+}
+
+// ============================================================
+// BATTLE ROYALE SELECT SCREEN
+// ============================================================
+function drawBRSelect(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  const dotY=isMobile?H-16:H-20;
+  for(let p=1;p<=2;p++){
+    const dx=W/2+(p-1.5)*20;
+    X.beginPath();X.arc(dx,dotY,_brSelPage===p?5:3,0,Math.PI*2);
+    X.fillStyle=_brSelPage===p?'#ff8800':'#444';X.fill();
+  }
+  const arrowY=isMobile?H-48:H-55;
+  const arrowH=isMobile?32:38;
+  if(_brSelPage>1)addBtn('brArrowL',10,arrowY,isMobile?50:70,arrowH,'\u2190 Back','#666',()=>{_brSelPage--;});
+  if(_brSelPage<2)addBtn('brArrowR',W-(isMobile?60:80),arrowY,isMobile?50:70,arrowH,'Next \u2192','#ff8800',()=>{_brSelPage++;});
+  addBtn('brHome',isMobile?65:85,arrowY,isMobile?40:50,arrowH,'Title','#555',()=>{screen='title';});
+
+  if(_brSelPage===1){
+    // ===== PAGE 1: PICK 4 FIGHTERS =====
+    X.font='bold '+(isMobile?'14':'20')+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.fillStyle='#ff8800';
+    X.fillText('BATTLE ROYALE \u2014 PICK 4 (1/2)',W/2,isMobile?22:28);
+    const selectableChars=CHARS.filter(c=>!c.isBoss);
+    const gapX=isMobile?5:10,gapY=isMobile?5:6,padX=isMobile?5:15;
+    const availW=W-padX*2;
+    const n=selectableChars.length;
+    const maxCols=Math.floor((availW+gapX)/((isMobile?120:115)+gapX));
+    const cols=Math.min(n,Math.max(2,Math.min(maxCols,Math.ceil(Math.sqrt(n)))));
+    const rows=Math.ceil(n/cols);
+    const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
+    const bottomSpace=isMobile?70:85;
+    const cardH=Math.min(Math.floor(((H-50-bottomSpace)-(rows-1)*gapY)/rows),isMobile?90:130);
+    const totalW=cols*cardW+(cols-1)*gapX;
+    const startX=(W-totalW)/2;
+    const gridStartY=isMobile?32:40;
+    const brColors=['#ff4444','#4488ff','#33cc66','#ff8800'];
+    const brLabels=['F1','F2','F3','F4'];
+    X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#ff8800';X.fillText('Tap to cycle: '+brLabels.map((l,i)=>'['+l+']').join(' '),W/2,gridStartY);
+    const charGridY=gridStartY+8;
+    selectableChars.forEach((ch,ci)=>{
+      const origIdx=CHARS.indexOf(ch);
+      const row=Math.floor(ci/cols),col=ci%cols;
+      const cx=startX+col*(cardW+gapX),cy=charGridY+row*(cardH+gapY);
+      const slotIdx=brChars.indexOf(origIdx);
+      const isSel=slotIdx>=0;
+      drawRoundRect(cx,cy,cardW,cardH,isMobile?5:8);
+      X.fillStyle=isSel?'#1a1208':'#111128';X.fill();
+      X.strokeStyle=isSel?brColors[slotIdx]:ch.color+'66';X.lineWidth=isSel?3:1.5;X.stroke();
+      if(isSel){X.font='bold '+(isMobile?'9':'10')+'px Consolas,monospace';X.fillStyle=brColors[slotIdx];X.textAlign='left';X.fillText(brLabels[slotIdx],cx+5,cy+14);}
+      const compact=cardH<80;
+      const ballR=isMobile?(compact?9:12):(cardH>120?22:16);
+      drawBallPreview(cx+cardW/2,cy+(isMobile?(compact?20:28):cardH>120?35:28),ballR,ch);
+      X.font='bold '+(isMobile?(compact?'8':'9'):'10')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';
+      X.fillText(ch.name,cx+cardW/2,cy+(isMobile?(compact?34:46):cardH>120?62:50));
+      X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle=ch.color;
+      X.fillText(ch.playstyle,cx+cardW/2,cy+(isMobile?(compact?44:56):cardH>120?74:60));
+      addBtn('brsel_'+ci,cx,cy,cardW,cardH,'','transparent',()=>{
+        if(brChars.includes(origIdx))return;
+        brChars[_brSelSlot]=origIdx;
+        _brSelSlot=(_brSelSlot+1)%4;
+      });
+    });
+
+  } else {
+    // ===== PAGE 2: ELEMENTS + BATTLE =====
+    X.font='bold '+(isMobile?'14':'20')+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.fillStyle='#ff8800';
+    X.fillText('PICK ELEMENTS (2/2)',W/2,isMobile?22:28);
+    let sumY=isMobile?38:46;
+    X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8800';
+    X.fillText(brChars.map(c=>CHARS[c].name).join(' vs '),W/2,sumY);
+    sumY+=isMobile?16:20;
+
+    const brColors=['#ff4444','#4488ff','#33cc66','#ff8800'];
+    const brLabels=['F1','F2','F3','F4'];
+    if(isMobile){
+      brChars.forEach((charIdx,ri)=>{
+        const ey=sumY+ri*62;
+        X.font='bold 9px Consolas,monospace';X.textAlign='left';X.fillStyle=brColors[ri];
+        X.fillText(brLabels[ri]+' ('+CHARS[charIdx].name+')',10,ey);
+        const pickerW=5*(37+3)-3;
+        const pickerX=Math.floor((W-pickerW)/2);
+        drawElementPickerMobile(pickerX,ey+6,brElems[ri],'bre'+ri,(i)=>{brElems[ri]=i;});
+        const selElem=ELEMENTS[brElems[ri]];
+        if(selElem&&selElem.id!=='none'){
+          const key=CHARS[charIdx].id+'_'+selElem.id;
+          const desc=COMBO_EFFECTS[key]||'';
+          X.font='8px Consolas,monospace';X.textAlign='center';
+          X.fillStyle=selElem.color+'cc';X.fillText(selElem.desc+(desc?' | '+desc:''),W/2,ey+50);
+        }
+      });
+    } else {
+      brChars.forEach((charIdx,ri)=>{
+        X.font='bold 11px Consolas,monospace';X.textAlign='center';X.fillStyle=brColors[ri];
+        X.fillText(brLabels[ri]+' ('+CHARS[charIdx].name+')',W/2,sumY);
+        drawElementPicker(W/2-130,sumY+8,brElems[ri],'bre'+ri,(i)=>{brElems[ri]=i;});
+        sumY+=60;
+      });
+    }
+    const fightY=isMobile?H-85:H-100;
+    addBtn('brBattle',W/2-100,fightY,200,isMobile?34:42,'FIGHT!','#ff8800',startIntroCutscene);
+  }
+  buttons.forEach(b=>{
+    if(b.id.startsWith('brsel_'))return;
+    drawBtn(b);
+  });
 }
 
 // ============================================================
@@ -18017,7 +18192,7 @@ function drawResult(){
   X.font='bold '+(isMobile?'22':'32')+'px Consolas,Courier New,monospace';X.textAlign='center';
   X.shadowColor=titleColor;X.shadowBlur=15;X.fillStyle=titleColor;X.fillText(titleText,W/2,cy);X.shadowBlur=0;
   // Player label (P1/P2 or TEAM/BOSS)
-  const winLabel=gameMode==='boss'?(winner.char.isBoss?'BOSS':'TEAM'):gameMode==='2v2'?(winner.side===0?'TEAM 1':'TEAM 2'):(winner.side===0?'P1':'P2');
+  const winLabel=gameMode==='boss'?(winner.char.isBoss?'BOSS':'TEAM'):gameMode==='2v2'?(winner.side===0?'TEAM 1':'TEAM 2'):gameMode==='br'?'CHAMPION':(winner.side===0?'P1':'P2');
   X.font='bold '+(isMobile?'12':'14')+'px Consolas,monospace';X.fillStyle='#aaa';
   X.fillText(winLabel+' WINS',W/2,cy+22);
   if(isDefeat){X.font=(isMobile?'11':'13')+'px Consolas,monospace';X.fillStyle='#888';X.fillText('Defeated by '+winner.char.name,W/2,cy+38);}
@@ -18078,7 +18253,7 @@ function drawResult(){
     roundNumber++;
     startBattle();
   });
-  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];p1Sponsor=-1;p2Sponsor=-1;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;_1v1SelPage=1;selectPage=0;selectTierPage=0;screen=gameMode==='boss'?'bossSelect':gameMode==='2v2'?'teamSelect':'select';});
+  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];p1Sponsor=-1;p2Sponsor=-1;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;_1v1SelPage=1;selectPage=0;selectTierPage=0;screen=gameMode==='boss'?'bossSelect':gameMode==='2v2'?'teamSelect':gameMode==='br'?'brSelect':'select';});
   addBtn('titleback',W/2-60,btnY+55,120,35,'Title','#555',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];screen='title';});
   buttons.forEach(drawBtn);
 }
@@ -18098,6 +18273,7 @@ function loop(time){
     case 'select':try{drawSelect();}catch(e){console.error('BBA select error:',e);}break;
     case 'bossSelect':drawBossSelect();break;
     case 'teamSelect':draw2v2Select();break;
+    case 'brSelect':drawBRSelect();break;
     case 'intro':
       battleAccum+=elapsed;
       while(battleAccum>=STEP_MS){updateIntroCutscene(1);battleAccum-=STEP_MS;}
