@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.9.2 — 7 Cyberpunk face redesigns (Monowire, PLS, Sandy, Throw, Katana, Berserk, Smasher) — skin tones, proper eye anatomy, detailed hair, source-accurate features
+// BALL BATTLE ARENA v10.9.3 — Kashimo dart rush rework (direction-boost, no auto-target)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -7438,9 +7438,10 @@ function updateBattle(dt){
         f.kashimoStaffAngle=Math.atan2(f.kashimoStaffGroundPos.y-f.y,f.kashimoStaffGroundPos.x-f.x);
         if(f.kashimoDartTimer<=0){
           f.kashimoDartPhase='dash';
-          f.kashimoDartTimer=28; // longer dash per bounce — Sandevistan-style spread
-          // Random direction — NOT towards enemy
-          f.kashimoDartDashAngle=Math.random()*Math.PI*2;
+          f.kashimoDartTimer=28; // longer dash per bounce
+          // Direction-boost: follow current movement direction (no auto-target)
+          const curSpd1=Math.hypot(f.vx,f.vy);
+          f.kashimoDartDashAngle=curSpd1>0.5?Math.atan2(f.vy,f.vx):(Math.random()*Math.PI*2);
         }
       }
       else if(f.kashimoDartPhase==='dash'){
@@ -7476,8 +7477,9 @@ function updateBattle(dt){
             f.kashimoDartPhase='grab';
             f.kashimoDartTimer=20;
           } else {
-            // Bounce to NEW random direction (not towards enemy)
-            f.kashimoDartDashAngle=Math.random()*Math.PI*2;
+            // Direction-boost: follow current movement after wall bounce
+            const curSpd2=Math.hypot(f.vx,f.vy);
+            f.kashimoDartDashAngle=curSpd2>0.5?Math.atan2(f.vy,f.vx):(Math.random()*Math.PI*2);
             f.kashimoDartTimer=28;
           }
         }
