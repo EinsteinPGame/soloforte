@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.7.1 — Bigger sponsors (card grid), bigger elements, element descriptions, block ult charge during active ult, Smasher ult 5s
+// BALL BATTLE ARENA v10.7.2 — Mahoraga nerf, lore combos charge 2x faster, bigger sponsors, element descriptions
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -415,7 +415,7 @@ const CHARS=[
     id:'mahoraga',name:'Mahoraga',color:'#1a1a2e',
     desc:'BOSS. Adaptation wheel reduces damage per type. Sword of Extermination. Shinjuku mode.',
     playstyle:'Boss — 3v1',
-    stats:{hp:2400,atk:34,speed:3.0,range:120,def:18,crit:15},
+    stats:{hp:2000,atk:30,speed:2.8,range:110,def:15,crit:12},
     baseAtkInterval:55,relicChargeRate:0.6,
     specialName:'NEGATION SHIELD',
     isBoss:true,
@@ -7090,9 +7090,10 @@ function updateBattle(dt){
       useSpecial(f,enemy);
     }
 
-    // Sponsor bar — charges at 40% of special rate, only if char has a selected sponsor
+    // Sponsor bar — charges at 40% of special rate, lore combos charge 2x faster
     if(!f.sponsorUsed&&!sponsorCutsceneActive&&f.selectedSponsor){
-      f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.015*(f.char.relicChargeRate||1)*dt);
+      const isLoreSponsor=!!findLoreCombo(f.char.id)&&findLoreCombo(f.char.id).pair.includes(f.selectedSponsor);
+      f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.015*(isLoreSponsor?2:1)*(f.char.relicChargeRate||1)*dt);
       if(f.sponsorBar>=f.sponsorMax&&enemy.alive&&canCallSponsor(f.char.id,enemy.char.id,f.selectedSponsor)){
         f.sponsorUsed=true;
         f.sponsorBar=0;
@@ -14500,7 +14501,7 @@ function drawTitle(){
   addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;selectTierPage=0;});
   addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.7.1 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.7.2 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
