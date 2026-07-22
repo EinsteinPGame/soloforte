@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.12.0 — Ally combo system + tournament elements + boss tier select
+// BALL BATTLE ARENA v10.12.1 — Champion celebration + match history
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -17958,13 +17958,42 @@ function drawTournBracket(){
         tournRound++;tournCurrentMatch=0;
       });
     } else {
-      // Champion!
+      // Champion celebration!
       const champ=tournBracket.find(e=>e.alive);
-      X.font='bold '+(isMobile?'18':'28')+'px Consolas,monospace';X.textAlign='center';
+      const ch=CHARS[champ.charIdx];
+      // Crown
+      X.fillStyle='#ffcc00';X.beginPath();
+      const crX=W/2,crY=nbY-10;
+      X.moveTo(crX-15,crY);X.lineTo(crX-10,crY+10);X.lineTo(crX-5,crY-2);X.lineTo(crX,crY+10);X.lineTo(crX+5,crY-2);X.lineTo(crX+10,crY+10);X.lineTo(crX+15,crY);X.lineTo(crX+15,crY+14);X.lineTo(crX-15,crY+14);
+      X.closePath();X.fill();
+      // Champion ball
+      drawBallPreview(W/2,nbY+20,isMobile?20:28,ch);
+      // Title
+      X.font='bold '+(isMobile?'16':'24')+'px Consolas,monospace';X.textAlign='center';
       X.shadowColor='#ffcc00';X.shadowBlur=20;X.fillStyle='#ffcc00';
-      X.fillText('\u{1F3C6} CHAMPION: '+CHARS[champ.charIdx].name+' \u{1F3C6}',W/2,nbY+20);
+      X.fillText('CHAMPION',W/2,nbY+50);
       X.shadowBlur=0;
-      addBtn('tournEnd',W/2-60,nbY+40,120,35,'Title','#555',()=>{screen='title';});
+      X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';X.fillStyle=ch.color;
+      X.fillText(ch.name,W/2,nbY+68);
+      const tier=getTierLetter(ch.id);
+      const el=ELEMENTS[champ.elemIdx];
+      X.font='bold '+(isMobile?'9':'11')+'px Consolas,monospace';
+      X.fillStyle=tier.startsWith('S')?'#ffcc00':tier.startsWith('A')?'#44cc88':'#6688cc';
+      X.fillText('['+tier+']'+(el&&el.id!=='none'?' '+el.name:''),W/2,nbY+82);
+      // Match history
+      if(tournMatches.length>0){
+        X.font=(isMobile?'7':'9')+'px Consolas,monospace';X.fillStyle='#888';
+        X.fillText('MATCH HISTORY',W/2,nbY+100);
+        const histY=nbY+108;
+        const maxHist=Math.min(tournMatches.length,isMobile?6:8);
+        const recent=tournMatches.slice(-maxHist);
+        recent.forEach((m,mi)=>{
+          X.font=(isMobile?'7':'8')+'px Consolas,monospace';X.textAlign='center';
+          X.fillStyle=m.winner===ch.name?'#ffcc00':'#666';
+          X.fillText(TOURN_ROUND_NAMES[Math.min(m.round,3)]+': '+m.p1+' vs '+m.p2+' \u2192 '+m.winner,W/2,histY+mi*12);
+        });
+      }
+      addBtn('tournEnd',W/2-60,H-80,120,35,'Title','#555',()=>{screen='title';});
     }
   }
   addBtn('tournBracketBack',10,H-45,isMobile?50:70,30,'Title','#555',()=>{screen='title';});
