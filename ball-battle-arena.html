@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.7.2 — Mahoraga nerf, lore combos charge 2x faster, bigger sponsors, element descriptions
+// BALL BATTLE ARENA v10.7.3 — Rush rework (Naoya no auto-target), sponsor bar visible, Black Flash red/black lightning
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -3050,35 +3050,39 @@ function triggerBlackFlash(f,target){
   // === BLACK FLASH — TIME-STOPPING VISUAL IMPACT ===
   const tx=target.x,ty=target.y;
   // Screen flash — bright white then black
-  triggerScreenFlash('#000000',10); // black flash, not white
-  triggerScreenFlash('#ffffff',4);
+  triggerScreenFlash('#000000',14); // longer black flash
+  triggerScreenFlash('#330000',6); // dark red flash
+  triggerScreenFlash('#ffffff',3);
   // Huge screen shake
-  shakeTimer=Math.max(shakeTimer,20);shakeAmt=Math.max(shakeAmt,14);
-  // LONG hit freeze — time pause like crits but bigger
-  triggerHitFreeze(10); // much longer freeze (was 4)
-  // Black lightning bolts — many, long, dramatic
-  for(let i=0;i<30;i++){
+  shakeTimer=Math.max(shakeTimer,24);shakeAmt=Math.max(shakeAmt,16);
+  // LONG hit freeze — dramatic time pause
+  triggerHitFreeze(14); // longer freeze for drama
+  // Black + red lightning bolts at contact point — many, long, dramatic
+  for(let i=0;i<35;i++){
     const a=Math.random()*Math.PI*2;
-    const len=30+Math.random()*70;
-    // Thick black lightning
-    spawnParticle(tx+Math.cos(a)*5,ty+Math.sin(a)*5,'#000000',Math.cos(a)*len*0.2,Math.sin(a)*len*0.2,25,5);
-    spawnParticle(tx+Math.cos(a)*8,ty+Math.sin(a)*8,'#1111cc',Math.cos(a)*len*0.12,Math.sin(a)*len*0.12,28,4);
+    const len=30+Math.random()*80;
+    // Thick black lightning (primary)
+    spawnParticle(tx+Math.cos(a)*5,ty+Math.sin(a)*5,'#000000',Math.cos(a)*len*0.2,Math.sin(a)*len*0.2,28,6);
+    // Red lightning accent
+    spawnParticle(tx+Math.cos(a)*8,ty+Math.sin(a)*8,'#cc1111',Math.cos(a)*len*0.12,Math.sin(a)*len*0.12,30,4);
+    // Dark red inner sparks
+    if(i%3===0)spawnParticle(tx+Math.cos(a)*3,ty+Math.sin(a)*3,'#660000',Math.cos(a)*len*0.15,Math.sin(a)*len*0.15,22,3);
   }
-  // Outer ring of sparks — bigger
-  for(let i=0;i<16;i++){
-    const a=Math.PI*2*i/16;
-    spawnParticle(tx+Math.cos(a)*50,ty+Math.sin(a)*50,'#3333ff',Math.cos(a)*6,Math.sin(a)*6,22,3);
-    spawnParticle(tx+Math.cos(a)*35,ty+Math.sin(a)*35,'#000000',Math.cos(a)*4,Math.sin(a)*4,20,4);
+  // Outer ring of sparks — black + red
+  for(let i=0;i<20;i++){
+    const a=Math.PI*2*i/20;
+    spawnParticle(tx+Math.cos(a)*50,ty+Math.sin(a)*50,'#cc0000',Math.cos(a)*6,Math.sin(a)*6,24,3);
+    spawnParticle(tx+Math.cos(a)*35,ty+Math.sin(a)*35,'#000000',Math.cos(a)*5,Math.sin(a)*5,22,5);
   }
-  // Black flash burst — bigger, more dramatic
-  spawnBurst(tx,ty,'#000000',30,12);
-  spawnBurst(tx,ty,'#1111cc',20,8);
-  spawnBurst(tx,ty,'#ffffff',10,5);
+  // Black flash burst — black dominant with red accent
+  spawnBurst(tx,ty,'#000000',35,14);
+  spawnBurst(tx,ty,'#cc1111',18,7);
+  spawnBurst(tx,ty,'#440000',12,5);
   // Multiple expanding dark ring explosions
-  explosions.push({x:tx,y:ty,radius:0,maxRadius:80,color:'#000022',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
-  explosions.push({x:tx,y:ty,radius:0,maxRadius:50,color:'#2222ff',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
-  // Big, bold text
-  spawnDmgNum(tx,ty-target.radius-35,'BLACK FLASH!!','#4444ff',true);
+  explosions.push({x:tx,y:ty,radius:0,maxRadius:90,color:'#000000',life:22,maxLife:22,dmg:0,owner:null,target:null,hit:true});
+  explosions.push({x:tx,y:ty,radius:0,maxRadius:55,color:'#440000',life:16,maxLife:16,dmg:0,owner:null,target:null,hit:true});
+  // Big, bold text — red tinted
+  spawnDmgNum(tx,ty-target.radius-35,'BLACK FLASH!!','#ff2222',true);
   SFX.crit();
   addLog((f.side===0?'P1':'P2')+' BLACK FLASH!!');
 }
@@ -3168,7 +3172,9 @@ function attackNaoya(f,enemy,chaos){
   const baseDashSpeed=12;
   f.naoyaDashing=true;
   f.naoyaDashTimer=16;
-  f.naoyaDashAngle=angle(f,enemy);
+  // Rush follows current movement direction (speed boost), NOT auto-target enemy
+  const curSpd=Math.hypot(f.vx,f.vy);
+  f.naoyaDashAngle=curSpd>0.5?Math.atan2(f.vy,f.vx):(Math.random()*Math.PI*2);
   f.naoyaDashSpeed=baseDashSpeed*stackSpeedBonus;
   if(isElecElem)f.naoyaDashSpeed*=1.25;
   f.naoyaDashTrail=[];
@@ -7090,10 +7096,10 @@ function updateBattle(dt){
       useSpecial(f,enemy);
     }
 
-    // Sponsor bar — charges at 40% of special rate, lore combos charge 2x faster
+    // Sponsor bar — charges like special but slower (sponsorMax 150 vs specialMax 100), lore combos 2x
     if(!f.sponsorUsed&&!sponsorCutsceneActive&&f.selectedSponsor){
       const isLoreSponsor=!!findLoreCombo(f.char.id)&&findLoreCombo(f.char.id).pair.includes(f.selectedSponsor);
-      f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.015*(isLoreSponsor?2:1)*(f.char.relicChargeRate||1)*dt);
+      f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.02*(isLoreSponsor?2:1)*(f.char.relicChargeRate||1)*dt);
       if(f.sponsorBar>=f.sponsorMax&&enemy.alive&&canCallSponsor(f.char.id,enemy.char.id,f.selectedSponsor)){
         f.sponsorUsed=true;
         f.sponsorBar=0;
@@ -16141,19 +16147,22 @@ function drawBattle(){
       if(p1WinBuffs.length>0){X.textAlign='left';X.fillStyle='#ffcc00cc';X.font='bold 9px Consolas,monospace';X.fillText(p1WinBuffs[p1WinBuffs.length-1].name+(p1WinBuffs.length>1?' x'+p1WinBuffs.length:''),p1bx,spBarY+spBarH+10);}
       if(p2WinBuffs.length>0){X.textAlign='right';X.fillStyle='#ffcc00cc';X.font='bold 9px Consolas,monospace';X.fillText(p2WinBuffs[p2WinBuffs.length-1].name+(p2WinBuffs.length>1?' x'+p2WinBuffs.length:''),p2bx+barW,spBarY+spBarH+10);}
     }
-    // Sponsor bars (only show if char has a lore combo)
-    const lbY=spBarY+spBarH+2,lbH=6;
+    // Sponsor bars — visible bar below special, charges like a second special bar
+    const lbY=spBarY+spBarH+3,lbH=10;
     if(f1.selectedSponsor&&!f1.sponsorUsed){
       const lr1=f1.sponsorBar/f1.sponsorMax;
       const sc1=CHARS.find(c=>c.id===f1.selectedSponsor);
       const isLore1=!!findLoreCombo(f1.char.id)&&findLoreCombo(f1.char.id).pair.includes(f1.selectedSponsor);
       X.fillStyle='#0a0a0a';X.fillRect(p1bx,lbY,barW,lbH);
       const lbg1=X.createLinearGradient(p1bx,lbY,p1bx+barW*lr1,lbY);
-      lbg1.addColorStop(0,'#664422');lbg1.addColorStop(1,lr1>=1?'#ff8800':'#885522');
+      lbg1.addColorStop(0,'#884400');lbg1.addColorStop(1,lr1>=1?'#ffaa00':'#aa6622');
       X.fillStyle=lbg1;X.fillRect(p1bx,lbY,barW*lr1,lbH);
-      X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p1bx,lbY,barW,lbH);
-      if(lr1>=1){X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle='#ff8800';X.fillText(isLore1?'LORE COMBO!':'SPONSOR!',p1bx+2,lbY+5.5);}
-      else if(sc1){X.font='7px Consolas,monospace';X.textAlign='left';X.fillStyle='#886644';X.fillText((isLore1?'\u26D3':'')+sc1.name,p1bx+2,lbY+5);}
+      X.strokeStyle='#664400';X.lineWidth=1;X.strokeRect(p1bx,lbY,barW,lbH);
+      // Glow when full
+      if(lr1>=1){X.shadowColor='#ffaa00';X.shadowBlur=8;X.fillStyle='#ffcc00';X.fillRect(p1bx,lbY,barW,lbH);X.shadowBlur=0;}
+      X.font='bold 9px Consolas,monospace';X.textAlign='left';
+      if(lr1>=1){X.fillStyle='#ffcc00';X.fillText(isLore1?'LORE COMBO READY!':'SPONSOR READY!',p1bx+3,lbY+8);}
+      else if(sc1){X.fillStyle='#ccaa66';X.fillText((isLore1?'\u26D3 ':'')+sc1.name+' '+Math.round(lr1*100)+'%',p1bx+3,lbY+8);}
     }
     if(f2.selectedSponsor&&!f2.sponsorUsed){
       const lr2=f2.sponsorBar/f2.sponsorMax;
@@ -16161,11 +16170,13 @@ function drawBattle(){
       const isLore2=!!findLoreCombo(f2.char.id)&&findLoreCombo(f2.char.id).pair.includes(f2.selectedSponsor);
       X.fillStyle='#0a0a0a';X.fillRect(p2bx,lbY,barW,lbH);
       const lbg2=X.createLinearGradient(p2bx+barW*(1-lr2),lbY,p2bx+barW,lbY);
-      lbg2.addColorStop(0,lr2>=1?'#ff8800':'#885522');lbg2.addColorStop(1,'#664422');
+      lbg2.addColorStop(0,lr2>=1?'#ffaa00':'#aa6622');lbg2.addColorStop(1,'#884400');
       X.fillStyle=lbg2;X.fillRect(p2bx+barW*(1-lr2),lbY,barW*lr2,lbH);
-      X.strokeStyle='#333';X.lineWidth=1;X.strokeRect(p2bx,lbY,barW,lbH);
-      if(lr2>=1){X.font='bold 8px Consolas,monospace';X.textAlign='right';X.fillStyle='#ff8800';X.fillText(isLore2?'LORE COMBO!':'SPONSOR!',p2bx+barW-2,lbY+5.5);}
-      else if(sc2){X.font='7px Consolas,monospace';X.textAlign='right';X.fillStyle='#886644';X.fillText((isLore2?'\u26D3':'')+sc2.name,p2bx+barW-2,lbY+5);}
+      X.strokeStyle='#664400';X.lineWidth=1;X.strokeRect(p2bx,lbY,barW,lbH);
+      if(lr2>=1){X.shadowColor='#ffaa00';X.shadowBlur=8;X.fillStyle='#ffcc00';X.fillRect(p2bx,lbY,barW,lbH);X.shadowBlur=0;}
+      X.font='bold 9px Consolas,monospace';X.textAlign='right';
+      if(lr2>=1){X.fillStyle='#ffcc00';X.fillText(isLore2?'LORE COMBO READY!':'SPONSOR READY!',p2bx+barW-3,lbY+8);}
+      else if(sc2){X.fillStyle='#ccaa66';X.fillText((isLore2?'\u26D3 ':'')+sc2.name+' '+Math.round(lr2*100)+'%',p2bx+barW-3,lbY+8);}
     }
 
     X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';X.fillText('VS',W/2,barY+12);
