@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.7.3 — Rush rework (Naoya no auto-target), sponsor bar visible, Black Flash red/black lightning
+// BALL BATTLE ARENA v10.8.0 — Critical bug fix: DOT death bypass, Todo/Yuta double-update, Kashimo wall bounce, Toji snap-back
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -1941,6 +1941,49 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     checkVictory(attacker);
   }
   return dmg;
+}
+
+// DOT damage helper — routes through death/phase transitions properly
+// Use instead of raw f.hp-=dmg for fire zones, poison, wall cracks, etc.
+function applyDotDamage(target,dmg,source){
+  if(!target.alive)return;
+  target.hp-=dmg;target.hitFlash=5;
+  if(target.hp<=0){
+    // Gojo revival
+    if(target.char.id==='gojo'&&!target.gojoRevived){
+      target.hp=1;target.gojoRevived=true;target.gojoReviving=true;target.gojoReviveTimer=120;
+      target.stunTimer=0;target.freezeTimer=0;target.projectionFrozenTimer=0;target.captureTimer=0;
+      SFX.gojoRevive();showRelicText('I ALONE AM THE HONOURED ONE',target.char.color);
+      spawnBurst(target.x,target.y,'#8888ff',40,10);spawnBurst(target.x,target.y,'#ffffff',25,7);
+      for(let r=0;r<3;r++){explosions.push({x:target.x,y:target.y,radius:0,maxRadius:60+r*25,color:'#5577ff',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});}
+      shakeTimer=25;shakeAmt=14;triggerScreenFlash('#5577ff',15);addLog('GOJO REVIVES!');return;
+    }
+    // Mahoraga Shinjuku mode
+    if(target.char.id==='mahoraga'&&!target.mahoShinjuku){
+      target.hp=target.maxHp*0.18;target.mahoShinjuku=true;target.mahoShinjukuAnim=90;
+      target.mahoAdapt={};target.stunTimer=0;target.freezeTimer=0;target.projectionFrozenTimer=0;target.captureTimer=0;
+      target.speed=target.baseSpeed*1.5;target.atk=Math.round(target.baseAtk*1.6);target.def=Math.round(target.baseDef*0.6);
+      target.specialBar=0;SFX.relicActivate();showRelicText('SHINJUKU MODE','#ff2244');
+      spawnBurst(target.x,target.y,'#ff2244',50,12);spawnBurst(target.x,target.y,'#1a1a2e',30,8);
+      for(let r=0;r<4;r++){explosions.push({x:target.x,y:target.y,radius:0,maxRadius:80+r*30,color:'#ff2244',life:25,maxLife:25,dmg:target.atk*0.3,owner:target,target:null,hit:false});}
+      shakeTimer=30;shakeAmt=18;triggerScreenFlash('#ff2244',20);addLog('MAHORAGA — SHINJUKU MODE!');return;
+    }
+    // Dabura RCT
+    if(target.char.id==='dabura'&&target.dabRCTActive&&target.dabRCTHealed<target.dabRCTCap){
+      target.hp=1;const heal=Math.min(3,target.dabRCTCap-target.dabRCTHealed);
+      target.hp+=heal;target.dabRCTHealed+=heal;
+      spawnDmgNum(target.x,target.y-target.radius-20,'+'+Math.round(heal),'#00ff88',false);return;
+    }
+    // Normal death
+    target.hp=0;target.alive=false;target.deathAnim=90;
+    if(target.char.id==='sandy'){fighters.forEach(other=>{if(other&&other!==target&&other.sandyTimeScale<1){const otherSandy=fighters.find(s=>s&&s!==target&&s.alive&&s.sandyActive&&s!==other);if(!otherSandy)other.sandyTimeScale=1;}});}
+    SFX.deathExplosion();triggerHitFreeze(8);triggerScreenFlash('#ffffff',15);
+    shakeTimer=25;shakeAmt=16;spawnImpact(target.x,target.y,target.char.color,3);spawnImpact(target.x,target.y,'#ffcc00',2);
+    for(let i=0;i<24;i++){const a=Math.PI*2*i/24;spawnParticle(target.x,target.y,target.char.color,Math.cos(a)*6,Math.sin(a)*6,40,4);}
+    for(let i=0;i<16;i++){const a=Math.PI*2*i/16;spawnParticle(target.x,target.y,'#ffffff',Math.cos(a)*4,Math.sin(a)*4,25,3);}
+    explosions.push({x:target.x,y:target.y,radius:0,maxRadius:120,color:target.char.color,life:30,maxLife:30,dmg:0,owner:null,target:null,hit:true});
+    checkVictory(source);
+  }
 }
 
 let wasDefeat=false; // boss won in boss mode
@@ -6161,7 +6204,8 @@ function updateRelicToji(f,enemy,dt){
         enemy.vy=Math.sin(ka)*6;
         // If too far outside, snap them back toward center
         const dFromCenter=Math.hypot(enemy.x-tcx,enemy.y-tcy);
-        if(dFromCenter>triRadius*0.8){
+        const triSnapRadius=Math.min(ARENA.w,ARENA.h)*0.6*0.8;
+        if(dFromCenter>triSnapRadius){
           enemy.x+=(tcx-enemy.x)*0.15;
           enemy.y+=(tcy-enemy.y)*0.15;
         }
@@ -7130,7 +7174,7 @@ function updateBattle(dt){
         case 'yuji':updateRelicYuji(f,enemy,dt);break;
         // naoya: handled outside specialActive block (always runs)
         case 'yuta':updateRelicYuta(f,enemy,dt);break;
-        // todo: handled outside specialActive block (always runs)
+        case 'todo':updateRelicTodo(f,enemy,dt);break;
         case 'yuki':updateRelicYuki(f,enemy,dt);break;
         case 'megumi':updateRelicMegumi(f,enemy,dt);break;
         case 'mahito':updateRelicMahito(f,enemy,dt);break;
@@ -7139,21 +7183,19 @@ function updateBattle(dt){
 
     // Naoya dash/cooldown runs always (not just during special) — critical fix
     if(f.char.id==='naoya') updateRelicNaoya(f,enemy,dt);
-    // Todo cooldown/swap runs always
-    if(f.char.id==='todo') updateRelicTodo(f,enemy,dt);
 
     // Choso beam runs always (not just during special)
     if(f.char.id==='choso'&&(f.chosoBeamActive||f.chosoBeamCooldown>0||f.chosoPiercingFreeze>0)){
       updateChosoBeam(f,enemy,dt);
     }
 
-    // Yuta+Rika per-frame: cooldowns + Rika companion (runs always)
+    // Yuta+Rika per-frame: Rika companion outside special (cooldowns handled in updateRelicYuta)
     if(f.char.id==='yuta'){
-      if(f.yutaSlashCD>0)f.yutaSlashCD--;
-      if(f.yutaCopyCD>0)f.yutaCopyCD--;
-      if(f.yutaCopyFlash>0)f.yutaCopyFlash--;
-      // Rika updates run in updateRelicYuta (called during special OR always below)
+      // Cooldowns only tick here when NOT in special (updateRelicYuta handles them during special)
       if(!f.specialActive){
+        if(f.yutaSlashCD>0)f.yutaSlashCD--;
+        if(f.yutaCopyCD>0)f.yutaCopyCD--;
+        if(f.yutaCopyFlash>0)f.yutaCopyFlash--;
         // Run Rika companion logic even outside of special (same independent movement)
         const isElecElem=f.elementActive&&f.elem.id==='electric';
         if(!f.yutaRikaPosInit){f.yutaRikaPos={x:f.x+40,y:f.y};f.yutaRikaPosInit=true;}
@@ -7414,13 +7456,14 @@ function updateBattle(dt){
           spawnBurst(enemy.x,enemy.y,'#ffcc00',8,4);
           shakeTimer=3;shakeAmt=3;
         }
-        // Bounce off arena walls
-        const arenaR=arenaRadius-f.radius-5;
-        const dCenter=Math.sqrt((f.x-arenaCX)*(f.x-arenaCX)+(f.y-arenaCY)*(f.y-arenaCY));
-        if(dCenter>arenaR){
-          // Reflect off wall
-          const wallA=Math.atan2(f.y-arenaCY,f.x-arenaCX);
-          f.kashimoDartDashAngle=wallA+Math.PI+(Math.random()-0.5)*1.2;
+        // Bounce off arena walls (rectangular arena)
+        if(f.x-f.radius<=ARENA.x+2||f.x+f.radius>=ARENA.x+ARENA.w-2){
+          f.kashimoDartDashAngle=Math.PI-f.kashimoDartDashAngle+(Math.random()-0.5)*0.6;
+          f.x=Math.max(ARENA.x+f.radius+3,Math.min(ARENA.x+ARENA.w-f.radius-3,f.x));
+        }
+        if(f.y-f.radius<=ARENA.y+2||f.y+f.radius>=ARENA.y+ARENA.h-2){
+          f.kashimoDartDashAngle=-f.kashimoDartDashAngle+(Math.random()-0.5)*0.6;
+          f.y=Math.max(ARENA.y+f.radius+3,Math.min(ARENA.y+ARENA.h-f.radius-3,f.y));
         }
         if(f.kashimoDartTimer<=0){
           f.kashimoDartDashes++;
@@ -8421,10 +8464,9 @@ function updateBattle(dt){
     // Damage enemy if inside zone
     fighters.forEach(f=>{
       if(f.alive&&f.side!==(fz.owner?fz.owner.side:-1)&&dist(f,fz)<fz.radius+f.radius&&battleTime%10<dt){
-        f.hp-=fz.dmg;f.hitFlash=5;
+        applyDotDamage(f,fz.dmg,fz.owner);
         spawnParticle(f.x+rand(-8,8),f.y+rand(-8,8),'#ff4400',0,-1,10,2);
         spawnDmgNum(f.x,f.y-f.radius-10,fz.dmg,'#ff4400',false);
-        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(fz.owner);}
       }
     });
     // Visual
@@ -8454,10 +8496,9 @@ function updateBattle(dt){
       const t=pb.target;
       if(t.x-t.radius<=ARENA.x+2||t.x+t.radius>=ARENA.x+ARENA.w-2||t.y-t.radius<=ARENA.y+2||t.y+t.radius>=ARENA.y+ARENA.h-2){
         if(battleTime%15<dt){
-          t.hp-=pb.dmg;t.hitFlash=5;
+          applyDotDamage(t,pb.dmg,pb.owner);
           spawnDmgNum(t.x,t.y-t.radius-15,pb.dmg,'#aa44cc',false);
           spawnBurst(t.x,t.y,'#aa44cc',5,2);
-          if(t.hp<=0){t.hp=0;t.alive=false;t.deathAnim=60;checkVictory(pb.owner);}
         }
       }
     }
@@ -8470,11 +8511,10 @@ function updateBattle(dt){
     if(f.monowireWrapDmgAccum>0&&f.captureTimer<=0){
       const dmg=f.monowireWrapDmgAccum;
       f.monowireWrapDmgAccum=0;
-      f.hp-=dmg;f.hitFlash=8;
+      applyDotDamage(f,dmg,fighters.find(e=>e.side!==f.side&&e.alive));
       spawnDmgNum(f.x,f.y-f.radius-20,dmg,'#aa44cc',true);
       spawnBurst(f.x,f.y,'#aa44cc',10,4);
       addLog((f.side===0?'P1':'P2')+' TOXIC RELEASE! '+Math.round(dmg));
-      if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(fighters.find(e=>e.side!==f.side&&e.alive));}
     }
   });
 
@@ -8488,11 +8528,10 @@ function updateBattle(dt){
       if(f.x-f.radius<=ARENA.x+2||f.x+f.radius>=ARENA.x+ARENA.w-2||f.y-f.radius<=ARENA.y+2||f.y+f.radius>=ARENA.y+ARENA.h-2){
         if(Math.hypot(f.vx,f.vy)>4&&battleTime%8<dt){
           const wallDmg=enemy.atk*0.5;
-          f.hp-=wallDmg;f.hitFlash=5;
+          applyDotDamage(f,wallDmg,enemy);
           spawnDmgNum(f.x,f.y-f.radius-10,wallDmg,'#ff4400',false);
           spawnBurst(f.x,f.y,'#ff4400',6,3);
           SFX.burn();
-          if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(fighters.find(e=>e.side!==f.side&&e.alive));}
         }
       }
     }
@@ -8527,11 +8566,10 @@ function updateBattle(dt){
         if(f.side===wc.owner.side||!f.alive)return;
         if(dist(f,wc)<wc.size*0.7){
           const crackDmg=wc.owner.atk*0.3;
-          f.hp-=crackDmg;f.hitFlash=4;
+          applyDotDamage(f,crackDmg,wc.owner);
           spawnDmgNum(f.x+rand(-10,10),f.y-f.radius-10,crackDmg,'#ffaa00',false);
           spawnParticle(f.x,f.y+f.radius,'#ffaa00',0,-2,10,2);
           wc.dmgCooldown=25;
-          if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(wc.owner);}
         }
       });
     }
@@ -8547,9 +8585,8 @@ function updateBattle(dt){
     if(ft.life<=0){fireTrails.splice(i,1);continue;}
     fighters.forEach(f=>{
       if(f.alive&&f.side!==(ft.owner?ft.owner.side:-1)&&dist(f,ft)<ft.radius+f.radius&&battleTime%8<dt){
-        f.hp-=ft.dmg;f.hitFlash=5;
+        applyDotDamage(f,ft.dmg,ft.owner);
         spawnParticle(f.x+rand(-5,5),f.y+rand(-5,5),'#ff4400',0,-1,8,2);
-        if(f.hp<=0){f.hp=0;f.alive=false;f.deathAnim=60;checkVictory(ft.owner);}
       }
     });
     if(battleTime%4<dt)spawnParticle(ft.x+rand(-ft.radius/2,ft.radius/2),ft.y+rand(-ft.radius/2,ft.radius/2),pick(['#ff4400','#ff6600','#ffaa00']),0,-0.5,10,2);
