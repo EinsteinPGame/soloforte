@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.8.4 — Bug fix batch: 8 fixes (Smasher setTimeout→frame-based)
+// BALL BATTLE ARENA v10.8.5 — Cinematic intro cutscene redesigns (Kyle's designs)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -15281,28 +15281,77 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<70){X.globalAlpha=Math.min(1,(t-20)/10)*0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#00cc88';X.fillText('24 FPS',cx,cy+50*s);}
       break;}
     case 'gojo':{
-      // Infinity barrier pulse + purple flash
-      const pulse=Math.sin(t*0.15)*0.3+0.5;
-      X.globalAlpha=pulse*0.4;
-      X.strokeStyle='#8888ff';X.lineWidth=2*s;
-      X.beginPath();X.arc(cx,cy,35*s+Math.sin(t*0.1)*5*s,0,Math.PI*2);X.stroke();
-      X.beginPath();X.arc(cx,cy,45*s+Math.cos(t*0.12)*3*s,0,Math.PI*2);X.stroke();
-      // Purple hollow flash
-      if(t>30){const pa=Math.min(1,(t-30)/15)*0.6;X.globalAlpha=pa;X.beginPath();X.arc(cx,cy,20*s,0,Math.PI*2);const pg=X.createRadialGradient(cx,cy,0,cx,cy,25*s);pg.addColorStop(0,'#8800ff44');pg.addColorStop(1,'#8800ff00');X.fillStyle=pg;X.fill();}
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#aaaaff';X.fillText('INFINITY',cx,cy+50*s);}
+      // 3 rocks thrown up → Infinity pause → Red blast → Blue orbit → Hollow Purple disintegrate
+      const rocks=[{x:cx-20*s,base:cy},{x:cx,base:cy-5*s},{x:cx+20*s,base:cy+3*s}];
+      // Phase 1 (0-15): rocks fly up
+      // Phase 2 (15-30): rocks pause mid-air (Infinity)
+      // Phase 3 (30-45): Red shoots at rock 0, blasts it
+      // Phase 4 (45-60): Blue orbits rock 1 around Gojo, launches at rock 2
+      // Phase 5 (60-80): Hollow Purple disintegrates everything
+      rocks.forEach((r,i)=>{
+        const ry=t<15?r.base-(t/15)*40*s:r.base-40*s;
+        const destroyed=(i===0&&t>38)||(i===2&&t>55)||(t>65);
+        if(!destroyed){
+          X.globalAlpha=0.7;X.fillStyle='#777';
+          X.beginPath();X.arc(r.x,ry,6*s,0,Math.PI*2);X.fill();
+          // Infinity shimmer while paused
+          if(t>15&&t<30){X.globalAlpha=0.3;X.strokeStyle='#aaaaff';X.lineWidth=1;X.beginPath();X.arc(r.x,ry,9*s,0,Math.PI*2);X.stroke();}
+        } else {
+          // Debris particles
+          X.globalAlpha=Math.max(0,0.5-(t-(i===0?38:i===2?55:65))/15);
+          for(let d=0;d<4;d++){const da=Math.PI*2*d/4+(t*0.2);X.fillStyle='#999';X.beginPath();X.arc(r.x+Math.cos(da)*((t-(i===0?38:55))*0.8)*s,ry+Math.sin(da)*((t-(i===0?38:55))*0.8)*s,2*s,0,Math.PI*2);X.fill();}
+        }
+      });
+      // Red at rock 0
+      if(t>30&&t<42){const rt=t-30;X.globalAlpha=0.8;X.strokeStyle='#ff2222';X.lineWidth=3*s;X.shadowColor='#ff0000';X.shadowBlur=10;
+        X.beginPath();X.moveTo(cx,cy+10*s);X.lineTo(rocks[0].x,rocks[0].base-40*s);X.stroke();X.shadowBlur=0;
+        if(rt>5){X.fillStyle='#ff4422';X.beginPath();X.arc(rocks[0].x,rocks[0].base-40*s,rt*s,0,Math.PI*2);X.fill();}}
+      // Blue orbit rock 1
+      if(t>45&&t<58){const bt=t-45;const ba=bt*0.5;X.globalAlpha=0.7;X.strokeStyle='#2244ff';X.lineWidth=2*s;X.shadowColor='#0044ff';X.shadowBlur=8;
+        const orbR=25*s-bt*s;const ox=cx+Math.cos(ba)*orbR;const oy=(rocks[1].base-40*s)+Math.sin(ba)*orbR;
+        X.beginPath();X.arc(ox,oy,5*s,0,Math.PI*2);X.fillStyle='#4466ff';X.fill();X.shadowBlur=0;}
+      // Hollow Purple
+      if(t>60){const ht=t-60;X.globalAlpha=Math.min(0.9,ht/8);X.shadowColor='#8800ff';X.shadowBlur=20;
+        const pr=ht*2*s;X.beginPath();X.arc(cx,cy-20*s,Math.min(pr,35*s),0,Math.PI*2);
+        const pg=X.createRadialGradient(cx,cy-20*s,0,cx,cy-20*s,pr);pg.addColorStop(0,'#bb44ff');pg.addColorStop(0.5,'#8800ff88');pg.addColorStop(1,'#8800ff00');X.fillStyle=pg;X.fill();X.shadowBlur=0;
+        if(ht>5){X.globalAlpha=0.8;X.font='bold '+Math.round(11*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#bb66ff';X.fillText('HOLLOW PURPLE',cx,cy+50*s);}}
       break;}
     case 'kashimo':{
-      // Lightning bolts cascading around
-      X.strokeStyle='#ffcc00';X.lineWidth=2*s;X.shadowColor='#ffcc00';X.shadowBlur=8;
-      const bolts=Math.min(5,Math.floor(t/10));
-      for(let i=0;i<bolts;i++){
-        const ba=Math.PI*2*i/5+t*0.05;
-        const bx=cx+Math.cos(ba)*40*s;const by=cy+Math.sin(ba)*30*s;
-        X.globalAlpha=0.7;X.beginPath();
-        X.moveTo(bx,by);X.lineTo(bx+8*s,by-12*s);X.lineTo(bx+3*s,by-6*s);X.lineTo(bx+10*s,by-18*s);X.stroke();
+      // Staff throw → lightning teleport to staff → knock around in air → electricity explosion
+      // Phase 1 (0-20): throws staff upward arc
+      const staffArc=Math.min(1,t/20);
+      const staffX=cx-30*s+staffArc*60*s;const staffY=cy-staffArc*50*s+Math.pow(staffArc,2)*20*s;
+      if(t<55){X.globalAlpha=0.8;X.strokeStyle='#886633';X.lineWidth=3*s;X.save();X.translate(staffX,staffY);X.rotate(t*0.15);
+        X.beginPath();X.moveTo(-12*s,0);X.lineTo(12*s,0);X.stroke();X.restore();}
+      // Phase 2 (20-50): lightning teleport chain — zap between positions hitting staff
+      if(t>20&&t<55){
+        const zaps=Math.min(4,Math.floor((t-20)/8));
+        for(let i=0;i<zaps;i++){
+          const zt=t-20-i*8;const alpha=Math.max(0,1-zt/15)*0.8;
+          const zx=cx-25*s+i*18*s+Math.sin(i*2.3)*10*s;const zy=cy+10*s-i*12*s;
+          X.globalAlpha=alpha;X.strokeStyle='#ffee00';X.lineWidth=2*s;X.shadowColor='#ffcc00';X.shadowBlur=10;
+          // Lightning bolt from position to staff
+          X.beginPath();X.moveTo(zx,zy);
+          const mx=(zx+staffX)/2+Math.sin(i*4.1)*15*s;const my=(zy+staffY)/2+Math.cos(i*3.7)*10*s;
+          X.lineTo(mx,my);X.lineTo(staffX,staffY);X.stroke();
+          // Kashimo flash at zap position
+          X.beginPath();X.arc(zx,zy,4*s,0,Math.PI*2);X.fillStyle='#ffee66';X.fill();
+          X.shadowBlur=0;
+        }
       }
-      X.shadowBlur=0;
-      if(t>15&&t<55){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc00';X.fillText('MYTHICAL BEAST',cx,cy+50*s);}
+      // Phase 3 (55-80): MYTHICAL BEAST — massive electricity explosion
+      if(t>55){const et=t-55;X.shadowColor='#ffcc00';X.shadowBlur=15;
+        // Expanding electricity ring
+        X.globalAlpha=Math.max(0,0.9-et/30);X.strokeStyle='#ffee00';X.lineWidth=3*s;
+        X.beginPath();X.arc(cx,cy-15*s,et*2*s,0,Math.PI*2);X.stroke();
+        // Random lightning bolts exploding outward
+        for(let i=0;i<8;i++){const ba=Math.PI*2*i/8+et*0.1;const len=et*1.5*s;
+          X.globalAlpha=Math.max(0,0.7-et/30);X.strokeStyle=i%2?'#ffcc00':'#ffee66';X.lineWidth=2*s;
+          X.beginPath();X.moveTo(cx+Math.cos(ba)*5*s,cy-15*s+Math.sin(ba)*5*s);
+          const mx2=cx+Math.cos(ba)*(len*0.5)+Math.sin(i*2)*8*s;const my2=cy-15*s+Math.sin(ba)*(len*0.5)+Math.cos(i*3)*6*s;
+          X.lineTo(mx2,my2);X.lineTo(cx+Math.cos(ba)*len,cy-15*s+Math.sin(ba)*len);X.stroke();}
+        X.shadowBlur=0;
+        X.globalAlpha=0.8;X.font='bold '+Math.round(11*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc00';X.fillText('MYTHICAL BEAST',cx,cy+50*s);}
       break;}
     case 'yuji':{
       // Black Flash punch impact
@@ -15319,33 +15368,105 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<60){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff2222';X.fillText('BLACK FLASH',cx,cy+50*s);}
       break;}
     case 'toji':{
-      // Weapon triangle flash
-      const ta=t*0.08;
-      X.strokeStyle='#8899aa';X.lineWidth=2*s;X.globalAlpha=0.5;
-      X.beginPath();
-      for(let i=0;i<3;i++){const a=ta+Math.PI*2*i/3;X.lineTo(cx+Math.cos(a)*35*s,cy+Math.sin(a)*35*s);}
-      X.closePath();X.stroke();
-      // Weapon icons at vertices
-      for(let i=0;i<3;i++){const a=ta+Math.PI*2*i/3;const wx=cx+Math.cos(a)*35*s;const wy=cy+Math.sin(a)*35*s;
-        X.beginPath();X.arc(wx,wy,4*s,0,Math.PI*2);X.fillStyle=['#cc4444','#44cc44','#4444cc'][i];X.fill();}
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#8899aa';X.fillText('ASSASSIN',cx,cy+50*s);}
+      // Teleport in air → 4 weapons appear N/W/E/S (chain=4th) → lands in center
+      // Phase 1 (0-25): teleport flashes at multiple positions in air
+      if(t<25){
+        const flashes=Math.min(4,Math.floor(t/5));
+        for(let i=0;i<flashes;i++){
+          const ft=t-i*5;const alpha=Math.max(0,1-ft/12)*0.7;
+          const fx=cx-30*s+i*20*s+Math.sin(i*3)*10*s;const fy=cy-20*s-i*8*s;
+          X.globalAlpha=alpha;X.fillStyle='#aabbcc';X.beginPath();X.arc(fx,fy,6*s,0,Math.PI*2);X.fill();
+          // Speed line trail
+          X.strokeStyle='#8899aa55';X.lineWidth=1.5*s;X.beginPath();X.moveTo(fx-10*s,fy);X.lineTo(fx-25*s,fy+3*s);X.stroke();
+        }
+      }
+      // Phase 2 (25-55): 4 weapons appear N/W/E/S — Toji center
+      if(t>25){const wt=Math.min(1,(t-25)/15);
+        const wpns=[{dir:-Math.PI/2,color:'#cc4444',label:'Blade'},{dir:Math.PI,color:'#44cc44',label:'Spear'},
+          {dir:Math.PI/2,color:'#4444cc',label:'Staff'},{dir:0,color:'#ccaa44',label:'Chain'}];
+        const dist2=35*s;
+        wpns.forEach((w,i)=>{
+          const wx=cx+Math.cos(w.dir)*dist2*wt;const wy=cy+Math.sin(w.dir)*dist2*wt;
+          X.globalAlpha=wt*0.8;X.fillStyle=w.color;
+          // Weapon shape
+          X.save();X.translate(wx,wy);X.rotate(w.dir+Math.PI/2);
+          X.fillRect(-2*s,-10*s,4*s,20*s);X.restore();
+          // Connecting line to center
+          if(i===3){X.strokeStyle='#ccaa4488';X.lineWidth=1.5*s;X.setLineDash([3,3]);X.beginPath();X.moveTo(wx,wy);X.lineTo(cx,cy);X.stroke();X.setLineDash([]);}
+        });
+        // Toji in center
+        X.globalAlpha=wt*0.7;X.fillStyle='#aabbcc';X.beginPath();X.arc(cx,cy,8*s,0,Math.PI*2);X.fill();
+        X.strokeStyle='#8899aa';X.lineWidth=1.5*s;X.beginPath();X.arc(cx,cy,12*s,0,Math.PI*2);X.stroke();
+      }
+      // Phase 3 (55+): flash as weapons converge slightly
+      if(t>55){const ct=t-55;X.globalAlpha=Math.max(0,0.8-ct/20);X.strokeStyle='#ffffff';X.lineWidth=2*s;
+        X.beginPath();X.arc(cx,cy,30*s-ct*s,0,Math.PI*2);X.stroke();}
+      if(t>30&&t<75){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#8899aa';X.fillText('INVERTED SPEAR',cx,cy+50*s);}
       break;}
     case 'yuta':{
-      // Rika ghost silhouette + purple glow
-      const rikaAlpha=Math.min(0.5,t/30);X.globalAlpha=rikaAlpha;
-      X.beginPath();X.arc(cx+25*s,cy-10*s,18*s,0,Math.PI*2);
-      const rg=X.createRadialGradient(cx+25*s,cy-10*s,0,cx+25*s,cy-10*s,18*s);
-      rg.addColorStop(0,'#aa44ff44');rg.addColorStop(1,'#aa44ff00');X.fillStyle=rg;X.fill();
-      if(t>15){X.globalAlpha=0.3;X.font='bold '+Math.round(8*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#aa44ff';X.fillText('RIKA',cx+25*s,cy-10*s+3);}
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#aa44ff';X.fillText('COPY',cx,cy+50*s);}
+      // Rika anime-look + dummy in middle + pincer attack
+      // Phase 1 (0-20): Yuta on left, Rika manifests on right
+      const rikaAlpha=Math.min(0.8,t/20);
+      // Dummy target in center
+      X.globalAlpha=0.4;X.fillStyle='#555';X.beginPath();X.arc(cx,cy,7*s,0,Math.PI*2);X.fill();
+      X.strokeStyle='#666';X.lineWidth=1;X.beginPath();X.moveTo(cx,cy-7*s);X.lineTo(cx,cy+12*s);X.stroke();
+      X.beginPath();X.moveTo(cx-8*s,cy+2*s);X.lineTo(cx+8*s,cy+2*s);X.stroke();
+      // Yuta (left side)
+      X.globalAlpha=0.7;X.fillStyle='#4444aa';X.beginPath();X.arc(cx-35*s,cy,8*s,0,Math.PI*2);X.fill();
+      // Rika (right side — anime ghostly form, larger, menacing)
+      X.globalAlpha=rikaAlpha*0.6;
+      // Rika body — large spectral shape
+      const rg=X.createRadialGradient(cx+35*s,cy-5*s,5*s,cx+35*s,cy-5*s,25*s);
+      rg.addColorStop(0,'#aa44ff88');rg.addColorStop(0.6,'#8822cc44');rg.addColorStop(1,'#66118800');X.fillStyle=rg;
+      X.beginPath();X.arc(cx+35*s,cy-5*s,25*s,0,Math.PI*2);X.fill();
+      // Rika eyes (glowing)
+      X.globalAlpha=rikaAlpha;X.fillStyle='#ff44ff';X.shadowColor='#ff44ff';X.shadowBlur=6;
+      X.beginPath();X.arc(cx+31*s,cy-8*s,2.5*s,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(cx+39*s,cy-8*s,2.5*s,0,Math.PI*2);X.fill();
+      X.shadowBlur=0;
+      // Phase 2 (30-60): pincer — both rush toward dummy
+      if(t>30){const pt=Math.min(1,(t-30)/20);
+        const yutaX=cx-35*s+pt*28*s;const rikaX=cx+35*s-pt*28*s;
+        // Motion lines
+        X.globalAlpha=0.5;X.strokeStyle='#4444aa44';X.lineWidth=1.5*s;
+        X.beginPath();X.moveTo(yutaX-10*s,cy);X.lineTo(yutaX-25*s,cy);X.stroke();
+        X.strokeStyle='#aa44ff44';X.beginPath();X.moveTo(rikaX+10*s,cy);X.lineTo(rikaX+25*s,cy);X.stroke();
+        // Converging energy
+        if(pt>0.8){X.globalAlpha=0.7;X.strokeStyle='#ff66ff';X.lineWidth=2*s;X.shadowColor='#aa44ff';X.shadowBlur=8;
+          X.beginPath();X.arc(cx,cy,(1-pt)*30*s+5*s,0,Math.PI*2);X.stroke();X.shadowBlur=0;}
+      }
+      // Phase 3 (55+): impact — dummy destroyed
+      if(t>55){const it=t-55;X.globalAlpha=Math.max(0,0.8-it/20);X.fillStyle='#aa44ff';
+        for(let i=0;i<6;i++){const da=Math.PI*2*i/6;X.beginPath();X.arc(cx+Math.cos(da)*it*1.5*s,cy+Math.sin(da)*it*1.5*s,3*s,0,Math.PI*2);X.fill();}}
+      if(t>25&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#aa44ff';X.fillText('RIKA + YUTA',cx,cy+50*s);}
       break;}
     case 'todo':{
-      // Clap effect — hands coming together
-      const clap=Math.min(1,t/25);const spread=(1-clap)*30*s;
-      X.globalAlpha=0.6;X.fillStyle='#ffcc00';
-      X.fillRect(cx-5*s-spread,cy-8*s,10*s,16*s);X.fillRect(cx-5*s+spread,cy-8*s,10*s,16*s);
-      if(clap>=1&&t<50){X.globalAlpha=0.5;X.strokeStyle='#ffcc00';X.lineWidth=2;X.beginPath();X.arc(cx,cy,20*s+Math.sin(t*0.3)*5,0,Math.PI*2);X.stroke();}
-      if(t>25&&t<65){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc00';X.fillText('BOOGIE WOOGIE',cx,cy+50*s);}
+      // Teleporting around with cursed papers
+      // Phase 1: cursed papers scatter in the area
+      const numPapers=Math.min(8,Math.floor(t/4));
+      for(let i=0;i<numPapers;i++){
+        const pa=Math.sin(i*4.7+1.3)*Math.PI+t*0.02;const pr=20*s+Math.sin(i*3.1)*12*s;
+        const px=cx+Math.cos(pa)*pr;const py=cy+Math.sin(pa)*pr-5*s;
+        X.globalAlpha=0.5;X.fillStyle='#ffcc66';X.save();X.translate(px,py);X.rotate(pa+t*0.05);
+        X.fillRect(-3*s,-4*s,6*s,8*s);X.restore();
+      }
+      // Phase 2 (10+): Todo teleporting between positions (flash at each spot)
+      if(t>10){
+        const teleports=Math.min(5,Math.floor((t-10)/10));
+        for(let i=0;i<teleports;i++){
+          const tt=t-10-i*10;const alpha=Math.max(0,1-tt/12)*0.7;
+          const tx=cx-30*s+i*15*s+Math.sin(i*5.1)*15*s;const ty=cy-10*s+Math.cos(i*3.7)*15*s;
+          X.globalAlpha=alpha;
+          // Teleport flash
+          X.fillStyle='#ffcc00';X.beginPath();X.arc(tx,ty,5*s+alpha*3*s,0,Math.PI*2);X.fill();
+          // Clap shockwave at each position
+          X.strokeStyle='#ffcc0066';X.lineWidth=1.5*s;X.beginPath();X.arc(tx,ty,(1-alpha)*15*s+5*s,0,Math.PI*2);X.stroke();
+        }
+      }
+      // Phase 3 (50+): final position with CLAP
+      if(t>50){const ct=t-50;X.globalAlpha=Math.min(0.8,ct/8);X.strokeStyle='#ffcc00';X.lineWidth=3*s;X.shadowColor='#ffcc00';X.shadowBlur=10;
+        X.beginPath();X.arc(cx,cy,ct*1.5*s,0,Math.PI*2);X.stroke();X.shadowBlur=0;}
+      if(t>15&&t<65){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc00';X.fillText('BOOGIE WOOGIE',cx,cy+50*s);}
       break;}
     case 'higuruma':{
       // Gavel slam
@@ -15363,11 +15484,39 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<60){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff4444';X.fillText('FULL BORG',cx,cy+50*s);}
       break;}
     case 'sandy':{
-      // Time slow effect — clock lines
-      X.globalAlpha=0.4;X.strokeStyle='#4488ff';X.lineWidth=1.5*s;
-      X.beginPath();X.arc(cx,cy,30*s,0,Math.PI*2);X.stroke();
-      const hand=t*0.1;X.beginPath();X.moveTo(cx,cy);X.lineTo(cx+Math.cos(hand)*20*s,cy+Math.sin(hand)*20*s);X.stroke();
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#4488ff';X.fillText('SANDEVISTAN',cx,cy+50*s);}
+      // Dashing around with time slow + bullets missing
+      // Phase 1: time-slow visual — blurred afterimages
+      // Sandy dashes across in a zigzag pattern
+      const dashPositions=[];
+      const numDashes=Math.min(5,Math.floor(t/10));
+      for(let i=0;i<numDashes;i++){
+        dashPositions.push({x:cx-35*s+i*18*s,y:cy-8*s+Math.sin(i*2.3)*15*s,t:t-i*10});
+      }
+      // Afterimages (past positions)
+      dashPositions.forEach((dp,i)=>{
+        const age=dp.t;const alpha=Math.max(0,0.6-age*0.01)*(i<numDashes-1?0.3:0.8);
+        X.globalAlpha=alpha;X.fillStyle=i===numDashes-1?'#4488ff':'#224466';
+        X.beginPath();X.arc(dp.x,dp.y,6*s,0,Math.PI*2);X.fill();
+        // Speed lines behind each dash
+        if(i<numDashes-1){X.strokeStyle='#4488ff33';X.lineWidth=1.5*s;
+          X.beginPath();X.moveTo(dp.x,dp.y);X.lineTo(dashPositions[i+1].x,dashPositions[i+1].y);X.stroke();}
+      });
+      // Phase 2 (15+): bullets flying past and missing — frozen in time
+      if(t>15){
+        const numBullets=Math.min(6,Math.floor((t-15)/6));
+        for(let i=0;i<numBullets;i++){
+          const bx=cx+20*s+i*8*s+Math.sin(i*4.1)*5*s;
+          const by=cy-15*s+Math.sin(i*2.7)*20*s;
+          const bt=t-15-i*6;
+          // Bullet (small yellow circle) + trail
+          X.globalAlpha=Math.min(0.6,bt/5);X.fillStyle='#ffaa22';
+          X.beginPath();X.arc(bx+bt*1.5*s,by,2*s,0,Math.PI*2);X.fill();
+          X.strokeStyle='#ffaa2244';X.lineWidth=1;X.beginPath();X.moveTo(bx,by);X.lineTo(bx+bt*1.5*s,by);X.stroke();
+        }
+      }
+      // Time-slow tint overlay
+      X.globalAlpha=0.1;X.fillStyle='#4488ff';X.fillRect(cx-50*s,cy-40*s,100*s,80*s);
+      if(t>10&&t<65){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#4488ff';X.fillText('SANDEVISTAN',cx,cy+50*s);}
       break;}
     case 'katana':{
       // Deflect slash arc
@@ -15390,30 +15539,111 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc4400';X.fillText('BERSERK',cx,cy+50*s);}
       break;}
     case 'choso':{
-      // Blood beam charging — converging red lines
-      for(let i=0;i<Math.min(5,Math.floor(t/6));i++){
-        X.globalAlpha=0.5;X.strokeStyle='#cc2244';X.lineWidth=2*s;
-        const ba2=Math.PI*2*i/5;X.beginPath();
-        X.moveTo(cx+Math.cos(ba2)*40*s,cy+Math.sin(ba2)*40*s);
-        X.lineTo(cx+Math.cos(ba2)*10*s,cy+Math.sin(ba2)*10*s);X.stroke();}
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc2244';X.fillText('PIERCING BLOOD',cx,cy+50*s);}
+      // Blood orbs appear → Piercing Blood blasts → reflects around
+      // Phase 1 (0-25): blood orbs materialize in a ring
+      const orbCount=5;
+      for(let i=0;i<orbCount;i++){
+        const oa=Math.PI*2*i/orbCount-Math.PI/2;const orbR=30*s;
+        const orbAlpha=Math.min(0.7,t/(10+i*3));
+        const ox=cx+Math.cos(oa)*orbR;const oy=cy+Math.sin(oa)*orbR;
+        const destroyed=t>30+i*4;
+        if(!destroyed){
+          X.globalAlpha=orbAlpha;X.fillStyle='#cc2244';X.beginPath();X.arc(ox,oy,5*s,0,Math.PI*2);X.fill();
+          X.strokeStyle='#ff446688';X.lineWidth=1;X.beginPath();X.arc(ox,oy,7*s,0,Math.PI*2);X.stroke();
+        }
+      }
+      // Phase 2 (25-55): Piercing Blood beam fires from center and ricochets
+      if(t>25){const bt=t-25;
+        // Main beam
+        X.globalAlpha=Math.min(0.8,bt/5);X.strokeStyle='#ff2244';X.lineWidth=3*s;X.shadowColor='#ff0022';X.shadowBlur=8;
+        // Beam path: center → right → bounce down → bounce left → bounce up
+        const beamLen=bt*3*s;
+        const segments=[{x1:cx,y1:cy,x2:cx+40*s,y2:cy-10*s},{x1:cx+40*s,y1:cy-10*s,x2:cx+30*s,y2:cy+25*s},
+          {x1:cx+30*s,y1:cy+25*s,x2:cx-25*s,y2:cy+15*s},{x1:cx-25*s,y1:cy+15*s,x2:cx-35*s,y2:cy-20*s}];
+        let drawn=0;
+        X.beginPath();X.moveTo(cx,cy);
+        for(const seg of segments){
+          const segLen=Math.hypot(seg.x2-seg.x1,seg.y2-seg.y1);
+          if(drawn+segLen<beamLen){X.lineTo(seg.x2,seg.y2);drawn+=segLen;
+            // Ricochet spark
+            X.stroke();X.beginPath();X.moveTo(seg.x2,seg.y2);
+            X.globalAlpha=0.5;X.fillStyle='#ff6644';X.beginPath();X.arc(seg.x2,seg.y2,3*s,0,Math.PI*2);X.fill();
+            X.beginPath();X.moveTo(seg.x2,seg.y2);
+          } else {const frac=(beamLen-drawn)/segLen;X.lineTo(seg.x1+(seg.x2-seg.x1)*frac,seg.y1+(seg.y2-seg.y1)*frac);break;}
+        }
+        X.stroke();X.shadowBlur=0;
+      }
+      if(t>20&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc2244';X.fillText('PIERCING BLOOD',cx,cy+50*s);}
       break;}
     case 'nanami':{
-      // 7:3 ratio line — critical point marker
-      X.globalAlpha=0.5;X.strokeStyle='#e8dcc0';X.lineWidth=2*s;
-      X.beginPath();X.moveTo(cx-30*s,cy);X.lineTo(cx+30*s,cy);X.stroke();
-      // 7:3 marker
-      const markX=cx-30*s+60*s*0.7;
-      X.fillStyle='#ffcc00';X.fillRect(markX-2*s,cy-8*s,4*s,16*s);
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#e8dcc0';X.fillText('RATIO: 7:3',cx,cy+50*s);}
+      // Slash → zoom-in 7:3 ruler → adjusts glasses
+      // Phase 1 (0-20): diagonal slash arc
+      if(t<25){const st=Math.min(1,t/12);X.globalAlpha=st*0.7;X.strokeStyle='#e8dcc0';X.lineWidth=3*s;X.shadowColor='#ffcc00';X.shadowBlur=6;
+        X.beginPath();X.moveTo(cx-25*s+st*50*s,cy+20*s-st*40*s);X.lineTo(cx-25*s,cy+20*s);X.stroke();X.shadowBlur=0;}
+      // Phase 2 (20-55): zoom-in ruler showing 7:3 ratio
+      if(t>20){const rt=Math.min(1,(t-20)/10);
+        // Ruler bar
+        const rulerW=80*s*rt;const rulerH=8*s;const rulerX=cx-rulerW/2;const rulerY=cy-5*s;
+        X.globalAlpha=rt*0.8;
+        // 7 portion (gold)
+        X.fillStyle='#d4a843';X.fillRect(rulerX,rulerY,rulerW*0.7,rulerH);
+        // 3 portion (darker)
+        X.fillStyle='#887744';X.fillRect(rulerX+rulerW*0.7,rulerY,rulerW*0.3,rulerH);
+        // Divider line at 7:3 point
+        X.fillStyle='#ffcc00';X.fillRect(rulerX+rulerW*0.7-2*s,rulerY-4*s,4*s,rulerH+8*s);
+        // Tick marks
+        X.strokeStyle='#aaa';X.lineWidth=0.8;
+        for(let i=0;i<=10;i++){const tx=rulerX+rulerW*i/10;X.beginPath();X.moveTo(tx,rulerY);X.lineTo(tx,rulerY-3*s);X.stroke();}
+        // Labels
+        X.font='bold '+Math.round(8*s)+'px Consolas,monospace';X.textAlign='center';
+        X.fillStyle='#ffcc00';X.fillText('7',rulerX+rulerW*0.35,rulerY+rulerH+12*s);
+        X.fillStyle='#887744';X.fillText('3',rulerX+rulerW*0.85,rulerY+rulerH+12*s);
+        // Impact flash at ratio point
+        if(t>28&&t<40){const ft=t-28;X.globalAlpha=Math.max(0,0.8-ft/12);X.strokeStyle='#ffcc00';X.lineWidth=2*s;
+          X.beginPath();X.arc(rulerX+rulerW*0.7,rulerY+rulerH/2,ft*2*s,0,Math.PI*2);X.stroke();}
+      }
+      // Phase 3 (45+): glasses adjust — small rectangle glint
+      if(t>45){const gt=t-45;X.globalAlpha=Math.min(0.6,gt/8);X.strokeStyle='#ffffff';X.lineWidth=1.5*s;
+        // Glasses shape
+        X.beginPath();X.rect(cx-10*s,cy-35*s,8*s,5*s);X.rect(cx+2*s,cy-35*s,8*s,5*s);X.stroke();
+        // Glint
+        if(gt<15){X.globalAlpha=Math.max(0,0.8-gt/15);X.fillStyle='#fff';X.beginPath();X.arc(cx+6*s,cy-33*s,2*s,0,Math.PI*2);X.fill();}
+      }
+      if(t>25&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#e8dcc0';X.fillText('RATIO: 7:3',cx,cy+50*s);}
       break;}
     case 'ryu':{
-      // Granite blast — energy sphere charging
-      const charge=Math.min(1,t/40);X.globalAlpha=charge*0.5;
-      const rg3=X.createRadialGradient(cx+15*s,cy,0,cx+15*s,cy,20*s*charge);
-      rg3.addColorStop(0,'#ff884488');rg3.addColorStop(1,'#ff884400');X.fillStyle=rg3;
-      X.beginPath();X.arc(cx+15*s,cy,20*s*charge,0,Math.PI*2);X.fill();
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8844';X.fillText('GRANITE BLAST',cx,cy+50*s);}
+      // Homing spheres orbiting → explode outward in all directions
+      // Phase 1 (0-45): multiple energy spheres orbit around Ryu
+      const numSpheres=6;
+      for(let i=0;i<numSpheres;i++){
+        const orbA=t*0.08+Math.PI*2*i/numSpheres;
+        const orbR=(20+Math.sin(t*0.05+i)*5)*s;
+        const sx=cx+Math.cos(orbA)*orbR;const sy=cy+Math.sin(orbA)*orbR;
+        const exploded=t>50;
+        if(!exploded){
+          X.globalAlpha=Math.min(0.7,t/15);X.fillStyle='#ff8844';
+          X.beginPath();X.arc(sx,sy,4*s,0,Math.PI*2);X.fill();
+          X.shadowColor='#ff6622';X.shadowBlur=6;X.beginPath();X.arc(sx,sy,4*s,0,Math.PI*2);X.fill();X.shadowBlur=0;
+          // Orbit trail
+          const trailA=orbA-0.3;X.globalAlpha=0.2;X.beginPath();X.arc(cx+Math.cos(trailA)*orbR,cy+Math.sin(trailA)*orbR,3*s,0,Math.PI*2);X.fill();
+        } else {
+          // Explode outward — each sphere flies out in its direction
+          const et=t-50;const expDist=et*3*s;
+          X.globalAlpha=Math.max(0,0.8-et/25);X.fillStyle='#ff8844';
+          const ex=cx+Math.cos(orbA)*expDist;const ey=cy+Math.sin(orbA)*expDist;
+          X.beginPath();X.arc(ex,ey,4*s,0,Math.PI*2);X.fill();
+          // Trail line
+          X.strokeStyle='#ff884466';X.lineWidth=2*s;X.beginPath();X.moveTo(cx+Math.cos(orbA)*20*s,cy+Math.sin(orbA)*20*s);X.lineTo(ex,ey);X.stroke();
+        }
+      }
+      // Center glow builds up
+      if(t<50){const glow=Math.min(0.5,t/30);X.globalAlpha=glow;
+        const rg3=X.createRadialGradient(cx,cy,0,cx,cy,15*s);rg3.addColorStop(0,'#ff884488');rg3.addColorStop(1,'#ff884400');
+        X.fillStyle=rg3;X.beginPath();X.arc(cx,cy,15*s,0,Math.PI*2);X.fill();}
+      // Explosion flash
+      if(t>50&&t<60){const ft=t-50;X.globalAlpha=Math.max(0,0.9-ft/10);X.strokeStyle='#ff6622';X.lineWidth=3*s;X.shadowColor='#ff4400';X.shadowBlur=12;
+        X.beginPath();X.arc(cx,cy,ft*3*s,0,Math.PI*2);X.stroke();X.shadowBlur=0;}
+      if(t>20&&t<75){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8844';X.fillText('GRANITE BLAST',cx,cy+50*s);}
       break;}
     case 'mechamaru':{
       // Cannon charging — tech lines
@@ -15460,10 +15690,37 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#4444aa';X.fillText('TEN SHADOWS',cx,cy+50*s);}
       break;}
     case 'mahito':{
-      // Idle transfiguration — morphing shape
-      const morph=Math.sin(t*0.1)*10*s;X.globalAlpha=0.4;X.fillStyle='#8888cc';
-      X.beginPath();X.moveTo(cx-15*s+morph,cy-15*s);X.lineTo(cx+15*s,cy-15*s-morph);X.lineTo(cx+15*s+morph,cy+15*s);X.lineTo(cx-15*s,cy+15*s+morph);X.closePath();X.fill();
-      if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#8888cc';X.fillText('TRANSFIGURE',cx,cy+50*s);}
+      // Self-transformation + transfigured humans exploding around
+      // Phase 1 (0-30): Mahito morphing his own shape — body distorts
+      const morph=Math.sin(t*0.15)*12*s;const morph2=Math.cos(t*0.12)*8*s;
+      X.globalAlpha=0.5;X.fillStyle='#8888cc';
+      X.beginPath();X.moveTo(cx-12*s+morph,cy-15*s);X.quadraticCurveTo(cx+morph2,cy-18*s-morph,cx+12*s,cy-12*s+morph2);
+      X.quadraticCurveTo(cx+15*s+morph,cy+morph2,cx+10*s-morph2,cy+15*s);
+      X.quadraticCurveTo(cx-morph,cy+12*s+morph2,cx-12*s+morph2,cy+morph);X.closePath();X.fill();
+      // Patchwork lines on body
+      X.strokeStyle='#6666aa66';X.lineWidth=1;
+      X.beginPath();X.moveTo(cx-5*s,cy-12*s);X.lineTo(cx+3*s,cy+10*s);X.stroke();
+      X.beginPath();X.moveTo(cx+8*s,cy-8*s);X.lineTo(cx-6*s,cy+5*s);X.stroke();
+      // Phase 2 (20+): transfigured humans appear around him and explode
+      if(t>20){
+        const numHumans=Math.min(6,Math.floor((t-20)/8));
+        for(let i=0;i<numHumans;i++){
+          const ht=t-20-i*8;const ha=Math.PI*2*i/6+0.5;
+          const hr=25*s+i*5*s;const hx=cx+Math.cos(ha)*hr;const hy=cy+Math.sin(ha)*hr;
+          if(ht<15){
+            // Human figure appearing
+            X.globalAlpha=Math.min(0.5,ht/5);X.fillStyle='#aa88cc';
+            X.beginPath();X.arc(hx,hy-4*s,3*s,0,Math.PI*2);X.fill(); // head
+            X.strokeStyle='#aa88cc';X.lineWidth=1.5*s;X.beginPath();X.moveTo(hx,hy-1*s);X.lineTo(hx,hy+6*s);X.stroke(); // body
+          } else {
+            // Explode
+            const et=ht-15;X.globalAlpha=Math.max(0,0.6-et/10);X.fillStyle='#cc66ff';
+            for(let d=0;d<4;d++){const da=Math.PI*2*d/4+ha;
+              X.beginPath();X.arc(hx+Math.cos(da)*et*s,hy+Math.sin(da)*et*s,2*s,0,Math.PI*2);X.fill();}
+          }
+        }
+      }
+      if(t>15&&t<65){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#8888cc';X.fillText('IDLE TRANSFIGURATION',cx,cy+50*s);}
       break;}
     case 'yuki':{
       // Star Rage — expanding mass ring
