@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.10.0 — 2v2 Team Battle + Battle Royale modes
+// BALL BATTLE ARENA v10.11.0 — Tournament sponsor system
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -17830,7 +17830,7 @@ function drawTournBracket(){
         gameMode='tournament';
         p1Char=match.p1.charIdx;p2Char=match.p2.charIdx;
         p1Elem=match.p1.elemIdx;p2Elem=match.p2.elemIdx;
-        p1Sponsor=-1;p2Sponsor=-1;
+        p1Sponsor=tournPickSponsor(p1Char,p2Char);p2Sponsor=tournPickSponsor(p2Char,p1Char);
         startIntroCutscene();
       });
     }
@@ -17846,7 +17846,7 @@ function drawTournBracket(){
       gameMode='tournament';
       p1Char=match.p1.charIdx;p2Char=match.p2.charIdx;
       p1Elem=match.p1.elemIdx;p2Elem=match.p2.elemIdx;
-      p1Sponsor=-1;p2Sponsor=-1;
+      p1Sponsor=tournPickSponsor(p1Char,p2Char);p2Sponsor=tournPickSponsor(p2Char,p1Char);
       startIntroCutscene();
     });
   } else {
@@ -17868,6 +17868,15 @@ function drawTournBracket(){
   }
   addBtn('tournBracketBack',10,H-45,isMobile?50:70,30,'Title','#555',()=>{screen='title';});
   buttons.forEach(drawBtn);
+}
+
+// Auto-pick a random eligible sponsor for a tournament fighter
+function tournPickSponsor(charIdx,opponentCharIdx){
+  const charId=CHARS[charIdx].id;
+  const oppId=CHARS[opponentCharIdx].id;
+  const eligible=getEligibleSponsors(charId,[oppId]);
+  if(eligible.length===0)return -1;
+  return pick(eligible);
 }
 
 function tournFinishMatch(winnerSide){
