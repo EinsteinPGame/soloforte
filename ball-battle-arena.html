@@ -991,6 +991,7 @@ let teamElem1=0,teamElem2=0,teamElem3=0,bossElem=0; // elements
 let teamSponsor1=-1,teamSponsor2=-1,teamSponsor3=-1; // team sponsors for boss mode
 let selectPage=0; // pagination for character select (0-indexed)
 let selectTab=0; // 0=Fighters, 1=Bosses
+let _1v1SelPage=1; // 1=chars, 2=elements+sponsors
 
 const ARENA={x:15,y:65,w:W-30,h:H-200};
 
@@ -8791,87 +8792,151 @@ function drawBall(f){
     X.restore();
   }
 
-  // Gojo face — white hair, blue eyes
+  // Gojo face — iconic white/silver spiky hair swept up, Six Eyes, blindfold, confident smirk
   if(f.char.id==='gojo'){
     X.save();
-    // White messy anime hair — wild, asymmetric, strands falling in different directions
-    const hx=f.x,hy=f.y-f.radius*0.3;
-    X.fillStyle=f.gojoAwakened?'#eeeeff':'#ffffff';
-    // Hair base — wide fluffy mass covering top of head
+    const hx=f.x,hy=f.y,r=f.radius;
+    const awakened=f.gojoAwakened;
+    const eyeGlow=awakened||f.specialActive;
+    // --- Skin tone base ---
+    X.fillStyle='#f5e6d3';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Signature white/silver spiky hair swept UP and BACK ---
+    const hairColor=awakened?'#e8e8ff':'#ffffff';
+    const hairShadow=awakened?'#c8c8ee':'#dde0e8';
+    X.fillStyle=hairColor;
+    // Hair volume base
     X.beginPath();
-    X.ellipse(hx,f.y-f.radius*0.4,f.radius*0.75,f.radius*0.3,0,Math.PI,0);
+    X.ellipse(hx,hy-r*0.45,r*0.72,r*0.32,0,Math.PI,0);
     X.fill();
-    // Side hair — strands falling down past the ball on left and right
-    X.beginPath();
-    X.moveTo(hx-f.radius*0.65,f.y-f.radius*0.5);
-    X.quadraticCurveTo(hx-f.radius*0.85,f.y-f.radius*0.1,hx-f.radius*0.7,f.y+f.radius*0.1);
-    X.lineTo(hx-f.radius*0.55,f.y-f.radius*0.2);
-    X.closePath();X.fill();
-    X.beginPath();
-    X.moveTo(hx+f.radius*0.6,f.y-f.radius*0.5);
-    X.quadraticCurveTo(hx+f.radius*0.8,f.y-f.radius*0.15,hx+f.radius*0.65,f.y+f.radius*0.05);
-    X.lineTo(hx+f.radius*0.5,f.y-f.radius*0.25);
-    X.closePath();X.fill();
-    // Messy spikes — wild directions, varying thickness, some curving forward/sideways
-    const spikes=[
-      {off:-0.4,h:0.55,w:0.12,tilt:-0.2}, // far left, leaning out
-      {off:-0.25,h:0.8,w:0.11,tilt:-0.12}, // tall left spike
-      {off:-0.12,h:0.6,w:0.1,tilt:0.05}, // slight right lean
-      {off:0.02,h:0.95,w:0.13,tilt:-0.05}, // tallest center-left spike
-      {off:0.15,h:0.7,w:0.1,tilt:0.1}, // right-leaning
-      {off:0.28,h:0.85,w:0.12,tilt:0.15}, // tall right spike, leaning right
-      {off:0.42,h:0.5,w:0.1,tilt:0.22}, // far right, strongly leaning
+    // Main upswept spikes — tall, swept back and up, signature Gojo silhouette
+    const gojoSpikes=[
+      {off:-0.45,h:0.50,w:0.11,tilt:-0.25},
+      {off:-0.30,h:0.75,w:0.12,tilt:-0.10},
+      {off:-0.15,h:0.90,w:0.13,tilt:0.02},
+      {off:0.0,  h:1.05,w:0.14,tilt:0.05},
+      {off:0.15, h:0.85,w:0.12,tilt:0.12},
+      {off:0.30, h:0.70,w:0.11,tilt:0.18},
+      {off:0.45, h:0.45,w:0.10,tilt:0.28},
     ];
-    spikes.forEach(sp=>{
-      const sx=hx+sp.off*f.radius;
-      const baseY=f.y-f.radius*0.55;
-      const tipY=baseY-f.radius*sp.h;
-      const tipX=sx+sp.tilt*f.radius;
-      const sw=f.radius*sp.w;
+    gojoSpikes.forEach(sp=>{
+      const sx=hx+sp.off*r;
+      const baseY=hy-r*0.55;
+      const tipY=baseY-r*sp.h;
+      const tipX=sx+sp.tilt*r;
+      const sw=r*sp.w;
       X.beginPath();
       X.moveTo(sx-sw,baseY);
-      X.quadraticCurveTo(sx-sw*0.5,lerp(baseY,tipY,0.6),tipX-sw*0.15,tipY);
-      X.quadraticCurveTo(sx+sw*0.5,lerp(baseY,tipY,0.5),sx+sw,baseY);
+      X.bezierCurveTo(sx-sw*0.6,lerp(baseY,tipY,0.5),tipX-sw*0.3,lerp(baseY,tipY,0.85),tipX,tipY);
+      X.bezierCurveTo(tipX+sw*0.3,lerp(baseY,tipY,0.8),sx+sw*0.6,lerp(baseY,tipY,0.4),sx+sw,baseY);
       X.closePath();X.fill();
     });
-    // Front fringe — thin strands hanging down over forehead
-    X.strokeStyle=f.gojoAwakened?'#ddddf8':'#f0f0f0';
-    X.lineWidth=2;
-    X.beginPath();X.moveTo(hx-f.radius*0.2,f.y-f.radius*0.5);
-    X.quadraticCurveTo(hx-f.radius*0.25,f.y-f.radius*0.2,hx-f.radius*0.15,f.y-f.radius*0.05);X.stroke();
-    X.beginPath();X.moveTo(hx+f.radius*0.05,f.y-f.radius*0.55);
-    X.quadraticCurveTo(hx+f.radius*0.1,f.y-f.radius*0.25,hx+f.radius*0.0,f.y-f.radius*0.08);X.stroke();
-    X.beginPath();X.moveTo(hx+f.radius*0.2,f.y-f.radius*0.48);
-    X.quadraticCurveTo(hx+f.radius*0.28,f.y-f.radius*0.2,hx+f.radius*0.22,f.y-f.radius*0.02);X.stroke();
-    // Subtle shadow on hair base
-    X.fillStyle='rgba(180,180,220,0.25)';
+    // Hair shadow/depth
+    X.fillStyle=hairShadow;
+    X.globalAlpha=0.35;
     X.beginPath();
-    X.ellipse(hx,f.y-f.radius*0.4,f.radius*0.7,f.radius*0.08,0,0,Math.PI);
+    X.ellipse(hx+r*0.05,hy-r*0.48,r*0.55,r*0.15,0.1,Math.PI,0);
     X.fill();
-    // Blue eyes
-    const eyeGlow=f.gojoAwakened||f.specialActive;
-    X.beginPath();X.arc(f.x-f.radius*0.18,f.y-f.radius*0.1,f.radius*0.08,0,Math.PI*2);
-    X.fillStyle=eyeGlow?'#4488ff':'#3366cc';X.fill();
-    if(eyeGlow){X.shadowColor='#4488ff';X.shadowBlur=8;X.fill();X.shadowBlur=0;}
-    X.beginPath();X.arc(f.x+f.radius*0.18,f.y-f.radius*0.1,f.radius*0.08,0,Math.PI*2);
-    X.fillStyle=eyeGlow?'#4488ff':'#3366cc';X.fill();
-    if(eyeGlow){X.shadowColor='#4488ff';X.shadowBlur=8;X.fill();X.shadowBlur=0;}
-    // Slight smile
-    X.strokeStyle='#aaa';X.lineWidth=1;
-    X.beginPath();X.arc(f.x,f.y+f.radius*0.1,f.radius*0.15,0.1,Math.PI-0.1);X.stroke();
-    // Infinity aura
+    X.globalAlpha=1;
+    // Side hair framing face
+    X.fillStyle=hairColor;
+    X.beginPath();
+    X.moveTo(hx-r*0.62,hy-r*0.45);
+    X.quadraticCurveTo(hx-r*0.78,hy-r*0.15,hx-r*0.62,hy+r*0.05);
+    X.lineTo(hx-r*0.50,hy-r*0.15);X.closePath();X.fill();
+    X.beginPath();
+    X.moveTo(hx+r*0.60,hy-r*0.45);
+    X.quadraticCurveTo(hx+r*0.75,hy-r*0.15,hx+r*0.58,hy+r*0.05);
+    X.lineTo(hx+r*0.48,hy-r*0.15);X.closePath();X.fill();
+    // Wispy fringe strands
+    X.strokeStyle=hairColor;X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.18,hy-r*0.52);
+    X.quadraticCurveTo(hx-r*0.28,hy-r*0.25,hx-r*0.20,hy-r*0.05);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.05,hy-r*0.58);
+    X.quadraticCurveTo(hx-r*0.02,hy-r*0.30,hx+r*0.02,hy-r*0.08);X.stroke();
+    X.lineWidth=2;
+    X.beginPath();X.moveTo(hx+r*0.20,hy-r*0.50);
+    X.quadraticCurveTo(hx+r*0.25,hy-r*0.25,hx+r*0.18,hy-r*0.05);X.stroke();
+    // --- Blindfold OR Six Eyes ---
+    if(!eyeGlow){
+      // BLACK BLINDFOLD — Gojo's signature default look
+      X.fillStyle='#111118';
+      X.beginPath();
+      X.moveTo(hx-r*0.55,hy-r*0.18);
+      X.quadraticCurveTo(hx,hy-r*0.22,hx+r*0.55,hy-r*0.18);
+      X.lineTo(hx+r*0.55,hy-r*0.02);
+      X.quadraticCurveTo(hx,hy+r*0.02,hx-r*0.55,hy-r*0.02);
+      X.closePath();X.fill();
+      // Blindfold sheen
+      X.fillStyle='rgba(60,60,80,0.4)';
+      X.beginPath();
+      X.ellipse(hx,hy-r*0.14,r*0.35,r*0.04,-0.05,0,Math.PI*2);
+      X.fill();
+      // Blindfold knot/tail on right side
+      X.fillStyle='#111118';
+      X.beginPath();
+      X.moveTo(hx+r*0.52,hy-r*0.12);
+      X.quadraticCurveTo(hx+r*0.72,hy-r*0.20,hx+r*0.68,hy-r*0.06);
+      X.quadraticCurveTo(hx+r*0.70,hy+r*0.02,hx+r*0.52,hy-r*0.04);
+      X.closePath();X.fill();
+      // Dangling tail ends
+      X.strokeStyle='#111118';X.lineWidth=2;X.lineCap='round';
+      X.beginPath();X.moveTo(hx+r*0.68,hy-r*0.12);
+      X.quadraticCurveTo(hx+r*0.80,hy-r*0.05,hx+r*0.75,hy+r*0.08);X.stroke();
+      X.beginPath();X.moveTo(hx+r*0.66,hy-r*0.08);
+      X.quadraticCurveTo(hx+r*0.78,hy+r*0.02,hx+r*0.72,hy+r*0.14);X.stroke();
+    } else {
+      // SIX EYES REVEALED — brilliant blue, concentric iris rings
+      const eyeR=r*0.10;
+      [-1,1].forEach(side=>{
+        const ex=hx+side*r*0.18,ey=hy-r*0.10;
+        // White sclera
+        X.fillStyle='#fff';
+        X.beginPath();X.ellipse(ex,ey,eyeR*1.6,eyeR*1.2,-side*0.08,0,Math.PI*2);X.fill();
+        // Outer iris
+        X.fillStyle='#1155cc';
+        X.beginPath();X.arc(ex,ey,eyeR*1.1,0,Math.PI*2);X.fill();
+        // Mid iris ring
+        X.fillStyle='#2299ff';
+        X.beginPath();X.arc(ex,ey,eyeR*0.8,0,Math.PI*2);X.fill();
+        // Inner iris core
+        X.fillStyle='#66ddff';
+        X.beginPath();X.arc(ex,ey,eyeR*0.45,0,Math.PI*2);X.fill();
+        // Pupil
+        X.fillStyle='#0a0a2a';
+        X.beginPath();X.arc(ex,ey,eyeR*0.22,0,Math.PI*2);X.fill();
+        // Six Eyes glow
+        X.shadowColor='#44aaff';X.shadowBlur=12;
+        X.fillStyle='rgba(68,170,255,0.3)';
+        X.beginPath();X.arc(ex,ey,eyeR*1.4,0,Math.PI*2);X.fill();
+        X.shadowBlur=0;
+        // Highlight sparkle
+        X.fillStyle='rgba(255,255,255,0.85)';
+        X.beginPath();X.arc(ex-eyeR*0.3,ey-eyeR*0.35,eyeR*0.22,0,Math.PI*2);X.fill();
+      });
+    }
+    // --- Confident smirk ---
+    X.strokeStyle='#888';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.12,hy+r*0.14);
+    X.quadraticCurveTo(hx+r*0.02,hy+r*0.22,hx+r*0.14,hy+r*0.12);
+    X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(180,150,130,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.02);X.lineTo(hx-r*0.03,hy+r*0.06);X.stroke();
+    // --- Infinity aura ---
     if(f.gojoInfinityCharges>0){
       const pulse=Math.sin(battleTime*0.08)*3;
-      X.beginPath();X.arc(f.x,f.y,f.radius+4+pulse,0,Math.PI*2);
-      const ig=X.createRadialGradient(f.x,f.y,f.radius,f.x,f.y,f.radius+8+pulse);
+      X.beginPath();X.arc(hx,hy,r+4+pulse,0,Math.PI*2);
+      const ig=X.createRadialGradient(hx,hy,r,hx,hy,r+8+pulse);
       ig.addColorStop(0,'rgba(100,120,255,0.3)');ig.addColorStop(1,'rgba(100,120,255,0)');
       X.fillStyle=ig;X.fill();
     }
-    // Awakened glow
-    if(f.gojoAwakened){
+    // --- Awakened glow ---
+    if(awakened){
       const pulse=Math.sin(battleTime*0.1)*5;
-      X.beginPath();X.arc(f.x,f.y,f.radius+8+pulse,0,Math.PI*2);
-      const ag=X.createRadialGradient(f.x,f.y,f.radius,f.x,f.y,f.radius+12+pulse);
+      X.beginPath();X.arc(hx,hy,r+8+pulse,0,Math.PI*2);
+      const ag=X.createRadialGradient(hx,hy,r,hx,hy,r+12+pulse);
       ag.addColorStop(0,'rgba(80,100,255,0.25)');ag.addColorStop(1,'rgba(150,70,255,0)');
       X.fillStyle=ag;X.fill();
     }
@@ -8965,65 +9030,122 @@ function drawBall(f){
     });
   }
 
-  // Toji face — dark messy hair, lip scar, sharp eyes
+  // Toji face — short messy black hair, lip scar, sharp narrow eyes, menacing smile
   if(f.char.id==='toji'){
     X.save();
-    const hx=f.x,hy=f.y;
-    // Dark messy hair — short, spiky, unkempt
-    X.fillStyle='#1a1a22';
+    const hx=f.x,hy=f.y,r=f.radius;
+    // --- Skin tone (slightly tanned, athletic) ---
+    X.fillStyle='#e8d0b8';
+    X.beginPath();X.arc(hx,hy,r*0.54,0,Math.PI*2);X.fill();
+    // --- Short messy black hair — unkempt, falling slightly forward ---
+    X.fillStyle='#0a0a12';
     // Hair base
     X.beginPath();
-    X.ellipse(hx,hy-f.radius*0.35,f.radius*0.65,f.radius*0.3,0,Math.PI,0);
+    X.ellipse(hx,hy-r*0.38,r*0.68,r*0.30,0,Math.PI,0);
     X.fill();
-    // Messy spikes — short aggressive
-    const spks=[{x:-0.3,y:-0.7,w:0.1},{x:-0.15,y:-0.8,w:0.09},{x:0.0,y:-0.75,w:0.1},{x:0.15,y:-0.85,w:0.09},{x:0.3,y:-0.65,w:0.1}];
-    spks.forEach(s=>{
+    // Short aggressive spikes — messy, not long
+    const tojiSpikes=[
+      {x:-0.38,y:-0.68,w:0.10},
+      {x:-0.22,y:-0.78,w:0.09},
+      {x:-0.08,y:-0.72,w:0.10},
+      {x:0.08, y:-0.80,w:0.10},
+      {x:0.22, y:-0.74,w:0.09},
+      {x:0.36, y:-0.62,w:0.09},
+    ];
+    tojiSpikes.forEach(s=>{
       X.beginPath();
-      X.moveTo(hx+s.x*f.radius-s.w*f.radius,hy-f.radius*0.4);
-      X.lineTo(hx+s.x*f.radius,hy+s.y*f.radius);
-      X.lineTo(hx+s.x*f.radius+s.w*f.radius,hy-f.radius*0.4);
+      X.moveTo(hx+s.x*r-s.w*r,hy-r*0.42);
+      X.quadraticCurveTo(hx+s.x*r,hy+s.y*r,hx+s.x*r+s.w*r,hy-r*0.42);
       X.closePath();X.fill();
     });
-    // Side strands
+    // Side strands — slightly hanging down
     X.beginPath();
-    X.moveTo(hx-f.radius*0.55,hy-f.radius*0.4);
-    X.quadraticCurveTo(hx-f.radius*0.65,hy-f.radius*0.1,hx-f.radius*0.5,hy+f.radius*0.05);
-    X.lineTo(hx-f.radius*0.4,hy-f.radius*0.1);
-    X.closePath();X.fill();
+    X.moveTo(hx-r*0.58,hy-r*0.38);
+    X.quadraticCurveTo(hx-r*0.68,hy-r*0.08,hx-r*0.52,hy+r*0.08);
+    X.lineTo(hx-r*0.42,hy-r*0.08);X.closePath();X.fill();
     X.beginPath();
-    X.moveTo(hx+f.radius*0.55,hy-f.radius*0.4);
-    X.quadraticCurveTo(hx+f.radius*0.6,hy-f.radius*0.1,hx+f.radius*0.45,hy+f.radius*0.05);
-    X.lineTo(hx+f.radius*0.35,hy-f.radius*0.1);
-    X.closePath();X.fill();
-    // Sharp, narrow eyes — assassin look
-    X.fillStyle=f.tojiTriActive?'#88ff88':'#334433';
-    X.beginPath();X.ellipse(hx-f.radius*0.18,hy-f.radius*0.1,f.radius*0.08,f.radius*0.04,0,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+f.radius*0.18,hy-f.radius*0.1,f.radius*0.08,f.radius*0.04,0,0,Math.PI*2);X.fill();
-    if(f.tojiTriActive){X.shadowColor='#00ff00';X.shadowBlur=6;
-      X.beginPath();X.ellipse(hx-f.radius*0.18,hy-f.radius*0.1,f.radius*0.08,f.radius*0.04,0,0,Math.PI*2);X.fill();
-      X.beginPath();X.ellipse(hx+f.radius*0.18,hy-f.radius*0.1,f.radius*0.08,f.radius*0.04,0,0,Math.PI*2);X.fill();
+    X.moveTo(hx+r*0.56,hy-r*0.38);
+    X.quadraticCurveTo(hx+r*0.65,hy-r*0.08,hx+r*0.48,hy+r*0.08);
+    X.lineTo(hx+r*0.38,hy-r*0.08);X.closePath();X.fill();
+    // Messy front fringe — a strand or two falling over forehead
+    X.strokeStyle='#0a0a12';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.10,hy-r*0.50);
+    X.quadraticCurveTo(hx-r*0.15,hy-r*0.25,hx-r*0.08,hy-r*0.08);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.12,hy-r*0.48);
+    X.quadraticCurveTo(hx+r*0.18,hy-r*0.22,hx+r*0.10,hy-r*0.05);X.stroke();
+    // --- Sharp narrow eyes — assassin look, slightly menacing ---
+    // Eye whites — narrow slits
+    X.fillStyle='#f0ece8';
+    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.10,r*0.10,r*0.04,-0.08,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.10,r*0.10,r*0.04,0.08,0,Math.PI*2);X.fill();
+    // Irises — dark green-gray
+    const tojiEyeColor=f.tojiTriActive?'#66ff66':'#3a4a3a';
+    X.fillStyle=tojiEyeColor;
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.10,r*0.06,r*0.035,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.19,hy-r*0.10,r*0.06,r*0.035,0,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#0a0a0a';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.10,r*0.025,r*0.02,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.19,hy-r*0.10,r*0.025,r*0.02,0,0,Math.PI*2);X.fill();
+    if(f.tojiTriActive){
+      X.shadowColor='#00ff00';X.shadowBlur=8;
+      X.fillStyle='rgba(0,255,0,0.3)';
+      X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.10,r*0.12,r*0.05,0,0,Math.PI*2);X.fill();
+      X.beginPath();X.ellipse(hx+r*0.19,hy-r*0.10,r*0.12,r*0.05,0,0,Math.PI*2);X.fill();
       X.shadowBlur=0;
     }
-    // Lip scar — distinctive vertical scar on right side of lip
-    X.strokeStyle='#665555';X.lineWidth=2;
-    X.beginPath();X.moveTo(hx+f.radius*0.1,hy+f.radius*0.15);X.lineTo(hx+f.radius*0.12,hy+f.radius*0.3);X.stroke();
-    // Slight smirk
-    X.strokeStyle='#555';X.lineWidth=1;
-    X.beginPath();X.arc(hx,hy+f.radius*0.15,f.radius*0.12,0.2,Math.PI-0.4);X.stroke();
-    // Heavenly Restriction aura — subtle physical power glow (no cursed energy = raw body)
-    // Constant pale silver-blue aura with muscle-tension ripples
+    // Sharp eyebrows — angled aggressively
+    X.strokeStyle='#0a0a10';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.30,hy-r*0.12);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.20,hx-r*0.08,hy-r*0.15);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.30,hy-r*0.12);
+    X.quadraticCurveTo(hx+r*0.18,hy-r*0.20,hx+r*0.08,hy-r*0.15);X.stroke();
+    // --- Lip scar — distinctive vertical scar on right side of lip/chin ---
+    X.strokeStyle='#aa7766';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx+r*0.08,hy+r*0.12);X.lineTo(hx+r*0.10,hy+r*0.28);X.stroke();
+    // Scar cross-hatch detail
+    X.strokeStyle='#bb8877';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx+r*0.05,hy+r*0.16);X.lineTo(hx+r*0.13,hy+r*0.18);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.06,hy+r*0.22);X.lineTo(hx+r*0.12,hy+r*0.24);X.stroke();
+    // --- Worm-shaped mark near mouth (left side) ---
+    X.strokeStyle='#887766';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.15,hy+r*0.15);
+    X.quadraticCurveTo(hx-r*0.18,hy+r*0.20,hx-r*0.14,hy+r*0.24);
+    X.stroke();
+    // --- Slightly menacing smirk ---
+    X.strokeStyle='#555';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.14,hy+r*0.14);
+    X.quadraticCurveTo(hx-r*0.02,hy+r*0.20,hx+r*0.06,hy+r*0.13);
+    X.stroke();
+    // One side slightly upturned — menacing
+    X.beginPath();
+    X.moveTo(hx+r*0.06,hy+r*0.13);
+    X.quadraticCurveTo(hx+r*0.10,hy+r*0.10,hx+r*0.12,hy+r*0.11);
+    X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,120,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.02);X.lineTo(hx-r*0.03,hy+r*0.06);X.stroke();
+    // --- Lean muscular build suggestion — neck/trap lines ---
+    X.strokeStyle='#c8b098';X.lineWidth=1.5;
+    X.beginPath();
+    X.moveTo(hx-r*0.30,hy+r*0.42);X.lineTo(hx-r*0.52,hy+r*0.35);X.stroke();
+    X.beginPath();
+    X.moveTo(hx+r*0.30,hy+r*0.42);X.lineTo(hx+r*0.52,hy+r*0.35);X.stroke();
+    // --- Heavenly Restriction aura — subtle physical power glow ---
     const hrPulse=Math.sin(battleTime*0.08)*3;
-    const hrAlpha=f.tojiTriActive?0.5:0.25; // brighter during ult
-    X.beginPath();X.arc(hx,hy,f.radius+5+hrPulse,0,Math.PI*2);
-    const hrGrad=X.createRadialGradient(hx,hy,f.radius,hx,hy,f.radius+10+hrPulse);
+    const hrAlpha=f.tojiTriActive?0.5:0.25;
+    X.beginPath();X.arc(hx,hy,r+5+hrPulse,0,Math.PI*2);
+    const hrGrad=X.createRadialGradient(hx,hy,r,hx,hy,r+10+hrPulse);
     hrGrad.addColorStop(0,`rgba(180,200,220,${hrAlpha})`);
     hrGrad.addColorStop(0.6,`rgba(140,170,200,${hrAlpha*0.5})`);
     hrGrad.addColorStop(1,'rgba(120,150,180,0)');
     X.fillStyle=hrGrad;X.fill();
-    // Faint ripple lines radiating outward (physical pressure)
+    // Faint ripple lines radiating outward
     if(battleTime%6<1){
       const ra=Math.random()*Math.PI*2;
-      spawnParticle(hx+Math.cos(ra)*(f.radius+4),hy+Math.sin(ra)*(f.radius+4),
+      spawnParticle(hx+Math.cos(ra)*(r+4),hy+Math.sin(ra)*(r+4),
         '#aabbcc',Math.cos(ra)*0.8,Math.sin(ra)*0.8,12,1.5);
     }
     X.restore();
@@ -9353,39 +9475,125 @@ function drawBall(f){
     X.restore();
   }
 
-  // Yuji face — pink spiky hair, determined eyes, fighter
+  // Yuji face — pink/salmon undercut hair, warm brown eyes, Sukuna marks, determined
   if(f.char.id==='yuji'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Pink spiky hair
-    X.fillStyle='#ff69b4';
-    const spikes=7;
-    for(let i=0;i<spikes;i++){
-      const sa=-Math.PI*0.7+i*(Math.PI*0.4/(spikes-1));
-      const slen=r*0.35+Math.sin(i*2.3)*r*0.08;
-      X.beginPath();
-      X.moveTo(hx+Math.cos(sa-0.12)*r*0.4,hy+Math.sin(sa-0.12)*r*0.6);
-      X.lineTo(hx+Math.cos(sa)*(r*0.6+slen),hy+Math.sin(sa)*(r*0.6+slen));
-      X.lineTo(hx+Math.cos(sa+0.12)*r*0.4,hy+Math.sin(sa+0.12)*r*0.6);
-      X.closePath();X.fill();
-    }
-    // Hair base
+    // --- Skin tone ---
+    X.fillStyle='#f2dbc8';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Pink/salmon undercut hair — short buzzed sides, longer spiky top ---
+    // Buzzed sides (dark fade)
+    X.fillStyle='#cc5070';
     X.beginPath();
-    X.arc(hx,hy-r*0.15,r*0.5,Math.PI,0);
-    X.fillStyle='#ff69b4';X.fill();
-    // Determined eyes — slightly larger, intense
-    X.fillStyle='#1a1a1a';
-    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.05,r*0.09,r*0.06,0,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.05,r*0.09,r*0.06,0,0,Math.PI*2);X.fill();
+    X.moveTo(hx-r*0.58,hy-r*0.30);
+    X.quadraticCurveTo(hx-r*0.65,hy-r*0.05,hx-r*0.55,hy+r*0.10);
+    X.lineTo(hx-r*0.42,hy+r*0.05);
+    X.lineTo(hx-r*0.45,hy-r*0.25);X.closePath();X.fill();
+    X.beginPath();
+    X.moveTo(hx+r*0.58,hy-r*0.30);
+    X.quadraticCurveTo(hx+r*0.65,hy-r*0.05,hx+r*0.55,hy+r*0.10);
+    X.lineTo(hx+r*0.42,hy+r*0.05);
+    X.lineTo(hx+r*0.45,hy-r*0.25);X.closePath();X.fill();
+    // Fade line — undercut division
+    X.strokeStyle='#aa4060';X.lineWidth=1;
+    X.beginPath();
+    X.moveTo(hx-r*0.48,hy-r*0.28);
+    X.quadraticCurveTo(hx-r*0.52,hy-r*0.10,hx-r*0.45,hy+r*0.05);X.stroke();
+    X.beginPath();
+    X.moveTo(hx+r*0.48,hy-r*0.28);
+    X.quadraticCurveTo(hx+r*0.52,hy-r*0.10,hx+r*0.45,hy+r*0.05);X.stroke();
+    // Top hair — longer, spiky pink/salmon chunks
+    X.fillStyle='#ff7088';
+    // Hair base volume
+    X.beginPath();
+    X.ellipse(hx,hy-r*0.42,r*0.55,r*0.28,0,Math.PI,0);
+    X.fill();
+    // Spiky top chunks — distinct anime hair tufts
+    const yujiSpikes=[
+      {off:-0.30,h:0.55,w:0.12,tilt:-0.12},
+      {off:-0.12,h:0.72,w:0.13,tilt:-0.04},
+      {off:0.05, h:0.80,w:0.14,tilt:0.06},
+      {off:0.22, h:0.65,w:0.12,tilt:0.14},
+      {off:0.38, h:0.45,w:0.10,tilt:0.22},
+    ];
+    yujiSpikes.forEach(sp=>{
+      const sx=hx+sp.off*r;
+      const baseY=hy-r*0.52;
+      const tipY=baseY-r*sp.h;
+      const tipX=sx+sp.tilt*r;
+      const sw=r*sp.w;
+      X.beginPath();
+      X.moveTo(sx-sw,baseY);
+      X.quadraticCurveTo(tipX-sw*0.3,lerp(baseY,tipY,0.6),tipX,tipY);
+      X.quadraticCurveTo(tipX+sw*0.3,lerp(baseY,tipY,0.5),sx+sw,baseY);
+      X.closePath();X.fill();
+    });
+    // Hair highlight strands
+    X.strokeStyle='#ff8899';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-r*0.08,hy-r*0.55);
+    X.quadraticCurveTo(hx+r*0.02,hy-r*0.75,hx+r*0.10,hy-r*0.90);X.stroke();
+    // Front fringe strands
+    X.fillStyle='#ff7088';
+    X.beginPath();X.moveTo(hx-r*0.25,hy-r*0.48);
+    X.quadraticCurveTo(hx-r*0.22,hy-r*0.25,hx-r*0.12,hy-r*0.10);
+    X.lineTo(hx-r*0.05,hy-r*0.15);
+    X.quadraticCurveTo(hx-r*0.10,hy-r*0.35,hx-r*0.08,hy-r*0.50);X.closePath();X.fill();
+    // --- Eyes — warm brown, large, determined ---
+    // Eye whites
+    X.fillStyle='#fff';
+    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.06,r*0.10,r*0.07,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.06,r*0.10,r*0.07,0,0,Math.PI*2);X.fill();
+    // Irises — warm brown
+    X.fillStyle='#6b3520';
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.05,r*0.065,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.19,hy-r*0.05,r*0.065,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#1a0a05';
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.05,r*0.03,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.19,hy-r*0.05,r*0.03,0,Math.PI*2);X.fill();
     // Eye highlights
     X.fillStyle='#fff';
-    X.beginPath();X.arc(hx-r*0.15,hy-r*0.07,r*0.025,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.21,hy-r*0.07,r*0.025,0,Math.PI*2);X.fill();
-    // Determined mouth — slight grin
-    X.strokeStyle='#333';X.lineWidth=1.5;
+    X.beginPath();X.arc(hx-r*0.15,hy-r*0.07,r*0.022,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.21,hy-r*0.07,r*0.022,0,Math.PI*2);X.fill();
+    // Eyebrows — determined, slightly angled
+    X.strokeStyle='#8a4050';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.28,hy-r*0.13);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.19,hx-r*0.07,hy-r*0.14);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.28,hy-r*0.13);
+    X.quadraticCurveTo(hx+r*0.18,hy-r*0.19,hx+r*0.07,hy-r*0.14);X.stroke();
+    // --- Sukuna marks — lines under eyes and on nose bridge when cursed energy active ---
+    if(f.yujiBlackFlashActive||f.specialActive){
+      X.strokeStyle='#cc2244';X.lineWidth=1.5;X.lineCap='round';
+      // Under-eye lines (2 per side)
+      X.beginPath();X.moveTo(hx-r*0.25,hy+r*0.02);X.lineTo(hx-r*0.10,hy+r*0.02);X.stroke();
+      X.beginPath();X.moveTo(hx-r*0.24,hy+r*0.06);X.lineTo(hx-r*0.11,hy+r*0.06);X.stroke();
+      X.beginPath();X.moveTo(hx+r*0.10,hy+r*0.02);X.lineTo(hx+r*0.25,hy+r*0.02);X.stroke();
+      X.beginPath();X.moveTo(hx+r*0.11,hy+r*0.06);X.lineTo(hx+r*0.24,hy+r*0.06);X.stroke();
+      // Forehead/nose bridge line
+      X.beginPath();X.moveTo(hx,hy-r*0.22);X.lineTo(hx,hy-r*0.12);X.stroke();
+    }
+    // --- Determined mouth — slight grin ---
+    X.strokeStyle='#555';X.lineWidth=1.5;X.lineCap='round';
     X.beginPath();
-    X.moveTo(hx-r*0.1,hy+r*0.2);
-    X.quadraticCurveTo(hx,hy+r*0.25,hx+r*0.1,hy+r*0.18);
+    X.moveTo(hx-r*0.10,hy+r*0.18);
+    X.quadraticCurveTo(hx,hy+r*0.23,hx+r*0.10,hy+r*0.16);
+    X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,120,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy+r*0.0);X.lineTo(hx-r*0.03,hy+r*0.07);X.stroke();
+    // --- Hoodie collar suggestion at bottom of ball ---
+    X.strokeStyle='#2a3a5a';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.40,hy+r*0.42);
+    X.quadraticCurveTo(hx-r*0.10,hy+r*0.52,hx,hy+r*0.45);
+    X.quadraticCurveTo(hx+r*0.10,hy+r*0.52,hx+r*0.40,hy+r*0.42);
+    X.stroke();
+    // Hoodie V-neck
+    X.beginPath();
+    X.moveTo(hx-r*0.08,hy+r*0.40);
+    X.lineTo(hx,hy+r*0.50);
+    X.lineTo(hx+r*0.08,hy+r*0.40);
     X.stroke();
     // Black Flash aura when special active
     if(f.yujiBlackFlashActive){
@@ -9614,35 +9822,137 @@ function drawBall(f){
     X.restore();
   }
 
-  // Yuta face — dark messy hair, determined look
+  // Yuta face — messy dark hair over forehead, dark circles, gentle determined look, Rika purple glow
   if(f.char.id==='yuta'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Dark messy hair — spiky tufts
-    X.fillStyle='#1a1a2a';
-    const spikes=7;
-    for(let i=0;i<spikes;i++){
-      const sa=-Math.PI*0.9+i*(Math.PI*0.75/(spikes-1));
-      const slen=r*0.35+Math.sin(i*2.1)*r*0.08;
+    // --- Skin tone ---
+    X.fillStyle='#f0dcc8';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Messy dark hair falling over forehead — Yuta's signature unkempt look ---
+    X.fillStyle='#0e0e1a';
+    // Hair volume base
+    X.beginPath();
+    X.ellipse(hx,hy-r*0.40,r*0.72,r*0.35,0,Math.PI,0);
+    X.fill();
+    // Side hair — falls past ears, slightly longer
+    X.beginPath();
+    X.moveTo(hx-r*0.62,hy-r*0.42);
+    X.quadraticCurveTo(hx-r*0.78,hy-r*0.05,hx-r*0.60,hy+r*0.15);
+    X.lineTo(hx-r*0.48,hy-r*0.10);X.closePath();X.fill();
+    X.beginPath();
+    X.moveTo(hx+r*0.60,hy-r*0.42);
+    X.quadraticCurveTo(hx+r*0.75,hy-r*0.05,hx+r*0.58,hy+r*0.15);
+    X.lineTo(hx+r*0.46,hy-r*0.10);X.closePath();X.fill();
+    // Messy tufts on top — uneven, not spiky, drooping forward
+    const yutaTufts=[
+      {off:-0.35,h:0.50,w:0.12,tilt:-0.15},
+      {off:-0.18,h:0.62,w:0.13,tilt:-0.05},
+      {off:-0.02,h:0.58,w:0.14,tilt:0.03},
+      {off:0.15, h:0.65,w:0.12,tilt:0.08},
+      {off:0.30, h:0.48,w:0.11,tilt:0.18},
+    ];
+    yutaTufts.forEach(sp=>{
+      const sx=hx+sp.off*r;
+      const baseY=hy-r*0.52;
+      const tipY=baseY-r*sp.h;
+      const tipX=sx+sp.tilt*r;
+      const sw=r*sp.w;
       X.beginPath();
-      X.moveTo(hx+Math.cos(sa-0.12)*r*0.3,hy+Math.sin(sa-0.12)*r*0.5);
-      X.lineTo(hx+Math.cos(sa)*(r*0.5+slen),hy+Math.sin(sa)*(r*0.45+slen));
-      X.lineTo(hx+Math.cos(sa+0.12)*r*0.3,hy+Math.sin(sa+0.12)*r*0.5);
+      X.moveTo(sx-sw,baseY);
+      X.quadraticCurveTo(tipX-sw*0.3,lerp(baseY,tipY,0.6),tipX,tipY);
+      X.quadraticCurveTo(tipX+sw*0.3,lerp(baseY,tipY,0.5),sx+sw,baseY);
       X.closePath();X.fill();
-    }
-    // Hair base
-    X.beginPath();X.arc(hx,hy-r*0.12,r*0.42,Math.PI,0);X.fill();
-    // Eyes — determined, slightly wide
-    X.fillStyle='#1a1a1a';
-    X.beginPath();X.ellipse(hx-r*0.15,hy-r*0.02,r*0.07,r*0.05,0,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.15,hy-r*0.02,r*0.07,r*0.05,0,0,Math.PI*2);X.fill();
+    });
+    // Heavy front bangs falling over forehead — key Yuta feature
+    X.fillStyle='#0e0e1a';
+    // Left bang chunk
+    X.beginPath();
+    X.moveTo(hx-r*0.35,hy-r*0.48);
+    X.quadraticCurveTo(hx-r*0.38,hy-r*0.15,hx-r*0.22,hy-r*0.02);
+    X.lineTo(hx-r*0.10,hy-r*0.05);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.25,hx-r*0.15,hy-r*0.48);
+    X.closePath();X.fill();
+    // Center bang
+    X.beginPath();
+    X.moveTo(hx-r*0.10,hy-r*0.52);
+    X.quadraticCurveTo(hx-r*0.05,hy-r*0.18,hx+r*0.02,hy-r*0.04);
+    X.lineTo(hx+r*0.12,hy-r*0.08);
+    X.quadraticCurveTo(hx+r*0.08,hy-r*0.28,hx+r*0.05,hy-r*0.50);
+    X.closePath();X.fill();
+    // Right bang
+    X.beginPath();
+    X.moveTo(hx+r*0.12,hy-r*0.46);
+    X.quadraticCurveTo(hx+r*0.20,hy-r*0.15,hx+r*0.25,hy-r*0.02);
+    X.lineTo(hx+r*0.35,hy-r*0.08);
+    X.quadraticCurveTo(hx+r*0.30,hy-r*0.30,hx+r*0.25,hy-r*0.48);
+    X.closePath();X.fill();
+    // Hair strand lines for texture
+    X.strokeStyle='#1a1a2e';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx-r*0.25,hy-r*0.45);
+    X.quadraticCurveTo(hx-r*0.28,hy-r*0.20,hx-r*0.18,hy-r*0.03);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.02,hy-r*0.50);
+    X.quadraticCurveTo(hx-r*0.01,hy-r*0.22,hx+r*0.06,hy-r*0.05);X.stroke();
+    // --- Dark circles under eyes — exhausted, haunted look ---
+    X.fillStyle='rgba(80,50,90,0.35)';
+    X.beginPath();X.ellipse(hx-r*0.17,hy+r*0.01,r*0.10,r*0.04,0.1,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy+r*0.01,r*0.10,r*0.04,-0.1,0,Math.PI*2);X.fill();
+    // Deeper shadow layer
+    X.fillStyle='rgba(60,30,70,0.2)';
+    X.beginPath();X.ellipse(hx-r*0.16,hy+r*0.03,r*0.08,r*0.025,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.18,hy+r*0.03,r*0.08,r*0.025,0,0,Math.PI*2);X.fill();
+    // --- Eyes — large, gentle but determined, dark irises ---
+    // Eye whites
+    X.fillStyle='#f8f4f0';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.06,r*0.10,r*0.07,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.06,r*0.10,r*0.07,0,0,Math.PI*2);X.fill();
+    // Irises — dark blue-black
+    const yutaEyeColor=f.yutaDomainActive?'#6633cc':'#1a1a2a';
+    X.fillStyle=yutaEyeColor;
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.065,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.065,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#050508';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.03,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.03,0,Math.PI*2);X.fill();
     // Eye highlights
     X.fillStyle='#fff';
-    X.beginPath();X.arc(hx-r*0.12,hy-r*0.03,r*0.02,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.18,hy-r*0.03,r*0.02,0,Math.PI*2);X.fill();
-    // Mouth — determined line
-    X.strokeStyle='#333';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.06,hy+r*0.17);X.lineTo(hx+r*0.06,hy+r*0.17);X.stroke();
+    X.beginPath();X.arc(hx-r*0.14,hy-r*0.07,r*0.02,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.20,hy-r*0.07,r*0.02,0,Math.PI*2);X.fill();
+    // Domain active — eyes glow purple
+    if(f.yutaDomainActive){
+      X.shadowColor='#8844dd';X.shadowBlur=8;
+      X.fillStyle='rgba(100,50,200,0.3)';
+      X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.10,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.10,0,Math.PI*2);X.fill();
+      X.shadowBlur=0;
+    }
+    // --- Gentle eyebrows — slightly furrowed ---
+    X.strokeStyle='#0e0e18';X.lineWidth=2;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.28,hy-r*0.14);
+    X.quadraticCurveTo(hx-r*0.17,hy-r*0.19,hx-r*0.07,hy-r*0.15);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.28,hy-r*0.14);
+    X.quadraticCurveTo(hx+r*0.17,hy-r*0.19,hx+r*0.07,hy-r*0.15);X.stroke();
+    // --- Mouth — small, determined, slightly tense ---
+    X.strokeStyle='#555';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.08,hy+r*0.18);
+    X.quadraticCurveTo(hx,hy+r*0.20,hx+r*0.08,hy+r*0.17);
+    X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,120,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy+r*0.0);X.lineTo(hx-r*0.03,hy+r*0.08);X.stroke();
+    // --- Rika purple glow — when Rika companion is active ---
+    if(f.yutaRikaHp>0){
+      const rikaPulse=Math.sin(battleTime*0.08)*0.15+0.25;
+      X.strokeStyle=`rgba(140,60,220,${rikaPulse})`;X.lineWidth=2;
+      X.beginPath();X.arc(hx,hy,r+4,0,Math.PI*2);X.stroke();
+      // Purple energy wisps
+      if(battleTime%6<1){
+        const wa=Math.random()*Math.PI*2;
+        spawnParticle(hx+Math.cos(wa)*(r+3),hy+Math.sin(wa)*(r+3),'#9944dd',Math.cos(wa)*0.8,Math.sin(wa)*0.8,10,1.5);
+      }
+    }
     // Copy flash — enemy color pulse
     if(f.yutaCopyFlash>0){
       const copyAlpha=f.yutaCopyFlash/20;
@@ -9741,26 +10051,104 @@ function drawBall(f){
     X.restore();
   }
 
-  // Todo face — spiky brown hair, strong jaw, confident grin
+  // Todo face — buzz cut, scar, massive build, intense confident grin
   if(f.char.id==='todo'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Spiky brown hair
-    X.fillStyle='#8B6914';
-    for(let i=0;i<7;i++){
-      const a=-Math.PI*0.8+i*Math.PI*0.25;
-      X.beginPath();X.moveTo(hx+Math.cos(a)*r*0.5,hy+Math.sin(a)*r*0.5);
-      X.lineTo(hx+Math.cos(a-0.15)*(r+6),hy+Math.sin(a-0.15)*(r+6));
-      X.lineTo(hx+Math.cos(a+0.15)*(r+6),hy+Math.sin(a+0.15)*(r+6));
-      X.closePath();X.fill();
+    // --- Skin tone (tanned, large face area to suggest bulk) ---
+    X.fillStyle='#d4a574';
+    X.beginPath();X.arc(hx,hy,r*0.58,0,Math.PI*2);X.fill();
+    // --- Buzz cut / shaved head — very short stubble, NOT hair spikes ---
+    // Dark stubble texture over the top of the head
+    X.fillStyle='#2a2218';
+    X.beginPath();
+    X.arc(hx,hy-r*0.08,r*0.62,Math.PI,0);
+    X.fill();
+    // Stubble texture dots for buzz-cut feel
+    X.fillStyle='#1a1810';
+    for(let i=0;i<18;i++){
+      const sa=-Math.PI*0.85+i*(Math.PI*0.7/17);
+      const sr=r*0.52+Math.sin(i*3.7)*r*0.06;
+      X.beginPath();X.arc(hx+Math.cos(sa)*sr,hy+Math.sin(sa)*sr,r*0.025,0,Math.PI*2);X.fill();
     }
-    // Eyes — sharp, confident
+    // --- Forehead scar — distinctive horizontal scar ---
+    X.strokeStyle='#b07060';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.18,hy-r*0.30);
+    X.lineTo(hx+r*0.20,hy-r*0.32);
+    X.stroke();
+    // Scar detail lines
+    X.strokeStyle='#c08878';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx-r*0.10,hy-r*0.28);X.lineTo(hx-r*0.05,hy-r*0.26);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.08,hy-r*0.30);X.lineTo(hx+r*0.12,hy-r*0.27);X.stroke();
+    // --- Strong square jaw line — suggesting massive build ---
+    X.strokeStyle='#b8906a';X.lineWidth=2;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.48,hy+r*0.10);
+    X.lineTo(hx-r*0.42,hy+r*0.38);
+    X.lineTo(hx-r*0.15,hy+r*0.48);
+    X.stroke();
+    X.beginPath();
+    X.moveTo(hx+r*0.48,hy+r*0.10);
+    X.lineTo(hx+r*0.42,hy+r*0.38);
+    X.lineTo(hx+r*0.15,hy+r*0.48);
+    X.stroke();
+    // --- Eyes — intense, narrow, confident, slightly upturned ---
+    // Eye whites
+    X.fillStyle='#fff';
+    X.beginPath();X.ellipse(hx-r*0.20,hy-r*0.10,r*0.11,r*0.06,-0.05,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.20,hy-r*0.10,r*0.11,r*0.06,0.05,0,Math.PI*2);X.fill();
+    // Irises — dark brown, intense
+    X.fillStyle='#2a1a0a';
+    X.beginPath();X.arc(hx-r*0.19,hy-r*0.10,r*0.065,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.21,hy-r*0.10,r*0.065,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#0a0a0a';
+    X.beginPath();X.arc(hx-r*0.19,hy-r*0.10,r*0.03,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.21,hy-r*0.10,r*0.03,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.12,r*0.02,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.23,hy-r*0.12,r*0.02,0,Math.PI*2);X.fill();
+    // Bold eyebrows — thick, intense
+    X.strokeStyle='#1a1208';X.lineWidth=3;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.32,hy-r*0.17);
+    X.quadraticCurveTo(hx-r*0.20,hy-r*0.22,hx-r*0.08,hy-r*0.18);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.32,hy-r*0.17);
+    X.quadraticCurveTo(hx+r*0.20,hy-r*0.22,hx+r*0.08,hy-r*0.18);X.stroke();
+    // --- Confident wide grin — showing teeth, Todo's signature ---
     X.fillStyle='#222';
-    X.beginPath();X.ellipse(hx-r*0.22,hy-r*0.1,r*0.12,r*0.08,0,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.22,hy-r*0.1,r*0.12,r*0.08,0,0,Math.PI*2);X.fill();
-    // Confident grin
-    X.strokeStyle='#222';X.lineWidth=1.5;
-    X.beginPath();X.arc(hx,hy+r*0.15,r*0.25,0.1,Math.PI-0.1);X.stroke();
+    X.beginPath();
+    X.moveTo(hx-r*0.22,hy+r*0.15);
+    X.quadraticCurveTo(hx,hy+r*0.30,hx+r*0.22,hy+r*0.15);
+    X.quadraticCurveTo(hx,hy+r*0.22,hx-r*0.22,hy+r*0.15);
+    X.fill();
+    // Teeth row
+    X.fillStyle='#fff';
+    X.beginPath();
+    X.moveTo(hx-r*0.18,hy+r*0.16);
+    X.quadraticCurveTo(hx,hy+r*0.24,hx+r*0.18,hy+r*0.16);
+    X.lineTo(hx+r*0.18,hy+r*0.20);
+    X.quadraticCurveTo(hx,hy+r*0.20,hx-r*0.18,hy+r*0.20);
+    X.closePath();X.fill();
+    // Tooth lines
+    X.strokeStyle='#ddd';X.lineWidth=0.5;
+    for(let t=-2;t<=2;t++){
+      X.beginPath();X.moveTo(hx+t*r*0.07,hy+r*0.16);X.lineTo(hx+t*r*0.07,hy+r*0.20);X.stroke();
+    }
+    // --- Nose hint ---
+    X.strokeStyle='rgba(160,120,90,0.5)';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx,hy-r*0.02);X.lineTo(hx-r*0.04,hy+r*0.06);X.stroke();
+    // --- Muscular neck/shoulder suggestion at ball edge ---
+    X.strokeStyle='#c09060';X.lineWidth=2.5;
+    X.beginPath();
+    X.moveTo(hx-r*0.35,hy+r*0.45);
+    X.quadraticCurveTo(hx-r*0.55,hy+r*0.55,hx-r*0.70,hy+r*0.42);
+    X.stroke();
+    X.beginPath();
+    X.moveTo(hx+r*0.35,hy+r*0.45);
+    X.quadraticCurveTo(hx+r*0.55,hy+r*0.55,hx+r*0.70,hy+r*0.42);
+    X.stroke();
     // Swap flash
     if(f.todoSwapAnim>0){
       X.globalAlpha=f.todoSwapAnim/20*0.5;
@@ -12413,7 +12801,7 @@ function drawTitle(){
   }
 
   const btnW=200,btnH=50;
-  addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];});
+  addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;});
   addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('P10 v8.5 // soloforte.ai',W/2,H-20);
@@ -12443,240 +12831,365 @@ function drawBallPreview(bx,by,r,ch){
 }
 
 function drawSelectDesktop(){
-  // Tab system: Fighters | Bosses
-  const normalChars=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss);
-  const bossChars=[...CHARS.keys()].filter(i=>CHARS[i].isBoss);
-  const gapX=10,gapY=8,padX=15,headerH=90,bottomH=150,arrowH=50;
-  const availW=W-padX*2,availH=H-headerH-bottomH-arrowH;
+  // Page indicator dots + nav arrows (like boss select)
+  const dotY=H-20;
+  for(let p=1;p<=2;p++){
+    const dx=W/2+(p-1.5)*20;
+    X.beginPath();X.arc(dx,dotY,_1v1SelPage===p?5:3,0,Math.PI*2);
+    X.fillStyle=_1v1SelPage===p?'#7b68ee':'#444';X.fill();
+  }
+  const arrowNavY=H-55,arrowNavH=38;
+  if(_1v1SelPage>1)addBtn('1v1ArrowL',10,arrowNavY,70,arrowNavH,'\u2190 Back','#666',()=>{_1v1SelPage--;});
+  if(_1v1SelPage<2)addBtn('1v1ArrowR',W-80,arrowNavY,70,arrowNavH,'Next \u2192','#7b68ee',()=>{_1v1SelPage++;});
+  addBtn('back',85,arrowNavY,50,arrowNavH,'Title','#555',()=>{screen='title';});
 
-  // Draw tabs
-  const tabW=120,tabH=30,tabY=50;
-  const tabTotalW=tabW*2+10;
-  const tabStartX=(W-tabTotalW)/2;
-  ['Fighters ('+normalChars.length+')','Bosses ('+bossChars.length+')'].forEach((label,ti)=>{
-    const tx=tabStartX+ti*(tabW+10);
-    const isActive=selectTab===ti;
-    drawRoundRect(tx,tabY,tabW,tabH,6);
-    X.fillStyle=isActive?'#2a2a5a':'#111128';X.fill();
-    X.strokeStyle=isActive?(ti===0?'#7b68ee':'#cc4444'):'#333';X.lineWidth=isActive?2:1;X.stroke();
+  if(_1v1SelPage===1){
+    // ===== PAGE 1: CHARACTER SELECT — grouped by tier =====
+    X.font='bold 22px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#7b68ee';
+    X.fillText('SELECT FIGHTERS (1/2)',W/2,28);
+
+    // Build tier groups from non-boss chars
+    const tierOrder=[11,10,9,8,7,6,5,4,3,2,1];
+    const tierGroups=[];
+    tierOrder.forEach(t=>{
+      const indices=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss&&(TIER_MAP[CHARS[i].id]||1)===t);
+      if(indices.length>0)tierGroups.push({tier:t,label:TIER_LETTER[t],indices});
+    });
+    // Also build boss list
+    const bossIndices=[...CHARS.keys()].filter(i=>CHARS[i].isBoss);
+
+    const padX=15,gapX=8,gapY=6;
+    const availW=W-padX*2;
+    const cardW=115,cardH=140;
+    const cols=Math.max(2,Math.floor((availW+gapX)/(cardW+gapX)));
+    const totalCardW=cols*cardW+(cols-1)*gapX;
+    const startX=(W-totalCardW)/2;
+
+    // Instructions
+    X.font='bold 12px Consolas,monospace';X.textAlign='left';X.fillStyle='#4488ff';X.fillText('P1 \u2014 Left click',startX,45);
+    X.textAlign='right';X.fillStyle='#ff4444';X.fillText('P2 \u2014 Right click',startX+totalCardW,45);
+
+    // Scrollable tier layout — calculate total content height
+    let contentItems=[];
+    tierGroups.forEach(tg=>{
+      contentItems.push({type:'tierLabel',tier:tg.tier,label:tg.label,indices:tg.indices});
+      const rows=Math.ceil(tg.indices.length/cols);
+      for(let r=0;r<rows;r++){
+        contentItems.push({type:'charRow',indices:tg.indices.slice(r*cols,(r+1)*cols),tier:tg.tier});
+      }
+    });
+    // Add bosses section
+    if(bossIndices.length>0){
+      contentItems.push({type:'tierLabel',tier:-1,label:'BOSSES',indices:bossIndices});
+      const bRows=Math.ceil(bossIndices.length/cols);
+      for(let r=0;r<bRows;r++){
+        contentItems.push({type:'charRow',indices:bossIndices.slice(r*cols,(r+1)*cols),tier:-1});
+      }
+    }
+
+    const gridStartY=55;
+    const tierLabelH=22;
+    const maxGridH=H-gridStartY-75; // leave room for nav
+    // Calculate total height
+    let totalContentH=0;
+    contentItems.forEach(item=>{totalContentH+=item.type==='tierLabel'?tierLabelH:(cardH+gapY);});
+    // Pagination: figure out which items fit per page
+    const pages=[];
+    let pageItems=[],pageH=0;
+    contentItems.forEach(item=>{
+      const itemH=item.type==='tierLabel'?tierLabelH:(cardH+gapY);
+      if(pageH+itemH>maxGridH&&pageItems.length>0){
+        pages.push(pageItems);pageItems=[];pageH=0;
+      }
+      pageItems.push(item);pageH+=itemH;
+    });
+    if(pageItems.length>0)pages.push(pageItems);
+    const totalPages=Math.max(1,pages.length);
+    selectPage=clamp(selectPage,0,totalPages-1);
+    const currentPage=pages[selectPage]||[];
+
+    let cy=gridStartY;
+    currentPage.forEach(item=>{
+      if(item.type==='tierLabel'){
+        // Tier section header
+        const tierCol=item.label.startsWith('S')?'#ffcc00':item.label.startsWith('A')?'#44cc88':item.label.startsWith('B')?'#6688cc':item.label==='BOSSES'?'#cc4444':'#888888';
+        drawRoundRect(startX-5,cy,totalCardW+10,tierLabelH-4,4);
+        X.fillStyle=tierCol+'22';X.fill();X.strokeStyle=tierCol+'66';X.lineWidth=1;X.stroke();
+        X.font='bold 12px Consolas,monospace';X.textAlign='left';X.fillStyle=tierCol;
+        X.fillText((item.label==='BOSSES'?'\u2694 ':'')+'[ '+item.label+' TIER ]'+(item.label==='BOSSES'?'':' \u2014 '+item.indices.length+' fighter'+(item.indices.length>1?'s':'')),startX,cy+14);
+        cy+=tierLabelH;
+      } else {
+        // Character row
+        item.indices.forEach((i,col)=>{
+          const ch=CHARS[i];
+          const cx=startX+col*(cardW+gapX);
+          const isP1=p1Char===i,isP2=p2Char===i;
+          drawRoundRect(cx,cy,cardW,cardH,8);
+          X.fillStyle=isP1?'#112244':isP2?'#441122':'#111128';X.fill();
+          X.strokeStyle=isP1?'#4488ff':isP2?'#ff4444':ch.color+'66';X.lineWidth=isP1||isP2?3:1.5;X.stroke();
+          // Tier tag
+          const tierStr=getTierLetter(ch.id);
+          const tierCol2=tierStr.startsWith('S')?'#ffcc00':tierStr.startsWith('A')?'#44cc88':tierStr.startsWith('B')?'#6688cc':'#888';
+          X.font='bold 9px Consolas,monospace';X.textAlign='left';X.fillStyle=tierCol2;X.fillText(tierStr,cx+6,cy+14);
+          if(isP1){X.font='bold 10px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('P1',cx+cardW-28,cy+14);}
+          if(isP2){X.font='bold 10px Consolas,monospace';X.fillStyle='#ff4444';X.textAlign='right';X.fillText('P2',cx+cardW-6,cy+14);}
+          const ballR=20;
+          drawBallPreview(cx+cardW/2,cy+36,ballR,ch);
+          X.font='bold 10px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';X.fillText(ch.name,cx+cardW/2,cy+62);
+          X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+cardW/2,cy+74);
+          // Stats
+          X.font='8px Consolas,monospace';X.textAlign='left';
+          const sx2=cx+8,sy2=cy+86;
+          const stats2=[['HP',ch.stats.hp],['ATK',ch.stats.atk],['SPD',ch.stats.speed.toFixed(1)],['RNG',ch.stats.range],['DEF',ch.stats.def]];
+          stats2.forEach((s,si)=>{
+            X.fillStyle='#888';X.fillText(s[0]+':',sx2,sy2+si*11);X.fillStyle='#ccc';X.fillText(''+s[1],sx2+28,sy2+si*11);
+            const barVal=s[0]==='HP'?ch.stats.hp/750:s[0]==='RNG'?ch.stats.range/200:s[0]==='SPD'?ch.stats.speed/8:s[0]==='ATK'?ch.stats.atk/35:ch.stats.def/10;
+            X.fillStyle='#222';X.fillRect(sx2+50,sy2+si*11-7,cardW-68,4);X.fillStyle=ch.color;X.fillRect(sx2+50,sy2+si*11-7,(cardW-68)*Math.min(1,barVal),4);
+          });
+          addBtn('p1c'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{p1Char=i;p1Sponsor=-1;});
+          addBtn('p2c'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{p2Char=i;p2Sponsor=-1;});
+        });
+        cy+=cardH+gapY;
+      }
+    });
+
+    // Page arrows if multiple pages
+    if(totalPages>1){
+      X.font='bold 12px Consolas,monospace';X.textAlign='center';X.fillStyle='#aaa';
+      X.fillText('Page '+(selectPage+1)+' / '+totalPages,W/2,H-65);
+      if(selectPage>0){
+        drawRoundRect(W/2-90,H-78,30,26,6);X.fillStyle='#1a1a3a';X.fill();X.strokeStyle='#7b68ee';X.lineWidth=2;X.stroke();
+        addBtn('pgLeft',W/2-90,H-78,30,26,'','transparent',()=>{selectPage--;});
+        X.fillStyle='#7b68ee';X.font='bold 18px Consolas,monospace';X.textAlign='center';X.fillText('\u25C0',W/2-75,H-62);
+      }
+      if(selectPage<totalPages-1){
+        drawRoundRect(W/2+60,H-78,30,26,6);X.fillStyle='#1a1a3a';X.fill();X.strokeStyle='#7b68ee';X.lineWidth=2;X.stroke();
+        addBtn('pgRight',W/2+60,H-78,30,26,'','transparent',()=>{selectPage++;});
+        X.fillStyle='#7b68ee';X.font='bold 18px Consolas,monospace';X.textAlign='center';X.fillText('\u25B6',W/2+75,H-62);
+      }
+    }
+
+  } else {
+    // ===== PAGE 2: ELEMENTS + SPONSORS + BATTLE =====
+    X.font='bold 22px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#7b68ee';
+    X.fillText('ELEMENTS & SPONSORS (2/2)',W/2,28);
+
+    // Show selected fighters summary
+    let sumY=48;
     X.font='bold 11px Consolas,monospace';X.textAlign='center';
-    X.fillStyle=isActive?'#fff':'#888';
-    X.fillText(label,tx+tabW/2,tabY+20);
-    addBtn('tab_'+ti,tx,tabY,tabW,tabH,'','transparent',()=>{selectTab=ti;selectPage=0;});
-  });
+    const p1ch=CHARS[p1Char],p2ch=CHARS[p2Char];
+    // P1 summary card
+    const sumCardW=Math.min(200,W/2-30);
+    const sumStartX1=W/4-sumCardW/2,sumStartX2=W*3/4-sumCardW/2;
+    [{ch:p1ch,idx:p1Char,label:'P1',color:'#4488ff',sx:sumStartX1},{ch:p2ch,idx:p2Char,label:'P2',color:'#ff4444',sx:sumStartX2}].forEach(p=>{
+      drawRoundRect(p.sx,sumY,sumCardW,42,6);
+      X.fillStyle='#111128';X.fill();X.strokeStyle=p.color;X.lineWidth=2;X.stroke();
+      drawBallPreview(p.sx+22,sumY+21,12,p.ch);
+      X.font='bold 10px Consolas,monospace';X.textAlign='left';X.fillStyle=p.color;X.fillText(p.label,p.sx+40,sumY+15);
+      X.fillStyle='#fff';X.fillText(p.ch.name,p.sx+58,sumY+15);
+      const tierStr=getTierLetter(p.ch.id);
+      const tierCol=tierStr.startsWith('S')?'#ffcc00':tierStr.startsWith('A')?'#44cc88':tierStr.startsWith('B')?'#6688cc':'#888';
+      X.fillStyle=tierCol;X.fillText('['+tierStr+']',p.sx+40,sumY+32);
+      X.fillStyle='#888';X.fillText(p.ch.playstyle,p.sx+75,sumY+32);
+    });
+    sumY+=52;
 
-  // Fixed card size for consistency — reduced height to prevent arrow overlap
-  const cardW=120,cardH=155;
-  const cols=Math.floor((availW+gapX)/(cardW+gapX));
-  const charList=selectTab===0?normalChars:bossChars;
-  const rowsPerPage=Math.max(1,Math.floor((availH)/(cardH+gapY)));
-  const charsPerPage=rowsPerPage*cols;
-  const totalPages=Math.max(1,Math.ceil(charList.length/charsPerPage));
-  selectPage=clamp(selectPage,0,totalPages-1);
-  const displayOrder=charList.slice(selectPage*charsPerPage,(selectPage+1)*charsPerPage);
+    // Element pickers
+    const epW=Math.min(260,W/2-20);
+    X.font='bold 13px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#4488ff';X.fillText('P1 ELEMENT',W/4,sumY);
+    drawElementPicker(W/4-epW/2,sumY+10,p1Elem,'p1e',(i)=>{p1Elem=i;});
+    X.fillStyle='#ff4444';X.fillText('P2 ELEMENT',W*3/4,sumY);
+    drawElementPicker(W*3/4-epW/2,sumY+10,p2Elem,'p2e',(i)=>{p2Elem=i;});
 
-  const totalW=cols*cardW+(cols-1)*gapX;
-  const startX=(W-totalW)/2;
-  const cardY=headerH;
-  X.font='bold 14px Consolas,Courier New,monospace';
-  X.textAlign='left';X.fillStyle='#4488ff';X.fillText('P1 — Left click',startX,cardY-5);
-  X.textAlign='right';X.fillStyle='#ff4444';X.fillText('P2 — Right click',startX+totalW,cardY-5);
+    const comboY=sumY+70;
+    X.font='11px Consolas,monospace';
+    if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText('P1: '+(COMBO_EFFECTS[key]||''),W/4,comboY);}
+    if(p2Elem>0){const key=CHARS[p2Char].id+'_'+ELEMENTS[p2Elem].id;X.fillStyle=ELEMENTS[p2Elem].color;X.textAlign='center';X.fillText('P2: '+(COMBO_EFFECTS[key]||''),W*3/4,comboY);}
 
-  displayOrder.forEach((i,di)=>{
-    const ch=CHARS[i];
-    const row=Math.floor(di/cols),col=di%cols;
-    const cx=startX+col*(cardW+gapX),cy=cardY+row*(cardH+gapY);
-    const isP1=p1Char===i,isP2=p2Char===i;
-    drawRoundRect(cx,cy,cardW,cardH,8);
-    X.fillStyle=isP1?'#112244':isP2?'#441122':'#111128';X.fill();
-    X.strokeStyle=isP1?'#4488ff':isP2?'#ff4444':ch.color+'66';X.lineWidth=isP1||isP2?3:1.5;X.stroke();
-    if(isP1){X.font='bold 11px Consolas,monospace';X.fillStyle='#4488ff';X.textAlign='left';X.fillText('P1',cx+8,cy+16);}
-    if(isP2){X.font='bold 11px Consolas,monospace';X.fillStyle='#ff4444';X.textAlign='right';X.fillText('P2',cx+cardW-8,cy+16);}
-    const compact=cardH<140;
-    const ballR=compact?18:24;
-    drawBallPreview(cx+cardW/2,cy+(compact?30:40),ballR,ch);
-    X.font='bold '+(compact?'10':'11')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#fff';X.fillText(ch.name,cx+cardW/2,cy+(compact?55:72));
-    X.font=(compact?'8':'9')+'px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+cardW/2,cy+(compact?66:85));
-    if(cardH>=100){
-      X.font='9px Consolas,monospace';X.textAlign='left';
-      const statGap=compact?10:13;
-      const sx=cx+10,sy=cy+(compact?78:100);
-      const stats=[['HP',ch.stats.hp],['ATK',ch.stats.atk],['SPD',ch.stats.speed.toFixed(1)],['RNG',ch.stats.range],['DEF',ch.stats.def]];
-      stats.forEach((s,si)=>{
-        X.fillStyle='#888';X.fillText(s[0]+':',sx,sy+si*statGap);X.fillStyle='#ccc';X.fillText(''+s[1],sx+30,sy+si*statGap);
-        const barVal=s[0]==='HP'?ch.stats.hp/750:s[0]==='RNG'?ch.stats.range/200:s[0]==='SPD'?ch.stats.speed/8:s[0]==='ATK'?ch.stats.atk/35:ch.stats.def/10;
-        X.fillStyle='#222';X.fillRect(sx+55,sy+si*statGap-7,cardW-78,5);X.fillStyle=ch.color;X.fillRect(sx+55,sy+si*statGap-7,(cardW-78)*Math.min(1,barVal),5);
-      });
-    }
-    addBtn('p1c'+i,cx,cy,cardW/2,cardH,'','transparent',()=>{p1Char=i;p1Sponsor=-1;});
-    addBtn('p2c'+i,cx+cardW/2,cy,cardW/2,cardH,'','transparent',()=>{p2Char=i;p2Sponsor=-1;});
-  });
+    // Sponsor pickers
+    const sponsorY=comboY+22;
+    const p2Id=CHARS[p2Char].id;
+    drawSponsorPicker(W/4,sponsorY,CHARS[p1Char].id,p1Sponsor,'p1sp',(idx)=>{p1Sponsor=idx;},[p2Id],W/2-30);
+    drawSponsorPicker(W*3/4,sponsorY,CHARS[p2Char].id,p2Sponsor,'p2sp',(idx)=>{p2Sponsor=idx;},[CHARS[p1Char].id],W/2-30);
 
-  // Pagination arrows — prominent with background
-  if(totalPages>1){
-    const arrowY=cardY+Math.ceil(displayOrder.length/cols)*(cardH+gapY)-gapY+5;
-    X.font='bold 14px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#aaa';X.fillText('Page '+(selectPage+1)+' / '+totalPages,W/2,arrowY+18);
-    if(selectPage>0){
-      // Left arrow button with background
-      drawRoundRect(startX-10,arrowY-2,50,36,8);
-      X.fillStyle='#1a1a3a';X.fill();X.strokeStyle='#7b68ee';X.lineWidth=2;X.stroke();
-      addBtn('pgLeft',startX-10,arrowY-2,50,36,'','transparent',()=>{selectPage--;});
-      X.fillStyle='#7b68ee';X.font='bold 28px Consolas,monospace';X.textAlign='center';
-      X.fillText('\u25C0',startX+15,arrowY+22);
-    }
-    if(selectPage<totalPages-1){
-      // Right arrow button with background
-      drawRoundRect(startX+totalW-40,arrowY-2,50,36,8);
-      X.fillStyle='#1a1a3a';X.fill();X.strokeStyle='#7b68ee';X.lineWidth=2;X.stroke();
-      addBtn('pgRight',startX+totalW-40,arrowY-2,50,36,'','transparent',()=>{selectPage++;});
-      X.fillStyle='#7b68ee';X.font='bold 28px Consolas,monospace';X.textAlign='center';
-      X.fillText('\u25B6',startX+totalW-15,arrowY+22);
-    }
+    addBtn('battle',W/2-100,H-100,200,48,'BATTLE!','#ff4444',startBattle);
   }
 
-  const gridRows=Math.ceil(displayOrder.length/cols);
-  const gridBottom=cardY+gridRows*(cardH+gapY);
-  const elemY=gridBottom+10;
-  const epW=Math.min(260,W/2-20);
-  X.font='bold 13px Consolas,monospace';X.textAlign='center';
-  X.fillStyle='#4488ff';X.fillText('P1 ELEMENT',W/4,elemY);
-  drawElementPicker(W/4-epW/2,elemY+10,p1Elem,'p1e',(i)=>{p1Elem=i;});
-  X.fillStyle='#ff4444';X.fillText('P2 ELEMENT',W*3/4,elemY);
-  drawElementPicker(W*3/4-epW/2,elemY+10,p2Elem,'p2e',(i)=>{p2Elem=i;});
-
-  const comboY=elemY+70;
-  X.font='11px Consolas,monospace';
-  if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText('P1: '+(COMBO_EFFECTS[key]||''),W/4,comboY);}
-  if(p2Elem>0){const key=CHARS[p2Char].id+'_'+ELEMENTS[p2Elem].id;X.fillStyle=ELEMENTS[p2Elem].color;X.textAlign='center';X.fillText('P2: '+(COMBO_EFFECTS[key]||''),W*3/4,comboY);}
-
-  // Sponsor pickers
-  const sponsorY=comboY+16;
-  const p2Id=CHARS[p2Char].id;
-  drawSponsorPicker(W/4,sponsorY,CHARS[p1Char].id,p1Sponsor,'p1sp',(idx)=>{p1Sponsor=idx;},[p2Id],W/2-30);
-  drawSponsorPicker(W*3/4,sponsorY,CHARS[p2Char].id,p2Sponsor,'p2sp',(idx)=>{p2Sponsor=idx;},[CHARS[p1Char].id],W/2-30);
-
-  addBtn('battle',W/2-100,H-70,200,48,'BATTLE!','#ff4444',startBattle);
-  addBtn('back',20,H-50,80,35,'Back','#666',()=>{screen='title';});
   buttons.forEach(b=>{if(b.id.startsWith('p1c')||b.id.startsWith('p2c'))return;drawBtn(b);});
 }
 
 function drawSelectMobile(){
-  // Tab system + paginated mobile grid
-  const normalChars=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss);
-  const bossChars=[...CHARS.keys()].filter(i=>CHARS[i].isBoss);
-  const gapX=5,gapY=3,padX=5,headerH=68,bottomH=105;
-  const availW=W-padX*2;
-  const totalAvailH=H-headerH-bottomH;
-  const gridGap=10;
-  const singleGridH=(totalAvailH-gridGap)/2;
+  // Page indicator dots + nav arrows (like boss select)
+  const dotY=H-14;
+  for(let p=1;p<=2;p++){
+    const dx=W/2+(p-1.5)*16;
+    X.beginPath();X.arc(dx,dotY,_1v1SelPage===p?4:2.5,0,Math.PI*2);
+    X.fillStyle=_1v1SelPage===p?'#7b68ee':'#444';X.fill();
+  }
+  const arrowNavY=H-46,arrowNavH=30;
+  if(_1v1SelPage>1)addBtn('m1v1ArrowL',5,arrowNavY,50,arrowNavH,'\u2190 Back','#666',()=>{_1v1SelPage--;});
+  if(_1v1SelPage<2)addBtn('m1v1ArrowR',W-55,arrowNavY,50,arrowNavH,'Next \u2192','#7b68ee',()=>{_1v1SelPage++;});
+  addBtn('back',60,arrowNavY,40,arrowNavH,'Title','#555',()=>{screen='title';});
 
-  // Draw tabs
-  const tabW=Math.min(110,Math.floor((W-30)/2)),tabH=24,tabY=38;
-  const tabTotalW=tabW*2+8;
-  const tabStartX=(W-tabTotalW)/2;
-  ['Fighters','Bosses'].forEach((label,ti)=>{
-    const tx=tabStartX+ti*(tabW+8);
-    const isActive=selectTab===ti;
-    drawRoundRect(tx,tabY,tabW,tabH,5);
-    X.fillStyle=isActive?'#2a2a5a':'#111128';X.fill();
-    X.strokeStyle=isActive?(ti===0?'#7b68ee':'#cc4444'):'#333';X.lineWidth=isActive?2:1;X.stroke();
-    X.font='bold 10px Consolas,monospace';X.textAlign='center';
-    X.fillStyle=isActive?'#fff':'#888';
-    X.fillText(label,tx+tabW/2,tabY+16);
-    addBtn('mtab_'+ti,tx,tabY,tabW,tabH,'','transparent',()=>{selectTab=ti;selectPage=0;});
-  });
+  if(_1v1SelPage===1){
+    // ===== PAGE 1: CHARACTER SELECT — grouped by tier =====
+    X.font='bold 16px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#7b68ee';
+    X.fillText('SELECT FIGHTERS (1/2)',W/2,20);
 
-  const charList=selectTab===0?normalChars:bossChars;
-  const maxCols=Math.floor((availW+gapX)/(120+gapX));
-  const cols=Math.max(2,maxCols);
-  const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
-  const cardH=65; // fixed compact card height
-  const rowsPerGrid=Math.max(1,Math.floor((singleGridH-15)/(cardH+gapY)));
-  const charsPerPage=rowsPerGrid*cols;
-  const totalPages=Math.max(1,Math.ceil(charList.length/charsPerPage));
-  selectPage=clamp(selectPage,0,totalPages-1);
-  const pageChars=charList.slice(selectPage*charsPerPage,(selectPage+1)*charsPerPage);
-  const totalW=cols*cardW+(cols-1)*gapX;
-  const startX=(W-totalW)/2;
-
-  function drawCharGrid(label,labelColor,yStart,selected,prefix,cb){
-    X.font='bold 11px Consolas,monospace';X.textAlign='center';
-    X.fillStyle=labelColor;X.fillText(label,W/2,yStart);
-    const gridY=yStart+5;
-    const displayChars=pageChars;
-    displayChars.forEach((i,di)=>{
-      const ch=CHARS[i];
-      const row=Math.floor(di/cols),col=di%cols;
-      const cx=startX+col*(cardW+gapX),cy=gridY+row*(cardH+gapY);
-      const isSel=selected===i;
-      drawRoundRect(cx,cy,cardW,cardH,5);
-      X.fillStyle=isSel?(labelColor==='#4488ff'?'#112244':'#441122'):'#111128';X.fill();
-      X.strokeStyle=isSel?labelColor:ch.color+'44';X.lineWidth=isSel?2.5:1;X.stroke();
-      const compact=true;
-      drawBallPreview(cx+20,cy+18,8,ch);
-      // Tier label
-      const tierStr=getTierLetter(ch.id);
-      const tierCol=tierStr.startsWith('S')?'#ffcc00':tierStr.startsWith('A')?'#44cc88':tierStr.startsWith('B')?'#6688cc':'#888888';
-      X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle=tierCol;
-      X.fillText(tierStr,cx+6,cy+12);
-      X.font='bold 9px Consolas,monospace';X.fillStyle='#fff';
-      const shortName=ch.name.length>12?ch.name.slice(0,12):ch.name;
-      X.fillText(shortName,cx+38,cy+14);
-      X.font='8px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+38,cy+24);
-      X.fillStyle='#888';
-      X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+6,cy+36);
-      X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def+' C:'+ch.stats.crit+'%',cx+6,cy+46);
-      if(isSel){X.font='bold 9px Consolas,monospace';X.fillStyle=labelColor;X.textAlign='right';X.fillText(label,cx+cardW-6,cy+14);}
-      addBtn(prefix+i,cx,cy,cardW,cardH,'','transparent',()=>{cb(i);});
+    // Build tier groups
+    const tierOrder=[11,10,9,8,7,6,5,4,3,2,1];
+    const tierGroups=[];
+    tierOrder.forEach(t=>{
+      const indices=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss&&(TIER_MAP[CHARS[i].id]||1)===t);
+      if(indices.length>0)tierGroups.push({tier:t,label:TIER_LETTER[t],indices});
     });
-    const rows=Math.ceil(displayChars.length/cols);
-    return gridY+rows*(cardH+gapY);
+    const bossIndices=[...CHARS.keys()].filter(i=>CHARS[i].isBoss);
+
+    const padX=5,gapX=4,gapY=3;
+    const availW=W-padX*2;
+    const cols=Math.max(2,Math.floor((availW+gapX)/(110+gapX)));
+    const cardW=Math.floor((availW-(cols-1)*gapX)/cols);
+    const cardH=56;
+    const totalCardW=cols*cardW+(cols-1)*gapX;
+    const startX=(W-totalCardW)/2;
+
+    // Build content items for pagination
+    let contentItems=[];
+    tierGroups.forEach(tg=>{
+      contentItems.push({type:'tierLabel',tier:tg.tier,label:tg.label,indices:tg.indices});
+      const rows=Math.ceil(tg.indices.length/cols);
+      for(let r=0;r<rows;r++){
+        contentItems.push({type:'charRow',indices:tg.indices.slice(r*cols,(r+1)*cols),tier:tg.tier});
+      }
+    });
+    if(bossIndices.length>0){
+      contentItems.push({type:'tierLabel',tier:-1,label:'BOSSES',indices:bossIndices});
+      const bRows=Math.ceil(bossIndices.length/cols);
+      for(let r=0;r<bRows;r++){
+        contentItems.push({type:'charRow',indices:bossIndices.slice(r*cols,(r+1)*cols),tier:-1});
+      }
+    }
+
+    const gridStartY=30;
+    const tierLabelH=18;
+    const maxGridH=H-gridStartY-55;
+    // Two grids: P1 and P2 share the same paginated chars
+    const halfH=(maxGridH-10)/2;
+
+    // Paginate content items
+    const pages=[];
+    let pageItems=[],pageH=0;
+    contentItems.forEach(item=>{
+      const itemH=item.type==='tierLabel'?tierLabelH:(cardH+gapY);
+      if(pageH+itemH>halfH&&pageItems.length>0){
+        pages.push(pageItems);pageItems=[];pageH=0;
+      }
+      pageItems.push(item);pageH+=itemH;
+    });
+    if(pageItems.length>0)pages.push(pageItems);
+    const totalPages=Math.max(1,pages.length);
+    selectPage=clamp(selectPage,0,totalPages-1);
+    const currentPage=pages[selectPage]||[];
+
+    function drawMobileCharGrid(yStart,selected,prefix,labelColor,label,cb){
+      X.font='bold 10px Consolas,monospace';X.textAlign='center';X.fillStyle=labelColor;X.fillText(label,W/2,yStart);
+      let cy=yStart+4;
+      currentPage.forEach(item=>{
+        if(item.type==='tierLabel'){
+          const tierCol=item.label.startsWith('S')?'#ffcc00':item.label.startsWith('A')?'#44cc88':item.label.startsWith('B')?'#6688cc':item.label==='BOSSES'?'#cc4444':'#888';
+          drawRoundRect(startX-2,cy,totalCardW+4,tierLabelH-3,3);
+          X.fillStyle=tierCol+'18';X.fill();X.strokeStyle=tierCol+'44';X.lineWidth=1;X.stroke();
+          X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle=tierCol;
+          X.fillText('[ '+item.label+(item.label==='BOSSES'?'':' TIER')+' ]',startX+2,cy+11);
+          cy+=tierLabelH;
+        } else {
+          item.indices.forEach((i,col)=>{
+            const ch=CHARS[i];
+            const cx=startX+col*(cardW+gapX);
+            const isSel=selected===i;
+            drawRoundRect(cx,cy,cardW,cardH,4);
+            X.fillStyle=isSel?(labelColor==='#4488ff'?'#112244':'#441122'):'#111128';X.fill();
+            X.strokeStyle=isSel?labelColor:ch.color+'44';X.lineWidth=isSel?2.5:1;X.stroke();
+            drawBallPreview(cx+16,cy+16,7,ch);
+            const tierStr=getTierLetter(ch.id);
+            const tierCol2=tierStr.startsWith('S')?'#ffcc00':tierStr.startsWith('A')?'#44cc88':tierStr.startsWith('B')?'#6688cc':'#888';
+            X.font='bold 7px Consolas,monospace';X.textAlign='left';X.fillStyle=tierCol2;X.fillText(tierStr,cx+4,cy+10);
+            X.font='bold 8px Consolas,monospace';X.fillStyle='#fff';
+            X.fillText(ch.name.length>11?ch.name.slice(0,11):ch.name,cx+30,cy+12);
+            X.font='7px Consolas,monospace';X.fillStyle=ch.color;X.fillText(ch.playstyle,cx+30,cy+22);
+            X.fillStyle='#888';X.fillText('HP:'+ch.stats.hp+' A:'+ch.stats.atk+' S:'+ch.stats.speed.toFixed(1),cx+4,cy+34);
+            X.fillText('R:'+ch.stats.range+' D:'+ch.stats.def,cx+4,cy+44);
+            if(isSel){X.font='bold 8px Consolas,monospace';X.fillStyle=labelColor;X.textAlign='right';X.fillText(label,cx+cardW-4,cy+12);}
+            addBtn(prefix+i,cx,cy,cardW,cardH,'','transparent',()=>{cb(i);});
+          });
+          cy+=cardH+gapY;
+        }
+      });
+      return cy;
+    }
+
+    const p1Bottom=drawMobileCharGrid(gridStartY,p1Char,'p1m','#4488ff','P1',(i)=>{p1Char=i;p1Sponsor=-1;});
+    const p2Y=p1Bottom+6;
+    drawMobileCharGrid(p2Y,p2Char,'p2m','#ff4444','P2',(i)=>{p2Char=i;p2Sponsor=-1;});
+
+    // Page arrows
+    if(totalPages>1){
+      X.font='bold 10px Consolas,monospace';X.textAlign='center';X.fillStyle='#aaa';
+      X.fillText((selectPage+1)+'/'+totalPages,W/2,H-50);
+      if(selectPage>0){
+        drawRoundRect(W/2-60,H-60,28,22,5);X.fillStyle='#1a1a3a';X.fill();X.strokeStyle='#7b68ee';X.lineWidth=1.5;X.stroke();
+        addBtn('mpgL',W/2-60,H-60,28,22,'','transparent',()=>{selectPage--;});
+        X.fillStyle='#7b68ee';X.font='bold 16px Consolas,monospace';X.textAlign='center';X.fillText('\u25C0',W/2-46,H-46);
+      }
+      if(selectPage<totalPages-1){
+        drawRoundRect(W/2+32,H-60,28,22,5);X.fillStyle='#1a1a3a';X.fill();X.strokeStyle='#7b68ee';X.lineWidth=1.5;X.stroke();
+        addBtn('mpgR',W/2+32,H-60,28,22,'','transparent',()=>{selectPage++;});
+        X.fillStyle='#7b68ee';X.font='bold 16px Consolas,monospace';X.textAlign='center';X.fillText('\u25B6',W/2+46,H-46);
+      }
+    }
+
+  } else {
+    // ===== PAGE 2: ELEMENTS + SPONSORS + BATTLE =====
+    X.font='bold 16px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#7b68ee';
+    X.fillText('ELEMENTS & SPONSORS (2/2)',W/2,20);
+
+    // Selected fighters summary
+    let sumY=35;
+    const p1ch=CHARS[p1Char],p2ch=CHARS[p2Char];
+    const sumCardW=Math.min(140,W/2-15);
+    [{ch:p1ch,label:'P1',color:'#4488ff',sx:W/4-sumCardW/2},{ch:p2ch,label:'P2',color:'#ff4444',sx:W*3/4-sumCardW/2}].forEach(p=>{
+      drawRoundRect(p.sx,sumY,sumCardW,32,5);
+      X.fillStyle='#111128';X.fill();X.strokeStyle=p.color;X.lineWidth=2;X.stroke();
+      drawBallPreview(p.sx+14,sumY+16,7,p.ch);
+      X.font='bold 8px Consolas,monospace';X.textAlign='left';X.fillStyle=p.color;X.fillText(p.label,p.sx+26,sumY+12);
+      X.fillStyle='#fff';X.fillText(p.ch.name.length>10?p.ch.name.slice(0,10):p.ch.name,p.sx+40,sumY+12);
+      const tierStr=getTierLetter(p.ch.id);
+      const tierCol=tierStr.startsWith('S')?'#ffcc00':tierStr.startsWith('A')?'#44cc88':tierStr.startsWith('B')?'#6688cc':'#888';
+      X.fillStyle=tierCol;X.fillText('['+tierStr+']',p.sx+26,sumY+25);
+    });
+    sumY+=42;
+
+    // Element pickers
+    X.font='bold 9px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#4488ff';X.fillText('P1 ELEMENT',W/4+10,sumY);
+    drawElementPickerMobile(10,sumY+8,p1Elem,'p1em',(i)=>{p1Elem=i;});
+    X.fillStyle='#ff4444';X.fillText('P2 ELEMENT',W*3/4-10,sumY);
+    drawElementPickerMobile(W/2+10,sumY+8,p2Elem,'p2em',(i)=>{p2Elem=i;});
+
+    const comboY=sumY+48;
+    X.font='8px Consolas,monospace';
+    if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W/4+10,comboY);}
+    if(p2Elem>0){const key=CHARS[p2Char].id+'_'+ELEMENTS[p2Elem].id;X.fillStyle=ELEMENTS[p2Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W*3/4-10,comboY);}
+
+    // Sponsor pickers
+    const sponsorY=comboY+14;
+    drawSponsorPicker(W/4+10,sponsorY,CHARS[p1Char].id,p1Sponsor,'p1spm',(idx)=>{p1Sponsor=idx;},[CHARS[p2Char].id],W/2-20);
+    drawSponsorPicker(W*3/4-10,sponsorY,CHARS[p2Char].id,p2Sponsor,'p2spm',(idx)=>{p2Sponsor=idx;},[CHARS[p1Char].id],W/2-20);
+
+    addBtn('battle',W/2-80,H-80,160,38,'BATTLE!','#ff4444',startBattle);
   }
 
-  const p1Bottom=drawCharGrid('P1','#4488ff',headerH,p1Char,'p1m',(i)=>{p1Char=i;});
-  const p2Bottom=drawCharGrid('P2','#ff4444',p1Bottom+gridGap,p2Char,'p2m',(i)=>{p2Char=i;});
-
-  // Pagination arrows between the two grids — larger tap targets
-  if(totalPages>1){
-    const arrowY=p1Bottom-8;
-    X.font='bold 11px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#aaa';X.fillText((selectPage+1)+' / '+totalPages,W/2,arrowY+2);
-    if(selectPage>0){
-      drawRoundRect(startX-8,arrowY-14,40,28,6);
-      X.fillStyle='#1a1a3a';X.fill();X.strokeStyle='#7b68ee';X.lineWidth=1.5;X.stroke();
-      addBtn('mpgL',startX-8,arrowY-14,40,28,'','transparent',()=>{selectPage--;});
-      X.fillStyle='#7b68ee';X.font='bold 20px Consolas,monospace';X.textAlign='center';
-      X.fillText('\u25C0',startX+12,arrowY+5);
-    }
-    if(selectPage<totalPages-1){
-      drawRoundRect(startX+totalW-32,arrowY-14,40,28,6);
-      X.fillStyle='#1a1a3a';X.fill();X.strokeStyle='#7b68ee';X.lineWidth=1.5;X.stroke();
-      addBtn('mpgR',startX+totalW-32,arrowY-14,40,28,'','transparent',()=>{selectPage++;});
-      X.fillStyle='#7b68ee';X.font='bold 20px Consolas,monospace';X.textAlign='center';
-      X.fillText('\u25B6',startX+totalW-12,arrowY+5);
-    }
-  }
-
-  const elemY=p2Bottom+6;
-  X.font='bold 10px Consolas,monospace';X.textAlign='center';
-  X.fillStyle='#4488ff';X.fillText('P1 ELEMENT',W/4+10,elemY);
-  drawElementPickerMobile(10,elemY+8,p1Elem,'p1em',(i)=>{p1Elem=i;});
-  X.fillStyle='#ff4444';X.fillText('P2 ELEMENT',W*3/4-10,elemY);
-  drawElementPickerMobile(W/2+10,elemY+8,p2Elem,'p2em',(i)=>{p2Elem=i;});
-
-  const comboY=elemY+48;
-  X.font='8px Consolas,monospace';
-  if(p1Elem>0){const key=CHARS[p1Char].id+'_'+ELEMENTS[p1Elem].id;X.fillStyle=ELEMENTS[p1Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W/4+10,comboY);}
-  if(p2Elem>0){const key=CHARS[p2Char].id+'_'+ELEMENTS[p2Elem].id;X.fillStyle=ELEMENTS[p2Elem].color;X.textAlign='center';X.fillText(COMBO_EFFECTS[key]||'',W*3/4-10,comboY);}
-
-  // Sponsor pickers
-  const sponsorY=comboY+12;
-  drawSponsorPicker(W/4+10,sponsorY,CHARS[p1Char].id,p1Sponsor,'p1spm',(idx)=>{p1Sponsor=idx;},[CHARS[p2Char].id],W/2-20);
-  drawSponsorPicker(W*3/4-10,sponsorY,CHARS[p2Char].id,p2Sponsor,'p2spm',(idx)=>{p2Sponsor=idx;},[CHARS[p1Char].id],W/2-20);
-
-  addBtn('battle',W/2-80,H-55,160,40,'BATTLE!','#ff4444',startBattle);
-  addBtn('back',10,H-48,60,32,'Back','#666',()=>{screen='title';});
   buttons.forEach(b=>{if(b.id.startsWith('p1m')||b.id.startsWith('p2m'))return;drawBtn(b);});
 }
 
@@ -14269,7 +14782,7 @@ function drawResult(){
     roundNumber++;
     startBattle();
   });
-  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];p1Sponsor=-1;p2Sponsor=-1;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;screen=gameMode==='boss'?'bossSelect':'select';});
+  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];p1Sponsor=-1;p2Sponsor=-1;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;_1v1SelPage=1;selectPage=0;screen=gameMode==='boss'?'bossSelect':'select';});
   addBtn('titleback',W/2-60,btnY+55,120,35,'Title','#555',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];screen='title';});
   buttons.forEach(drawBtn);
 }
