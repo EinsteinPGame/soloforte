@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.5.0 — Fix rendering: save/restore around drawBallPreview, try-catch on select screen, version watermark on title
+// BALL BATTLE ARENA v10.6.0 — Fix rendering: save/restore around drawBallPreview, try-catch on select screen, version watermark on title
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -8804,127 +8804,142 @@ function drawBall(f){
   X.beginPath();X.arc(f.x-f.radius*0.25,f.y-f.radius*0.25,f.radius*0.2,0,Math.PI*2);
   X.fillStyle='rgba(255,255,255,0.35)';X.fill();
 
-  // Mantis Blades face — sharp cyber eyes, metallic jaw, red highlights
+  // Mantis Blades face — aggressive close-combat cyborg, red cyber eyes, metallic jaw, blade arms
   if(f.char.id==='mantis'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Short dark hair with red highlights
+    // --- Skin tone (cyberpunk pale/augmented) ---
+    X.fillStyle='#d8c8b8';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // Cyber implant lines on cheeks
+    X.strokeStyle='rgba(200,60,60,0.25)';X.lineWidth=0.8;
+    X.beginPath();X.moveTo(hx-r*0.38,hy-r*0.05);X.lineTo(hx-r*0.25,hy+r*0.12);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.38,hy-r*0.05);X.lineTo(hx+r*0.25,hy+r*0.12);X.stroke();
+    // --- Short dark hair with red-tipped spikes ---
     X.fillStyle='#1a1018';
-    X.beginPath();
-    X.ellipse(hx,hy-r*0.4,r*0.65,r*0.3,0,Math.PI,0);
-    X.fill();
-    // Red highlight streaks in hair
-    X.strokeStyle='#cc2222';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.2,hy-r*0.7);X.lineTo(hx-r*0.15,hy-r*0.4);X.stroke();
-    X.beginPath();X.moveTo(hx+r*0.1,hy-r*0.75);X.lineTo(hx+r*0.12,hy-r*0.42);X.stroke();
-    X.beginPath();X.moveTo(hx+r*0.3,hy-r*0.65);X.lineTo(hx+r*0.28,hy-r*0.38);X.stroke();
-    // Short spiky hair
-    const spks=[{x:-0.3,y:-0.65,w:0.08},{x:-0.12,y:-0.75,w:0.07},{x:0.05,y:-0.8,w:0.08},{x:0.2,y:-0.72,w:0.07},{x:0.35,y:-0.6,w:0.08}];
-    X.fillStyle='#1a1018';
-    spks.forEach(s=>{
-      X.beginPath();
-      X.moveTo(hx+s.x*r-s.w*r,hy-r*0.4);
-      X.lineTo(hx+s.x*r,hy+s.y*r);
-      X.lineTo(hx+s.x*r+s.w*r,hy-r*0.4);
-      X.closePath();X.fill();
+    X.beginPath();X.ellipse(hx,hy-r*0.40,r*0.62,r*0.28,0,Math.PI,0);X.fill();
+    const mantisSpikes=[
+      {off:-0.32,h:0.55,w:0.09,tilt:-0.15},{off:-0.14,h:0.70,w:0.10,tilt:-0.05},
+      {off:0.02,h:0.78,w:0.11,tilt:0.05},{off:0.18,h:0.65,w:0.10,tilt:0.15},{off:0.34,h:0.50,w:0.09,tilt:0.22}
+    ];
+    mantisSpikes.forEach(sp=>{
+      const sx=hx+sp.off*r,baseY=hy-r*0.50,tipY=baseY-r*sp.h,tipX=sx+sp.tilt*r,sw=r*sp.w;
+      X.fillStyle='#1a1018';
+      X.beginPath();X.moveTo(sx-sw,baseY);X.quadraticCurveTo(tipX-sw*0.3,lerp(baseY,tipY,0.6),tipX,tipY);
+      X.quadraticCurveTo(tipX+sw*0.3,lerp(baseY,tipY,0.5),sx+sw,baseY);X.closePath();X.fill();
+      // Red tips
+      X.fillStyle='#cc2222';
+      X.beginPath();X.moveTo(tipX-sw*0.2,lerp(baseY,tipY,0.8));X.lineTo(tipX,tipY);
+      X.lineTo(tipX+sw*0.2,lerp(baseY,tipY,0.8));X.closePath();X.fill();
     });
-    // Angular face shape — sharp cheekbones
-    X.strokeStyle='#993333';X.lineWidth=1;
-    X.beginPath();X.moveTo(hx-r*0.4,hy-r*0.15);X.lineTo(hx-r*0.3,hy+r*0.15);X.stroke();
-    X.beginPath();X.moveTo(hx+r*0.4,hy-r*0.15);X.lineTo(hx+r*0.3,hy+r*0.15);X.stroke();
-    // Red cyber-eyes with slit pupils
+    // --- Red cyber eyes with glow ---
+    X.fillStyle='#220000';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.08,r*0.10,r*0.055,-0.08,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.08,r*0.10,r*0.055,0.08,0,Math.PI*2);X.fill();
     X.fillStyle='#ff2222';
-    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.1,r*0.09,r*0.05,-0.1,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.1,r*0.09,r*0.05,0.1,0,Math.PI*2);X.fill();
-    X.shadowColor='#ff0000';X.shadowBlur=6;
-    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.1,r*0.09,r*0.05,-0.1,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.1,r*0.09,r*0.05,0.1,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.08,r*0.055,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.08,r*0.055,0,Math.PI*2);X.fill();
+    X.shadowColor='#ff0000';X.shadowBlur=8;
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.08,r*0.04,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.08,r*0.04,0,Math.PI*2);X.fill();
     X.shadowBlur=0;
     // Slit pupils
-    X.fillStyle='#000';
-    X.fillRect(hx-r*0.19,hy-r*0.14,r*0.02,r*0.08);
-    X.fillRect(hx+r*0.17,hy-r*0.14,r*0.02,r*0.08);
-    // Thin scar across nose
-    X.strokeStyle='#cc8888';X.lineWidth=1;
-    X.beginPath();X.moveTo(hx-r*0.15,hy-r*0.02);X.lineTo(hx+r*0.15,hy+r*0.02);X.stroke();
-    // Metallic jaw implants
-    X.strokeStyle='#888';X.lineWidth=2;
-    X.beginPath();X.moveTo(hx-r*0.32,hy+r*0.15);
-    X.lineTo(hx-r*0.2,hy+r*0.32);X.lineTo(hx+r*0.2,hy+r*0.32);
-    X.lineTo(hx+r*0.32,hy+r*0.15);X.stroke();
-    X.fillStyle='#999';
-    X.fillRect(hx-r*0.25,hy+r*0.2,r*0.06,r*0.1);
-    X.fillRect(hx+r*0.19,hy+r*0.2,r*0.06,r*0.1);
-    // Mantis blade arms extending from sides
-    X.strokeStyle='#cc3333';X.lineWidth=2.5;
-    X.beginPath();X.moveTo(hx-r*0.85,hy-r*0.1);
-    X.lineTo(hx-r*1.15,hy-r*0.45);X.stroke();
-    X.beginPath();X.moveTo(hx+r*0.85,hy-r*0.1);
-    X.lineTo(hx+r*1.15,hy-r*0.45);X.stroke();
-    // Blade edge highlight
-    X.strokeStyle='#ff6666';X.lineWidth=1;
-    X.beginPath();X.moveTo(hx-r*0.85,hy-r*0.1);X.lineTo(hx-r*1.15,hy-r*0.45);X.stroke();
-    X.beginPath();X.moveTo(hx+r*0.85,hy-r*0.1);X.lineTo(hx+r*1.15,hy-r*0.45);X.stroke();
+    X.fillStyle='#440000';
+    X.fillRect(hx-r*0.17,hy-r*0.11,r*0.02,r*0.06);
+    X.fillRect(hx+r*0.17,hy-r*0.11,r*0.02,r*0.06);
+    // Eye highlights
+    X.fillStyle='rgba(255,150,150,0.5)';
+    X.beginPath();X.arc(hx-r*0.14,hy-r*0.10,r*0.015,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.20,hy-r*0.10,r*0.015,0,Math.PI*2);X.fill();
+    // Aggressive eyebrows
+    X.strokeStyle='#1a1018';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.28,hy-r*0.10);X.lineTo(hx-r*0.08,hy-r*0.18);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.08,hy-r*0.18);X.lineTo(hx+r*0.28,hy-r*0.10);X.stroke();
+    // --- Metallic jaw implant ---
+    X.strokeStyle='#999';X.lineWidth=2;
+    X.beginPath();X.moveTo(hx-r*0.35,hy+r*0.12);
+    X.lineTo(hx-r*0.22,hy+r*0.32);X.lineTo(hx+r*0.22,hy+r*0.32);
+    X.lineTo(hx+r*0.35,hy+r*0.12);X.stroke();
+    // Jaw bolts
+    X.fillStyle='#aaa';
+    X.beginPath();X.arc(hx-r*0.28,hy+r*0.18,r*0.025,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.28,hy+r*0.18,r*0.025,0,Math.PI*2);X.fill();
     // Stern mouth
-    X.strokeStyle='#666';X.lineWidth=1;
-    X.beginPath();X.moveTo(hx-r*0.1,hy+r*0.18);X.lineTo(hx+r*0.1,hy+r*0.18);X.stroke();
+    X.strokeStyle='#777';X.lineWidth=1.2;
+    X.beginPath();X.moveTo(hx-r*0.10,hy+r*0.18);X.lineTo(hx+r*0.10,hy+r*0.18);X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(160,130,110,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.01);X.lineTo(hx-r*0.03,hy+r*0.06);X.stroke();
+    // --- Mantis blade arms extending from sides ---
+    X.strokeStyle='#cc3333';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.82,hy-r*0.08);X.lineTo(hx-r*1.15,hy-r*0.42);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.82,hy-r*0.08);X.lineTo(hx+r*1.15,hy-r*0.42);X.stroke();
+    X.strokeStyle='#ff6666';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx-r*0.82,hy-r*0.08);X.lineTo(hx-r*1.15,hy-r*0.42);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.82,hy-r*0.08);X.lineTo(hx+r*1.15,hy-r*0.42);X.stroke();
     X.restore();
   }
 
-  // Gorilla Arms face — thick brow, heavy bruiser, orange circuit lines
+  // Gorilla Arms face — big heavy bruiser, thick brow, orange circuit lines, massive knuckle implants
   if(f.char.id==='gorilla'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Thick brow ridge
-    X.fillStyle='#553300';
-    X.beginPath();
-    X.moveTo(hx-r*0.45,hy-r*0.2);
-    X.quadraticCurveTo(hx,hy-r*0.35,hx+r*0.45,hy-r*0.2);
-    X.lineTo(hx+r*0.45,hy-r*0.12);
-    X.quadraticCurveTo(hx,hy-r*0.22,hx-r*0.45,hy-r*0.12);
-    X.closePath();X.fill();
-    // Short buzz-cut hair
+    // --- Skin tone (tanned, heavy build) ---
+    X.fillStyle='#c8a878';
+    X.beginPath();X.arc(hx,hy,r*0.55,0,Math.PI*2);X.fill();
+    // --- Short buzz-cut hair ---
     X.fillStyle='#2a1a0a';
+    X.beginPath();X.arc(hx,hy-r*0.10,r*0.58,Math.PI*1.05,Math.PI*1.95);X.fill();
+    // Stubble dots
+    X.fillStyle='#1a1208';
+    for(let i=0;i<12;i++){
+      const sa=-Math.PI*0.85+i*(Math.PI*0.7/11);
+      const sr=r*0.50+Math.sin(i*2.7)*r*0.04;
+      X.beginPath();X.arc(hx+Math.cos(sa)*sr,hy+Math.sin(sa)*sr,r*0.018,0,Math.PI*2);X.fill();
+    }
+    // --- Thick heavy brow ridge ---
+    X.fillStyle='#a08050';
     X.beginPath();
-    X.ellipse(hx,hy-r*0.35,r*0.55,r*0.25,0,Math.PI,0);
-    X.fill();
-    // Small intense eyes under heavy brow
-    X.fillStyle='#ffaa00';
-    X.beginPath();X.arc(hx-r*0.17,hy-r*0.08,r*0.05,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.17,hy-r*0.08,r*0.05,0,Math.PI*2);X.fill();
-    // Pupils
-    X.fillStyle='#000';
-    X.beginPath();X.arc(hx-r*0.17,hy-r*0.08,r*0.025,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.17,hy-r*0.08,r*0.025,0,Math.PI*2);X.fill();
-    // Wide flat nose
-    X.strokeStyle='#774400';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.08,hy+r*0.02);
-    X.quadraticCurveTo(hx,hy+r*0.08,hx+r*0.08,hy+r*0.02);X.stroke();
-    // Strong square jaw
-    X.strokeStyle='#885500';X.lineWidth=2;
-    X.beginPath();X.moveTo(hx-r*0.4,hy+r*0.05);
-    X.lineTo(hx-r*0.35,hy+r*0.35);
-    X.lineTo(hx-r*0.15,hy+r*0.4);
-    X.lineTo(hx+r*0.15,hy+r*0.4);
-    X.lineTo(hx+r*0.35,hy+r*0.35);
-    X.lineTo(hx+r*0.4,hy+r*0.05);X.stroke();
-    // Subtle orange circuit lines on face
-    X.strokeStyle='rgba(255,136,0,0.4)';X.lineWidth=1;
-    X.beginPath();X.moveTo(hx-r*0.35,hy-r*0.05);X.lineTo(hx-r*0.25,hy+r*0.1);X.lineTo(hx-r*0.3,hy+r*0.2);X.stroke();
-    X.beginPath();X.moveTo(hx+r*0.35,hy-r*0.05);X.lineTo(hx+r*0.25,hy+r*0.1);X.lineTo(hx+r*0.3,hy+r*0.2);X.stroke();
-    // Knuckle implants on sides
-    X.fillStyle='#aa6600';
-    X.beginPath();X.arc(hx-r*0.8,hy+r*0.05,r*0.08,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx-r*0.8,hy+r*0.18,r*0.08,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.8,hy+r*0.05,r*0.08,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.8,hy+r*0.18,r*0.08,0,Math.PI*2);X.fill();
-    // Knuckle highlight
+    X.moveTo(hx-r*0.42,hy-r*0.15);
+    X.quadraticCurveTo(hx,hy-r*0.28,hx+r*0.42,hy-r*0.15);
+    X.lineTo(hx+r*0.42,hy-r*0.08);
+    X.quadraticCurveTo(hx,hy-r*0.18,hx-r*0.42,hy-r*0.08);
+    X.closePath();X.fill();
+    // --- Small intense eyes under heavy brow ---
+    X.fillStyle='#e8e0d0';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.05,r*0.08,r*0.04,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.05,r*0.08,r*0.04,0,0,Math.PI*2);X.fill();
     X.fillStyle='#cc8800';
-    X.beginPath();X.arc(hx-r*0.8,hy+r*0.05,r*0.04,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.8,hy+r*0.05,r*0.04,0,Math.PI*2);X.fill();
-    // Grim mouth
-    X.strokeStyle='#664400';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.12,hy+r*0.22);X.lineTo(hx+r*0.12,hy+r*0.22);X.stroke();
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.04,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.04,0,Math.PI*2);X.fill();
+    X.fillStyle='#111';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.02,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.02,0,Math.PI*2);X.fill();
+    // --- Wide flat nose ---
+    X.strokeStyle='rgba(150,110,70,0.5)';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-r*0.08,hy+r*0.04);
+    X.quadraticCurveTo(hx,hy+r*0.10,hx+r*0.08,hy+r*0.04);X.stroke();
+    // --- Strong square jaw ---
+    X.strokeStyle='#a88858';X.lineWidth=2;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.45,hy+r*0.08);
+    X.lineTo(hx-r*0.38,hy+r*0.35);X.lineTo(hx-r*0.12,hy+r*0.42);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.45,hy+r*0.08);
+    X.lineTo(hx+r*0.38,hy+r*0.35);X.lineTo(hx+r*0.12,hy+r*0.42);X.stroke();
+    // --- Orange circuit lines on face ---
+    X.strokeStyle='rgba(255,136,0,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx-r*0.35,hy-r*0.02);X.lineTo(hx-r*0.22,hy+r*0.12);X.lineTo(hx-r*0.28,hy+r*0.22);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.35,hy-r*0.02);X.lineTo(hx+r*0.22,hy+r*0.12);X.lineTo(hx+r*0.28,hy+r*0.22);X.stroke();
+    // --- Grim determined mouth ---
+    X.strokeStyle='#887755';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.10,hy+r*0.22);X.lineTo(hx+r*0.10,hy+r*0.22);X.stroke();
+    // --- Knuckle implants on sides ---
+    X.fillStyle='#aa6600';
+    [{x:-0.80,y:0.02},{x:-0.80,y:0.14},{x:0.80,y:0.02},{x:0.80,y:0.14}].forEach(p=>{
+      X.beginPath();X.arc(hx+p.x*r,hy+p.y*r,r*0.07,0,Math.PI*2);X.fill();
+    });
+    X.fillStyle='#cc8800';
+    X.beginPath();X.arc(hx-r*0.80,hy+r*0.02,r*0.035,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.80,hy+r*0.02,r*0.035,0,Math.PI*2);X.fill();
     X.restore();
   }
 
@@ -9590,60 +9605,104 @@ function drawBall(f){
     X.restore();
   }
 
-  // Choso face — dark hair, blood marks on face
+  // Choso face — dark brown/black hair tied in twin buns, blood marks across nose bridge
   if(f.char.id==='choso'){
     X.save();
-    const hx=f.x,hy=f.y;
-    // Dark messy hair — two-toned (dark brown/black, tied up in bun)
-    X.fillStyle='#1a1010';
-    // Hair base
+    const hx=f.x,hy=f.y,r=f.radius;
+    // --- Skin tone ---
+    X.fillStyle='#f0dcc0';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Dark brown/black hair — tied up in twin buns (signature Choso look) ---
+    const chosoHair='#1a0e0a';
+    X.fillStyle=chosoHair;
+    // Hair volume base
+    X.beginPath();X.ellipse(hx,hy-r*0.40,r*0.68,r*0.30,0,Math.PI,0);X.fill();
+    // Side strands — long, falling past ears
     X.beginPath();
-    X.ellipse(hx,hy-f.radius*0.4,f.radius*0.7,f.radius*0.3,0,Math.PI,0);
-    X.fill();
-    // Side strands
+    X.moveTo(hx-r*0.60,hy-r*0.42);
+    X.quadraticCurveTo(hx-r*0.75,hy-r*0.05,hx-r*0.62,hy+r*0.15);
+    X.lineTo(hx-r*0.48,hy-r*0.10);X.closePath();X.fill();
     X.beginPath();
-    X.moveTo(hx-f.radius*0.6,hy-f.radius*0.45);
-    X.quadraticCurveTo(hx-f.radius*0.75,hy-f.radius*0.1,hx-f.radius*0.6,hy+f.radius*0.05);
-    X.lineTo(hx-f.radius*0.45,hy-f.radius*0.15);
-    X.closePath();X.fill();
-    X.beginPath();
-    X.moveTo(hx+f.radius*0.6,hy-f.radius*0.45);
-    X.quadraticCurveTo(hx+f.radius*0.7,hy-f.radius*0.1,hx+f.radius*0.55,hy+f.radius*0.05);
-    X.lineTo(hx+f.radius*0.4,hy-f.radius*0.15);
-    X.closePath();X.fill();
-    // Top bun/tied section
-    X.beginPath();
-    X.arc(hx,hy-f.radius*0.7,f.radius*0.2,0,Math.PI*2);
-    X.fill();
-    // Messy front fringe strands
-    X.strokeStyle='#1a1010';X.lineWidth=2.5;
-    X.beginPath();X.moveTo(hx-f.radius*0.15,hy-f.radius*0.5);
-    X.quadraticCurveTo(hx-f.radius*0.2,hy-f.radius*0.2,hx-f.radius*0.1,hy-f.radius*0.05);X.stroke();
-    X.beginPath();X.moveTo(hx+f.radius*0.1,hy-f.radius*0.52);
-    X.quadraticCurveTo(hx+f.radius*0.15,hy-f.radius*0.25,hx+f.radius*0.05,hy-f.radius*0.02);X.stroke();
-    // Blood marks on face — distinctive marks from the anime (dark red lines on nose bridge and cheeks)
-    X.strokeStyle=f.chosoRedScaleActive?'#ff2222':'#8b0000';
+    X.moveTo(hx+r*0.58,hy-r*0.42);
+    X.quadraticCurveTo(hx+r*0.72,hy-r*0.05,hx+r*0.60,hy+r*0.15);
+    X.lineTo(hx+r*0.46,hy-r*0.10);X.closePath();X.fill();
+    // Twin buns on top — Choso's distinctive hairstyle
+    X.beginPath();X.arc(hx-r*0.18,hy-r*0.72,r*0.16,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.72,r*0.16,0,Math.PI*2);X.fill();
+    // Bun highlight sheen
+    X.fillStyle='rgba(60,30,20,0.4)';
+    X.beginPath();X.arc(hx-r*0.20,hy-r*0.74,r*0.07,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.16,hy-r*0.74,r*0.07,0,Math.PI*2);X.fill();
+    // Messy front fringe strands falling over forehead
+    X.fillStyle=chosoHair;
+    X.beginPath();X.moveTo(hx-r*0.18,hy-r*0.50);
+    X.quadraticCurveTo(hx-r*0.22,hy-r*0.22,hx-r*0.12,hy-r*0.05);
+    X.lineTo(hx-r*0.02,hy-r*0.12);
+    X.quadraticCurveTo(hx-r*0.05,hy-r*0.35,hx-r*0.02,hy-r*0.52);X.closePath();X.fill();
+    X.beginPath();X.moveTo(hx+r*0.10,hy-r*0.48);
+    X.quadraticCurveTo(hx+r*0.16,hy-r*0.20,hx+r*0.08,hy-r*0.02);
+    X.lineTo(hx+r*0.18,hy-r*0.08);
+    X.quadraticCurveTo(hx+r*0.20,hy-r*0.30,hx+r*0.15,hy-r*0.50);X.closePath();X.fill();
+    // Hair strand texture
+    X.strokeStyle='#2a1a12';X.lineWidth=1;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.10,hy-r*0.48);
+    X.quadraticCurveTo(hx-r*0.14,hy-r*0.25,hx-r*0.08,hy-r*0.06);X.stroke();
+    // --- BLOOD MARKS — Choso's most recognizable feature ---
+    const bColor=f.chosoRedScaleActive?'#ff2222':'#8b0000';
+    X.strokeStyle=bColor;X.lineCap='round';
+    // Nose bridge mark — thick dark red vertical line down bridge of nose
+    X.lineWidth=3;
+    X.beginPath();X.moveTo(hx,hy-r*0.18);X.lineTo(hx,hy+r*0.10);X.stroke();
+    // Under-eye horizontal marks — two dashes per side (like the anime)
     X.lineWidth=2;
-    // Nose bridge mark — thick vertical line
-    X.beginPath();X.moveTo(hx,hy-f.radius*0.2);X.lineTo(hx,hy+f.radius*0.1);X.stroke();
-    // Cheek marks — horizontal dashes under eyes
-    X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-f.radius*0.35,hy-f.radius*0.05);X.lineTo(hx-f.radius*0.15,hy-f.radius*0.05);X.stroke();
-    X.beginPath();X.moveTo(hx+f.radius*0.15,hy-f.radius*0.05);X.lineTo(hx+f.radius*0.35,hy-f.radius*0.05);X.stroke();
-    // Eyes — dark, determined
-    X.beginPath();X.arc(hx-f.radius*0.18,hy-f.radius*0.12,f.radius*0.07,0,Math.PI*2);
-    X.fillStyle=f.chosoRedScaleActive?'#ff4444':'#2a0808';X.fill();
-    if(f.chosoRedScaleActive){X.shadowColor='#ff0000';X.shadowBlur=6;X.fill();X.shadowBlur=0;}
-    X.beginPath();X.arc(hx+f.radius*0.18,hy-f.radius*0.12,f.radius*0.07,0,Math.PI*2);
-    X.fillStyle=f.chosoRedScaleActive?'#ff4444':'#2a0808';X.fill();
-    if(f.chosoRedScaleActive){X.shadowColor='#ff0000';X.shadowBlur=6;X.fill();X.shadowBlur=0;}
+    X.beginPath();X.moveTo(hx-r*0.32,hy-r*0.02);X.lineTo(hx-r*0.12,hy-r*0.02);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.12,hy-r*0.02);X.lineTo(hx+r*0.32,hy-r*0.02);X.stroke();
+    // --- Eyes — dark brown, narrow, determined, with whites ---
+    X.fillStyle='#f0ece8';
+    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.10,r*0.10,r*0.06,-0.05,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.10,r*0.10,r*0.06,0.05,0,Math.PI*2);X.fill();
+    // Irises
+    const chosoEyeCol=f.chosoRedScaleActive?'#cc2222':'#2a0808';
+    X.fillStyle=chosoEyeCol;
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.09,r*0.06,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.19,hy-r*0.09,r*0.06,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#0a0505';
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.09,r*0.028,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.19,hy-r*0.09,r*0.028,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.15,hy-r*0.11,r*0.018,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.21,hy-r*0.11,r*0.018,0,Math.PI*2);X.fill();
+    if(f.chosoRedScaleActive){
+      X.shadowColor='#ff0000';X.shadowBlur=8;
+      X.fillStyle='rgba(255,0,0,0.25)';
+      X.beginPath();X.arc(hx-r*0.17,hy-r*0.09,r*0.10,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(hx+r*0.19,hy-r*0.09,r*0.10,0,Math.PI*2);X.fill();
+      X.shadowBlur=0;
+    }
+    // Eyebrows — serious, slightly furrowed
+    X.strokeStyle='#1a0e08';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.28,hy-r*0.14);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.20,hx-r*0.07,hy-r*0.16);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.28,hy-r*0.14);
+    X.quadraticCurveTo(hx+r*0.18,hy-r*0.20,hx+r*0.07,hy-r*0.16);X.stroke();
+    // --- Determined mouth ---
+    X.strokeStyle='#666';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.10,hy+r*0.18);
+    X.quadraticCurveTo(hx,hy+r*0.21,hx+r*0.10,hy+r*0.17);
+    X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,110,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.01);X.lineTo(hx-r*0.03,hy+r*0.07);X.stroke();
     // Red Scale glow aura
     if(f.chosoRedScaleActive){
       const pulse=Math.sin(battleTime*0.1)*4;
-      X.beginPath();X.arc(hx,hy,f.radius+5+pulse,0,Math.PI*2);
-      const rg=X.createRadialGradient(hx,hy,f.radius,hx,hy,f.radius+10+pulse);
-      rg.addColorStop(0,'rgba(139,0,0,0.3)');rg.addColorStop(1,'rgba(139,0,0,0)');
-      X.fillStyle=rg;X.fill();
+      X.beginPath();X.arc(hx,hy,r+5+pulse,0,Math.PI*2);
+      const rsg=X.createRadialGradient(hx,hy,r,hx,hy,r+10+pulse);
+      rsg.addColorStop(0,'rgba(139,0,0,0.3)');rsg.addColorStop(1,'rgba(139,0,0,0)');
+      X.fillStyle=rsg;X.fill();
     }
     X.restore();
   }
@@ -9942,40 +10001,111 @@ function drawBall(f){
     X.restore();
   }
 
-  // Kashimo face — lightning scar, intense eyes, white/blonde hair
+  // Kashimo face — aged warrior, white/grey spiky hair, lightning bolt scar, intense golden eyes
   if(f.char.id==='kashimo'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Spiky blue-white hair (defining look)
-    X.fillStyle='#7ab8e0';
-    for(let i=0;i<7;i++){
-      const ha=-Math.PI*0.8+i*Math.PI*0.25;
+    // --- Skin tone — weathered, aged ---
+    X.fillStyle='#e8d4b8';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // Age lines near eyes
+    X.strokeStyle='rgba(160,130,100,0.3)';X.lineWidth=0.8;
+    X.beginPath();X.moveTo(hx-r*0.30,hy-r*0.05);X.lineTo(hx-r*0.35,hy-r*0.08);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.30,hy-r*0.05);X.lineTo(hx+r*0.35,hy-r*0.08);X.stroke();
+    // --- White/grey spiky hair — wild, swept up and back ---
+    const kashHair='#c8d0d8';
+    const kashHairDark='#8a9098';
+    X.fillStyle=kashHair;
+    // Hair base volume
+    X.beginPath();X.ellipse(hx,hy-r*0.42,r*0.65,r*0.28,0,Math.PI,0);X.fill();
+    // Wild upswept spikes
+    const kashSpikes=[
+      {off:-0.40,h:0.55,w:0.11,tilt:-0.22},
+      {off:-0.22,h:0.75,w:0.12,tilt:-0.10},
+      {off:-0.05,h:0.90,w:0.13,tilt:0.05},
+      {off:0.12, h:0.80,w:0.12,tilt:0.15},
+      {off:0.28, h:0.62,w:0.11,tilt:0.25},
+      {off:0.42, h:0.45,w:0.10,tilt:0.30},
+    ];
+    kashSpikes.forEach(sp=>{
+      const sx=hx+sp.off*r;
+      const baseY=hy-r*0.52;
+      const tipY=baseY-r*sp.h;
+      const tipX=sx+sp.tilt*r;
+      const sw=r*sp.w;
       X.beginPath();
-      X.moveTo(hx+Math.cos(ha)*r*0.5,hy+Math.sin(ha)*r*0.5);
-      X.lineTo(hx+Math.cos(ha-0.1)*r*1.1,hy+Math.sin(ha-0.1)*r*1.1);
-      X.lineTo(hx+Math.cos(ha+0.1)*r*0.6,hy+Math.sin(ha+0.1)*r*0.6);
+      X.moveTo(sx-sw,baseY);
+      X.quadraticCurveTo(tipX-sw*0.3,lerp(baseY,tipY,0.6),tipX,tipY);
+      X.quadraticCurveTo(tipX+sw*0.3,lerp(baseY,tipY,0.5),sx+sw,baseY);
       X.closePath();X.fill();
-    }
-    // Eyes — intense, narrow
-    X.fillStyle='#111';
-    X.beginPath();X.ellipse(hx-r*0.2,hy-r*0.1,r*0.1,r*0.06,0,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.2,hy-r*0.1,r*0.1,r*0.06,0,0,Math.PI*2);X.fill();
-    // Eye glow (gold)
-    X.fillStyle='#ffcc00';
-    X.beginPath();X.arc(hx-r*0.2,hy-r*0.1,r*0.04,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.2,hy-r*0.1,r*0.04,0,Math.PI*2);X.fill();
-    // Lightning scar across face
-    X.strokeStyle='#ffcc00';X.lineWidth=2;
+    });
+    // Hair shadow depth
+    X.fillStyle=kashHairDark;X.globalAlpha=0.3;
+    X.beginPath();X.ellipse(hx+r*0.05,hy-r*0.48,r*0.45,r*0.12,0.1,Math.PI,0);X.fill();
+    X.globalAlpha=1;
+    // Side hair framing face
+    X.fillStyle=kashHair;
+    X.beginPath();X.moveTo(hx-r*0.55,hy-r*0.40);
+    X.quadraticCurveTo(hx-r*0.68,hy-r*0.10,hx-r*0.55,hy+r*0.08);
+    X.lineTo(hx-r*0.42,hy-r*0.08);X.closePath();X.fill();
+    X.beginPath();X.moveTo(hx+r*0.52,hy-r*0.40);
+    X.quadraticCurveTo(hx+r*0.65,hy-r*0.10,hx+r*0.52,hy+r*0.08);
+    X.lineTo(hx+r*0.40,hy-r*0.08);X.closePath();X.fill();
+    // --- LIGHTNING BOLT SCAR — iconic, running down left side of face ---
+    X.strokeStyle='#ffcc00';X.lineWidth=2.5;X.lineCap='round';
     X.beginPath();
-    X.moveTo(hx-r*0.4,hy-r*0.3);
-    X.lineTo(hx-r*0.1,hy-r*0.05);
-    X.lineTo(hx-r*0.25,hy+r*0.1);
-    X.lineTo(hx,hy+r*0.25);
+    X.moveTo(hx-r*0.30,hy-r*0.32);
+    X.lineTo(hx-r*0.12,hy-r*0.10);
+    X.lineTo(hx-r*0.25,hy+r*0.02);
+    X.lineTo(hx-r*0.08,hy+r*0.18);
     X.stroke();
     X.shadowColor='#ffcc00';X.shadowBlur=6;X.stroke();X.shadowBlur=0;
-    // Stern mouth
-    X.strokeStyle='#333';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.12,hy+r*0.25);X.lineTo(hx+r*0.12,hy+r*0.25);X.stroke();
+    // Scar glow
+    X.strokeStyle='rgba(255,220,100,0.3)';X.lineWidth=5;
+    X.beginPath();
+    X.moveTo(hx-r*0.30,hy-r*0.32);X.lineTo(hx-r*0.12,hy-r*0.10);
+    X.lineTo(hx-r*0.25,hy+r*0.02);X.lineTo(hx-r*0.08,hy+r*0.18);
+    X.stroke();
+    // --- Eyes — intense golden, narrow, warrior gaze ---
+    X.fillStyle='#f0ece8';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.08,r*0.10,r*0.05,-0.08,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.08,r*0.10,r*0.05,0.08,0,Math.PI*2);X.fill();
+    // Irises — golden amber
+    X.fillStyle='#cc9900';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.08,r*0.055,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.08,r*0.055,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#1a0a00';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.08,r*0.025,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.08,r*0.025,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.14,hy-r*0.10,r*0.018,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.20,hy-r*0.10,r*0.018,0,Math.PI*2);X.fill();
+    // Eye glow
+    X.shadowColor='#ffcc00';X.shadowBlur=4;
+    X.fillStyle='rgba(255,200,0,0.15)';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.08,r*0.10,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.08,r*0.10,0,Math.PI*2);X.fill();
+    X.shadowBlur=0;
+    // Fierce eyebrows — angled sharply
+    X.strokeStyle='#8a9098';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.28,hy-r*0.10);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.20,hx-r*0.07,hy-r*0.14);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.28,hy-r*0.10);
+    X.quadraticCurveTo(hx+r*0.18,hy-r*0.20,hx+r*0.07,hy-r*0.14);X.stroke();
+    // --- Stern mouth — battle-hardened warrior ---
+    X.strokeStyle='#777';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.10,hy+r*0.18);
+    X.lineTo(hx+r*0.10,hy+r*0.18);
+    X.stroke();
+    // Down-turned corners
+    X.beginPath();X.moveTo(hx-r*0.10,hy+r*0.18);X.lineTo(hx-r*0.12,hy+r*0.21);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.10,hy+r*0.18);X.lineTo(hx+r*0.12,hy+r*0.21);X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,110,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.01);X.lineTo(hx-r*0.03,hy+r*0.07);X.stroke();
     // Amber aura when special charging
     if(f.kashimoAmberActive){
       const pulse=Math.sin(battleTime*0.15)*0.3+0.6;
@@ -9986,40 +10116,101 @@ function drawBall(f){
     X.restore();
   }
 
-  // Nanami face
+  // Nanami face — neat blonde hair parted to side, rectangular dark sunglasses, suit and tie, professional
   if(f.char.id==='nanami'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Short blonde hair — neat, professional
-    X.fillStyle='#c8a84a';
+    // --- Skin tone ---
+    X.fillStyle='#f2dcc0';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Neat blonde hair — side-parted, clean cut, professional ---
+    const nanHair='#c8a84a';
+    const nanHairDark='#a88a30';
+    X.fillStyle=nanHair;
+    // Hair volume base
+    X.beginPath();X.ellipse(hx+r*0.02,hy-r*0.40,r*0.62,r*0.28,0,Math.PI,0);X.fill();
+    // Side part — hair sweeps to the right
     X.beginPath();
-    X.arc(hx,hy-r*0.15,r*0.55,Math.PI*1.1,Math.PI*1.9);
-    X.fill();
-    // Side hair
-    X.fillRect(hx-r*0.45,hy-r*0.4,r*0.1,r*0.35);
-    X.fillRect(hx+r*0.35,hy-r*0.4,r*0.1,r*0.35);
-    // Rectangular sunglasses
-    X.fillStyle='#111';
-    X.fillRect(hx-r*0.38,hy-r*0.22,r*0.3,r*0.12);
-    X.fillRect(hx+r*0.08,hy-r*0.22,r*0.3,r*0.12);
-    // Sunglasses bridge
-    X.strokeStyle='#333';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.08,hy-r*0.16);X.lineTo(hx+r*0.08,hy-r*0.16);X.stroke();
-    // Sunglasses frame
-    X.strokeStyle='#444';X.lineWidth=1;
-    X.strokeRect(hx-r*0.38,hy-r*0.22,r*0.3,r*0.12);
-    X.strokeRect(hx+r*0.08,hy-r*0.22,r*0.3,r*0.12);
-    // Stern mouth
-    X.strokeStyle='#444';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.1,hy+r*0.22);X.lineTo(hx+r*0.1,hy+r*0.22);X.stroke();
-    // Tie knot (golden)
+    X.moveTo(hx-r*0.20,hy-r*0.65);
+    X.quadraticCurveTo(hx-r*0.45,hy-r*0.40,hx-r*0.55,hy-r*0.15);
+    X.lineTo(hx-r*0.42,hy-r*0.15);
+    X.quadraticCurveTo(hx-r*0.35,hy-r*0.38,hx-r*0.12,hy-r*0.55);X.closePath();X.fill();
+    // Right side — longer sweep
+    X.beginPath();
+    X.moveTo(hx-r*0.10,hy-r*0.60);
+    X.quadraticCurveTo(hx+r*0.30,hy-r*0.55,hx+r*0.50,hy-r*0.15);
+    X.lineTo(hx+r*0.38,hy-r*0.15);
+    X.quadraticCurveTo(hx+r*0.20,hy-r*0.45,hx-r*0.02,hy-r*0.52);X.closePath();X.fill();
+    // Side hair — neat sideburns
+    X.fillStyle=nanHair;
+    X.beginPath();X.moveTo(hx-r*0.52,hy-r*0.32);
+    X.quadraticCurveTo(hx-r*0.60,hy-r*0.08,hx-r*0.52,hy+r*0.05);
+    X.lineTo(hx-r*0.42,hy-r*0.05);X.closePath();X.fill();
+    X.beginPath();X.moveTo(hx+r*0.50,hy-r*0.32);
+    X.quadraticCurveTo(hx+r*0.58,hy-r*0.08,hx+r*0.50,hy+r*0.05);
+    X.lineTo(hx+r*0.40,hy-r*0.05);X.closePath();X.fill();
+    // Hair depth/shadow
+    X.fillStyle=nanHairDark;X.globalAlpha=0.25;
+    X.beginPath();X.ellipse(hx+r*0.08,hy-r*0.45,r*0.35,r*0.10,0.1,Math.PI,0);X.fill();
+    X.globalAlpha=1;
+    // Part line
+    X.strokeStyle=nanHairDark;X.lineWidth=1;
+    X.beginPath();X.moveTo(hx-r*0.15,hy-r*0.62);X.lineTo(hx-r*0.18,hy-r*0.40);X.stroke();
+    // --- RECTANGULAR SUNGLASSES — Nanami's signature ---
+    // Lens fills
+    X.fillStyle='#0a0a12';
+    X.beginPath();
+    X.roundRect(hx-r*0.38,hy-r*0.20,r*0.30,r*0.13,2);X.fill();
+    X.beginPath();
+    X.roundRect(hx+r*0.08,hy-r*0.20,r*0.30,r*0.13,2);X.fill();
+    // Lens reflection
+    X.fillStyle='rgba(80,100,140,0.25)';
+    X.fillRect(hx-r*0.36,hy-r*0.19,r*0.12,r*0.05);
+    X.fillRect(hx+r*0.10,hy-r*0.19,r*0.12,r*0.05);
+    // Frame
+    X.strokeStyle='#555';X.lineWidth=1.2;
+    X.beginPath();X.roundRect(hx-r*0.38,hy-r*0.20,r*0.30,r*0.13,2);X.stroke();
+    X.beginPath();X.roundRect(hx+r*0.08,hy-r*0.20,r*0.30,r*0.13,2);X.stroke();
+    // Bridge
+    X.strokeStyle='#555';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(hx-r*0.08,hy-r*0.13);X.lineTo(hx+r*0.08,hy-r*0.13);X.stroke();
+    // Temple arms going to sides
+    X.strokeStyle='#555';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx-r*0.38,hy-r*0.14);X.lineTo(hx-r*0.50,hy-r*0.12);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.38,hy-r*0.14);X.lineTo(hx+r*0.50,hy-r*0.12);X.stroke();
+    // Eyebrows above glasses
+    X.strokeStyle='#a08830';X.lineWidth=2;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.32,hy-r*0.22);X.lineTo(hx-r*0.10,hy-r*0.24);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.10,hy-r*0.24);X.lineTo(hx+r*0.32,hy-r*0.22);X.stroke();
+    // --- Stern professional mouth ---
+    X.strokeStyle='#777';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.10,hy+r*0.18);X.lineTo(hx+r*0.10,hy+r*0.18);X.stroke();
+    // Slight frown
+    X.beginPath();X.moveTo(hx-r*0.10,hy+r*0.18);X.lineTo(hx-r*0.12,hy+r*0.20);X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,110,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.01);X.lineTo(hx-r*0.03,hy+r*0.07);X.stroke();
+    // --- Suit collar + golden tie ---
+    // White shirt collar
+    X.fillStyle='#e8e8e8';
+    X.beginPath();
+    X.moveTo(hx-r*0.30,hy+r*0.42);X.lineTo(hx-r*0.08,hy+r*0.30);
+    X.lineTo(hx,hy+r*0.38);X.lineTo(hx+r*0.08,hy+r*0.30);
+    X.lineTo(hx+r*0.30,hy+r*0.42);X.lineTo(hx+r*0.25,hy+r*0.48);
+    X.lineTo(hx,hy+r*0.35);X.lineTo(hx-r*0.25,hy+r*0.48);
+    X.closePath();X.fill();
+    // Tie — golden/amber (Nanami's signature)
     X.fillStyle='#d4a843';
     X.beginPath();
-    X.moveTo(hx,hy+r*0.32);
-    X.lineTo(hx-r*0.06,hy+r*0.42);
-    X.lineTo(hx,hy+r*0.39);
-    X.lineTo(hx+r*0.06,hy+r*0.42);
+    X.moveTo(hx,hy+r*0.30);
+    X.lineTo(hx-r*0.05,hy+r*0.38);
+    X.lineTo(hx,hy+r*0.50);
+    X.lineTo(hx+r*0.05,hy+r*0.38);
     X.closePath();X.fill();
+    // Tie stripe pattern
+    X.strokeStyle='#c09838';X.lineWidth=0.8;
+    X.beginPath();X.moveTo(hx-r*0.03,hy+r*0.35);X.lineTo(hx+r*0.03,hy+r*0.33);X.stroke();
+    X.beginPath();X.moveTo(hx-r*0.03,hy+r*0.40);X.lineTo(hx+r*0.03,hy+r*0.38);X.stroke();
     // Overtime aura
     if(f.nanamiOvertimeActive){
       const pulse=Math.sin(battleTime*0.15)*0.3+0.6;
@@ -10038,34 +10229,88 @@ function drawBall(f){
     X.restore();
   }
 
-  // Ryu face — pompadour hairstyle, confident grin
+  // Ryu face — tall pompadour, confident/cocky grin, strong jaw, Sendai colony sorcerer
   if(f.char.id==='ryu'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Tall pompadour — signature hair
-    X.fillStyle='#8b4513';
+    // --- Skin tone ---
+    X.fillStyle='#e8d0b0';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Tall pompadour — Ryu's signature hairstyle, slicked back and up ---
+    const ryuHair='#3a2a18';
+    const ryuHairLight='#5a4028';
+    // Hair base
+    X.fillStyle=ryuHair;
+    X.beginPath();X.ellipse(hx,hy-r*0.38,r*0.58,r*0.25,0,Math.PI,0);X.fill();
+    // Tall pompadour volume — big, swept back
     X.beginPath();
-    X.moveTo(hx-r*0.4,hy-r*0.1);
-    X.quadraticCurveTo(hx-r*0.45,hy-r*0.9,hx,hy-r*1.1);
-    X.quadraticCurveTo(hx+r*0.45,hy-r*0.9,hx+r*0.4,hy-r*0.1);
+    X.moveTo(hx-r*0.42,hy-r*0.15);
+    X.bezierCurveTo(hx-r*0.48,hy-r*0.65,hx-r*0.30,hy-r*1.10,hx,hy-r*1.20);
+    X.bezierCurveTo(hx+r*0.30,hy-r*1.10,hx+r*0.48,hy-r*0.65,hx+r*0.42,hy-r*0.15);
     X.closePath();X.fill();
-    // Hair volume (darker back)
-    X.fillStyle='#6b3010';
+    // Inner volume (lighter)
+    X.fillStyle=ryuHairLight;
     X.beginPath();
-    X.moveTo(hx-r*0.35,hy-r*0.05);
-    X.quadraticCurveTo(hx-r*0.4,hy-r*0.7,hx,hy-r*0.95);
-    X.quadraticCurveTo(hx+r*0.4,hy-r*0.7,hx+r*0.35,hy-r*0.05);
+    X.moveTo(hx-r*0.35,hy-r*0.15);
+    X.bezierCurveTo(hx-r*0.38,hy-r*0.55,hx-r*0.22,hy-r*0.92,hx,hy-r*1.02);
+    X.bezierCurveTo(hx+r*0.22,hy-r*0.92,hx+r*0.38,hy-r*0.55,hx+r*0.35,hy-r*0.15);
     X.closePath();X.fill();
     // Hair shine streak
-    X.strokeStyle='#c47a30';X.lineWidth=2;
-    X.beginPath();X.moveTo(hx-r*0.1,hy-r*0.75);X.quadraticCurveTo(hx+r*0.05,hy-r*0.85,hx+r*0.15,hy-r*0.7);X.stroke();
-    // Confident narrow eyes
-    X.fillStyle='#222';
-    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.05,r*0.1,r*0.04,-0.1,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.05,r*0.1,r*0.04,0.1,0,Math.PI*2);X.fill();
-    // Cocky grin
-    X.strokeStyle='#555';X.lineWidth=1.5;
-    X.beginPath();X.arc(hx+r*0.05,hy+r*0.2,r*0.15,0.3,Math.PI-0.1);X.stroke();
+    X.strokeStyle='#7a5a38';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.10,hy-r*0.70);
+    X.quadraticCurveTo(hx+r*0.05,hy-r*0.90,hx+r*0.15,hy-r*0.75);X.stroke();
+    // Side hair — neat sideburns
+    X.fillStyle=ryuHair;
+    X.beginPath();X.moveTo(hx-r*0.50,hy-r*0.30);
+    X.quadraticCurveTo(hx-r*0.58,hy-r*0.05,hx-r*0.50,hy+r*0.08);
+    X.lineTo(hx-r*0.40,hy-r*0.02);X.closePath();X.fill();
+    X.beginPath();X.moveTo(hx+r*0.48,hy-r*0.30);
+    X.quadraticCurveTo(hx+r*0.56,hy-r*0.05,hx+r*0.48,hy+r*0.08);
+    X.lineTo(hx+r*0.38,hy-r*0.02);X.closePath();X.fill();
+    // --- Eyes — narrow, confident, slightly hooded ---
+    X.fillStyle='#f0ece8';
+    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.06,r*0.09,r*0.045,-0.08,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.06,r*0.09,r*0.045,0.08,0,Math.PI*2);X.fill();
+    // Irises — dark brown
+    X.fillStyle='#2a1808';
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.05,r*0.05,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.19,hy-r*0.05,r*0.05,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#0a0a0a';
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.05,r*0.022,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.19,hy-r*0.05,r*0.022,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.15,hy-r*0.07,r*0.015,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.21,hy-r*0.07,r*0.015,0,Math.PI*2);X.fill();
+    // Thick confident eyebrows
+    X.strokeStyle='#2a1a08';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.28,hy-r*0.10);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.17,hx-r*0.08,hy-r*0.12);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.28,hy-r*0.10);
+    X.quadraticCurveTo(hx+r*0.18,hy-r*0.17,hx+r*0.08,hy-r*0.12);X.stroke();
+    // --- Cocky confident grin — showing some teeth ---
+    X.fillStyle='#333';
+    X.beginPath();
+    X.moveTo(hx-r*0.16,hy+r*0.15);
+    X.quadraticCurveTo(hx+r*0.02,hy+r*0.28,hx+r*0.18,hy+r*0.13);
+    X.quadraticCurveTo(hx+r*0.02,hy+r*0.20,hx-r*0.16,hy+r*0.15);
+    X.fill();
+    // Teeth
+    X.fillStyle='#fff';
+    X.beginPath();
+    X.moveTo(hx-r*0.12,hy+r*0.16);
+    X.quadraticCurveTo(hx+r*0.02,hy+r*0.22,hx+r*0.14,hy+r*0.14);
+    X.lineTo(hx+r*0.14,hy+r*0.17);
+    X.quadraticCurveTo(hx+r*0.02,hy+r*0.19,hx-r*0.12,hy+r*0.17);
+    X.closePath();X.fill();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,110,0.5)';X.lineWidth=1.2;
+    X.beginPath();X.moveTo(hx,hy-r*0.01);X.lineTo(hx-r*0.04,hy+r*0.07);X.stroke();
+    // --- Strong jaw line ---
+    X.strokeStyle='#c0a080';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.42,hy+r*0.08);X.lineTo(hx-r*0.35,hy+r*0.35);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.42,hy+r*0.08);X.lineTo(hx+r*0.35,hy+r*0.35);X.stroke();
     // Beam active glow
     if(f.ryuBeamActive){
       const pulse=Math.sin(battleTime*0.2)*0.3+0.6;
@@ -10076,41 +10321,97 @@ function drawBall(f){
     X.restore();
   }
 
-  // Higuruma face — judge's robes, serious expression, dark hair
+  // Higuruma face — dark slicked-back hair with strands, tired sharp eyes, suit/judge look, gavel
   if(f.char.id==='higuruma'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Dark slicked-back hair
-    X.fillStyle='#1a1a2e';
+    // --- Skin tone ---
+    X.fillStyle='#ecd8c0';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Dark circles under eyes — exhausted lawyer look ---
+    X.fillStyle='rgba(80,50,70,0.30)';
+    X.beginPath();X.ellipse(hx-r*0.17,hy+r*0.02,r*0.09,r*0.035,0.1,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy+r*0.02,r*0.09,r*0.035,-0.1,0,Math.PI*2);X.fill();
+    // --- Dark slicked-back hair — neat but with some loose strands ---
+    const higHair='#0e0e1e';
+    X.fillStyle=higHair;
+    // Hair volume base
     X.beginPath();
-    X.moveTo(hx-r*0.45,hy+r*0.05);
-    X.quadraticCurveTo(hx-r*0.5,hy-r*0.6,hx-r*0.1,hy-r*0.85);
-    X.quadraticCurveTo(hx+r*0.05,hy-r*0.95,hx+r*0.15,hy-r*0.85);
-    X.quadraticCurveTo(hx+r*0.5,hy-r*0.55,hx+r*0.45,hy+r*0.05);
+    X.moveTo(hx-r*0.55,hy-r*0.10);
+    X.quadraticCurveTo(hx-r*0.58,hy-r*0.55,hx-r*0.15,hy-r*0.80);
+    X.quadraticCurveTo(hx+r*0.10,hy-r*0.88,hx+r*0.20,hy-r*0.78);
+    X.quadraticCurveTo(hx+r*0.55,hy-r*0.50,hx+r*0.52,hy-r*0.10);
+    X.quadraticCurveTo(hx,hy-r*0.38,hx-r*0.55,hy-r*0.10);
     X.closePath();X.fill();
-    // Hair highlight
-    X.strokeStyle='#2a2a4e';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.2,hy-r*0.7);X.quadraticCurveTo(hx,hy-r*0.8,hx+r*0.2,hy-r*0.65);X.stroke();
-    // Serious narrow eyes
-    X.fillStyle='#222';
-    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.05,r*0.1,r*0.035,0,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.05,r*0.1,r*0.035,0,0,Math.PI*2);X.fill();
-    // Eye glint
-    X.fillStyle='#444';
-    X.beginPath();X.arc(hx-r*0.14,hy-r*0.06,r*0.02,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.2,hy-r*0.06,r*0.02,0,Math.PI*2);X.fill();
-    // Stern mouth — thin line
-    X.strokeStyle='#444';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(hx-r*0.12,hy+r*0.2);X.lineTo(hx+r*0.12,hy+r*0.2);X.stroke();
-    // Judge's collar — white V-shape at bottom
+    // Side hair
+    X.beginPath();X.moveTo(hx-r*0.55,hy-r*0.25);
+    X.quadraticCurveTo(hx-r*0.62,hy-r*0.02,hx-r*0.52,hy+r*0.10);
+    X.lineTo(hx-r*0.42,hy-r*0.02);X.closePath();X.fill();
+    X.beginPath();X.moveTo(hx+r*0.52,hy-r*0.25);
+    X.quadraticCurveTo(hx+r*0.60,hy-r*0.02,hx+r*0.50,hy+r*0.10);
+    X.lineTo(hx+r*0.40,hy-r*0.02);X.closePath();X.fill();
+    // Loose fringe strands falling over forehead
+    X.strokeStyle=higHair;X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.12,hy-r*0.55);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.28,hx-r*0.10,hy-r*0.08);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.08,hy-r*0.58);
+    X.quadraticCurveTo(hx+r*0.14,hy-r*0.30,hx+r*0.06,hy-r*0.05);X.stroke();
+    X.lineWidth=2;
+    X.beginPath();X.moveTo(hx-r*0.02,hy-r*0.60);
+    X.quadraticCurveTo(hx-r*0.05,hy-r*0.32,hx+r*0.02,hy-r*0.10);X.stroke();
+    // Hair highlight sheen
+    X.fillStyle='rgba(40,40,70,0.3)';
+    X.beginPath();X.ellipse(hx-r*0.05,hy-r*0.58,r*0.25,r*0.08,0.15,0,Math.PI*2);X.fill();
+    // --- Eyes — sharp, serious, tired but intense ---
+    X.fillStyle='#f0ece8';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.06,r*0.10,r*0.06,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.06,r*0.10,r*0.06,0,0,Math.PI*2);X.fill();
+    // Irises — dark, intense
+    const higEyeCol=f.higurumaDomainActive?'#6633aa':'#1a1a2a';
+    X.fillStyle=higEyeCol;
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.06,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.06,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#050508';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.028,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.028,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.14,hy-r*0.07,r*0.018,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.20,hy-r*0.07,r*0.018,0,Math.PI*2);X.fill();
+    if(f.higurumaDomainActive){
+      X.shadowColor='#8844cc';X.shadowBlur=8;
+      X.fillStyle='rgba(100,50,180,0.25)';
+      X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.10,0,Math.PI*2);X.fill();
+      X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.10,0,Math.PI*2);X.fill();
+      X.shadowBlur=0;
+    }
+    // Eyebrows — stern, serious
+    X.strokeStyle='#0e0e18';X.lineWidth=2.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.28,hy-r*0.13);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.20,hx-r*0.07,hy-r*0.15);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.28,hy-r*0.13);
+    X.quadraticCurveTo(hx+r*0.18,hy-r*0.20,hx+r*0.07,hy-r*0.15);X.stroke();
+    // --- Stern thin mouth ---
+    X.strokeStyle='#666';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.10,hy+r*0.18);X.lineTo(hx+r*0.10,hy+r*0.18);X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,110,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.01);X.lineTo(hx-r*0.03,hy+r*0.07);X.stroke();
+    // --- Judge's/lawyer suit collar — dark with white shirt underneath ---
+    // Dark suit jacket collar
+    X.fillStyle='#1a1a28';
+    X.beginPath();
+    X.moveTo(hx-r*0.35,hy+r*0.38);X.lineTo(hx-r*0.20,hy+r*0.28);
+    X.lineTo(hx,hy+r*0.35);X.lineTo(hx+r*0.20,hy+r*0.28);
+    X.lineTo(hx+r*0.35,hy+r*0.38);X.lineTo(hx+r*0.30,hy+r*0.50);
+    X.lineTo(hx,hy+r*0.42);X.lineTo(hx-r*0.30,hy+r*0.50);
+    X.closePath();X.fill();
+    // White shirt V
     X.fillStyle='#e8e8e8';
     X.beginPath();
-    X.moveTo(hx-r*0.3,hy+r*0.45);
-    X.lineTo(hx,hy+r*0.25);
-    X.lineTo(hx+r*0.3,hy+r*0.45);
-    X.lineTo(hx+r*0.25,hy+r*0.5);
-    X.lineTo(hx,hy+r*0.3);
-    X.lineTo(hx-r*0.25,hy+r*0.5);
+    X.moveTo(hx-r*0.12,hy+r*0.30);X.lineTo(hx,hy+r*0.42);X.lineTo(hx+r*0.12,hy+r*0.30);
+    X.lineTo(hx+r*0.08,hy+r*0.28);X.lineTo(hx,hy+r*0.36);X.lineTo(hx-r*0.08,hy+r*0.28);
     X.closePath();X.fill();
     // Domain active glow
     if(f.higurumaDomainActive){
@@ -10308,47 +10609,90 @@ function drawBall(f){
     });
   }
 
-  // Naoya face — slicked-back hair, sharp features, arrogant
+  // Naoya face — green slicked-back hair, sharp arrogant features, narrow eyes, smirk
   if(f.char.id==='naoya'){
     X.save();
     const hx=f.x,hy=f.y,r=f.radius;
-    // Slicked-back hair
-    X.fillStyle='#2a6a4a';
-    const spikes=5;
-    for(let i=0;i<spikes;i++){
-      const sa=-Math.PI*0.8+i*(Math.PI*0.5/(spikes-1));
-      const slen=r*0.4+Math.sin(i*1.8)*r*0.06;
+    const naoyaP2=f.naoyaResurrected;
+    // --- Skin tone ---
+    X.fillStyle=naoyaP2?'#c8b0d0':'#f0dcc0';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Green slicked-back hair — neat, sharp, arrogant style ---
+    const naoHair=naoyaP2?'#3a2a5a':'#2a5a3a';
+    const naoHairLight=naoyaP2?'#4a3a6a':'#3a7a4a';
+    X.fillStyle=naoHair;
+    // Hair base volume — slicked back neatly
+    X.beginPath();X.ellipse(hx,hy-r*0.40,r*0.62,r*0.28,0,Math.PI,0);X.fill();
+    // Slicked-back spikes — sharp, neat, pointing backwards
+    const naoSpikes=[
+      {off:-0.38,h:0.48,w:0.10,tilt:-0.25},
+      {off:-0.20,h:0.65,w:0.11,tilt:-0.12},
+      {off:-0.03,h:0.75,w:0.12,tilt:0.05},
+      {off:0.15, h:0.60,w:0.11,tilt:0.18},
+      {off:0.32, h:0.45,w:0.10,tilt:0.28},
+    ];
+    naoSpikes.forEach(sp=>{
+      const sx=hx+sp.off*r;
+      const baseY=hy-r*0.52;
+      const tipY=baseY-r*sp.h;
+      const tipX=sx+sp.tilt*r;
+      const sw=r*sp.w;
       X.beginPath();
-      X.moveTo(hx+Math.cos(sa-0.1)*r*0.35,hy+Math.sin(sa-0.1)*r*0.55);
-      X.lineTo(hx+Math.cos(sa)*(r*0.55+slen),hy+Math.sin(sa)*(r*0.5+slen));
-      X.lineTo(hx+Math.cos(sa+0.1)*r*0.35,hy+Math.sin(sa+0.1)*r*0.55);
+      X.moveTo(sx-sw,baseY);
+      X.quadraticCurveTo(tipX-sw*0.3,lerp(baseY,tipY,0.6),tipX,tipY);
+      X.quadraticCurveTo(tipX+sw*0.3,lerp(baseY,tipY,0.5),sx+sw,baseY);
       X.closePath();X.fill();
-    }
-    // Hair base
-    X.beginPath();
-    X.arc(hx,hy-r*0.15,r*0.45,Math.PI,0);
-    X.fill();
-    // Sharp narrow eyes — arrogant look
-    X.fillStyle=isP2?'#ff4488':'#1a1a1a';
-    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.03,r*0.08,r*0.04,0,0,Math.PI*2);X.fill();
-    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.03,r*0.08,r*0.04,0,0,Math.PI*2);X.fill();
+    });
+    // Hair highlight
+    X.fillStyle=naoHairLight;X.globalAlpha=0.3;
+    X.beginPath();X.ellipse(hx,hy-r*0.55,r*0.30,r*0.10,0,Math.PI,0);X.fill();
+    X.globalAlpha=1;
+    // Side hair — neat, framing face sharply
+    X.fillStyle=naoHair;
+    X.beginPath();X.moveTo(hx-r*0.55,hy-r*0.38);
+    X.quadraticCurveTo(hx-r*0.65,hy-r*0.08,hx-r*0.55,hy+r*0.05);
+    X.lineTo(hx-r*0.42,hy-r*0.05);X.closePath();X.fill();
+    X.beginPath();X.moveTo(hx+r*0.52,hy-r*0.38);
+    X.quadraticCurveTo(hx+r*0.62,hy-r*0.08,hx+r*0.52,hy+r*0.05);
+    X.lineTo(hx+r*0.40,hy-r*0.05);X.closePath();X.fill();
+    // --- Sharp narrow eyes — arrogant, looking down on opponent ---
+    X.fillStyle='#f0ece8';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.06,r*0.09,r*0.045,-0.08,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.06,r*0.09,r*0.045,0.08,0,Math.PI*2);X.fill();
+    // Irises
+    const naoEyeCol=naoyaP2?'#cc3388':'#1a2a1a';
+    X.fillStyle=naoEyeCol;
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.05,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.05,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#0a0a0a';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.05,r*0.022,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.05,r*0.022,0,Math.PI*2);X.fill();
     // Eye highlights
     X.fillStyle='#fff';
-    X.beginPath();X.arc(hx-r*0.14,hy-r*0.04,r*0.02,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(hx+r*0.2,hy-r*0.04,r*0.02,0,Math.PI*2);X.fill();
-    // Smirk — arrogant
-    X.strokeStyle=isP2?'#cc3366':'#333';X.lineWidth=1.5;
+    X.beginPath();X.arc(hx-r*0.14,hy-r*0.07,r*0.015,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.20,hy-r*0.07,r*0.015,0,Math.PI*2);X.fill();
+    // Thin arched eyebrows — raised smugly
+    X.strokeStyle=naoHair;X.lineWidth=2;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.28,hy-r*0.10);
+    X.quadraticCurveTo(hx-r*0.18,hy-r*0.20,hx-r*0.07,hy-r*0.14);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.28,hy-r*0.10);
+    X.quadraticCurveTo(hx+r*0.18,hy-r*0.20,hx+r*0.07,hy-r*0.14);X.stroke();
+    // --- Arrogant smirk — one-sided, condescending ---
+    X.strokeStyle=naoyaP2?'#aa3366':'#555';X.lineWidth=1.5;X.lineCap='round';
     X.beginPath();
-    X.moveTo(hx-r*0.08,hy+r*0.18);
-    X.quadraticCurveTo(hx+r*0.05,hy+r*0.24,hx+r*0.12,hy+r*0.14);
+    X.moveTo(hx-r*0.08,hy+r*0.16);
+    X.quadraticCurveTo(hx+r*0.05,hy+r*0.22,hx+r*0.14,hy+r*0.12);
     X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(170,140,110,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.01);X.lineTo(hx-r*0.03,hy+r*0.07);X.stroke();
     // Phase 2: cursed spirit aura
-    if(isP2){
+    if(naoyaP2){
       const pulse=Math.sin(battleTime*0.12)*0.3+0.5;
       X.strokeStyle=`rgba(170,68,204,${pulse})`;X.lineWidth=3;
       X.beginPath();X.arc(hx,hy,r+6,0,Math.PI*2);X.stroke();
       X.shadowColor='#aa44cc';X.shadowBlur=12;X.stroke();X.shadowBlur=0;
-      // Cursed energy wisps
       if(battleTime%4<1){
         for(let i=0;i<2;i++){
           const wa=Math.random()*Math.PI*2;
@@ -10360,7 +10704,7 @@ function drawBall(f){
     X.font='bold 8px Consolas,monospace';X.textAlign='center';
     // Color shifts based on stack level: green→yellow→orange→red
     const stackPct=f.naoyaFrameStack/24;
-    const frameColor=f.naoyaFrameBurned?'#ff2222':stackPct>0.75?'#ff4444':stackPct>0.5?'#ff8844':stackPct>0.25?'#ffcc00':isP2?'#aa44cc':'#00cc88';
+    const frameColor=f.naoyaFrameBurned?'#ff2222':stackPct>0.75?'#ff4444':stackPct>0.5?'#ff8844':stackPct>0.25?'#ffcc00':naoyaP2?'#aa44cc':'#00cc88';
     X.fillStyle=frameColor;
     const frameLabel=f.naoyaFrameBurned?'BURNOUT':String(f.naoyaFrameCount+1).padStart(2,'0')+'/24';
     X.fillText(frameLabel,hx,hy-r-18);
