@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.9.0 — Bug fixes: PLS homing + Kashimo AMBER at 2x speed
+// BALL BATTLE ARENA v10.9.1 — Mahoraga intro cutscene + PLS/Kashimo 2x speed fixes
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -16053,16 +16053,60 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<60){X.globalAlpha=0.6;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff6688';X.fillText('STAR RAGE',cx,cy+50*s);}
       break;}
     case 'mahoraga':{
-      // BOSS — Adaptation wheel spinning + golden aura (extra flashy)
-      X.globalAlpha=0.5;X.strokeStyle='#ffcc00';X.lineWidth=3*s;
-      const wheelA=t*0.08;X.beginPath();
-      for(let i=0;i<8;i++){const wa2=wheelA+Math.PI*2*i/8;X.moveTo(cx,cy);X.lineTo(cx+Math.cos(wa2)*35*s,cy+Math.sin(wa2)*35*s);}
-      X.stroke();X.beginPath();X.arc(cx,cy,35*s,0,Math.PI*2);X.stroke();
-      // Outer golden aura pulse
-      const auraPulse=Math.sin(t*0.1)*0.2+0.3;X.globalAlpha=auraPulse;
-      const ag=X.createRadialGradient(cx,cy,20*s,cx,cy,50*s);ag.addColorStop(0,'#ffcc0044');ag.addColorStop(1,'#ffcc0000');
-      X.fillStyle=ag;X.beginPath();X.arc(cx,cy,50*s,0,Math.PI*2);X.fill();
-      if(t>15&&t<65){X.globalAlpha=0.7;X.font='bold '+Math.round(11*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc00';X.fillText('ADAPTATION',cx,cy+55*s);}
+      // Gets hit by many attacks → smoke → steps out unharmed → wheel turns → flicks wrists → blades appear
+      // Phase 1 (0-25): barrage of attacks hitting — impact flashes
+      if(t<30){
+        const numHits=Math.min(8,Math.floor(t/3));
+        for(let i=0;i<numHits;i++){
+          const ht=t-i*3;const alpha=Math.max(0,0.7-ht/12);
+          const hx2=cx+Math.sin(i*4.3)*15*s;const hy2=cy+Math.cos(i*3.1)*12*s;
+          X.globalAlpha=alpha;
+          // Impact flash
+          X.fillStyle=i%3===0?'#ff4444':i%3===1?'#ff8844':'#ffcc44';
+          X.beginPath();X.arc(hx2,hy2,4*s*(1-ht/15),0,Math.PI*2);X.fill();
+          // Impact lines
+          X.strokeStyle='#ffaa4488';X.lineWidth=1.5*s;
+          for(let j=0;j<3;j++){const la=Math.PI*2*j/3+i;
+            X.beginPath();X.moveTo(hx2,hy2);X.lineTo(hx2+Math.cos(la)*8*s,hy2+Math.sin(la)*8*s);X.stroke();}
+        }
+      }
+      // Phase 2 (25-40): smoke cloud
+      if(t>20&&t<50){const st=Math.min(1,(t-20)/10);
+        X.globalAlpha=t<35?st*0.6:Math.max(0,0.6-(t-35)/15);
+        for(let i=0;i<6;i++){const sa=Math.PI*2*i/6+t*0.02;const sr=(15+i*4)*s;
+          X.fillStyle='#666666';X.beginPath();X.arc(cx+Math.cos(sa)*sr*0.4,cy+Math.sin(sa)*sr*0.3,sr*0.35,0,Math.PI*2);X.fill();}
+      }
+      // Phase 3 (35+): Mahoraga steps out of smoke — unharmed
+      if(t>35){const et=t-35;
+        X.globalAlpha=Math.min(0.8,et/10);X.fillStyle='#1a1a2e';
+        X.beginPath();X.arc(cx,cy,10*s,0,Math.PI*2);X.fill();
+        // Golden aura — unharmed
+        X.strokeStyle='#ffcc00';X.lineWidth=2*s;X.shadowColor='#ffcc00';X.shadowBlur=8;
+        X.beginPath();X.arc(cx,cy,14*s,0,Math.PI*2);X.stroke();X.shadowBlur=0;
+      }
+      // Phase 4 (45+): wheel turns above head
+      if(t>45){const wt=t-45;
+        const wheelA=wt*0.15;X.globalAlpha=Math.min(0.7,wt/10);X.strokeStyle='#ffcc00';X.lineWidth=2*s;
+        const wheelR=12*s;const wheelY=cy-22*s;
+        X.beginPath();X.arc(cx,wheelY,wheelR,0,Math.PI*2);X.stroke();
+        for(let i=0;i<8;i++){const wa2=wheelA+Math.PI*2*i/8;
+          X.beginPath();X.moveTo(cx,wheelY);X.lineTo(cx+Math.cos(wa2)*wheelR,wheelY+Math.sin(wa2)*wheelR);X.stroke();}
+      }
+      // Phase 5 (60+): flicks wrists → blades appear
+      if(t>60){const bt=t-60;const bladeExt=Math.min(1,bt/8);
+        X.globalAlpha=bladeExt*0.8;X.fillStyle='#aabbcc';
+        // Left blade
+        X.save();X.translate(cx-10*s,cy+2*s);X.rotate(-0.3);
+        X.fillRect(0,-1.5*s,-bladeExt*18*s,3*s);X.restore();
+        // Right blade
+        X.save();X.translate(cx+10*s,cy+2*s);X.rotate(0.3);
+        X.fillRect(0,-1.5*s,bladeExt*18*s,3*s);X.restore();
+        // Blade glint
+        if(bt>5&&bt<12){X.globalAlpha=0.8*(1-(bt-5)/7);X.fillStyle='#fff';
+          X.beginPath();X.arc(cx-10*s-bladeExt*12*s,cy+1*s,2*s,0,Math.PI*2);X.fill();
+          X.beginPath();X.arc(cx+10*s+bladeExt*12*s,cy+1*s,2*s,0,Math.PI*2);X.fill();}
+      }
+      if(t>35&&t<80){X.globalAlpha=0.7;X.font='bold '+Math.round(11*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffcc00';X.fillText('ADAPTATION',cx,cy+55*s);}
       break;}
     default:{
       // Generic energy burst for any other character
