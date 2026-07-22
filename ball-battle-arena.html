@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.8.3 — Bug fix batch: 7 fixes from deep dive audit
+// BALL BATTLE ARENA v10.8.4 — Bug fix batch: 8 fixes (Smasher setTimeout→frame-based)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -5731,50 +5731,47 @@ function updateRelicSmasher(f,enemy,dt){
       const ty=target.y+target.vy*15+rand(-30,30);
       smasherWarnings.push({x:tx,y:ty,radius:65,life:50,maxLife:50});
       SFX.warning();
-      // Delayed mortar impact (mortar lands after warning fades)
+      // Delayed mortar impact — frame-based queue (syncs with game speed)
       const chaos=getChaosLevel(f);
       const mortarDmg=f.atk*(1.5+chaos*0.15);
-      setTimeout(()=>{
-        if(!f.alive||!f.specialActive)return;
-        spawnExplosion(tx,ty,65+chaos*3,'#ff4444',mortarDmg,f,null);
-        spawnBurst(tx,ty,'#ff6644',25,8);
-        spawnBurst(tx,ty,'#ffaa44',15,5);
-        SFX.slamImpact();
-        // Knockback enemies near impact
-        fighters.forEach(e=>{
-          if(e.side===f.side||!e.alive)return;
-          const d=dist(e,{x:tx,y:ty});
-          if(d<65+chaos*3){
-            dealDamage(f,e,mortarDmg,true);
-            const ka=angle({x:tx,y:ty},e);
-            e.vx+=Math.cos(ka)*(8+chaos*0.5);e.vy+=Math.sin(ka)*(8+chaos*0.5);
-          }
-        });
-        // Fire element: fire zone at impact
-        if(f.elementActive&&f.elem.id==='fire'){
-          fireZones.push({x:tx,y:ty,radius:45,life:240,maxLife:240,owner:f,dmg:f.atk*0.08});
-        }
-        wallCracks.push({x:tx,y:ty,size:35,life:200,maxLife:200,crackLines:Array.from({length:6},()=>0.5+Math.random()*0.5)});
-      },50*1000/60); // ~50 frames delay matching warning
+      if(!f._smasherMortarQueue)f._smasherMortarQueue=[];
+      f._smasherMortarQueue.push({x:tx,y:ty,delay:50,radius:65+chaos*3,dmg:mortarDmg,cluster:false});
       // Every 3rd mortar fires a cluster (multiple impacts)
       if(f._smasherMortarCount%3===0){
         for(let i=0;i<2;i++){
           const ox=tx+rand(-50,50),oy=ty+rand(-50,50);
           smasherWarnings.push({x:ox,y:oy,radius:45,life:60,maxLife:60});
-          setTimeout(()=>{
-            if(!f.alive||!f.specialActive)return;
-            spawnExplosion(ox,oy,45,'#ff6644',mortarDmg*0.6,f,null);
-            spawnBurst(ox,oy,'#ffaa44',10,4);
-            fighters.forEach(e=>{
-              if(e.side===f.side||!e.alive)return;
-              if(dist(e,{x:ox,y:oy})<45){
-                dealDamage(f,e,mortarDmg*0.6,true);
-                const ka=angle({x:ox,y:oy},e);
-                e.vx+=Math.cos(ka)*6;e.vy+=Math.sin(ka)*6;
-              }
-            });
-          },60*1000/60);
+          f._smasherMortarQueue.push({x:ox,y:oy,delay:60,radius:45,dmg:mortarDmg*0.6,cluster:true});
         }
+      }
+    }
+  }
+  // Process mortar impact queue (frame-based, syncs with game speed)
+  if(f._smasherMortarQueue){
+    for(let mi=f._smasherMortarQueue.length-1;mi>=0;mi--){
+      const m=f._smasherMortarQueue[mi];
+      m.delay-=dt;
+      if(m.delay<=0){
+        f._smasherMortarQueue.splice(mi,1);
+        if(!f.alive||!f.specialActive)continue;
+        const color=m.cluster?'#ff6644':'#ff4444';
+        spawnExplosion(m.x,m.y,m.radius,color,m.dmg,f,null);
+        spawnBurst(m.x,m.y,m.cluster?'#ffaa44':'#ff6644',m.cluster?10:25,m.cluster?4:8);
+        if(!m.cluster){spawnBurst(m.x,m.y,'#ffaa44',15,5);SFX.slamImpact();}
+        fighters.forEach(e=>{
+          if(e.side===f.side||!e.alive)return;
+          const d=dist(e,{x:m.x,y:m.y});
+          if(d<m.radius){
+            dealDamage(f,e,m.dmg,true);
+            const ka=angle({x:m.x,y:m.y},e);
+            const kb=m.cluster?6:(8+getChaosLevel(f)*0.5);
+            e.vx+=Math.cos(ka)*kb;e.vy+=Math.sin(ka)*kb;
+          }
+        });
+        if(!m.cluster&&f.elementActive&&f.elem.id==='fire'){
+          fireZones.push({x:m.x,y:m.y,radius:45,life:240,maxLife:240,owner:f,dmg:f.atk*0.08});
+        }
+        if(!m.cluster){wallCracks.push({x:m.x,y:m.y,size:35,life:200,maxLife:200,crackLines:Array.from({length:6},()=>0.5+Math.random()*0.5)});}
       }
     }
   }
