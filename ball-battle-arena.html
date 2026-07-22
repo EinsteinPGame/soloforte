@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.12.1 — Champion celebration + match history
+// BALL BATTLE ARENA v10.13.0 — SIM ALL + ally combo reset fix
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -16547,6 +16547,7 @@ function startBattle(){
   fireTrails=[];sandyAfterimages=[];sandyOrbs=[];iceWalls=[];smasherWarnings=[];
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   sponsorCutsceneActive=false;sponsorCutsceneTimer=0;sponsorCutsceneData=null;
+  allyComboActive=false;allyComboTimer=0;allyComboData=null;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   if(gameMode==='boss'){
     // Boss is side 1 (enemy), team is side 0 (3v1)
@@ -17941,7 +17942,7 @@ function drawTournBracket(){
   const nextUnplayed=roundMatches.findIndex(m=>!m.winner);
   if(nextUnplayed>=0){
     const nbY=startY+Math.min(maxVisible,roundMatches.length)*(matchH+matchGap)+5;
-    addBtn('tournNext',W/2-80,nbY,160,isMobile?34:40,'NEXT MATCH','#ffcc00',()=>{
+    addBtn('tournNext',W/2-120,nbY,120,isMobile?34:40,'NEXT MATCH','#ffcc00',()=>{
       tournCurrentMatch=nextUnplayed;
       const match=roundMatches[nextUnplayed];
       gameMode='tournament';
@@ -17949,6 +17950,9 @@ function drawTournBracket(){
       p1Elem=match.p1.elemIdx;p2Elem=match.p2.elemIdx;
       p1Sponsor=tournPickSponsor(p1Char,p2Char);p2Sponsor=tournPickSponsor(p2Char,p1Char);
       startIntroCutscene();
+    });
+    addBtn('tournSimAll',W/2+10,nbY,110,isMobile?34:40,'SIM ALL','#aa6622',()=>{
+      tournSimAll();
     });
   } else {
     // All matches done — advance to next round
@@ -18007,6 +18011,44 @@ function tournPickSponsor(charIdx,opponentCharIdx){
   const eligible=getEligibleSponsors(charId,[oppId]);
   if(eligible.length===0)return -1;
   return pick(eligible);
+}
+
+// Simulate a single match — winner determined by tier + element advantage + randomness
+function tournSimMatch(p1Entry,p2Entry){
+  const c1=CHARS[p1Entry.charIdx],c2=CHARS[p2Entry.charIdx];
+  const t1=getTierNum(c1.id),t2=getTierNum(c2.id);
+  // Power = tier * 10 + stats weighted + element bonus + random factor
+  const statPower=(ch)=>ch.stats.hp/10+ch.stats.atk*2+ch.stats.speed*5+ch.stats.range/10+ch.stats.def*2+ch.stats.crit;
+  let pow1=t1*12+statPower(c1)+Math.random()*40;
+  let pow2=t2*12+statPower(c2)+Math.random()*40;
+  // Element advantage: fire>cryo>electric>toxic>fire (rock-paper-scissors-lizard)
+  const elemAdv={fire:'cryo',cryo:'electric',electric:'toxic',toxic:'fire'};
+  const e1=ELEMENTS[p1Entry.elemIdx],e2=ELEMENTS[p2Entry.elemIdx];
+  if(e1&&e2&&elemAdv[e1.id]===e2.id)pow1+=15;
+  if(e1&&e2&&elemAdv[e2.id]===e1.id)pow2+=15;
+  return pow1>=pow2?0:1; // 0=p1 wins, 1=p2 wins
+}
+
+// Simulate all remaining tournament matches instantly
+function tournSimAll(){
+  let safety=100;
+  while(safety-->0){
+    const alive=tournBracket.filter(e=>e.alive);
+    if(alive.length<=1)break;
+    const matches=tournGetRoundMatches();
+    const unplayed=matches.filter(m=>!m.winner);
+    if(unplayed.length===0){tournRound++;continue;}
+    unplayed.forEach(match=>{
+      const winSide=tournSimMatch(match.p1,match.p2);
+      const winner=winSide===0?match.p1:match.p2;
+      const loser=winSide===0?match.p2:match.p1;
+      match.winner=winner;
+      loser.alive=false;
+      tournMatches.push({p1:match.p1.name,p2:match.p2.name,winner:winner.name,round:tournRound});
+    });
+    const stillAlive=tournBracket.filter(e=>e.alive);
+    if(stillAlive.length>1)tournRound++;
+  }
 }
 
 function tournFinishMatch(winnerSide){
