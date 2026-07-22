@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.7.0 — Fix: card content invisible (transparent buttons painted over cards), remove screen dimming on special, Kashimo blue hair
+// BALL BATTLE ARENA v10.7.1 — Bigger sponsors (card grid), bigger elements, element descriptions, block ult charge during active ult, Smasher ult 5s
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -4859,7 +4859,7 @@ function relicGojo(f,enemy){
 function relicSmasher(f,enemy){
   // YOU'RE NOTHING BUT MEAT: mortar barrage + Sandevistan time slow
   // Fires mortar rounds at enemy positions, melee fists available when close
-  f.specialTimer=480; // ~8 seconds total
+  f.specialTimer=300; // ~5 seconds total
   f.smasherAirborne=false;
   f.smasherSlamTimer=0;
   f.smasherSlamWarning=0;
@@ -7078,12 +7078,12 @@ function updateBattle(dt){
     }
     if(f.elementFlash>0)f.elementFlash-=dt;
 
-    // Special bar passive fill (slow time-based + attack bonus is the main driver)
-    // Win buff charge multipliers: higuruma, ryu, kashimo
-    const charChargeMult=f._higurumaChargeMult||f._ryuChargeMult||f._kashimoChargeMult||1;
-    f.specialBar=Math.min(f.specialMax,f.specialBar+0.025*(f.char.relicChargeRate||1)*charChargeMult*dt);
-    // Kashimo: time-based charge (~25 seconds), combat contributes minimally
-    if(f.char.id==='kashimo')f.specialBar=Math.min(f.specialMax,f.specialBar+0.067*(f._kashimoChargeMult||1)*dt);
+    // Special bar passive fill — BLOCKED while ult is active
+    if(!f.specialActive){
+      const charChargeMult=f._higurumaChargeMult||f._ryuChargeMult||f._kashimoChargeMult||1;
+      f.specialBar=Math.min(f.specialMax,f.specialBar+0.025*(f.char.relicChargeRate||1)*charChargeMult*dt);
+      if(f.char.id==='kashimo')f.specialBar=Math.min(f.specialMax,f.specialBar+0.067*(f._kashimoChargeMult||1)*dt);
+    }
 
     // Check if should use relic special
     if(f.specialBar>=f.specialMax&&!f.specialActive&&enemy.alive){
@@ -14500,7 +14500,7 @@ function drawTitle(){
   addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;selectTierPage=0;});
   addBtn('boss',W/2-btnW/2,titleY+280,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;});
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.7.0 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.7.1 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -14924,13 +14924,15 @@ function drawSelectMobile(){
     const selElem=isP1?p1Elem:p2Elem;
     drawElementPickerMobile(W/2-102,sumY+8,selElem,elemPrefix,(i)=>{if(isP1)p1Elem=i;else p2Elem=i;});
 
-    sumY+=58;
-    // Combo effect text
+    sumY+=60;
+    // Element description + combo effect
     const curElem=isP1?p1Elem:p2Elem;
     if(curElem>0){
-      const key=ch.id+'_'+ELEMENTS[curElem].id;
-      X.font='9px Consolas,monospace';X.textAlign='center';X.fillStyle=ELEMENTS[curElem].color;
-      X.fillText(COMBO_EFFECTS[key]||'',W/2,sumY);
+      const el=ELEMENTS[curElem];
+      const key=ch.id+'_'+el.id;
+      const combo=COMBO_EFFECTS[key]||'';
+      X.font='9px Consolas,monospace';X.textAlign='center';X.fillStyle=el.color;
+      X.fillText(el.desc+(combo?' | '+combo:''),W/2,sumY);
     }
     sumY+=20;
 
@@ -15023,58 +15025,93 @@ function drawElementIcon(cx,cy,elemId,size){
   X.restore();
 }
 function drawSponsorPicker(cx,cy,charId,selectedSponsorIdx,prefix,onSelect,excludeIds,maxW){
-  // Show eligible sponsors as small selectable balls; returns height used
   const eligible=getEligibleSponsors(charId,excludeIds);
   if(eligible.length===0){
-    X.font='8px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';
-    X.fillText(getTierNum(charId)>=9?'S-TIER: NO SPONSOR':'NO SPONSORS AVAILABLE',cx,cy+8);
-    return 14;
+    X.font=(isMobile?'10':'11')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';
+    X.fillText(getTierNum(charId)>=9?'S-TIER: NO SPONSOR':'NO SPONSORS AVAILABLE',cx,cy+12);
+    return 20;
   }
-  X.font='bold '+(isMobile?'8':'9')+'px Consolas,monospace';X.textAlign='center';
-  X.fillStyle='#ff8800aa';X.fillText('SPONSOR',cx,cy);
-  const ballR=isMobile?8:10;
-  const gap=isMobile?4:6;
-  const itemW=ballR*2+gap;
-  const noneSlotW=isMobile?28:32;
-  const availW=(maxW||300)-noneSlotW-gap;
-  const maxItems=Math.min(eligible.length,Math.max(1,Math.floor(availW/(itemW))));
-  const totalW=maxItems*itemW-gap+gap+noneSlotW;
-  const startX=cx-totalW/2;
-  let h=16;
-  eligible.slice(0,maxItems).forEach((charIdx,i)=>{
-    const ch=CHARS[charIdx];
-    const bx=startX+i*itemW+ballR;
-    const by=cy+10+ballR;
-    const isSel=selectedSponsorIdx===charIdx;
-    const isLore=!!findLoreCombo(charId)&&findLoreCombo(charId).pair.includes(ch.id);
-    // Selection highlight
-    if(isSel){
-      X.beginPath();X.arc(bx,by,ballR+3,0,Math.PI*2);
-      X.strokeStyle='#ff8800';X.lineWidth=2;X.stroke();
-    }
-    // Lore combo glow
-    if(isLore){
-      X.beginPath();X.arc(bx,by,ballR+4,0,Math.PI*2);
-      X.strokeStyle='#ffcc0066';X.lineWidth=1.5;X.stroke();
-    }
-    try{drawBallPreview(bx,by,ballR,ch);}catch(e){}
-    // Name below
-    X.font='bold '+(isMobile?'6':'7')+'px Consolas,monospace';X.textAlign='center';
-    X.fillStyle=isSel?'#ff8800':isLore?'#ffcc00':'#888';
-    const shortN=ch.name.length>6?ch.name.slice(0,5)+'…':ch.name;
-    X.fillText(shortN,bx,by+ballR+8);
-    // Lore link icon
-    if(isLore){X.fillText('\u26D3',bx,by-ballR-3);}
-    addBtn(prefix+'_sp'+charIdx,bx-ballR-1,by-ballR-1,ballR*2+2,ballR*2+12,'','transparent',()=>{onSelect(charIdx);});
-  });
-  h=10+ballR*2+14;
-  // Show "None" option — placed after the last sponsor ball
-  const noneX=startX+maxItems*itemW+noneSlotW/2;
-  X.font='bold '+(isMobile?'7':'8')+'px Consolas,monospace';X.textAlign='center';
-  X.fillStyle=selectedSponsorIdx<0?'#ff8800':'#555';
-  X.fillText('NONE',noneX,cy+10+ballR+3);
-  addBtn(prefix+'_spN',noneX-noneSlotW/2,cy+4,noneSlotW,h-4,'','transparent',()=>{onSelect(-1);});
-  return h;
+  X.font='bold '+(isMobile?'10':'11')+'px Consolas,monospace';X.textAlign='center';
+  X.fillStyle='#ff8800';X.fillText('SPONSOR',cx,cy);
+  if(isMobile){
+    // MOBILE: card-style grid — 3 columns, bigger cards
+    const cardW=Math.floor(((maxW||W-40)-16)/3);
+    const cardH=55;
+    const gapX=6,gapY=6;
+    const cols=3;
+    const totalW=cols*cardW+(cols-1)*gapX;
+    const startX=cx-totalW/2;
+    let h=16;
+    const allItems=[...eligible,-1]; // -1 = None
+    allItems.forEach((item,i)=>{
+      const isNone=item===-1;
+      const charIdx=isNone?-1:item;
+      const ch=isNone?null:CHARS[charIdx];
+      const row=Math.floor(i/cols),col=i%cols;
+      const cardX=startX+col*(cardW+gapX);
+      const cardY=cy+12+row*(cardH+gapY);
+      const isSel=selectedSponsorIdx===charIdx;
+      const isLore=!isNone&&!!findLoreCombo(charId)&&findLoreCombo(charId).pair.includes(ch.id);
+      drawRoundRect(cardX,cardY,cardW,cardH,5);
+      X.fillStyle=isSel?'#1a1408':'#111128';X.fill();
+      X.strokeStyle=isSel?'#ff8800':isLore?'#ffcc0066':'#333';X.lineWidth=isSel?2.5:1;X.stroke();
+      X.save();
+      try{
+        if(isNone){
+          X.font='bold 11px Consolas,monospace';X.textAlign='center';X.fillStyle=isSel?'#ff8800':'#555';
+          X.fillText('NONE',cardX+cardW/2,cardY+cardH/2+4);
+        } else {
+          const ballR=12;
+          drawBallPreview(cardX+ballR+6,cardY+cardH/2,ballR,ch);
+          const textX=cardX+ballR*2+14;
+          X.font='bold 9px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';
+          X.fillText(ch.name.length>9?ch.name.slice(0,8)+'…':ch.name,textX,cardY+18);
+          const t=getTierLetter(ch.id);
+          X.font='bold 7px Consolas,monospace';X.fillStyle=t.startsWith('S')?'#ffcc00':t.startsWith('A')?'#44cc88':'#6688cc';
+          X.fillText('['+t+']',textX,cardY+30);
+          if(isLore){X.fillStyle='#ffcc00';X.fillText('\u26D3 LORE',textX,cardY+42);}
+        }
+        if(isSel){X.font='bold 9px Consolas,monospace';X.fillStyle='#ff8800';X.textAlign='right';X.fillText('\u2714',cardX+cardW-5,cardY+14);}
+      }catch(e){}
+      X.restore();
+      addBtn(prefix+(isNone?'_spN':'_sp'+charIdx),cardX,cardY,cardW,cardH,'','transparent',()=>{onSelect(charIdx);});
+      h=Math.max(h,12+(row+1)*(cardH+gapY));
+    });
+    return h;
+  } else {
+    // DESKTOP: horizontal row with bigger balls
+    const ballR=14;
+    const gap=8;
+    const itemW=ballR*2+gap;
+    const noneSlotW=36;
+    const availW=(maxW||300)-noneSlotW-gap;
+    const maxItems=Math.min(eligible.length,Math.max(1,Math.floor(availW/itemW)));
+    const totalW=maxItems*itemW-gap+gap+noneSlotW;
+    const startX=cx-totalW/2;
+    let h=16;
+    eligible.slice(0,maxItems).forEach((charIdx,i)=>{
+      const ch=CHARS[charIdx];
+      const bx=startX+i*itemW+ballR;
+      const by=cy+10+ballR;
+      const isSel=selectedSponsorIdx===charIdx;
+      const isLore=!!findLoreCombo(charId)&&findLoreCombo(charId).pair.includes(ch.id);
+      if(isSel){X.beginPath();X.arc(bx,by,ballR+3,0,Math.PI*2);X.strokeStyle='#ff8800';X.lineWidth=2;X.stroke();}
+      if(isLore){X.beginPath();X.arc(bx,by,ballR+4,0,Math.PI*2);X.strokeStyle='#ffcc0066';X.lineWidth=1.5;X.stroke();}
+      try{drawBallPreview(bx,by,ballR,ch);}catch(e){}
+      X.font='bold 8px Consolas,monospace';X.textAlign='center';
+      X.fillStyle=isSel?'#ff8800':isLore?'#ffcc00':'#888';
+      X.fillText(ch.name.length>8?ch.name.slice(0,7)+'…':ch.name,bx,by+ballR+10);
+      if(isLore){X.fillText('\u26D3',bx,by-ballR-3);}
+      addBtn(prefix+'_sp'+charIdx,bx-ballR-1,by-ballR-1,ballR*2+2,ballR*2+14,'','transparent',()=>{onSelect(charIdx);});
+    });
+    h=10+ballR*2+18;
+    const noneX=startX+maxItems*itemW+noneSlotW/2;
+    X.font='bold 9px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=selectedSponsorIdx<0?'#ff8800':'#555';
+    X.fillText('NONE',noneX,cy+10+ballR+3);
+    addBtn(prefix+'_spN',noneX-noneSlotW/2,cy+4,noneSlotW,h-4,'','transparent',()=>{onSelect(-1);});
+    return h;
+  }
 }
 function drawElementPicker(sx,sy,selected,prefix,cb){
   ELEMENTS.forEach((el,i)=>{
@@ -15104,30 +15141,34 @@ function drawElementPicker(sx,sy,selected,prefix,cb){
   });
 }
 function drawElementPickerMobile(sx,sy,selected,prefix,cb){
-  const bw=37,gap=3;
+  const bw=Math.floor((W-30)/5)-2,gap=4;
+  const totalW=5*bw+4*gap;
+  const startX=Math.floor((W-totalW)/2);
   ELEMENTS.forEach((el,i)=>{
-    const ex=sx+i*(bw+gap),isSel=selected===i;
-    drawRoundRect(ex,sy,bw,35,3);
+    const ex=startX+i*(bw+gap),isSel=selected===i;
+    drawRoundRect(ex,sy,bw,42,4);
     if(isSel){
       X.fillStyle=el.color+'44';X.fill();
       X.shadowColor=el.color;X.shadowBlur=6;
-      X.strokeStyle=el.color;X.lineWidth=2;X.stroke();
+      X.strokeStyle=el.color;X.lineWidth=2.5;X.stroke();
       X.shadowBlur=0;
     } else {
       X.fillStyle='#0d0d22';X.fill();
-      X.strokeStyle=el.color+'44';X.lineWidth=1;X.stroke();
+      X.strokeStyle=el.color+'55';X.lineWidth=1;X.stroke();
     }
-    if(el.id==='none'){
-      X.font='bold 10px Consolas,monospace';X.textAlign='center';X.fillStyle='#555';
-      X.fillText('--',ex+bw/2,sy+15);
-    } else {
-      X.save();
-      drawElementIcon(ex+bw/2,sy+13,el.id,7);
-      X.restore();
-    }
-    X.font='bold 7px Consolas,monospace';X.textAlign='center';
-    X.fillStyle=isSel?'#fff':el.color;X.fillText(el.name.slice(0,4),ex+bw/2,sy+30);
-    addBtn(prefix+i,ex,sy,bw,35,'','transparent',()=>cb(i));
+    X.save();
+    try{
+      if(el.id==='none'){
+        X.font='bold 14px Consolas,monospace';X.textAlign='center';X.fillStyle=isSel?'#fff':'#555';
+        X.fillText('--',ex+bw/2,sy+20);
+      } else {
+        drawElementIcon(ex+bw/2,sy+16,el.id,9);
+      }
+      X.font='bold 8px Consolas,monospace';X.textAlign='center';
+      X.fillStyle=isSel?'#fff':el.color;X.fillText(el.name.length>5?el.name.slice(0,5):el.name,ex+bw/2,sy+36);
+    }catch(e){}
+    X.restore();
+    addBtn(prefix+i,ex,sy,bw,42,'','transparent',()=>cb(i));
   });
 }
 
@@ -16419,7 +16460,7 @@ function drawBossSelect(){
         {label:'BOSS ELEMENT',color:'#cc4444',sel:bossElem,pfx:'beb',cb:(i)=>{bossElem=i;},char:CHARS[bossChar]},
       ];
       elemRows.forEach((er,ri)=>{
-        const ey=sumY+ri*55;
+        const ey=sumY+ri*62;
         X.font='bold 9px Consolas,monospace';X.textAlign='left';
         X.fillStyle=er.color;
         X.fillText(er.label+' ('+er.char.name+')',10,ey);
@@ -16430,7 +16471,8 @@ function drawBossSelect(){
         if(selElem&&selElem.id!=='none'){
           const key=er.char.id+'_'+selElem.id;
           const desc=COMBO_EFFECTS[key]||'';
-          if(desc){X.font='8px Consolas,monospace';X.textAlign='center';X.fillStyle=selElem.color+'cc';X.fillText(desc,W/2,ey+44);}
+          X.font='8px Consolas,monospace';X.textAlign='center';
+          X.fillStyle=selElem.color+'cc';X.fillText(selElem.desc+(desc?' | '+desc:''),W/2,ey+50);
         }
       });
     } else {
