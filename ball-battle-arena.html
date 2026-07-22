@@ -394,6 +394,14 @@ const CHARS=[
     specialName:'STAR RAGE — BLACK HOLE',
   },
   {
+    id:'megumi',name:'Megumi Fushiguro',color:'#1a3a6a',
+    desc:'Ten Shadows Technique: summons shadow shikigami. Domain: Chimera Shadow Garden.',
+    playstyle:'Shadows & Shikigami',
+    stats:{hp:550,atk:28,speed:4.0,range:110,def:8,crit:16},
+    baseAtkInterval:38,relicChargeRate:0.85,
+    specialName:'CHIMERA SHADOW GARDEN',
+  },
+  {
     id:'mahoraga',name:'Mahoraga',color:'#1a1a2e',
     desc:'BOSS. Adaptation wheel reduces damage per type. Sword of Extermination. Shinjuku mode.',
     playstyle:'Boss — 3v1',
@@ -529,7 +537,7 @@ const TIER_MAP={
   smasher:10, // S (boss)
   mahoraga:10, // S (boss)
   dabura:9, // S- (boss)
-  higuruma:8, toji:8, kashimo:8, yuki:8, // A+
+  higuruma:8, toji:8, kashimo:8, yuki:8, megumi:8, // A+
   nanami:7, choso:7, naoya:7, sandy:7, // A
   mechamaru:6, // A-
   yuji:5, todo:5, // B+
@@ -563,6 +571,13 @@ const LORE_COMBOS=[
     dmgMult:2.5,
     cutsceneFrames:75, // 1.25 seconds
     color1:'#ff69b4', color2:'#dd7733',
+  },
+  {
+    pair:['megumi','yuji'], franchise:'JJK', name:'TOKYO METROPOLITAN CURSE TECHNICAL SCHOOL',
+    desc:'Yuji punches while Megumi\'s Nue strikes from above — combined assault',
+    dmgMult:2.5,
+    cutsceneFrames:75,
+    color1:'#1a3a6a', color2:'#ff69b4',
   },
 ];
 // Sponsor state
@@ -783,6 +798,7 @@ const PERSONALIZED_WIN_BUFFS={
   smasher:{name:'Reinforced Plating',desc:'Defense +15%',apply(f){f.def=Math.round(f.def*1.15);f.baseDef=Math.round(f.baseDef*1.15);}},
   kashimo:{name:'Lightning Charge',desc:'Special charges 15% faster',apply(f){f._kashimoChargeMult=(f._kashimoChargeMult||1)*1.15;}},
   yuki:{name:'Gravitational Density',desc:'Mass meter max +15',apply(f){f.yukiMassMax=(f.yukiMassMax||100)+15;}},
+  megumi:{name:'Shadow Resonance',desc:'Nue summon every 2 hits instead of 3',apply(f){f._megumiNueInterval=(f._megumiNueInterval||3)-1;}},
 };
 
 // ============================================================
@@ -922,6 +938,14 @@ const VOICELINES={
     special:['STAR RAGE — VIRTUAL MASS BLACK HOLE!'],
     victory:['That\'s the weight of a star.','Garuda delivered.'],
     defeat:['My mass... wasn\'t enough...']
+  },
+  megumi:{
+    intro:['I won\'t back down.'],
+    special:['CHIMERA SHADOW GARDEN!'],
+    kill:['I\'ll carry this burden.'],
+    victory:['I\'ll carry this burden.'],
+    defeat:['Not yet...'],
+    lowHp:['Not yet...']
   },
   mahoraga:{
     intro:['...','ADAPTATION BEGINS.'],
@@ -1377,6 +1401,13 @@ function createFighter(charIdx,elemIdx,side){
     todoSpecialSwapCD:0, // swap cooldown during storm
     todoBuffStacks:0, // stacked buff count from special
     todoBuffTimer:0, // buff decay timer (5-8s after special ends)
+    // Megumi Fushiguro state — Shadows & Shikigami
+    megumiHitCount:0, // tracks hits for Nue summon (every 3rd)
+    megumiNueInterval:3, // hits needed to summon Nue
+    megumiDomainActive:false, // Chimera Shadow Garden active
+    megumiDomainTimer:0, // domain duration (8s = 480 frames)
+    megumiCloneCD:0, // cooldown between shadow clone spawns
+    megumiShadowAlpha:1, // transparency during domain
     // Yuki Tsukumo state — Mass & Garuda
     yukiMass:0, // 0-100 mass meter
     yukiMassMax:100,
@@ -1942,6 +1973,7 @@ function performWeaponAttack(f,enemy){
     case 'mahoraga':attackMahoraga(f,enemy,chaos);break;
     case 'dabura':attackDabura(f,enemy,chaos);break;
     case 'yuki':attackYuki(f,enemy,chaos);break;
+    case 'megumi':attackMegumi(f,enemy,chaos);break;
   }
 }
 
@@ -3405,6 +3437,110 @@ function attackYuki(f,enemy,chaos){
   f._yukiMassDecayCD=f.elementActive&&f.elem.id==='toxic'?90:60;
 }
 
+function attackMegumi(f,enemy,chaos){
+  // Shadow strikes — dark energy slashes with shadow trails
+  f.weaponExtend=1;f.weaponFlash=10;
+  const d=dist(f,enemy);
+  const effectiveRange=f.range+enemy.radius+chaos*5;
+  if(d>effectiveRange)return;
+
+  SFX.slash();
+  const dmgMult=f.megumiDomainActive?1.25:1.0;
+  const dmg=f.atk*(1+chaos*0.06)*dmgMult;
+  dealDamage(f,enemy,dmg,true);
+  spawnBurst(enemy.x,enemy.y,'#1a3a6a',6,3);
+
+  // Shadow trail effect
+  spawnBurst(f.x+(enemy.x-f.x)*0.5,f.y+(enemy.y-f.y)*0.5,'#0a1a3a',4,2);
+
+  // Every 3rd hit (or adjusted by win buff) summons a mini Nue
+  f.megumiHitCount++;
+  const nueInterval=f._megumiNueInterval||f.megumiNueInterval||3;
+  if(f.megumiHitCount>=nueInterval){
+    f.megumiHitCount=0;
+    // Spawn Nue lightning from above the enemy
+    const nueX=enemy.x+rand(-20,20);
+    const nueY=enemy.y-80;
+    projectiles.push({
+      x:nueX,y:nueY,
+      vx:0,vy:6,
+      owner:f,target:null,color:'#44ccff',
+      life:30,radius:8,dmg:f.atk*0.6*dmgMult,
+      explosive:false,homing:false,isMegumiNue:true,
+    });
+    spawnBurst(nueX,nueY,'#44ccff',10,4);
+    spawnDmgNum(nueX,nueY-10,'NUE!','#44ccff',false);
+    SFX.electricZap&&SFX.electricZap()||SFX.punch();
+  }
+
+  // Knockback
+  const ka=angle(f,enemy);
+  enemy.vx+=Math.cos(ka)*2;enemy.vy+=Math.sin(ka)*2;
+}
+
+function relicMegumi(f,enemy){
+  // CHIMERA SHADOW GARDEN — domain expansion
+  SFX.relicActivate();
+  SFX.megaExplosion();
+
+  f.megumiDomainActive=true;
+  f.megumiDomainTimer=480; // 8 seconds
+  f.megumiCloneCD=0;
+  f.megumiShadowAlpha=0.4; // semi-transparent
+  f.specialTimer=480;
+
+  // Speed boost during domain
+  f.speed=f.baseSpeed*1.3;
+
+  spawnBurst(f.x,f.y,'#1a3a6a',40,15);
+  spawnBurst(f.x,f.y,'#0a0a2a',30,10);
+  triggerScreenFlash('#1a3a6a',15);
+  shakeTimer=15;shakeAmt=10;
+  spawnDmgNum(f.x,f.y-f.radius-30,'CHIMERA SHADOW GARDEN','#4466aa',true);
+  addLog((f.side===0?'P1':'P2')+' CHIMERA SHADOW GARDEN!');
+}
+
+function updateRelicMegumi(f,enemy,dt){
+  if(!f.megumiDomainActive)return;
+  f.megumiDomainTimer-=dt;
+
+  // Speed stays boosted
+  f.speed=f.baseSpeed*1.3;
+
+  // Shadow clones spawn and attack
+  f.megumiCloneCD-=dt;
+  if(f.megumiCloneCD<=0&&enemy&&enemy.alive){
+    f.megumiCloneCD=40+Math.random()*30; // spawn clone every ~1s
+    const cloneX=ARENA.x+Math.random()*ARENA.w;
+    const cloneY=ARENA.y+Math.random()*ARENA.h;
+    const cloneAngle=Math.atan2(enemy.y-cloneY,enemy.x-cloneX);
+    projectiles.push({
+      x:cloneX,y:cloneY,
+      vx:Math.cos(cloneAngle)*5,vy:Math.sin(cloneAngle)*5,
+      owner:f,target:null,color:'#1a3a6a',
+      life:60,radius:10,dmg:f.atk*0.35,
+      explosive:false,homing:false,isMegumiClone:true,
+    });
+    spawnBurst(cloneX,cloneY,'#1a3a6a',6,3);
+  }
+
+  // Domain shadow overlay pulsing
+  if(f.megumiDomainTimer%30<15){
+    f.megumiShadowAlpha=0.35;
+  }else{
+    f.megumiShadowAlpha=0.5;
+  }
+
+  // End domain
+  if(f.megumiDomainTimer<=0){
+    f.megumiDomainActive=false;
+    f.megumiShadowAlpha=1;
+    f.speed=f.baseSpeed;
+    f.specialActive=false;
+    addLog((f.side===0?'P1':'P2')+' Chimera Shadow Garden fades.');
+  }
+}
+
 function relicYuki(f,enemy){
   // STAR RAGE — BLACK HOLE
   SFX.relicActivate();
@@ -4053,6 +4189,7 @@ function useSpecial(f,enemy){
     case 'mahoraga':relicMahoraga(f,enemy);break;
     case 'dabura':relicDabura(f,enemy);break;
     case 'yuki':relicYuki(f,enemy);break;
+    case 'megumi':relicMegumi(f,enemy);break;
   }
 }
 
@@ -6493,6 +6630,7 @@ function updateBattle(dt){
         case 'yuta':updateRelicYuta(f,enemy,dt);break;
         // todo: handled outside specialActive block (always runs)
         case 'yuki':updateRelicYuki(f,enemy,dt);break;
+        case 'megumi':updateRelicMegumi(f,enemy,dt);break;
       }
     }
 
@@ -7965,6 +8103,8 @@ function drawBall(f){
   let alpha=f.alive?1:Math.max(0,f.deathAnim/60);
   // Optical Camo: nearly invisible
   if(f.throwCamoActive)alpha*=0.12;
+  // Megumi semi-transparent during Chimera Shadow Garden
+  if(f.char.id==='megumi'&&f.megumiDomainActive)alpha*=(f.megumiShadowAlpha||0.4);
   X.globalAlpha=alpha;
 
   // Shadow
@@ -10869,6 +11009,10 @@ function drawBall(f){
       const bh=f.yukiBHActive?'BH ':'';
       X.fillText(bh+overload+'Mass:'+mass+'/'+(f.yukiMassMax||100),f.x,statY);
       break;}
+    case 'megumi':{
+      const dom=f.megumiDomainActive?'DOMAIN ':'';
+      X.fillText(dom+'Nue:'+(f.megumiHitCount||0)+'/'+(f._megumiNueInterval||f.megumiNueInterval||3),f.x,statY);
+      break;}
   }
 
   // Burn visual
@@ -10912,6 +11056,7 @@ function drawWeapon(f){
     case 'mahoraga':drawMahoragaWeapon(r,ext,flash,f);break;
     case 'dabura':drawDaburaWeapon(r,ext,flash,f);break;
     case 'yuki':drawYukiWeapon(r,ext,flash,f);break;
+    case 'megumi':drawMegumiWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -11521,6 +11666,44 @@ function drawDaburaWeapon(r,ext,flash,f){
   X.beginPath();X.arc(r+10+bladeLen+extend,0,6,0,Math.PI*2);
   X.fillStyle=glowCol;X.fill();
   X.globalAlpha=1;
+}
+
+function drawMegumiWeapon(r,ext,flash,f){
+  // Shadow hand/claw — dark blue/purple tendrils
+  const extend=ext*6;
+  const col=flash?'#ffffff':'#4466aa';
+  const darkCol=flash?'#aaccff':'#1a3a6a';
+
+  // Shadow claw base
+  X.fillStyle=darkCol;X.fillRect(r-4,-4,8+extend,8);
+
+  // Tendrils — 5 shadow fingers/claws
+  X.shadowColor='#4466cc';X.shadowBlur=flash?8:4;
+  for(let i=0;i<5;i++){
+    const spread=(i-2)*5;
+    const tendrilLen=12+extend+Math.sin(battleTime*0.15+i)*3;
+    X.strokeStyle=col;X.lineWidth=2;
+    X.beginPath();
+    X.moveTo(r+4+extend,spread);
+    X.quadraticCurveTo(r+10+extend,spread+spread*0.3,r+4+tendrilLen,spread*1.5);
+    X.stroke();
+    // Claw tip
+    X.beginPath();X.arc(r+4+tendrilLen,spread*1.5,1.5,0,Math.PI*2);
+    X.fillStyle='#6688cc';X.fill();
+  }
+  X.shadowBlur=0;
+
+  // Shadow aura during domain
+  if(f&&f.megumiDomainActive){
+    X.save();
+    X.rotate(-f.weaponAngle);
+    X.globalAlpha=0.3+Math.sin(battleTime*0.1)*0.1;
+    X.shadowColor='#1a3a6a';X.shadowBlur=15;
+    X.beginPath();X.arc(0,0,f.radius+10,0,Math.PI*2);
+    X.fillStyle='rgba(26,58,106,0.2)';X.fill();
+    X.shadowBlur=0;X.globalAlpha=1;
+    X.restore();
+  }
 }
 
 function drawYukiWeapon(r,ext,flash,f){
@@ -12750,6 +12933,21 @@ function drawMiniWeapon(cx,cy,charId,size){
       // Beak
       X.fillStyle='#ffaa33';X.beginPath();X.moveTo(8,0);X.lineTo(14,-1);X.lineTo(14,1);X.closePath();X.fill();
       break;
+    case 'megumi':
+      // Shadow hand/claw shape
+      X.fillStyle='#1a3a6a';
+      X.beginPath();X.ellipse(0,2,6,4,0,0,Math.PI*2);X.fill();
+      // Shadow tendrils
+      X.strokeStyle='#4466aa';X.lineWidth=1.5;
+      for(let i=0;i<5;i++){
+        const a=-0.4+i*0.2;
+        X.beginPath();X.moveTo(0,0);X.lineTo(Math.cos(a)*14,Math.sin(a)*14-4);X.stroke();
+      }
+      // Purple glow
+      X.shadowColor='#4466cc';X.shadowBlur=4;
+      X.beginPath();X.arc(0,0,4,0,Math.PI*2);X.fillStyle='#6688cc';X.fill();
+      X.shadowBlur=0;
+      break;
   }
   X.restore();
 }
@@ -13423,6 +13621,11 @@ function startBattle(){
     if(ids1v1.includes('choso')&&ids1v1.includes('todo')){
       addLog('SPECIAL MATCHUP: Blood vs Boogie Woogie!');
     }
+    // Megumi vs Toji: Father & Son — both get +10% attack
+    if(ids1v1.includes('megumi')&&ids1v1.includes('toji')){
+      fighters.forEach(f=>{f.atk=Math.round(f.atk*1.1);f.baseAtk=Math.round(f.baseAtk*1.1);});
+      addLog('SPECIAL MATCHUP: FATHER & SON — Megumi vs Toji!');
+    }
     addLog('Round '+roundNumber+(p1RoundWins+p2RoundWins>0?' (P1:'+p1RoundWins+' P2:'+p2RoundWins+')':''));
     addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
     // Show intro voicelines
@@ -13992,6 +14195,27 @@ function drawBattle(){
     }
   });
 
+  // Megumi Chimera Shadow Garden domain overlay
+  fighters.forEach(f=>{
+    if(f.char.id==='megumi'&&f.megumiDomainActive){
+      X.save();
+      X.globalAlpha=0.15+Math.sin(battleTime*0.05)*0.05;
+      X.fillStyle='#0a0a2a';
+      X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+      // Shadow tendrils across arena floor
+      X.strokeStyle='rgba(26,58,106,0.3)';X.lineWidth=2;
+      for(let i=0;i<8;i++){
+        const sx=ARENA.x+Math.random()*ARENA.w;
+        const sy=ARENA.y+ARENA.h*0.8+Math.sin(battleTime*0.03+i)*20;
+        X.beginPath();X.moveTo(sx,sy);
+        X.quadraticCurveTo(sx+40,sy-30-Math.sin(battleTime*0.05+i)*15,sx+80,sy);
+        X.stroke();
+      }
+      X.globalAlpha=1;
+      X.restore();
+    }
+  });
+
   // Fighters
   fighters.forEach(f=>drawBall(f));
 
@@ -14477,6 +14701,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'yuta':{const cp=f.yutaCopiedTech?f.yutaCopiedTech.name+' '+Math.round(f.yutaCopiedTech.potency*100)+'%':'---';const dom=f.yutaDomainActive?'DOMAIN ':'';statLine=dom+'COPY:'+cp;break;}
     case 'todo':{const storm=f.todoSpecialActive?'STORM ':'';const stk=f.todoBuffStacks>0?'x'+f.todoBuffStacks:'';statLine=storm+'SWAP'+stk;break;}
     case 'yuki':{const bh=f.yukiBHActive?'BH ':'';const ovr=f.yukiOverloaded?'OVR ':'';statLine=bh+ovr+'Mass:'+Math.round(f.yukiMass||0);break;}
+    case 'megumi':{const dom=f.megumiDomainActive?'DOMAIN ':'';const nue='Nue:'+(f.megumiHitCount||0)+'/'+(f._megumiNueInterval||f.megumiNueInterval||3);statLine=dom+nue;break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
