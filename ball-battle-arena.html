@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.8.7 — All intro cutscene redesigns (Choso, Dabura, Monowire, Gorilla, Throw, Katana, Berserk, Mantis, Mechamaru)
+// BALL BATTLE ARENA v10.8.8 — Smasher float/slam rework + intro cutscene redesigns
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -5701,52 +5701,27 @@ function updateRelicGojo(f,enemy,dt){
 }
 
 function updateRelicSmasher(f,enemy,dt){
-  // Mortar barrage from back-mounted artillery + melee fists when close
+  // REWORKED: Rockets first + sandy-mode movement → float up (disappear) → warning sign → slam down
+  // Phase 1 (specialTimer > 120): Sandy-mode movement + rocket barrage
+  // Phase 2 (specialTimer <= 120): Float up → disappear → warning → slam
   if(!f._smasherMortarCD)f._smasherMortarCD=0;
   f._smasherMortarCD-=dt;
-  // Colorful relic aura particles + afterimage trail
-  if(battleTime%3<1){
-    const colors=['#cc4444','#ff6644','#ffcc00'];
-    spawnParticle(f.x+rand(-15,15),f.y+rand(-15,15),pick(colors),0,-1,12,2);
-  }
-  // Spawn afterimage every 4 frames
-  if(battleTime%4<1){
-    if(!f.smasherAfterimages)f.smasherAfterimages=[];
-    f.smasherAfterimages.push({x:f.x,y:f.y,alpha:0.6});
-  }
-  // Fade afterimages
-  for(let i=(f.smasherAfterimages||[]).length-1;i>=0;i--){
+  // Afterimage trail (sandy-mode throughout)
+  if(!f.smasherAfterimages)f.smasherAfterimages=[];
+  if(battleTime%3<1&&!f.smasherAirborne)f.smasherAfterimages.push({x:f.x,y:f.y,alpha:0.6});
+  for(let i=f.smasherAfterimages.length-1;i>=0;i--){
     f.smasherAfterimages[i].alpha-=0.02*dt;
     if(f.smasherAfterimages[i].alpha<=0)f.smasherAfterimages.splice(i,1);
   }
-  // Fire mortar rounds at enemy positions periodically
-  if(f._smasherMortarCD<=0){
-    f._smasherMortarCD=75; // fire every ~1.25s
-    f._smasherMortarCount=(f._smasherMortarCount||0)+1;
-    const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
-    if(enemies.length>0){
-      // Pick a random alive enemy to target
-      const target=pick(enemies);
-      // Mortar warning zone at target position (with slight prediction)
-      const tx=target.x+target.vx*15+rand(-30,30);
-      const ty=target.y+target.vy*15+rand(-30,30);
-      smasherWarnings.push({x:tx,y:ty,radius:65,life:50,maxLife:50});
-      SFX.warning();
-      // Delayed mortar impact — frame-based queue (syncs with game speed)
-      const chaos=getChaosLevel(f);
-      const mortarDmg=f.atk*(1.5+chaos*0.15);
-      if(!f._smasherMortarQueue)f._smasherMortarQueue=[];
-      f._smasherMortarQueue.push({x:tx,y:ty,delay:50,radius:65+chaos*3,dmg:mortarDmg,cluster:false});
-      // Every 3rd mortar fires a cluster (multiple impacts)
-      if(f._smasherMortarCount%3===0){
-        for(let i=0;i<2;i++){
-          const ox=tx+rand(-50,50),oy=ty+rand(-50,50);
-          smasherWarnings.push({x:ox,y:oy,radius:45,life:60,maxLife:60});
-          f._smasherMortarQueue.push({x:ox,y:oy,delay:60,radius:45,dmg:mortarDmg*0.6,cluster:true});
-        }
-      }
-    }
+  // Colorful relic aura particles
+  if(battleTime%3<1&&!f.smasherAirborne){
+    const colors=['#cc4444','#ff6644','#ffcc00'];
+    spawnParticle(f.x+rand(-15,15),f.y+rand(-15,15),pick(colors),0,-1,12,2);
   }
+  // Keep enemies slowed during ult
+  fighters.forEach(other=>{
+    if(other&&other!==f&&other.alive)other.sandyTimeScale=Math.min(other.sandyTimeScale,0.3);
+  });
   // Process mortar impact queue (frame-based, syncs with game speed)
   if(f._smasherMortarQueue){
     for(let mi=f._smasherMortarQueue.length-1;mi>=0;mi--){
@@ -5776,58 +5751,62 @@ function updateRelicSmasher(f,enemy,dt){
       }
     }
   }
-  // Glide along arena edge during ult — menacing patrol
-  if(!f._smasherEdgePhase)f._smasherEdgePhase=0; // 0=top,1=right,2=bottom,3=left
-  if(!f._smasherGlideT)f._smasherGlideT=0;
-  const margin=f.radius+10;
-  const edgeCorners=[
-    {x:ARENA.x+margin,y:ARENA.y+margin}, // top-left
-    {x:ARENA.x+ARENA.w-margin,y:ARENA.y+margin}, // top-right
-    {x:ARENA.x+ARENA.w-margin,y:ARENA.y+ARENA.h-margin}, // bottom-right
-    {x:ARENA.x+margin,y:ARENA.y+ARENA.h-margin}, // bottom-left
-  ];
-  const glideFrom=edgeCorners[f._smasherEdgePhase%4];
-  const glideTo=edgeCorners[(f._smasherEdgePhase+1)%4];
-  f._smasherGlideT+=0.012*dt; // glide speed
-  if(f._smasherGlideT>=1){f._smasherGlideT=0;f._smasherEdgePhase=(f._smasherEdgePhase+1)%4;}
-  const gt=Math.min(1,f._smasherGlideT);
-  f.x=lerp(glideFrom.x,glideTo.x,gt);
-  f.y=lerp(glideFrom.y,glideTo.y,gt);
-  // Afterimage trail
-  if(battleTime%3<1){if(!f.smasherAfterimages)f.smasherAfterimages=[];f.smasherAfterimages.push({x:f.x,y:f.y,alpha:0.6});}
-  // Melee fists+blades when enemies are close — BIGGER range + MORE knockback
-  if(f._smasherRelicMelee){
-    const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
-    enemies.forEach(e=>{
-      if(dist(f,e)<f.radius+e.radius+65){ // bigger range (was 40)
-        if(!f._smasherRelicMeleeCD)f._smasherRelicMeleeCD=0;
-        if(f._smasherRelicMeleeCD<=0){
-          f._smasherRelicMeleeCD=25;
-          const chaos=getChaosLevel(f);
-          const fistDmg=f.atk*(1.0+chaos*0.1);
-          dealDamage(f,e,fistDmg,true);
-          const ka=angle(f,e);
-          e.vx+=Math.cos(ka)*(10+chaos*0.5);e.vy+=Math.sin(ka)*(10+chaos*0.5); // more knockback (was 6)
-          SFX.punch();
-          spawnBurst(e.x,e.y,'#ff4444',12,5);
-          f.weaponExtend=1;f.weaponFlash=8;
+  // === PHASE 1: Sandy-mode movement + rocket barrage (before floating) ===
+  if(f.specialTimer>120&&!f.smasherAirborne){
+    // Sandy-mode: boost speed, chase enemy aggressively
+    f.speed=f.baseSpeed*2.2;
+    // Fire mortar rounds at enemy positions
+    if(f._smasherMortarCD<=0){
+      f._smasherMortarCD=60; // faster fire rate
+      f._smasherMortarCount=(f._smasherMortarCount||0)+1;
+      const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
+      if(enemies.length>0){
+        const target=pick(enemies);
+        const tx=target.x+target.vx*15+rand(-30,30);
+        const ty=target.y+target.vy*15+rand(-30,30);
+        smasherWarnings.push({x:tx,y:ty,radius:65,life:45,maxLife:45});
+        SFX.warning();
+        const chaos=getChaosLevel(f);
+        const mortarDmg=f.atk*(1.5+chaos*0.15);
+        if(!f._smasherMortarQueue)f._smasherMortarQueue=[];
+        f._smasherMortarQueue.push({x:tx,y:ty,delay:45,radius:65+chaos*3,dmg:mortarDmg,cluster:false});
+        if(f._smasherMortarCount%3===0){
+          for(let i=0;i<2;i++){
+            const ox=tx+rand(-50,50),oy=ty+rand(-50,50);
+            smasherWarnings.push({x:ox,y:oy,radius:45,life:55,maxLife:55});
+            f._smasherMortarQueue.push({x:ox,y:oy,delay:55,radius:45,dmg:mortarDmg*0.6,cluster:true});
+          }
         }
       }
-    });
-    if(f._smasherRelicMeleeCD>0)f._smasherRelicMeleeCD-=dt;
+    }
+    // Melee fists when close
+    if(f._smasherRelicMelee){
+      const enemies=fighters.filter(e=>e.side!==f.side&&e.alive);
+      enemies.forEach(e=>{
+        if(dist(f,e)<f.radius+e.radius+65){
+          if(!f._smasherRelicMeleeCD)f._smasherRelicMeleeCD=0;
+          if(f._smasherRelicMeleeCD<=0){
+            f._smasherRelicMeleeCD=25;
+            const chaos=getChaosLevel(f);
+            const fistDmg=f.atk*(1.0+chaos*0.1);
+            dealDamage(f,e,fistDmg,true);
+            const ka=angle(f,e);
+            e.vx+=Math.cos(ka)*(10+chaos*0.5);e.vy+=Math.sin(ka)*(10+chaos*0.5);
+            SFX.punch();spawnBurst(e.x,e.y,'#ff4444',12,5);
+            f.weaponExtend=1;f.weaponFlash=8;
+          }
+        }
+      });
+      if(f._smasherRelicMeleeCD>0)f._smasherRelicMeleeCD-=dt;
+    }
   }
-  // Keep enemies slowed during ult
-  fighters.forEach(other=>{
-    if(other&&other!==f&&other.alive)other.sandyTimeScale=Math.min(other.sandyTimeScale,0.3);
-  });
-  // End of relic — FINALE: fly up, hover, then devastating slam
-  if(f.specialTimer<=0&&!f._smasherFinale){
+  // === PHASE 2: Float up → disappear → warning sign → slam down ===
+  if(f.specialTimer<=120&&!f._smasherFinale){
     f._smasherFinale=true;
-    f._smasherFinalePhase='rise'; // rise → hover → slam
+    f._smasherFinalePhase='rise';
     f._smasherFinaleTimer=0;
-    f._smasherFinaleY=f.y; // original Y
-    f._smasherSlamTarget=enemy&&enemy.alive?{x:enemy.x,y:enemy.y}:{x:f.x,y:f.y+80};
     f._smasherRelicMelee=false;
+    f.speed=f.baseSpeed;
     SFX.warning();
     spawnDmgNum(f.x,f.y-f.radius-30,'RISING...','#ff4444',true);
     addLog((f.side===0?'P1':'P2')+' Smasher RISING!');
@@ -5835,38 +5814,54 @@ function updateRelicSmasher(f,enemy,dt){
   if(f._smasherFinale){
     f._smasherFinaleTimer+=dt;
     if(f._smasherFinalePhase==='rise'){
-      // Rise up (30 frames = 0.5s)
-      f.y-=3*dt;f.vx=0;f.vy=0;
+      // Rise up and disappear (25 frames)
+      f.y-=4*dt;f.vx=0;f.vy=0;
       if(battleTime%3<1)spawnParticle(f.x,f.y+f.radius,'#ff4444',rand(-1,1),2,12,3);
-      if(f._smasherFinaleTimer>=30){
-        f._smasherFinalePhase='hover';
+      if(f._smasherFinaleTimer>=25){
+        f._smasherFinalePhase='airborne';
         f._smasherFinaleTimer=0;
-        spawnDmgNum(f.x,f.y-f.radius-20,'HOVERING','#ffcc00',true);
+        f.smasherAirborne=true; // disappear — can\'t be hit, can\'t shoot
+        // Lock onto enemy position for slam target
+        f._smasherSlamTarget=enemy&&enemy.alive?{x:enemy.x,y:enemy.y}:{x:ARENA.x+ARENA.w/2,y:ARENA.y+ARENA.h/2};
+        // Warning sign on ground
+        smasherWarnings.push({x:f._smasherSlamTarget.x,y:f._smasherSlamTarget.y,radius:80,life:100,maxLife:100});
+        SFX.warning();
+        spawnDmgNum(f._smasherSlamTarget.x,f._smasherSlamTarget.y-20,'WARNING','#ff2222',true);
+        addLog((f.side===0?'P1':'P2')+' Smasher AIRBORNE!');
       }
-    } else if(f._smasherFinalePhase==='hover'){
-      // Hover for 2s (120 frames), slight bobbing
+    } else if(f._smasherFinalePhase==='airborne'){
+      // Airborne — invisible, hovering off-screen
       f.vx=0;f.vy=0;
-      f.y+=Math.sin(f._smasherFinaleTimer*0.1)*0.3;
-      // Warning target on ground
-      const st=f._smasherSlamTarget;
-      if(st&&battleTime%4<1){
-        spawnParticle(st.x+rand(-30,30),st.y+rand(-30,30),'#ff2222',0,0,10,3);
+      f.x=-999;f.y=-999;
+      // Track enemy for updated slam position (re-target every 40 frames)
+      if(f._smasherFinaleTimer%40<dt&&enemy&&enemy.alive){
+        f._smasherSlamTarget={x:enemy.x,y:enemy.y};
       }
-      if(f._smasherFinaleTimer>=120){
+      // Pulsing warning particles at slam target
+      const st=f._smasherSlamTarget;
+      if(st&&battleTime%3<1){
+        spawnParticle(st.x+rand(-35,35),st.y+rand(-35,35),'#ff2222',0,0,12,3);
+        spawnParticle(st.x+rand(-20,20),st.y+rand(-20,20),'#ffcc00',0,-0.5,8,2);
+      }
+      if(f._smasherFinaleTimer>=90){
         f._smasherFinalePhase='slam';
         f._smasherFinaleTimer=0;
+        // Reappear above slam target
+        f.x=f._smasherSlamTarget.x;f.y=f._smasherSlamTarget.y-120;
+        f.smasherAirborne=false;
         spawnDmgNum(f.x,f.y-f.radius-20,'INCOMING!','#ff0000',true);
       }
     } else if(f._smasherFinalePhase==='slam'){
       // Slam down fast (15 frames)
       const st=f._smasherSlamTarget;
       if(st){
-        f.x+=(st.x-f.x)*0.2;
-        f.y+=(st.y-f.y)*0.2+5;
+        f.x+=(st.x-f.x)*0.25;
+        f.y+=(st.y-f.y)*0.25+6;
       }
       f.vx=0;f.vy=0;
       if(f._smasherFinaleTimer>=15){
         // IMPACT — massive AoE damage
+        if(st){f.x=st.x;f.y=st.y;}
         const chaos=getChaosLevel(f);
         const slamDmg=f.atk*(3.0+chaos*0.3);
         fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
@@ -5898,13 +5893,14 @@ function updateRelicSmasher(f,enemy,dt){
         f.smasherAfterimages=[];
       }
     }
-    // Keep special "active" during finale so movement code doesn't take over
+    // Keep special "active" during finale
     f.specialActive=true;
     f.specialTimer=1;
-    return; // skip normal end-of-relic
+    return;
   }
   if(f.specialTimer<=0){
     f._smasherRelicMelee=false;
+    f.speed=f.baseSpeed;
     // Restore enemy time scale
     fighters.forEach(other=>{
       if(other&&other!==f){
