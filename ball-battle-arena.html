@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.11.1 — Boss fight tier-paged character select
+// BALL BATTLE ARENA v10.12.0 — Ally combo system + tournament elements + boss tier select
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -591,6 +591,99 @@ const LORE_COMBOS=[
     color1:'#1a3a6a', color2:'#ff69b4',
   },
 ];
+// Ally Combo state (2v2 + boss fight)
+let allyComboActive=false;
+let allyComboTimer=0;
+let allyComboData=null;
+
+function findAllyCombo(charId1,charId2){
+  return LORE_COMBOS.find(c=>c.pair.includes(charId1)&&c.pair.includes(charId2));
+}
+
+function checkAllyCombo(f){
+  if(gameMode!=='2v2'&&gameMode!=='boss')return;
+  if(allyComboActive||sponsorCutsceneActive)return;
+  // Find alive ally on same side who recently used special
+  const allies=fighters.filter(a=>a&&a!==f&&a.side===f.side&&a.alive);
+  for(const ally of allies){
+    if(!ally._lastSpecialFrame)continue;
+    const gap=battleTime-ally._lastSpecialFrame;
+    if(gap>0&&gap<=120){ // within ~2 seconds
+      const combo=findAllyCombo(f.char.id,ally.char.id);
+      if(combo){
+        triggerAllyCombo(f,ally,combo);
+        return;
+      }
+    }
+  }
+}
+
+function triggerAllyCombo(f1,f2,combo){
+  allyComboActive=true;
+  const frames=combo.cutsceneFrames||75;
+  allyComboTimer=frames;
+  const enemies=fighters.filter(e=>e&&e.side!==f1.side&&e.alive);
+  const target=enemies.length>0?enemies.reduce((a,b)=>a.hp<b.hp?a:b):null;
+  allyComboData={
+    combo,f1,f2,target,totalFrames:frames,hitDelivered:false,
+    color1:combo.color1,color2:combo.color2,
+  };
+  fighters.forEach(f=>{if(f){f._preComboVx=f.vx;f._preComboVy=f.vy;f.vx=0;f.vy=0;}});
+  SFX.relicActivate();
+  triggerScreenFlash('#ffffff',15);
+  shakeTimer=25;shakeAmt=12;
+  addLog('ALLY COMBO: '+combo.name+'!');
+}
+
+function updateAllyCombo(dt){
+  if(!allyComboActive||!allyComboData)return;
+  const ad=allyComboData;
+  allyComboTimer-=dt;
+  const progress=1-(allyComboTimer/ad.totalFrames);
+  if(progress>=0.7&&!ad.hitDelivered&&ad.target&&ad.target.alive){
+    ad.hitDelivered=true;
+    const dmg1=ad.f1.atk*ad.combo.dmgMult*0.6;
+    const dmg2=ad.f2.atk*ad.combo.dmgMult*0.6;
+    dealDamage(ad.f1,ad.target,dmg1,false);
+    if(ad.target.alive)dealDamage(ad.f2,ad.target,dmg2,false);
+    triggerScreenFlash(ad.color1,12);
+    shakeTimer=30;shakeAmt=18;
+    SFX.crit();
+  }
+  if(allyComboTimer<=0){
+    allyComboActive=false;
+    fighters.forEach(f=>{if(f){f.vx=f._preComboVx||0;f.vy=f._preComboVy||0;}});
+    allyComboData=null;
+  }
+}
+
+function drawAllyCombo(){
+  if(!allyComboActive||!allyComboData)return;
+  const ad=allyComboData;
+  const progress=1-(allyComboTimer/ad.totalFrames);
+  // Cinematic letterbox
+  const lbH=50*Math.min(1,progress*3);
+  X.fillStyle='rgba(0,0,0,0.85)';X.fillRect(0,0,W,lbH);X.fillRect(0,H-lbH,W,lbH);
+  // Combo title
+  X.save();
+  X.font='bold '+(isMobile?'16':'22')+'px Consolas,monospace';X.textAlign='center';
+  X.shadowColor=ad.color1;X.shadowBlur=20;
+  const g=X.createLinearGradient(W/2-100,H/2,W/2+100,H/2);
+  g.addColorStop(0,ad.color1);g.addColorStop(1,ad.color2);
+  X.fillStyle=g;
+  X.fillText(ad.combo.franchise+' ALLY COMBO!',W/2,H/2-40);
+  X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';
+  X.fillText(ad.combo.name,W/2,H/2-15);
+  X.shadowBlur=0;
+  X.font=(isMobile?'9':'11')+'px Consolas,monospace';X.fillStyle='#ccc';
+  X.fillText(ad.combo.desc,W/2,H/2+10);
+  // Fighter names
+  X.font='bold '+(isMobile?'10':'13')+'px Consolas,monospace';
+  X.fillStyle=ad.f1.char.color;X.fillText(ad.f1.char.name,W/3,H/2+35);
+  X.fillStyle=ad.f2.char.color;X.fillText(ad.f2.char.name,W*2/3,H/2+35);
+  X.restore();
+}
+
 // Sponsor state
 let sponsorCutsceneActive=false;
 let sponsorCutsceneTimer=0;
@@ -4716,11 +4809,13 @@ function applyElementEffect(attacker,defender){
 // ============================================================
 function useSpecial(f,enemy){
   f.specialBar=0;f.specialActive=true;
+  f._lastSpecialFrame=battleTime;
   const spName=f.char.specialName;
   showRelicText(spName,f.char.color);
   showVoiceline(f.char.id,'special',f.side);
   addLog((f.side===0?'P1':'P2')+' '+spName+'!');
   shakeTimer=15;shakeAmt=8;
+  checkAllyCombo(f);
 
   switch(f.char.id){
     case 'mantis':relicMantis(f,enemy);break;
@@ -7025,6 +7120,7 @@ function updateBattle(dt){
   if(typeof battleCountdown!=='undefined'&&battleCountdown>0){battleCountdown-=dt;return;}
   // Sponsor cutscene freezes normal battle updates
   if(sponsorCutsceneActive){updateSponsorCutscene(dt);return;}
+  if(allyComboActive){updateAllyCombo(dt);return;}
   battleTime+=dt;
   const f1=fighters[0],f2=fighters[1];
 
@@ -17290,6 +17386,8 @@ function drawBattle(){
 
   // Sponsor lore combo cutscene overlay
   drawSponsorCutscene();
+  // Ally combo cutscene overlay (2v2 + boss)
+  drawAllyCombo();
 
   // Pre-match countdown overlay
   if(typeof battleCountdown!=='undefined'&&battleCountdown>0){
@@ -17700,7 +17798,7 @@ function drawFighterInfo(f,px,py,maxW,align){
 function tournRandomize(){
   const playable=[...CHARS.keys()].filter(i=>!CHARS[i].isBoss);
   const shuffled=playable.sort(()=>Math.random()-0.5).slice(0,16);
-  tournBracket=shuffled.map(i=>({charIdx:i,elemIdx:0,name:CHARS[i].name,alive:true}));
+  tournBracket=shuffled.map(i=>({charIdx:i,elemIdx:rand(0,ELEMENTS.length-1),name:CHARS[i].name,alive:true}));
 }
 function tournGetRoundMatches(){
   const alive=tournBracket.filter(e=>e.alive);
@@ -17752,7 +17850,8 @@ function drawTournSetup(){
       const tier=getTierLetter(ch.id);
       const tc=tier.startsWith('S')?'#ffcc00':tier.startsWith('A')?'#44cc88':tier.startsWith('B')?'#6688cc':'#888';
       X.font='bold '+(isMobile?'6':'8')+'px Consolas,monospace';X.fillStyle=tc;
-      X.fillText('['+tier+']',cx+ballR*2+8,cy+(isMobile?30:36));
+      const el=ELEMENTS[entry.elemIdx];
+      X.fillText('['+tier+']'+(el&&el.id!=='none'?' '+el.symbol:''),cx+ballR*2+8,cy+(isMobile?30:36));
       // Seed number
       X.font='bold '+(isMobile?'6':'7')+'px Consolas,monospace';X.fillStyle='#555';X.textAlign='right';
       X.fillText('#'+(i+1),cx+cardW-3,cy+12);
@@ -17808,7 +17907,8 @@ function drawTournBracket(){
     X.fillText(ch1.name,mx+ballR*2+36,my+(isMobile?18:22));
     const t1=getTierLetter(ch1.id);
     X.font='bold '+(isMobile?'7':'8')+'px Consolas,monospace';X.fillStyle=t1.startsWith('S')?'#ffcc00':t1.startsWith('A')?'#44cc88':'#6688cc';
-    X.fillText('['+t1+']',mx+ballR*2+36,my+(isMobile?30:34));
+    const e1=ELEMENTS[match.p1.elemIdx];
+    X.fillText('['+t1+']'+(e1&&e1.id!=='none'?' '+e1.symbol:''),mx+ballR*2+36,my+(isMobile?30:34));
     if(match.winner===match.p1){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#ffcc00';X.fillText('\u2714',mx+ballR*2+36+X.measureText(ch1.name).width+5,my+(isMobile?18:22));}
     // VS
     X.font='bold '+(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#444';
@@ -17820,8 +17920,9 @@ function drawTournBracket(){
     X.fillStyle=match.winner===match.p2?'#ffcc00':match.winner?'#555':'#fff';
     X.fillText(ch2.name,mx+matchW-ballR*2-36,my+(isMobile?18:22));
     const t2=getTierLetter(ch2.id);
+    const e2=ELEMENTS[match.p2.elemIdx];
     X.font='bold '+(isMobile?'7':'8')+'px Consolas,monospace';X.fillStyle=t2.startsWith('S')?'#ffcc00':t2.startsWith('A')?'#44cc88':'#6688cc';
-    X.fillText('['+t2+']',mx+matchW-ballR*2-36,my+(isMobile?30:34));
+    X.fillText((e2&&e2.id!=='none'?e2.symbol+' ':'')+'['+t2+']',mx+matchW-ballR*2-36,my+(isMobile?30:34));
     if(match.winner===match.p2){X.font='bold '+(isMobile?'8':'10')+'px Consolas,monospace';X.fillStyle='#ffcc00';X.textAlign='right';X.fillText('\u2714',mx+matchW-ballR*2-36-5,my+(isMobile?18:22));}
     // Click to watch this match
     if(!match.winner){
