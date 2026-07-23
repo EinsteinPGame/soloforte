@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Wheel of Faith</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Consolas','Courier New',monospace;background:#0a0a1a;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center}
+canvas{display:block}
+#gc{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
+</style>
+</head>
+<body>
+<script src="auth.js"></script>
+<script src="back-btn.js"></script>
+<div id="gc"><canvas id="g"></canvas></div>
+<script>
+// ============================================================
+// WHEEL OF FAITH — Fantasy Character Generator + Real-Time Battle
+// 15 spinning wheels, stats-based combat, unique named characters
+// ============================================================
+const C=document.getElementById('g'),X=C.getContext('2d');
+const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
+const TW=isMobile?360:600,TH=isMobile?640:500;let sc=1;
+function resize(){const w=innerWidth,h=innerHeight;const dpr=window.devicePixelRatio||1;sc=Math.min(w/TW,h/TH);const cssW=TW*sc,cssH=TH*sc;C.width=TW*sc*dpr;C.height=TH*sc*dpr;C.style.width=cssW+'px';C.style.height=cssH+'px';C.style.position='absolute';C.style.left=(w-cssW)/2+'px';C.style.top=(h-cssH)/2+'px';X.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',resize);resize();
+function gmp(e){const r=C.getBoundingClientRect(),cx=(e.clientX||(e.touches&&e.touches[0]&&e.touches[0].clientX)||0)-r.left,cy=(e.clientY||(e.touches&&e.touches[0]&&e.touches[0].clientY)||0)-r.top;return{x:cx/sc,y:cy/sc}}
+const W=TW,H=TH,rand=(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pick=a=>a[Math.floor(Math.random()*a.length)],clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+function lighten(hex,amt){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.min(255,r+amt);g=Math.min(255,g+amt);b=Math.min(255,b+amt);return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('')}
+function darken(hex,amt){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.max(0,r-amt);g=Math.max(0,g-amt);b=Math.max(0,b-amt);return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('')}
+function drawRoundRect(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.lineTo(x+w-r,y);X.quadraticCurveTo(x+w,y,x+w,y+r);X.lineTo(x+w,y+h-r);X.quadraticCurveTo(x+w,y+h,x+w-r,y+h);X.lineTo(x+r,y+h);X.quadraticCurveTo(x,y+h,x,y+h-r);X.lineTo(x,y+r);X.quadraticCurveTo(x,y,x+r,y);X.closePath()}
+
+// ============================================================
+// AUDIO
+// ============================================================
+const SFX={
+  ctx:null,
+  _init(){if(!this.ctx)try{this.ctx=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}},
+  _tone(freq,dur,type,vol,delay){
+    this._init();if(!this.ctx)return;
+    const o=this.ctx.createOscillator(),g=this.ctx.createGain();
+    o.type=type||'sine';o.frequency.setValueAtTime(freq,this.ctx.currentTime+(delay||0));
+    g.gain.setValueAtTime(vol||0.15,this.ctx.currentTime+(delay||0));
+    g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+(delay||0)+dur);
+    o.connect(g);g.connect(this.ctx.destination);
+    o.start(this.ctx.currentTime+(delay||0));o.stop(this.ctx.currentTime+(delay||0)+dur);
+  },
+  click(){this._tone(800,0.05,'square',0.06)},
+  tick(){this._tone(600,0.03,'sine',0.08)},
+  land(){this._tone(400,0.15,'sine',0.2);this._tone(600,0.2,'sine',0.15,0.1)},
+  hit(){this._tone(200,0.12,'sine',0.15)},
+  crit(){this._tone(600,0.1,'sawtooth',0.2);this._tone(900,0.12,'square',0.18,0.05)},
+  victory(){for(let i=0;i<5;i++)this._tone(400+i*100,0.15,'sine',0.12,i*0.12)},
+  defeat(){this._tone(300,0.3,'sine',0.15);this._tone(200,0.4,'sine',0.12,0.2)},
+  spin(){for(let i=0;i<3;i++)this._tone(500+i*50,0.05,'square',0.05,i*0.04)},
+};
+
+// ============================================================
+// BUTTON SYSTEM
+// ============================================================
+let buttons=[];
+function addBtn(id,x,y,w,h,label,color,cb){buttons.push({id,x,y,w,h,label,color:color||'#7b68ee',cb,hover:false})}
+function clearBtns(){buttons=[]}
+function drawBtn(b){if(b.color==='transparent')return;X.save();drawRoundRect(b.x,b.y,b.w,b.h,6);X.fillStyle=b.hover?b.color+'44':'#0a0a2a';X.fill();X.strokeStyle=b.color;X.lineWidth=b.hover?3:2;X.stroke();X.fillStyle=b.hover?'#fff':b.color;X.font='bold '+(b.h>40?'16':'13')+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';X.fillText(b.label,b.x+b.w/2,b.y+b.h/2);X.restore()}
+
+// ============================================================
+// GAME DATA — RACES
+// ============================================================
+const RACES=[
+  {id:'human',name:'Human',color:'#ddaa44',lore:'Versatile and adaptive.',
+    subs:[
+      {name:'Highborn',str:0,spd:0,iq:1,dur:1,trait:'Diplomacy: +1 all stats when allied with Human'},
+      {name:'Nomad',str:0,spd:2,iq:0,dur:0,trait:'Wanderer: immune to terrain debuffs'},
+      {name:'Berserker Tribe',str:2,spd:0,iq:-1,dur:1,trait:'Blood Rage: +2 STR below 30% HP'},
+      {name:'Mystic Bloodline',str:-1,spd:0,iq:3,dur:-1,trait:'Arcane Affinity: enchantments cost less'},
+      {name:'Ironborn',str:1,spd:-1,iq:0,dur:2,trait:'Iron Will: resist mind-control'},
+    ]},
+  {id:'elf',name:'Elf',color:'#44cc88',lore:'Agile and intelligent, masters of magic.',
+    subs:[
+      {name:'High Elf',str:-1,spd:1,iq:3,dur:-1,trait:'Arcane Mastery: free enchantment tier'},
+      {name:'Dark Elf',str:0,spd:2,iq:1,dur:-1,trait:'Shadow Veil: stealth +2 damage'},
+      {name:'Wood Elf',str:0,spd:3,iq:0,dur:-1,trait:'Forest Bond: +2 SPD in nature'},
+      {name:'Sea Elf',str:0,spd:1,iq:1,dur:0,trait:'Aquatic: immune to water damage'},
+      {name:'Blood Elf',str:1,spd:0,iq:2,dur:-1,trait:'Life Drain: heal 1 HP per attack'},
+    ]},
+  {id:'dwarf',name:'Dwarf',color:'#cc8833',lore:'Tough blacksmiths who hate magic.',
+    subs:[
+      {name:'Mountain Dwarf',str:2,spd:-1,iq:0,dur:2,trait:'Stone Skin: +1 DUR vs physical'},
+      {name:'Hill Dwarf',str:1,spd:0,iq:0,dur:2,trait:'Endurance: +10% max HP'},
+      {name:'Deep Dwarf',str:1,spd:-1,iq:1,dur:1,trait:'Darkvision: no darkness penalty'},
+      {name:'Forge Dwarf',str:2,spd:-2,iq:1,dur:1,trait:'Master Smith: enchant without mastery'},
+      {name:'Frost Dwarf',str:1,spd:-1,iq:0,dur:3,trait:'Cold Resistance: immune to ice'},
+    ]},
+  {id:'orc',name:'Orc',color:'#55aa33',lore:'Raw physical dominance.',
+    subs:[
+      {name:'War Orc',str:3,spd:0,iq:-2,dur:1,trait:'Relentless: act after 0 HP'},
+      {name:'Savage Orc',str:3,spd:1,iq:-3,dur:1,trait:'Frenzy: +1 STR per kill'},
+      {name:'Shaman Orc',str:1,spd:0,iq:1,dur:0,trait:'Spirit Caller: free spirit power'},
+      {name:'Half-Orc',str:2,spd:0,iq:0,dur:0,trait:'Versatile: no stat penalties'},
+      {name:'Ironhide Orc',str:2,spd:-1,iq:-1,dur:3,trait:'Thick Skin: reduce damage by 1'},
+    ]},
+  {id:'goblin',name:'Goblin',color:'#88cc22',lore:'Fast, chaotic, high risk high reward.',
+    subs:[
+      {name:'Cave Goblin',str:-1,spd:3,iq:0,dur:-1,trait:'Scurry: +15% dodge'},
+      {name:'Hobgoblin',str:1,spd:1,iq:1,dur:0,trait:'Tactical Mind: +1 IQ in groups'},
+      {name:'Bugbear',str:2,spd:0,iq:-1,dur:1,trait:'Ambush: first attack is double'},
+      {name:'Tinker Goblin',str:-1,spd:1,iq:3,dur:-1,trait:'Gadgeteer: craft weapons mid-fight'},
+      {name:'Plague Goblin',str:-1,spd:2,iq:0,dur:0,trait:'Toxic: 20% poison chance'},
+    ]},
+  {id:'skeleton',name:'Skeleton',color:'#ccccaa',lore:'Goofiest race. Absurd weaknesses, crazy weapons.',
+    subs:[
+      {name:'Warrior Skeleton',str:1,spd:1,iq:-1,dur:1,trait:'Undying: revive once at 25% HP'},
+      {name:'Lich',str:-1,spd:0,iq:4,dur:-1,trait:'Phylactery: reform in 3 turns'},
+      {name:'Bone Knight',str:2,spd:-1,iq:0,dur:2,trait:'Bone Armor: +2 DUR vs physical'},
+      {name:'Revenant',str:1,spd:0,iq:0,dur:1,trait:'Vengeful Spirit: +3 all vs killer'},
+      {name:'Wight',str:0,spd:1,iq:1,dur:0,trait:'Life Steal: drain 1 stat per hit'},
+    ]},
+  {id:'fairy',name:'Fairy',color:'#ff88dd',lore:'Glass cannons with flight.',
+    subs:[
+      {name:'Pixie',str:-2,spd:4,iq:1,dur:-2,trait:'Flight: avoid ground attacks'},
+      {name:'Sprite',str:-2,spd:3,iq:2,dur:-2,trait:'Invisibility: 1 turn (cd 3)'},
+      {name:'Dryad',str:0,spd:1,iq:1,dur:1,trait:'Nature Heal: regen 1 HP/turn'},
+      {name:'Changeling',str:0,spd:1,iq:2,dur:-1,trait:'Shapemask: copy appearance'},
+      {name:'Sylph',str:-1,spd:3,iq:1,dur:-1,trait:'Wind Walk: immune to slow'},
+    ]},
+  {id:'vampire',name:'Vampire',color:'#cc2244',lore:'Powerful but weak to sunlight and holy.',
+    subs:[
+      {name:'Noble Vampire',str:1,spd:2,iq:2,dur:-1,trait:'Charm: mind-control one enemy'},
+      {name:'Feral Vampire',str:3,spd:1,iq:-2,dur:1,trait:'Blood Frenzy: +2 STR in dark'},
+      {name:'Dhampir',str:1,spd:1,iq:1,dur:0,trait:'Daywalker: no sunlight weakness'},
+      {name:'Ancient Vampire',str:2,spd:2,iq:1,dur:0,trait:'Elder Power: -1 cooldowns'},
+      {name:'Nosferatu',str:2,spd:0,iq:0,dur:2,trait:'Terror Aura: enemies -1 all stats'},
+    ]},
+  {id:'dragon',name:'Dragonborn',color:'#ff6622',lore:'Elemental breath weapons and draconic heritage.',
+    subs:[
+      {name:'Fire Dragonborn',str:2,spd:0,iq:0,dur:1,trait:'Breath Weapon: fire cone AoE'},
+      {name:'Ice Dragonborn',str:1,spd:0,iq:1,dur:1,trait:'Breath Weapon: ice + slow'},
+      {name:'Storm Dragonborn',str:1,spd:1,iq:1,dur:0,trait:'Breath Weapon: lightning + stun'},
+      {name:'Shadow Dragonborn',str:1,spd:1,iq:1,dur:0,trait:'Breath Weapon: shadow + fear'},
+      {name:'Ancient Dragon',str:3,spd:-1,iq:2,dur:3,trait:'Dragon Form: massive, flight, slow'},
+    ]},
+  {id:'elemental',name:'Elemental',color:'#44aaff',lore:'Above most races in power hierarchy.',
+    subs:[
+      {name:'Fire Elemental',str:2,spd:1,iq:0,dur:-1,trait:'Burning Aura: 1 dmg/turn to adjacent'},
+      {name:'Water Elemental',str:0,spd:1,iq:1,dur:1,trait:'Fluid Form: immune to crits'},
+      {name:'Earth Elemental',str:1,spd:-2,iq:0,dur:4,trait:'Immovable: no knockback'},
+      {name:'Air Elemental',str:-1,spd:4,iq:0,dur:-1,trait:'Intangible: 25% phase through'},
+      {name:'Void Elemental',str:0,spd:0,iq:3,dur:0,trait:'Nullify: cancel one enchantment'},
+    ]},
+  {id:'werewolf',name:'Werebeast',color:'#aa7744',lore:'Dual forms — human and beast.',
+    subs:[
+      {name:'Werewolf',str:2,spd:2,iq:-1,dur:0,trait:'Transform: shift between forms'},
+      {name:'Werebear',str:3,spd:-1,iq:-1,dur:2,trait:'Rage Form: +3 STR, -2 IQ'},
+      {name:'Weretiger',str:1,spd:3,iq:0,dur:-1,trait:'Pounce: first attack is crit'},
+      {name:'Weredragon',str:2,spd:0,iq:1,dur:1,trait:'Hybrid Form: breath + claws'},
+      {name:'Skinwalker',str:0,spd:1,iq:2,dur:0,trait:'Mimic: copy enemy racial trait'},
+    ]},
+  {id:'golem',name:'Golem',color:'#888899',lore:'Constructed beings. High durability.',
+    subs:[
+      {name:'Stone Golem',str:3,spd:-3,iq:-1,dur:4,trait:'Indestructible: immune to crits'},
+      {name:'Iron Golem',str:3,spd:-2,iq:0,dur:3,trait:'Magnetic: disarm metal weapons'},
+      {name:'Crystal Golem',str:1,spd:-1,iq:2,dur:2,trait:'Reflect: 20% reflect magic'},
+      {name:'Flesh Golem',str:2,spd:0,iq:-2,dur:2,trait:'Regenerate: heal 2 HP/turn'},
+      {name:'Clockwork',str:1,spd:1,iq:2,dur:0,trait:'Overclock: double SPD 2 turns'},
+    ]},
+  {id:'demon',name:'Demon',color:'#cc3355',lore:'High-tier with strong offensive powers.',
+    subs:[
+      {name:'Imp',str:-1,spd:3,iq:1,dur:-1,trait:'Trickster: swap positions once'},
+      {name:'Succubus',str:0,spd:1,iq:3,dur:-1,trait:'Enthrall: charm 1 turn'},
+      {name:'Pit Fiend',str:3,spd:0,iq:1,dur:1,trait:'Hellfire: bonus fire damage'},
+      {name:'Shadow Demon',str:1,spd:2,iq:1,dur:-1,trait:'Phase: teleport to shadows'},
+      {name:'Arch-Devil',str:2,spd:0,iq:2,dur:1,trait:'Infernal Pact: -2 HP for +2 stat'},
+    ]},
+  {id:'giant',name:'Giant',color:'#cc9966',lore:'Highest raw STR. Massive and slow.',
+    subs:[
+      {name:'Hill Giant',str:3,spd:-2,iq:-2,dur:2,trait:'Crush: unarmed = weapon damage'},
+      {name:'Frost Giant',str:3,spd:-1,iq:0,dur:2,trait:'Cold Aura: melee enemies -1 SPD'},
+      {name:'Fire Giant',str:3,spd:-1,iq:1,dur:1,trait:'Forge Master: +1 fire damage'},
+      {name:'Storm Giant',str:2,spd:0,iq:2,dur:1,trait:'Lightning Call: AoE every 3 turns'},
+      {name:'Titan',str:4,spd:-2,iq:1,dur:3,trait:'Colossal: forced Large+'},
+    ]},
+  {id:'merfolk',name:'Merfolk',color:'#3388cc',lore:'Terrain-dependent. Powerful in water.',
+    subs:[
+      {name:'Sea Siren',str:0,spd:1,iq:2,dur:0,trait:'Siren Song: stun 1 turn (cd 3)'},
+      {name:'Deep One',str:2,spd:0,iq:0,dur:2,trait:'Pressure Adapted: immune to crush'},
+      {name:'Coral Guardian',str:1,spd:-1,iq:1,dur:2,trait:'Reef Shield: block projectiles'},
+      {name:'Tide Caller',str:0,spd:1,iq:3,dur:-1,trait:'Water Mastery: 2x water damage'},
+      {name:'Leviathan Kin',str:3,spd:0,iq:0,dur:1,trait:'Monstrous Form: grow in water'},
+    ]},
+];
+
+// ============================================================
+// GAME DATA — ARCHETYPES
+// ============================================================
+const ARCHETYPES=[
+  {id:'warrior',name:'Warrior',color:'#cc4444',str:2,spd:0,iq:0,dur:1,desc:'Melee combat specialist'},
+  {id:'paladin',name:'Paladin',color:'#ffcc44',str:1,spd:0,iq:1,dur:1,desc:'Holy knight with divine powers'},
+  {id:'mage',name:'Mage',color:'#6644cc',str:-1,spd:0,iq:3,dur:0,desc:'Master of arcane magic'},
+  {id:'rogue',name:'Rogue',color:'#333333',str:0,spd:2,iq:1,dur:0,desc:'Stealth and precision strikes'},
+  {id:'ranger',name:'Ranger',color:'#33aa55',str:1,spd:1,iq:1,dur:0,desc:'Versatile wilderness fighter'},
+  {id:'ninja',name:'Ninja',color:'#222244',str:0,spd:3,iq:0,dur:0,desc:'Speed-based shadow arts'},
+  {id:'gladiator',name:'Gladiator',color:'#dd6633',str:2,spd:1,iq:0,dur:0,desc:'Arena combat champion'},
+  {id:'berserker',name:'Berserker',color:'#dd2222',str:3,spd:0,iq:-1,dur:1,desc:'Unstoppable rage fighter'},
+  {id:'necromancer',name:'Necromancer',color:'#554488',str:0,spd:0,iq:2,dur:0,desc:'Commands undead forces'},
+  {id:'martial_artist',name:'Martial Artist',color:'#dd8833',str:1,spd:2,iq:0,dur:0,desc:'Unarmed combat master'},
+  {id:'slayer',name:'Slayer',color:'#aa2233',str:2,spd:1,iq:0,dur:0,desc:'Monster hunting specialist'},
+  {id:'rider',name:'Rider',color:'#886633',str:1,spd:0,iq:0,dur:1,desc:'Mounted combatant'},
+  {id:'dual_wielder',name:'Dual Wielder',color:'#5577aa',str:1,spd:1,iq:0,dur:0,desc:'Two weapon fighting style'},
+  {id:'weaver',name:'Weaver',color:'#8844aa',str:0,spd:0,iq:2,dur:1,desc:'Reality-bending spell weaver'},
+  {id:'equaliser',name:'Equaliser',color:'#aaaaaa',str:0,spd:0,iq:0,dur:0,desc:'Balances all stats to average'},
+];
+
+// ============================================================
+// GAME DATA — WEAPONS
+// ============================================================
+const WEAPONS=[
+  {id:'sword',name:'Longsword',color:'#cccccc',type:'melee',dmg:3,spd:0,range:'mid',desc:'Balanced blade'},
+  {id:'axe',name:'Battle Axe',color:'#aa6633',type:'melee',dmg:4,spd:-1,range:'mid',desc:'Heavy cleaving strikes'},
+  {id:'dagger',name:'Daggers',color:'#888888',type:'melee',dmg:2,spd:2,range:'short',desc:'Fast dual strikes'},
+  {id:'spear',name:'Spear',color:'#bbaa77',type:'melee',dmg:3,spd:0,range:'long',desc:'Reach advantage'},
+  {id:'hammer',name:'War Hammer',color:'#666677',type:'melee',dmg:5,spd:-2,range:'short',desc:'Crushing blows'},
+  {id:'bow',name:'Longbow',color:'#997744',type:'ranged',dmg:3,spd:1,range:'far',desc:'Precision ranged'},
+  {id:'staff',name:'Magic Staff',color:'#7744cc',type:'magic',dmg:2,spd:0,range:'far',desc:'Channels spells'},
+  {id:'scythe',name:'Void Scythe',color:'#553377',type:'melee',dmg:4,spd:-1,range:'long',desc:'Dark reaping arcs'},
+  {id:'fists',name:'Bare Fists',color:'#ddaa88',type:'melee',dmg:2,spd:3,range:'short',desc:'Rapid unarmed strikes'},
+  {id:'whip',name:'Chain Whip',color:'#aa7755',type:'melee',dmg:2,spd:1,range:'long',desc:'Flexible reach weapon'},
+  {id:'crossbow',name:'Crossbow',color:'#886644',type:'ranged',dmg:4,spd:-1,range:'far',desc:'Powerful bolts'},
+  {id:'katana',name:'Katana',color:'#ddddee',type:'melee',dmg:3,spd:1,range:'mid',desc:'Swift precision cuts'},
+  {id:'shield',name:'Tower Shield',color:'#8888aa',type:'melee',dmg:1,spd:-1,range:'short',desc:'Massive defense, weak offense'},
+  {id:'claws',name:'Beast Claws',color:'#cc8844',type:'melee',dmg:3,spd:2,range:'short',desc:'Savage natural weapons'},
+  {id:'trident',name:'Trident',color:'#4488aa',type:'melee',dmg:3,spd:0,range:'long',desc:'Triple-pointed thrust'},
+];
+
+// ============================================================
+// GAME DATA — ELEMENTS
+// ============================================================
+const ELEMENTS=[
+  {id:'fire',name:'Fire',color:'#ff4422',strong:'ice',weak:'water',desc:'Burns and damages over time'},
+  {id:'water',name:'Water',color:'#2266ff',strong:'fire',weak:'lightning',desc:'Flowing and adaptable'},
+  {id:'ice',name:'Ice',color:'#88ccff',strong:'wind',weak:'fire',desc:'Slows and freezes enemies'},
+  {id:'lightning',name:'Lightning',color:'#ffcc00',strong:'water',weak:'earth',desc:'Fast and stunning'},
+  {id:'earth',name:'Earth',color:'#886633',strong:'lightning',weak:'wind',desc:'Sturdy and immovable'},
+  {id:'wind',name:'Wind',color:'#88ddaa',strong:'earth',weak:'ice',desc:'Swift and evasive'},
+  {id:'shadow',name:'Shadow',color:'#443355',strong:'light',weak:'light',desc:'Darkness and stealth'},
+  {id:'light',name:'Light',color:'#ffeeaa',strong:'shadow',weak:'shadow',desc:'Holy and purifying'},
+  {id:'void',name:'Void',color:'#332244',strong:'light',weak:'earth',desc:'Nullifies and erases'},
+  {id:'nature',name:'Nature',color:'#44aa33',strong:'earth',weak:'fire',desc:'Growth and healing'},
+];
+
+// ============================================================
+// GAME DATA — WEAKNESSES
+// ============================================================
+const WEAKNESSES=[
+  {id:'sunlight',name:'Sunlight Vulnerability',desc:'Takes double damage from Light attacks'},
+  {id:'iron',name:'Iron Allergy',desc:'Takes extra damage from iron weapons'},
+  {id:'water_weak',name:'Hydrophobia',desc:'Weakened near water; -2 all stats'},
+  {id:'slow',name:'Sluggish',desc:'Always acts last in combat'},
+  {id:'glass',name:'Glass Cannon',desc:'-30% max HP'},
+  {id:'cursed',name:'Cursed Blood',desc:'Cannot be healed by allies'},
+  {id:'berserker_rage',name:'Uncontrollable Rage',desc:'Cannot retreat from battle'},
+  {id:'prideful',name:'Prideful',desc:'Cannot use items or ask for help'},
+  {id:'fragile_mind',name:'Fragile Mind',desc:'Vulnerable to mind-control and charm'},
+  {id:'loud',name:'Loud & Clumsy',desc:'Cannot use stealth; enemies always detect'},
+  {id:'tiny',name:'Tiny Frame',desc:'Knockback distance doubled'},
+  {id:'greedy',name:'Greedy',desc:'Must pick up every item; distracted in battle'},
+];
+
+// ============================================================
+// GAME DATA — COMPANIONS
+// ============================================================
+const COMPANIONS=[
+  {id:'wolf',name:'Dire Wolf',color:'#888888',str:2,spd:2,iq:0,dur:1},
+  {id:'hawk',name:'War Hawk',color:'#aa8844',str:1,spd:3,iq:1,dur:0},
+  {id:'bear',name:'Cave Bear',color:'#664422',str:3,spd:-1,iq:0,dur:3},
+  {id:'serpent',name:'Shadow Serpent',color:'#44aa55',str:2,spd:2,iq:1,dur:0},
+  {id:'golem_comp',name:'Mini Golem',color:'#999999',str:1,spd:-1,iq:0,dur:4},
+  {id:'imp_comp',name:'Familiar Imp',color:'#cc4466',str:0,spd:2,iq:3,dur:0},
+  {id:'phoenix',name:'Phoenix Chick',color:'#ff8822',str:1,spd:1,iq:1,dur:1},
+  {id:'none',name:'Lone Wolf',color:'#555555',str:0,spd:0,iq:0,dur:0},
+];
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let screen='title';
+let spinState={phase:'idle',wheelIdx:0,angle:0,speed:0,targetSlice:-1,result:null};
+let currentChar={name:'',race:null,subRace:null,archetype:null,weapon:null,element:null,weakness:null,companion:null,stats:{str:5,spd:5,iq:5,dur:5},traits:[]};
+let savedChars=[];
+let selectPage=0;
+
+// Wheel spin order
+const WHEEL_ORDER=[
+  {id:'race',label:'RACE',items:()=>RACES.map(r=>({label:r.name,color:r.color,data:r}))},
+  {id:'subrace',label:'SUB-RACE',items:()=>{
+    if(!currentChar.race)return[];
+    return currentChar.race.subs.map(s=>({label:s.name,color:lighten(currentChar.race.color,20),data:s}));
+  }},
+  {id:'archetype',label:'ARCHETYPE',items:()=>ARCHETYPES.map(a=>({label:a.name,color:a.color,data:a}))},
+  {id:'element',label:'ELEMENT',items:()=>ELEMENTS.map(e=>({label:e.name,color:e.color,data:e}))},
+  {id:'weapon',label:'WEAPON',items:()=>WEAPONS.map(w=>({label:w.name,color:w.color,data:w}))},
+  {id:'companion',label:'COMPANION',items:()=>COMPANIONS.map(c=>({label:c.name,color:c.color,data:c}))},
+  {id:'weakness',label:'WEAKNESS',items:()=>WEAKNESSES.map(w=>({label:w.name,color:'#cc4444',data:w}))},
+];
+let wheelStep=0;
+
+// Battle state
+let battleState=null;
+let battleTime=0;
+let battleParticles=[];
+
+// Load saved characters
+try{savedChars=JSON.parse(localStorage.getItem('wof_chars')||'[]');}catch(e){savedChars=[];}
+function saveChars(){try{localStorage.setItem('wof_chars',JSON.stringify(savedChars));}catch(e){}}
+
+// ============================================================
+// WHEEL SPINNER
+// ============================================================
+function startSpin(){
+  const wheel=WHEEL_ORDER[wheelStep];
+  const items=wheel.items();
+  if(items.length===0)return;
+  spinState.phase='spinning';
+  spinState.angle=Math.random()*Math.PI*2;
+  spinState.speed=0.15+Math.random()*0.1;
+  spinState.targetSlice=rand(0,items.length-1);
+  spinState.result=null;
+  SFX.spin();
+}
+
+function updateSpin(){
+  if(spinState.phase!=='spinning')return;
+  spinState.angle+=spinState.speed;
+  spinState.speed*=0.985;
+  if(spinState.speed<0.002){
+    spinState.phase='landed';
+    const wheel=WHEEL_ORDER[wheelStep];
+    const items=wheel.items();
+    // Determine which slice the pointer lands on
+    const sliceAngle=Math.PI*2/items.length;
+    const normAngle=((spinState.angle%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
+    const idx=Math.floor(normAngle/sliceAngle)%items.length;
+    spinState.result=items[idx];
+    applySpinResult(wheel.id,spinState.result);
+    SFX.land();
+  }
+}
+
+function applySpinResult(wheelId,result){
+  const d=result.data;
+  switch(wheelId){
+    case 'race':currentChar.race=d;break;
+    case 'subrace':
+      currentChar.subRace=d;
+      currentChar.stats.str+=d.str;currentChar.stats.spd+=d.spd;
+      currentChar.stats.iq+=d.iq;currentChar.stats.dur+=d.dur;
+      currentChar.traits.push(d.trait);
+      break;
+    case 'archetype':
+      currentChar.archetype=d;
+      currentChar.stats.str+=d.str;currentChar.stats.spd+=d.spd;
+      currentChar.stats.iq+=d.iq;currentChar.stats.dur+=d.dur;
+      break;
+    case 'element':currentChar.element=d;break;
+    case 'weapon':currentChar.weapon=d;break;
+    case 'companion':currentChar.companion=d;break;
+    case 'weakness':currentChar.weakness=d;break;
+  }
+}
+
+// ============================================================
+// DRAW: TITLE SCREEN
+// ============================================================
+function drawTitle(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  // Grid bg
+  X.strokeStyle='#1a1a2a';X.lineWidth=1;
+  for(let i=0;i<W;i+=40){X.beginPath();X.moveTo(i,0);X.lineTo(i,H);X.stroke();}
+  for(let i=0;i<H;i+=40){X.beginPath();X.moveTo(0,i);X.lineTo(W,i);X.stroke();}
+
+  const t=Date.now()*0.002;
+  const titleY=isMobile?100:120;
+
+  // Animated rune circle
+  X.save();X.translate(W/2,titleY-10);X.rotate(t*0.3);
+  X.strokeStyle='#ffaa2230';X.lineWidth=2;
+  X.beginPath();X.arc(0,0,isMobile?60:80,0,Math.PI*2);X.stroke();
+  for(let i=0;i<8;i++){
+    const a=i*Math.PI/4;
+    X.beginPath();X.moveTo(Math.cos(a)*(isMobile?55:75),Math.sin(a)*(isMobile?55:75));
+    X.lineTo(Math.cos(a)*(isMobile?65:85),Math.sin(a)*(isMobile?65:85));X.stroke();
+  }
+  X.restore();
+
+  // Title
+  X.font='bold '+(isMobile?'28':'40')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.shadowColor='#ffaa22';X.shadowBlur=20;
+  X.fillStyle='#ffaa22';
+  X.fillText('WHEEL OF',W/2,titleY-20);
+  X.fillText('FAITH',W/2,titleY+20);
+  X.shadowBlur=0;
+
+  X.font=(isMobile?'11':'14')+'px Consolas,Courier New,monospace';
+  X.fillStyle='#888';
+  X.fillText('15 Races // '+ARCHETYPES.length+' Archetypes // Real-Time Battle',W/2,titleY+55);
+
+  // Floating race icons
+  const iconR=isMobile?12:16;
+  const iconSpacing=Math.min(40,Math.floor((W-40)/Math.ceil(RACES.length/2)));
+  for(let row=0;row<2;row++){
+    const startIdx=row*Math.ceil(RACES.length/2);
+    const endIdx=Math.min(startIdx+Math.ceil(RACES.length/2),RACES.length);
+    const rowCount=endIdx-startIdx;
+    for(let i=startIdx;i<endIdx;i++){
+      const r=RACES[i];const ci=i-startIdx;
+      const bx=W/2+(ci-(rowCount-1)/2)*iconSpacing;
+      const by=titleY+90+row*40+Math.sin(t+i*0.7)*5;
+      const g=X.createRadialGradient(bx-iconR*0.2,by-iconR*0.2,iconR*0.1,bx,by,iconR);
+      g.addColorStop(0,lighten(r.color,40));g.addColorStop(1,r.color);
+      X.beginPath();X.arc(bx,by,iconR,0,Math.PI*2);X.fillStyle=g;X.fill();
+      X.strokeStyle=darken(r.color,20);X.lineWidth=1;X.stroke();
+    }
+  }
+
+  const btnW=200,btnH=50,btnX=W/2-btnW/2;
+  let btnY=titleY+185;
+  addBtn('create',btnX,btnY,btnW,btnH,'CREATE CHARACTER','#ffaa22',()=>{
+    screen='spin';wheelStep=0;spinState={phase:'idle',angle:0,speed:0,result:null};
+    currentChar={name:'',race:null,subRace:null,archetype:null,weapon:null,element:null,weakness:null,companion:null,stats:{str:5,spd:5,iq:5,dur:5},traits:[]};
+  });
+  btnY+=60;
+  addBtn('roster',btnX,btnY,btnW,btnH,'MY ROSTER ('+savedChars.length+')','#4488cc',()=>{screen='roster';selectPage=0;});
+  btnY+=60;
+  if(savedChars.length>=2){
+    addBtn('battle',btnX,btnY,btnW,btnH,'BATTLE','#cc4444',()=>{screen='battleSelect';selectPage=0;battleSelectP1=0;battleSelectP2=1;});
+    btnY+=60;
+  }
+
+  X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
+  X.fillText('WoF v1.0.0 // soloforte.ai',W/2,H-20);
+  buttons.forEach(drawBtn);
+}
+
+// ============================================================
+// DRAW: WHEEL SPIN SCREEN
+// ============================================================
+function drawSpin(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+
+  const wheel=WHEEL_ORDER[wheelStep];
+  const items=wheel.items();
+  if(items.length===0){wheelStep++;return;}
+
+  // Header
+  X.font='bold '+(isMobile?'18':'24')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.fillStyle='#ffaa22';
+  X.fillText('SPIN '+( wheelStep+1)+'/'+WHEEL_ORDER.length+': '+wheel.label,W/2,30);
+
+  // Progress bar
+  const pbW=W-60,pbH=8,pbX=30,pbY=50;
+  X.fillStyle='#222';drawRoundRect(pbX,pbY,pbW,pbH,4);X.fill();
+  const prog=(wheelStep/WHEEL_ORDER.length)*pbW;
+  X.fillStyle='#ffaa22';drawRoundRect(pbX,pbY,Math.max(8,prog),pbH,4);X.fill();
+
+  // Draw wheel
+  const cx=W/2,cy=isMobile?220:210,wr=isMobile?110:130;
+  const sliceAngle=Math.PI*2/items.length;
+
+  X.save();X.translate(cx,cy);X.rotate(-spinState.angle);
+  for(let i=0;i<items.length;i++){
+    const startA=i*sliceAngle;
+    const endA=(i+1)*sliceAngle;
+    X.beginPath();X.moveTo(0,0);X.arc(0,0,wr,startA,endA);X.closePath();
+    X.fillStyle=i%2===0?items[i].color:darken(items[i].color,30);X.fill();
+    X.strokeStyle='#0a0a1a';X.lineWidth=2;X.stroke();
+    // Label
+    const labelA=startA+sliceAngle/2;
+    const lr=wr*0.65;
+    X.save();X.translate(Math.cos(labelA)*lr,Math.sin(labelA)*lr);
+    X.rotate(labelA+Math.PI/2);
+    X.font='bold '+(items.length>12?'8':'10')+'px Consolas,Courier New,monospace';
+    X.fillStyle='#fff';X.textAlign='center';X.textBaseline='middle';
+    const lbl=items[i].label.length>10?items[i].label.substring(0,9)+'.':items[i].label;
+    X.fillText(lbl,0,0);
+    X.restore();
+  }
+  X.restore();
+
+  // Pointer
+  X.beginPath();X.moveTo(cx,cy-wr-15);X.lineTo(cx-10,cy-wr-30);X.lineTo(cx+10,cy-wr-30);X.closePath();
+  X.fillStyle='#ffaa22';X.fill();
+
+  // Center circle
+  X.beginPath();X.arc(cx,cy,20,0,Math.PI*2);X.fillStyle='#1a1a2a';X.fill();
+  X.strokeStyle='#ffaa22';X.lineWidth=2;X.stroke();
+
+  // Spin button or result
+  if(spinState.phase==='idle'){
+    addBtn('spin',W/2-60,cy+wr+30,120,40,'SPIN!','#ffaa22',()=>{startSpin();});
+  }else if(spinState.phase==='landed'&&spinState.result){
+    X.font='bold '+(isMobile?'14':'18')+'px Consolas,Courier New,monospace';
+    X.fillStyle='#fff';X.textAlign='center';
+    X.fillText(spinState.result.label+'!',W/2,cy+wr+30);
+
+    // Show result details
+    const d=spinState.result.data;
+    X.font=(isMobile?'11':'13')+'px Consolas,Courier New,monospace';
+    X.fillStyle='#aaa';
+    if(d.desc)X.fillText(d.desc,W/2,cy+wr+50);
+    if(d.trait)X.fillText(d.trait,W/2,cy+wr+50);
+    if(d.str!==undefined){
+      const statStr='STR:'+((d.str>=0?'+':'')+d.str)+' SPD:'+((d.spd>=0?'+':'')+d.spd)+' IQ:'+((d.iq>=0?'+':'')+d.iq)+' DUR:'+((d.dur>=0?'+':'')+d.dur);
+      X.fillText(statStr,W/2,cy+wr+68);
+    }
+
+    addBtn('next',W/2-60,cy+wr+85,120,36,'NEXT >>','#ffaa22',()=>{
+      wheelStep++;spinState={phase:'idle',angle:0,speed:0,result:null};
+      if(wheelStep>=WHEEL_ORDER.length)screen='charDone';
+    });
+  }
+
+  // Current stats sidebar
+  const sx=isMobile?10:W-160,sy=isMobile?cy+wr+130:70;
+  X.font='bold 12px Consolas,Courier New,monospace';X.textAlign='left';
+  X.fillStyle='#ffaa22';X.fillText('CURRENT BUILD:',sx,sy);
+  X.font='11px Consolas,Courier New,monospace';X.fillStyle='#ccc';
+  let ly=sy+18;
+  if(currentChar.race){X.fillText('Race: '+currentChar.race.name,sx,ly);ly+=15;}
+  if(currentChar.subRace){X.fillText('Sub: '+currentChar.subRace.name,sx,ly);ly+=15;}
+  if(currentChar.archetype){X.fillText('Class: '+currentChar.archetype.name,sx,ly);ly+=15;}
+  if(currentChar.element){X.fillText('Element: '+currentChar.element.name,sx,ly);ly+=15;}
+  if(currentChar.weapon){X.fillText('Weapon: '+currentChar.weapon.name,sx,ly);ly+=15;}
+  if(currentChar.companion){X.fillText('Companion: '+currentChar.companion.name,sx,ly);ly+=15;}
+  ly+=5;
+  X.fillStyle='#ff6644';X.fillText('STR: '+currentChar.stats.str,sx,ly);ly+=14;
+  X.fillStyle='#44aaff';X.fillText('SPD: '+currentChar.stats.spd,sx,ly);ly+=14;
+  X.fillStyle='#ffcc44';X.fillText('IQ:  '+currentChar.stats.iq,sx,ly);ly+=14;
+  X.fillStyle='#44cc88';X.fillText('DUR: '+currentChar.stats.dur,sx,ly);
+
+  addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+  buttons.forEach(drawBtn);
+}
+
+// ============================================================
+// DRAW: CHARACTER DONE
+// ============================================================
+function drawCharDone(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+
+  X.font='bold '+(isMobile?'22':'30')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.shadowColor='#ffaa22';X.shadowBlur=15;X.fillStyle='#ffaa22';
+  X.fillText('CHARACTER CREATED!',W/2,40);X.shadowBlur=0;
+
+  // Draw character card
+  const cardW=Math.min(W-40,400),cardH=isMobile?420:350;
+  const cardX=W/2-cardW/2,cardY=70;
+  drawRoundRect(cardX,cardY,cardW,cardH,12);
+  X.fillStyle='#111128';X.fill();
+  X.strokeStyle=currentChar.race?currentChar.race.color:'#ffaa22';X.lineWidth=2;X.stroke();
+
+  // Character ball
+  const ballR=30,ballX=cardX+50,ballY=cardY+50;
+  const rc=currentChar.race?currentChar.race.color:'#888';
+  const bg=X.createRadialGradient(ballX-ballR*0.2,ballY-ballR*0.2,ballR*0.1,ballX,ballY,ballR);
+  bg.addColorStop(0,lighten(rc,40));bg.addColorStop(1,rc);
+  X.beginPath();X.arc(ballX,ballY,ballR,0,Math.PI*2);X.fillStyle=bg;X.fill();
+  X.strokeStyle=darken(rc,20);X.lineWidth=2;X.stroke();
+  X.beginPath();X.arc(ballX-ballR*0.25,ballY-ballR*0.25,ballR*0.15,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.3)';X.fill();
+
+  // Info
+  const tx=ballX+ballR+20;let ty=cardY+30;
+  X.font='bold 16px Consolas,Courier New,monospace';X.textAlign='left';
+  X.fillStyle='#fff';
+  const charName=currentChar.name||'Unnamed Hero';
+  X.fillText(charName,tx,ty);ty+=22;
+
+  X.font='13px Consolas,Courier New,monospace';X.fillStyle='#ccc';
+  if(currentChar.subRace)X.fillText(currentChar.subRace.name+' '+currentChar.race.name,tx,ty);
+  else if(currentChar.race)X.fillText(currentChar.race.name,tx,ty);
+  ty+=18;
+  if(currentChar.archetype){X.fillText(currentChar.archetype.name,tx,ty);ty+=18;}
+  if(currentChar.element){X.fillStyle=currentChar.element.color;X.fillText(currentChar.element.name+' Element',tx,ty);ty+=18;}
+
+  // Stats
+  ty=cardY+120;const statX=cardX+20;
+  const stats=[
+    {label:'STR',val:currentChar.stats.str,color:'#ff6644',max:15},
+    {label:'SPD',val:currentChar.stats.spd,color:'#44aaff',max:15},
+    {label:'IQ',val:currentChar.stats.iq,color:'#ffcc44',max:15},
+    {label:'DUR',val:currentChar.stats.dur,color:'#44cc88',max:15},
+  ];
+  const barW=cardW-80;
+  stats.forEach(s=>{
+    X.font='bold 12px Consolas,Courier New,monospace';X.textAlign='left';
+    X.fillStyle=s.color;X.fillText(s.label,statX,ty);
+    X.fillText(s.val,statX+barW+10,ty);
+    // Bar
+    const bx=statX+35,bw=barW-40,bh=10;
+    X.fillStyle='#222';drawRoundRect(bx,ty-7,bw,bh,3);X.fill();
+    const filled=Math.max(0,Math.min(1,s.val/s.max))*bw;
+    X.fillStyle=s.color;drawRoundRect(bx,ty-7,Math.max(4,filled),bh,3);X.fill();
+    ty+=25;
+  });
+
+  // Equipment & traits
+  ty+=5;X.font='12px Consolas,Courier New,monospace';X.fillStyle='#aaa';X.textAlign='left';
+  if(currentChar.weapon){X.fillText('Weapon: '+currentChar.weapon.name+' (DMG:'+currentChar.weapon.dmg+')',statX,ty);ty+=16;}
+  if(currentChar.companion&&currentChar.companion.id!=='none'){X.fillText('Companion: '+currentChar.companion.name,statX,ty);ty+=16;}
+  if(currentChar.weakness){X.fillStyle='#cc4444';X.fillText('Weakness: '+currentChar.weakness.name,statX,ty);ty+=16;}
+
+  // Traits
+  if(currentChar.traits.length>0){
+    ty+=5;X.fillStyle='#888';X.font='11px Consolas,Courier New,monospace';
+    currentChar.traits.forEach(t=>{
+      if(ty<cardY+cardH-10){X.fillText('• '+t,statX,ty);ty+=14;}
+    });
+  }
+
+  // Name input prompt
+  const nameY=cardY+cardH+20;
+  addBtn('nameChar',W/2-100,nameY,200,36,'NAME CHARACTER','#ffaa22',()=>{
+    const name=prompt('Name your character:');
+    if(name&&name.trim()){
+      currentChar.name=name.trim().substring(0,20);
+      savedChars.push(JSON.parse(JSON.stringify(currentChar)));
+      saveChars();
+      screen='title';
+    }
+  });
+
+  addBtn('skip',W/2-60,nameY+45,120,30,'SKIP (Random)','#888',()=>{
+    const names=['Ragnor','Zelda','Thorne','Lyra','Kael','Vex','Nyx','Ash','Storm','Blaze','Dusk','Fang','Nova','Echo','Rune','Sable'];
+    currentChar.name=pick(names);
+    savedChars.push(JSON.parse(JSON.stringify(currentChar)));
+    saveChars();
+    screen='title';
+  });
+
+  addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+  buttons.forEach(drawBtn);
+}
+
+// ============================================================
+// DRAW: ROSTER
+// ============================================================
+function drawRoster(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+
+  X.font='bold '+(isMobile?'20':'26')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.shadowColor='#4488cc';X.shadowBlur=15;X.fillStyle='#4488cc';
+  X.fillText('MY ROSTER ('+savedChars.length+')',W/2,30);X.shadowBlur=0;
+
+  if(savedChars.length===0){
+    X.font='14px Consolas,Courier New,monospace';X.fillStyle='#666';
+    X.fillText('No characters yet. Create one!',W/2,H/2);
+    addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+    buttons.forEach(drawBtn);return;
+  }
+
+  const cardH=isMobile?70:65;const startY=55;
+  const perPage=Math.floor((H-startY-50)/cardH);
+  const totalPages=Math.ceil(savedChars.length/perPage);
+  if(selectPage>=totalPages)selectPage=totalPages-1;
+  const pageStart=selectPage*perPage;
+  const pageChars=savedChars.slice(pageStart,pageStart+perPage);
+
+  const cardW=Math.min(W-30,450),cardX=W/2-cardW/2;
+  pageChars.forEach((ch,i)=>{
+    const cy=startY+i*cardH;
+    drawRoundRect(cardX,cy,cardW,cardH-4,8);
+    X.fillStyle='#111128';X.fill();
+    X.strokeStyle=(ch.race?ch.race.color:'#888')+'66';X.lineWidth=1.5;X.stroke();
+
+    // Ball
+    const br=isMobile?16:18;
+    const bx=cardX+br+10,by=cy+cardH/2-2;
+    const rc=ch.race?ch.race.color:'#888';
+    const g=X.createRadialGradient(bx-br*0.2,by-br*0.2,br*0.1,bx,by,br);
+    g.addColorStop(0,lighten(rc,40));g.addColorStop(1,rc);
+    X.beginPath();X.arc(bx,by,br,0,Math.PI*2);X.fillStyle=g;X.fill();
+    X.strokeStyle=darken(rc,20);X.lineWidth=1;X.stroke();
+
+    // Info
+    const tx=bx+br+12;
+    X.font='bold 13px Consolas,Courier New,monospace';X.textAlign='left';X.textBaseline='middle';
+    X.fillStyle='#fff';X.fillText(ch.name||'Unnamed',tx,cy+16);
+    X.font='11px Consolas,Courier New,monospace';X.fillStyle='#aaa';
+    const info=(ch.subRace?ch.subRace.name+' ':'')+
+      (ch.race?ch.race.name:'')+
+      (ch.archetype?' // '+ch.archetype.name:'')+
+      (ch.element?' // '+ch.element.name:'');
+    X.fillText(info.substring(0,45),tx,cy+34);
+
+    // Stats mini
+    X.font='10px Consolas,Courier New,monospace';
+    X.fillStyle='#ff6644';X.fillText('S:'+ch.stats.str,tx,cy+50);
+    X.fillStyle='#44aaff';X.fillText('P:'+ ch.stats.spd,tx+40,cy+50);
+    X.fillStyle='#ffcc44';X.fillText('I:'+ch.stats.iq,tx+80,cy+50);
+    X.fillStyle='#44cc88';X.fillText('D:'+ch.stats.dur,tx+120,cy+50);
+
+    // Delete btn
+    addBtn('del'+i,cardX+cardW-35,cy+cardH/2-12,25,24,'X','#cc4444',()=>{
+      savedChars.splice(pageStart+i,1);saveChars();
+    });
+  });
+
+  // Page nav
+  if(totalPages>1){
+    const navY=H-40;
+    X.font='bold 13px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#888';
+    X.fillText((selectPage+1)+'/'+totalPages,W/2,navY);
+    if(selectPage>0)addBtn('rPrev',W/2-100,navY-12,50,24,'PREV','#4488cc',()=>{selectPage--;});
+    if(selectPage<totalPages-1)addBtn('rNext',W/2+50,navY-12,50,24,'NEXT','#4488cc',()=>{selectPage++;});
+  }
+
+  addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+  buttons.forEach(drawBtn);
+}
+
+// ============================================================
+// DRAW: BATTLE SELECT
+// ============================================================
+let battleSelectP1=0,battleSelectP2=1;
+function drawBattleSelect(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+
+  X.font='bold '+(isMobile?'20':'26')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.shadowColor='#cc4444';X.shadowBlur=15;X.fillStyle='#cc4444';
+  X.fillText('SELECT FIGHTERS',W/2,30);X.shadowBlur=0;
+
+  if(savedChars.length<2){
+    X.font='14px Consolas,Courier New,monospace';X.fillStyle='#666';
+    X.fillText('Need at least 2 characters!',W/2,H/2);
+    addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+    buttons.forEach(drawBtn);return;
+  }
+
+  // P1 selection
+  const p1=savedChars[battleSelectP1];
+  const p2=savedChars[battleSelectP2];
+  const colW=(W-40)/2;
+
+  // P1 column
+  drawFighterCard(20,60,colW-10,p1,'P1','#4488ff');
+  addBtn('p1prev',20,60+200,50,30,'<','#4488ff',()=>{battleSelectP1=(battleSelectP1-1+savedChars.length)%savedChars.length;if(battleSelectP1===battleSelectP2)battleSelectP1=(battleSelectP1-1+savedChars.length)%savedChars.length;});
+  addBtn('p1next',colW-40,60+200,50,30,'>','#4488ff',()=>{battleSelectP1=(battleSelectP1+1)%savedChars.length;if(battleSelectP1===battleSelectP2)battleSelectP1=(battleSelectP1+1)%savedChars.length;});
+
+  // VS
+  X.font='bold 24px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#ffaa22';
+  X.fillText('VS',W/2,170);
+
+  // P2 column
+  drawFighterCard(W/2+10,60,colW-10,p2,'P2','#cc4444');
+  addBtn('p2prev',W/2+10,60+200,50,30,'<','#cc4444',()=>{battleSelectP2=(battleSelectP2-1+savedChars.length)%savedChars.length;if(battleSelectP2===battleSelectP1)battleSelectP2=(battleSelectP2-1+savedChars.length)%savedChars.length;});
+  addBtn('p2next',W-50,60+200,50,30,'>','#cc4444',()=>{battleSelectP2=(battleSelectP2+1)%savedChars.length;if(battleSelectP2===battleSelectP1)battleSelectP2=(battleSelectP2+1)%savedChars.length;});
+
+  // Fight button
+  addBtn('fight',W/2-80,H-90,160,50,'FIGHT!','#cc4444',()=>{
+    initBattle(savedChars[battleSelectP1],savedChars[battleSelectP2]);
+    screen='battle';
+  });
+
+  addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+  buttons.forEach(drawBtn);
+}
+
+function drawFighterCard(x,y,w,ch,label,color){
+  drawRoundRect(x,y,w,190,8);X.fillStyle='#111128';X.fill();
+  X.strokeStyle=color;X.lineWidth=2;X.stroke();
+
+  // Label
+  X.font='bold 14px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
+  X.fillStyle=color;X.fillText(label,x+w/2,y+16);
+
+  // Ball
+  const rc=ch.race?ch.race.color:'#888';
+  const br=22,bx=x+w/2,by=y+55;
+  const g=X.createRadialGradient(bx-br*0.2,by-br*0.2,br*0.1,bx,by,br);
+  g.addColorStop(0,lighten(rc,40));g.addColorStop(1,rc);
+  X.beginPath();X.arc(bx,by,br,0,Math.PI*2);X.fillStyle=g;X.fill();
+  X.strokeStyle=darken(rc,20);X.lineWidth=1.5;X.stroke();
+
+  // Name
+  X.font='bold 13px Consolas,Courier New,monospace';X.fillStyle='#fff';
+  X.fillText(ch.name||'Unnamed',x+w/2,y+90);
+  X.font='10px Consolas,Courier New,monospace';X.fillStyle='#aaa';
+  X.fillText((ch.subRace?ch.subRace.name+' ':'')+( ch.race?ch.race.name:''),x+w/2,y+106);
+  if(ch.archetype)X.fillText(ch.archetype.name,x+w/2,y+120);
+
+  // Stats
+  X.font='10px Consolas,Courier New,monospace';X.textAlign='left';
+  const sx=x+10;
+  X.fillStyle='#ff6644';X.fillText('STR:'+ch.stats.str,sx,y+140);
+  X.fillStyle='#44aaff';X.fillText('SPD:'+ch.stats.spd,sx+w/2,y+140);
+  X.fillStyle='#ffcc44';X.fillText('IQ:'+ch.stats.iq,sx,y+156);
+  X.fillStyle='#44cc88';X.fillText('DUR:'+ch.stats.dur,sx+w/2,y+156);
+
+  // Element
+  if(ch.element){
+    X.textAlign='center';X.fillStyle=ch.element.color;X.font='10px Consolas,Courier New,monospace';
+    X.fillText(ch.element.name,x+w/2,y+175);
+  }
+}
+
+// ============================================================
+// BATTLE ENGINE
+// ============================================================
+function initBattle(ch1,ch2){
+  const makeHP=(dur)=>50+dur*8;
+  battleState={
+    f1:{...ch1,hp:makeHP(ch1.stats.dur),maxHp:makeHP(ch1.stats.dur),x:W*0.25,y:H/2,vx:0,vy:0,atkCd:0,side:'left',alive:true,facing:1},
+    f2:{...ch2,hp:makeHP(ch2.stats.dur),maxHp:makeHP(ch2.stats.dur),x:W*0.75,y:H/2,vx:0,vy:0,atkCd:0,side:'right',alive:true,facing:-1},
+    phase:'intro',introTimer:120,winner:null,resultTimer:0,
+  };
+  battleTime=0;battleParticles=[];
+}
+
+function updateBattle(){
+  if(!battleState)return;
+  battleTime++;
+
+  if(battleState.phase==='intro'){
+    battleState.introTimer--;
+    if(battleState.introTimer<=0)battleState.phase='fight';
+    return;
+  }
+  if(battleState.phase==='result'){
+    battleState.resultTimer++;
+    return;
+  }
+
+  const f1=battleState.f1,f2=battleState.f2;
+  if(!f1.alive||!f2.alive)return;
+
+  // AI movement — move toward opponent
+  [f1,f2].forEach(f=>{
+    const enemy=f===f1?f2:f1;
+    const dx=enemy.x-f.x,dy=enemy.y-f.y;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    const spd=1.5+f.stats.spd*0.3;
+
+    // Move toward enemy
+    if(dist>60){
+      f.x+=dx/dist*spd;
+      f.y+=dy/dist*spd;
+    }else if(dist<40){
+      f.x-=dx/dist*spd*0.5;
+      f.y-=dy/dist*spd*0.5;
+    }
+    // Add some lateral movement based on IQ (smarter = more evasive)
+    f.x+=Math.sin(battleTime*0.05+f.x)*f.stats.iq*0.15;
+    f.y+=Math.cos(battleTime*0.04+f.y)*f.stats.iq*0.1;
+
+    // Keep in bounds
+    f.x=clamp(f.x,30,W-30);f.y=clamp(f.y,80,H-60);
+
+    // Attack
+    if(f.atkCd<=0&&dist<80){
+      const enemy2=f===f1?f2:f1;
+      const baseDmg=f.stats.str+(f.weapon?f.weapon.dmg:1);
+      const def=enemy2.stats.dur*0.5;
+      let dmg=Math.max(1,Math.round(baseDmg-def+rand(-1,2)));
+      // Element bonus
+      if(f.element&&enemy2.element&&f.element.strong===enemy2.element.id)dmg=Math.round(dmg*1.5);
+      // Crit chance
+      const critChance=5+f.stats.iq*2;
+      const isCrit=rand(1,100)<=critChance;
+      if(isCrit){dmg=Math.round(dmg*1.8);SFX.crit();}else{SFX.hit();}
+
+      enemy2.hp-=dmg;
+      // Spawn damage number
+      battleParticles.push({x:enemy2.x,y:enemy2.y-20,text:isCrit?dmg+'!':''+dmg,color:isCrit?'#ffcc00':'#ff4444',life:40,vy:-1.5});
+
+      f.atkCd=Math.max(15,50-f.stats.spd*3);
+
+      if(enemy2.hp<=0){
+        enemy2.hp=0;enemy2.alive=false;
+        battleState.winner=f;
+        battleState.phase='result';
+        SFX.victory();
+      }
+    }
+    if(f.atkCd>0)f.atkCd--;
+  });
+
+  // Update particles
+  for(let i=battleParticles.length-1;i>=0;i--){
+    const p=battleParticles[i];
+    p.y+=p.vy;p.life--;
+    if(p.life<=0)battleParticles.splice(i,1);
+  }
+}
+
+function drawBattle(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  if(!battleState)return;
+
+  // Arena floor
+  X.strokeStyle='#1a1a3a';X.lineWidth=1;
+  for(let i=0;i<W;i+=30){X.beginPath();X.moveTo(i,0);X.lineTo(i,H);X.stroke();}
+  for(let i=0;i<H;i+=30){X.beginPath();X.moveTo(0,i);X.lineTo(W,i);X.stroke();}
+
+  const f1=battleState.f1,f2=battleState.f2;
+
+  // Intro
+  if(battleState.phase==='intro'){
+    const prog=1-battleState.introTimer/120;
+    X.font='bold 20px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
+    if(prog<0.3){
+      X.fillStyle='#4488ff';X.fillText(f1.name||'P1',W*0.25,H/2);
+    }else if(prog<0.6){
+      X.fillStyle='#ffaa22';X.fillText('VS',W/2,H/2);
+    }else if(prog<0.85){
+      X.fillStyle='#cc4444';X.fillText(f2.name||'P2',W*0.75,H/2);
+    }else{
+      const countdown=Math.ceil((1-prog)*120/6);
+      X.fillStyle='#fff';X.font='bold 40px Consolas,Courier New,monospace';
+      X.fillText(countdown<=0?'FIGHT!':''+countdown,W/2,H/2);
+    }
+    buttons.forEach(drawBtn);return;
+  }
+
+  // HP bars
+  drawHPBar(10,10,W/2-20,f1,'#4488ff');
+  drawHPBar(W/2+10,10,W/2-20,f2,'#cc4444');
+
+  // Draw fighters
+  [f1,f2].forEach(f=>{
+    if(!f.alive){X.globalAlpha=0.3;}
+    const rc=f.race?f.race.color:'#888';
+    const br=22;
+    const g=X.createRadialGradient(f.x-br*0.2,f.y-br*0.2,br*0.1,f.x,f.y,br);
+    g.addColorStop(0,lighten(rc,40));g.addColorStop(1,rc);
+    X.beginPath();X.arc(f.x,f.y,br,0,Math.PI*2);X.fillStyle=g;X.fill();
+    X.strokeStyle=darken(rc,20);X.lineWidth=2;X.stroke();
+    X.beginPath();X.arc(f.x-br*0.25,f.y-br*0.25,br*0.15,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.3)';X.fill();
+    // Name
+    X.font='bold 10px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
+    X.fillStyle='#fff';X.fillText(f.name||'???',f.x,f.y+br+12);
+    X.globalAlpha=1;
+  });
+
+  // Damage particles
+  battleParticles.forEach(p=>{
+    X.globalAlpha=p.life/40;
+    X.font='bold 14px Consolas,Courier New,monospace';X.textAlign='center';
+    X.fillStyle=p.color;X.fillText(p.text,p.x,p.y);
+    X.globalAlpha=1;
+  });
+
+  // Result
+  if(battleState.phase==='result'){
+    X.fillStyle='rgba(0,0,0,0.6)';X.fillRect(0,H/2-60,W,120);
+    X.font='bold '+(isMobile?'22':'30')+'px Consolas,Courier New,monospace';X.textAlign='center';
+    X.fillStyle='#ffaa22';
+    X.fillText((battleState.winner.name||'???')+' WINS!',W/2,H/2-10);
+    X.font='14px Consolas,Courier New,monospace';X.fillStyle='#aaa';
+    X.fillText('HP remaining: '+battleState.winner.hp+'/'+battleState.winner.maxHp,W/2,H/2+20);
+    if(battleState.resultTimer>60){
+      addBtn('again',W/2-100,H/2+40,90,32,'REMATCH','#ffaa22',()=>{initBattle(savedChars[battleSelectP1],savedChars[battleSelectP2]);});
+      addBtn('menu',W/2+10,H/2+40,90,32,'MENU','#888',()=>{screen='title';battleState=null;});
+    }
+  }
+
+  buttons.forEach(drawBtn);
+}
+
+function drawHPBar(x,y,w,f,color){
+  const h=22;
+  drawRoundRect(x,y,w,h,4);X.fillStyle='#111';X.fill();
+  const pct=clamp(f.hp/f.maxHp,0,1);
+  const barColor=pct>0.5?color:pct>0.25?'#ffaa22':'#cc2222';
+  if(pct>0){drawRoundRect(x+2,y+2,Math.max(4,(w-4)*pct),h-4,3);X.fillStyle=barColor;X.fill();}
+  X.font='bold 11px Consolas,Courier New,monospace';X.textAlign='left';X.textBaseline='middle';
+  X.fillStyle='#fff';X.fillText((f.name||'???')+' '+f.hp+'/'+f.maxHp,x+6,y+h/2);
+}
+
+// ============================================================
+// INPUT
+// ============================================================
+function handleClick(mx,my){
+  SFX.click();
+  for(const b of buttons){
+    if(mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h){
+      if(b.cb)b.cb();return;
+    }
+  }
+}
+function handleMove(mx,my){
+  buttons.forEach(b=>{b.hover=mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h;});
+}
+C.addEventListener('click',e=>{const p=gmp(e);handleClick(p.x,p.y);});
+C.addEventListener('mousemove',e=>{const p=gmp(e);handleMove(p.x,p.y);});
+C.addEventListener('touchstart',e=>{e.preventDefault();const p=gmp(e);handleClick(p.x,p.y);},{passive:false});
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+let lastTime=0;
+function loop(time){
+  const dpr=window.devicePixelRatio||1;X.setTransform(dpr,0,0,dpr,0,0);X.save();X.scale(sc,sc);
+  switch(screen){
+    case 'title':drawTitle();break;
+    case 'spin':updateSpin();drawSpin();break;
+    case 'charDone':drawCharDone();break;
+    case 'roster':drawRoster();break;
+    case 'battleSelect':drawBattleSelect();break;
+    case 'battle':updateBattle();drawBattle();break;
+  }
+  X.restore();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(t=>{lastTime=t;loop(t);});
+
+</script>
+<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(function(){});}</script>
+</body>
+</html>
