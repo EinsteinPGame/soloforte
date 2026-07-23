@@ -405,10 +405,10 @@ const CHARS=[
   },
   {
     id:'mahito',name:'Mahito',color:'#5a8a8a',
-    desc:'Idle Transfiguration: soul-touching strikes that shrink and warp enemies. Domain: Self-Embodiment of Perfection.',
+    desc:'Spiked mace arm builds Transfiguration charges. 7 charges = enemy transformed. Charges decay into thrown Transfigured Human. Domain floods charges.',
     playstyle:'Control & Transfigure',
-    stats:{hp:520,atk:24,speed:3.8,range:80,def:7,crit:14},
-    baseAtkInterval:38,relicChargeRate:0.85,
+    stats:{hp:510,atk:26,speed:3.9,range:65,def:6,crit:12},
+    baseAtkInterval:42,relicChargeRate:0.85,
     specialName:'SELF-EMBODIMENT OF PERFECTION',
   },
   {
@@ -1013,7 +1013,7 @@ const PERSONALIZED_WIN_BUFFS={
   kashimo:{name:'Lightning Charge',desc:'Special charges 15% faster',apply(f){f._kashimoChargeMult=(f._kashimoChargeMult||1)*1.15;}},
   yuki:{name:'Gravitational Density',desc:'Mass meter max +15',apply(f){f.yukiMassMax=(f.yukiMassMax||100)+15;}},
   megumi:{name:'Shadow Resonance',desc:'Shadow meter gains +25%',apply(f){f._megumiMeterGainMult=(f._megumiMeterGainMult||1)*1.25;}},
-  mahito:{name:'Soul Sculptor',desc:'Transfigure chance +10%',apply(f){f._mahitoTransfigureBonus=(f._mahitoTransfigureBonus||0)+0.10;}},
+  mahito:{name:'Soul Sculptor',desc:'Charge decay +1s slower',apply(f){f._mahitoDecayBonus=(f._mahitoDecayBonus||0)+60;}},
 };
 
 // ============================================================
@@ -1397,9 +1397,15 @@ function createFighter(charIdx,elemIdx,side){
     attackPhase:0, // for multi-hit combos (gorilla: 0=left,1=right,2=downslam; mantis: 0=left,1=right)
     attackAnim:0, // visual animation timer
     attackSide:1, // mantis: 1=left slash, -1=right slash
-    // Mahito transfigure debuff (any fighter can be transfigured)
+    // Mahito transfigure state (any fighter can be transfigured)
+    mahitoChargeCount:0, // charges on this fighter
+    mahitoChargeDecay:0, // decay timer (frames)
+    mahitoTransformed:false, // fully transformed into creature
+    mahitoTransformTimer:0, // transform duration
+    mahitoTransformImmune:0, // brief immunity after reverting
+    mahitoTransfiguredBy:null, // reference to Mahito fighter
+    // Legacy compat
     mahitoShrinkTimer:0,
-    mahitoTransfiguredBy:null,
     // Chaos & scaling
     totalHits:0,
     // Special / Relic
@@ -1687,13 +1693,12 @@ function createFighter(charIdx,elemIdx,side){
     megumiDomainSerpentCD:0,
     megumiDomainElephantCD:0,
     megumiDomainDeerCD:0,
-    // Mahito state — Control & Transfigure
-    mahitoHitCount:0, // tracks hits for blade arm morph (every 5th)
-    mahitoTransfigured:false, // enemy currently transfigured
-    mahitoTransfigureTimer:0, // remaining transfigure debuff time
-    mahitoDomainActive:false, // Self-Embodiment of Perfection active
-    mahitoDomainTimer:0, // domain duration
-    mahitoPassiveTriggered:false, // Instant Spirit Body one-time passive
+    // Mahito state — Charge-based Transfiguration
+    mahitoCharges:{}, // per-target charge tracking: {targetSide: {count, decayTimer}}
+    mahitoDomainActive:false,
+    mahitoDomainTimer:0,
+    mahitoDomainRadius:250,
+    mahitoProjectiles:[], // Transfigured Human projectiles in flight
     // Yuki Tsukumo state — Mass & Garuda
     yukiMass:0, // 0-100 mass meter
     yukiMassMax:100,
@@ -4657,46 +4662,82 @@ function attackMahito(f,enemy,chaos){
   const d=dist(f,enemy);
   const effectiveRange=f.range+enemy.radius+chaos*5;
   if(d>effectiveRange)return;
+  if(enemy.mahitoTransformed)return; // can't hit transformed creatures with normal attack
 
-  f.mahitoHitCount++;
-  const transfigureChance=f.mahitoDomainActive?1.0:(0.25+(f._mahitoTransfigureBonus||0));
+  SFX.hit();
+  const atkSpeedMult=f.mahitoDomainActive?1.2:1.0;
+  const dmg=f.atk*(1+chaos*0.06)*atkSpeedMult;
+  dealDamage(f,enemy,dmg,true);
+  spawnBurst(enemy.x,enemy.y,'#5a8a8a',5,3);
 
-  // Every 5th hit: blade arm morph — extended range, 1.4x dmg
-  const isBladeArm=f.mahitoHitCount%5===0;
-  if(isBladeArm){
-    SFX.slash();
-    const dmg=f.atk*1.4*(1+chaos*0.06)*(f.mahitoDomainActive?1.2:1.0);
-    dealDamage(f,enemy,dmg,true);
-    spawnBurst(enemy.x,enemy.y,'#3a7a7a',10,5);
-    spawnDmgNum(enemy.x,enemy.y-20,'BLADE ARM!','#5a8a8a',false);
-  } else {
-    SFX.hit();
-    const dmg=f.atk*(1+chaos*0.06)*(f.mahitoDomainActive?1.2:1.0);
-    dealDamage(f,enemy,dmg,true);
-    spawnBurst(enemy.x,enemy.y,'#5a8a8a',5,3);
-  }
-
-  // Transfigure chance
-  let actualChance=transfigureChance;
-  if(enemy.char.id==='yuji')actualChance*=0.5;
-  if(!enemy.mahitoTransfiguredBy&&Math.random()<actualChance){
+  // Apply Transfiguration Charge
+  if(enemy.mahitoTransformImmune<=0){
+    const chargeThreshold=7;
+    enemy.mahitoChargeCount=Math.min(chargeThreshold,(enemy.mahitoChargeCount||0)+1);
+    enemy.mahitoChargeDecay=240; // 4 seconds at 60fps
     enemy.mahitoTransfiguredBy=f;
-    enemy.mahitoShrinkTimer=120;
-    enemy.atk=Math.round(enemy.baseAtk*0.8);
-    spawnDmgNum(enemy.x,enemy.y-30,'TRANSFIGURED!','#5a8a8a',false);
-    SFX.transfigure();
-    addLog((f.side===0?'P1':'P2')+' transfigures '+(enemy.side===0?'P1':'P2')+'!');
+
+    // Speed reduction per charge (nonlinear: 5,5,6,6,8,10 = cumulative 5,10,16,22,30,40%)
+    const speedReductions=[0,0.05,0.10,0.16,0.22,0.30,0.40,1.0];
+    const reduction=speedReductions[Math.min(enemy.mahitoChargeCount,7)];
+    enemy.speed=enemy.baseSpeed*(1-reduction);
+
+    // Visual feedback
+    if(enemy.mahitoChargeCount>=5){
+      spawnDmgNum(enemy.x,enemy.y-20,enemy.mahitoChargeCount+'/7','#6b3a7a',false);
+    }else{
+      spawnDmgNum(enemy.x,enemy.y-20,enemy.mahitoChargeCount+'/7','#5a8a8a',false);
+    }
+
+    // Check for full transformation
+    if(enemy.mahitoChargeCount>=chargeThreshold){
+      mahitoTransformEnemy(f,enemy);
+    }
   }
 
-  // Domain: heal 2% of damage dealt
-  if(f.mahitoDomainActive){
-    const healAmt=f.atk*0.02;
-    f.hp=Math.min(f.maxHp,f.hp+healAmt);
-  }
-
-  // Knockback
+  // Light knockback (intentionally low — Mahito wants enemies close)
   const ka=angle(f,enemy);
-  enemy.vx+=Math.cos(ka)*1.5;enemy.vy+=Math.sin(ka)*1.5;
+  enemy.vx+=Math.cos(ka)*1.0;enemy.vy+=Math.sin(ka)*1.0;
+}
+
+function mahitoTransformEnemy(mahito,target){
+  target.mahitoTransformed=true;
+  target.mahitoTransformTimer=180; // 3 seconds
+  target.mahitoChargeCount=0;
+  target.mahitoChargeDecay=0;
+  target.speed=target.baseSpeed*0.5; // 50% speed
+  target.def=0; // DEF reduced to 0
+  target._mahitoSavedAtk=target.atk;
+  target.atk=0; // cannot attack
+  target.mahitoShrinkTimer=180; // legacy visual compat
+  SFX.transfigure();
+  triggerScreenFlash('#5a8a8a',10);
+  shakeTimer=8;shakeAmt=6;
+  spawnBurst(target.x,target.y,'#6b3a7a',20,8);
+  spawnBurst(target.x,target.y,'#5a8a8a',15,6);
+  spawnDmgNum(target.x,target.y-30,'TRANSFIGURED!','#5a8a8a',true);
+  addLog((mahito.side===0?'P1':'P2')+' TRANSFIGURED '+(target.side===0?'P1':'P2')+'!');
+}
+
+function mahitoDecayCharges(mahito,target){
+  // Charges decayed — throw Transfigured Human projectile
+  const charges=target.mahitoChargeCount;
+  if(charges<=0)return;
+  const dmg=8*charges; // 8 damage per expired charge
+  const a=angle(mahito,target);
+  mahito.mahitoProjectiles.push({
+    x:mahito.x,y:mahito.y,
+    vx:Math.cos(a)*5.5,vy:Math.sin(a)*5.5,
+    dmg:dmg,life:200/5.5, // ~200 units max travel
+    radius:15,
+    targetX:target.x,targetY:target.y
+  });
+  spawnDmgNum(mahito.x,mahito.y-20,'DECAY!','#7a6b5a',false);
+  // Clear charges
+  target.mahitoChargeCount=0;
+  target.mahitoChargeDecay=0;
+  target.speed=target.baseSpeed;
+  target.mahitoTransfiguredBy=null;
 }
 
 function relicMahito(f,enemy){
@@ -4705,8 +4746,26 @@ function relicMahito(f,enemy){
   SFX.megaExplosion();
 
   f.mahitoDomainActive=true;
-  f.mahitoDomainTimer=360; // 6 seconds
-  f.specialTimer=360;
+  f.mahitoDomainTimer=240; // 4 seconds
+  f.specialTimer=240;
+
+  // Instant 4 charges to enemies inside domain
+  const domainR=f.mahitoDomainRadius||250;
+  fighters.forEach(t=>{
+    if(t.side===f.side||t.dead)return;
+    if(dist(f,t)<=domainR&&!t.mahitoTransformed){
+      const prev=t.mahitoChargeCount||0;
+      t.mahitoChargeCount=Math.min(7,prev+4);
+      t.mahitoChargeDecay=240;
+      t.mahitoTransfiguredBy=f;
+      // Apply speed reduction
+      const speedReductions=[0,0.05,0.10,0.16,0.22,0.30,0.40,1.0];
+      t.speed=t.baseSpeed*(1-speedReductions[Math.min(t.mahitoChargeCount,7)]);
+      spawnDmgNum(t.x,t.y-20,'+4 CHARGES ('+t.mahitoChargeCount+'/7)','#6b3a7a',true);
+      // Immediate transform if at threshold
+      if(t.mahitoChargeCount>=7)mahitoTransformEnemy(f,t);
+    }
+  });
 
   spawnBurst(f.x,f.y,'#5a8a8a',40,15);
   spawnBurst(f.x,f.y,'#3a6a6a',30,10);
@@ -4719,18 +4778,63 @@ function relicMahito(f,enemy){
 function updateRelicMahito(f,enemy,dt){
   if(!f.mahitoDomainActive)return;
   f.mahitoDomainTimer-=dt;
+  const domainR=f.mahitoDomainRadius||250;
 
-  // Domain visual: teal circle pulsing
-  if(f.mahitoDomainTimer%20<10){
-    spawnBurst(f.x+rand(-60,60),f.y+rand(-60,60),'#5a8a8a',2,1);
+  // Domain visual: teal particles and fleshy zone
+  if(f.mahitoDomainTimer%15<8){
+    const a=Math.random()*Math.PI*2;const r=Math.random()*domainR;
+    spawnParticle(f.x+Math.cos(a)*r,f.y+Math.sin(a)*r,'#5a8a8a',0,-0.5,25,2);
   }
 
-  // Enemy takes +20% more damage (applied in transfigure chance being 100%)
+  // Ongoing: +1 charge per 1.5s (90 frames) to enemies inside domain
+  if(f.mahitoDomainTimer%90===0&&f.mahitoDomainTimer>0){
+    fighters.forEach(t=>{
+      if(t.side===f.side||t.dead||t.mahitoTransformed)return;
+      if(dist(f,t)<=domainR){
+        t.mahitoChargeCount=Math.min(7,(t.mahitoChargeCount||0)+1);
+        t.mahitoChargeDecay=240; // pause decay inside domain (refresh timer)
+        t.mahitoTransfiguredBy=f;
+        const speedReductions=[0,0.05,0.10,0.16,0.22,0.30,0.40,1.0];
+        t.speed=t.baseSpeed*(1-speedReductions[Math.min(t.mahitoChargeCount,7)]);
+        spawnDmgNum(t.x,t.y-15,t.mahitoChargeCount+'/7','#5a8a8a',false);
+        if(t.mahitoChargeCount>=7)mahitoTransformEnemy(f,t);
+      }
+    });
+  }
+
+  // Mahito attack speed boost inside domain handled in attackMahito
 
   if(f.mahitoDomainTimer<=0){
     f.mahitoDomainActive=false;
-    f.speed=f.baseSpeed;
     addLog((f.side===0?'P1':'P2')+' domain faded');
+  }
+
+}
+
+function updateMahitoProjectiles(f,dt){
+  if(!f.mahitoProjectiles)return;
+  for(let i=f.mahitoProjectiles.length-1;i>=0;i--){
+    const p=f.mahitoProjectiles[i];
+    p.x+=p.vx;p.y+=p.vy;p.life-=1;
+    spawnParticle(p.x,p.y,'#7a6b5a',0,0,8,3); // trail
+
+    // Hit check against enemies
+    let hit=false;
+    fighters.forEach(t=>{
+      if(t.side===f.side||t.dead||hit)return;
+      if(dist(p,t)<p.radius+t.radius){
+        const dmgMult=t.mahitoTransformed?1.5:1.0;
+        dealDamage(f,t,p.dmg*dmgMult,false);
+        spawnBurst(p.x,p.y,'#7a6b5a',10,5);
+        spawnDmgNum(t.x,t.y-20,'TRANSFIG HUMAN!','#7a6b5a',false);
+        hit=true;p.life=0;
+      }
+    });
+
+    if(p.life<=0||p.x<0||p.x>W||p.y<0||p.y>H){
+      if(p.life>=-1)spawnBurst(p.x,p.y,'#7a6b5a',6,3);
+      f.mahitoProjectiles.splice(i,1);
+    }
   }
 }
 
@@ -7769,13 +7873,40 @@ function updateBattle(dt){
       showVoiceline('mahito','lowHp',f.side);
     }
 
-    // Mahito transfigure debuff tick
-    if(f.mahitoShrinkTimer>0){
-      f.mahitoShrinkTimer-=dt;
-      if(f.mahitoShrinkTimer<=0){
-        f.mahitoTransfiguredBy=null;
-        f.atk=f.baseAtk; // restore ATK
+    // Mahito charge decay tick
+    if(f.mahitoChargeCount>0&&f.mahitoChargeDecay>0&&!f.mahitoTransformed){
+      // Don't decay if inside active Mahito domain
+      let insideDomain=false;
+      fighters.forEach(m=>{if(m.char&&m.char.id==='mahito'&&m.mahitoDomainActive&&dist(m,f)<=250)insideDomain=true;});
+      if(!insideDomain){
+        f.mahitoChargeDecay-=dt;
+        if(f.mahitoChargeDecay<=0&&f.mahitoTransfiguredBy){
+          mahitoDecayCharges(f.mahitoTransfiguredBy,f);
+        }
       }
+    }
+    // Mahito transform state tick
+    if(f.mahitoTransformed){
+      f.mahitoTransformTimer-=dt;
+      f.mahitoShrinkTimer=f.mahitoTransformTimer; // sync legacy visual
+      if(f.mahitoTransformTimer<=0){
+        // Revert from transformed creature
+        f.mahitoTransformed=false;
+        f.mahitoTransformImmune=18; // 0.3s immunity
+        f.speed=f.baseSpeed;
+        f.def=f.baseDef;
+        f.atk=f._mahitoSavedAtk||f.baseAtk;
+        f.mahitoShrinkTimer=0;
+        f.mahitoTransfiguredBy=null;
+        spawnBurst(f.x,f.y,'#5a8a8a',12,5);
+        spawnDmgNum(f.x,f.y-20,'REVERTED','#fff',false);
+      }
+    }
+    if(f.mahitoTransformImmune>0)f.mahitoTransformImmune-=dt;
+    // Legacy compat: if shrink timer active but not transformed, clear
+    if(f.mahitoShrinkTimer>0&&!f.mahitoTransformed){
+      f.mahitoShrinkTimer-=dt;
+      if(f.mahitoShrinkTimer<=0){f.mahitoTransfiguredBy=null;f.atk=f.baseAtk;}
     }
 
     // Element activation at 25% HP
@@ -7850,6 +7981,8 @@ function updateBattle(dt){
 
     // Naoya dash/cooldown runs always (not just during special) — critical fix
     if(f.char.id==='naoya') updateRelicNaoya(f,enemy,dt);
+    // Mahito projectiles run always (charges can decay outside domain)
+    if(f.char.id==='mahito') updateMahitoProjectiles(f,dt);
 
     // Choso beam runs always (not just during special)
     if(f.char.id==='choso'&&(f.chosoBeamActive||f.chosoBeamCooldown>0||f.chosoPiercingFreeze>0)){
@@ -18690,7 +18823,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'todo':{const storm=f.todoSpecialActive?'STORM ':'';const stk=f.todoBuffStacks>0?'x'+f.todoBuffStacks:'';statLine=storm+'SWAP'+stk;break;}
     case 'yuki':{const bh=f.yukiBHActive?'BH ':'';const ovr=f.yukiOverloaded?'OVR ':'';statLine=bh+ovr+'Mass:'+Math.round(f.yukiMass||0);break;}
     case 'megumi':{const dom=f.megumiDomainActive?'DOMAIN ':'';const shiki=f.megumiActiveShikigami?(f.megumiActiveShikigami.toUpperCase()+' '):'';const dogs=f.megumiTotality?'TOT':(f.megumiDog1.alive&&f.megumiDog2.alive?'DD':(f.megumiDog1.alive||f.megumiDog2.alive?'D1':'--'));statLine=dom+shiki+dogs+' M:'+Math.floor(f.megumiShadowMeter);break;}
-    case 'mahito':{const dom=f.mahitoDomainActive?'DOMAIN ':'';const isb=f.mahitoPassiveTriggered?'ISB ':'';statLine=dom+isb+'Hits:'+f.mahitoHitCount+'/5';break;}
+    case 'mahito':{const dom=f.mahitoDomainActive?'DOMAIN ':'';const eChg=fighters.find(t=>t.side!==f.side&&!t.dead);const chg=eChg?(eChg.mahitoChargeCount||0):0;statLine=dom+'Charges:'+chg+'/7';break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
