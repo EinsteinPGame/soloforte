@@ -6,7 +6,7 @@
 <title>Wheel of Faith</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Consolas','Courier New',monospace;background:#0a0a1a;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center}
+body{font-family:'Segoe UI','Helvetica Neue',Arial,sans-serif;background:#000;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center}
 canvas{display:block}
 #gc{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
 </style>
@@ -17,20 +17,26 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// WHEEL OF FAITH v1.1.0 — Fantasy Character Generator + Real-Time Battle
-// 15 spinning wheels, stats-based combat, companions, traits, cutscenes
+// WHEEL OF FAITH v2.0.0 — 1:1 OG Replica
+// 17 spin categories, 100s of options, full-screen wheels,
+// conditional spins, OG-style character card
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
-const TW=isMobile?360:600,TH=isMobile?640:500;let sc=1;
-function resize(){const w=innerWidth,h=innerHeight;const dpr=window.devicePixelRatio||1;sc=Math.min(w/TW,h/TH);const cssW=TW*sc,cssH=TH*sc;C.width=TW*sc*dpr;C.height=TH*sc*dpr;C.style.width=cssW+'px';C.style.height=cssH+'px';C.style.position='absolute';C.style.left=(w-cssW)/2+'px';C.style.top=(h-cssH)/2+'px';X.setTransform(dpr,0,0,dpr,0,0)}
+let VW=window.innerWidth,VH=window.innerHeight;
+function resize(){
+  const dpr=window.devicePixelRatio||1;
+  VW=window.innerWidth;VH=window.innerHeight;
+  C.width=VW*dpr;C.height=VH*dpr;
+  C.style.width=VW+'px';C.style.height=VH+'px';
+  C.style.position='absolute';C.style.left='0';C.style.top='0';
+  X.setTransform(dpr,0,0,dpr,0,0);
+}
 addEventListener('resize',resize);resize();
-function gmp(e){const r=C.getBoundingClientRect(),cx=(e.clientX||(e.touches&&e.touches[0]&&e.touches[0].clientX)||0)-r.left,cy=(e.clientY||(e.touches&&e.touches[0]&&e.touches[0].clientY)||0)-r.top;return{x:cx/sc,y:cy/sc}}
-const W=TW,H=TH,rand=(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pick=a=>a[Math.floor(Math.random()*a.length)],clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v)),lerp=(a,b,t)=>a+(b-a)*t;
-function lighten(hex,amt){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.min(255,r+amt);g=Math.min(255,g+amt);b=Math.min(255,b+amt);return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('')}
-function darken(hex,amt){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.max(0,r-amt);g=Math.max(0,g-amt);b=Math.max(0,b-amt);return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('')}
-function hexToRgba(hex,a){return 'rgba('+parseInt(hex.slice(1,3),16)+','+parseInt(hex.slice(3,5),16)+','+parseInt(hex.slice(5,7),16)+','+a+')';}
-function drawRoundRect(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.lineTo(x+w-r,y);X.quadraticCurveTo(x+w,y,x+w,y+r);X.lineTo(x+w,y+h-r);X.quadraticCurveTo(x+w,y+h,x+w-r,y+h);X.lineTo(x+r,y+h);X.quadraticCurveTo(x,y+h,x,y+h-r);X.lineTo(x,y+r);X.quadraticCurveTo(x,y,x+r,y);X.closePath()}
+const rand=(a,b)=>a+Math.floor(Math.random()*(b-a+1)),pick=a=>a[Math.floor(Math.random()*a.length)];
+function hexToRgba(hex,a){return'rgba('+parseInt(hex.slice(1,3),16)+','+parseInt(hex.slice(3,5),16)+','+parseInt(hex.slice(5,7),16)+','+a+')';}
+function lighten(hex,amt){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.min(255,r+amt);g=Math.min(255,g+amt);b=Math.min(255,b+amt);return'#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('')}
+function darken(hex,amt){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);r=Math.max(0,r-amt);g=Math.max(0,g-amt);b=Math.max(0,b-amt);return'#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('')}
 
 // ============================================================
 // AUDIO
@@ -47,28 +53,40 @@ const SFX={
     o.connect(g);g.connect(this.ctx.destination);
     o.start(this.ctx.currentTime+(delay||0));o.stop(this.ctx.currentTime+(delay||0)+dur);
   },
-  click(){this._tone(800,0.05,'square',0.06)},
   tick(){this._tone(600,0.03,'sine',0.08)},
   land(){this._tone(400,0.15,'sine',0.2);this._tone(600,0.2,'sine',0.15,0.1)},
+  spin(){for(let i=0;i<3;i++)this._tone(500+i*50,0.05,'square',0.05,i*0.04)},
+  click(){this._tone(800,0.05,'square',0.06)},
+  victory(){for(let i=0;i<6;i++)this._tone(400+i*80,0.2,'sine',0.12,i*0.12);this._tone(900,0.4,'sine',0.15,0.72)},
+  defeat(){this._tone(300,0.3,'sine',0.15);this._tone(200,0.4,'sine',0.12,0.2)},
   hit(){this._tone(200,0.12,'sine',0.15)},
   crit(){this._tone(600,0.1,'sawtooth',0.2);this._tone(900,0.12,'square',0.18,0.05)},
   block(){this._tone(150,0.08,'square',0.1)},
-  companionAtk(){this._tone(700,0.08,'sine',0.1);this._tone(900,0.06,'sine',0.08,0.05)},
-  elemHit(){this._tone(500,0.15,'triangle',0.12);this._tone(350,0.2,'sine',0.08,0.08)},
-  victory(){for(let i=0;i<6;i++)this._tone(400+i*80,0.2,'sine',0.12,i*0.12);this._tone(900,0.4,'sine',0.15,0.72)},
-  defeat(){this._tone(300,0.3,'sine',0.15);this._tone(200,0.4,'sine',0.12,0.2);this._tone(150,0.5,'sine',0.1,0.5)},
-  spin(){for(let i=0;i<3;i++)this._tone(500+i*50,0.05,'square',0.05,i*0.04)},
-  introSlam(){this._tone(100,0.2,'square',0.2);this._tone(200,0.15,'sawtooth',0.15,0.05)},
-  vsDrop(){this._tone(80,0.3,'sawtooth',0.25);this._tone(150,0.2,'square',0.2,0.1)},
 };
 
 // ============================================================
 // BUTTON SYSTEM
 // ============================================================
 let buttons=[];
-function addBtn(id,x,y,w,h,label,color,cb){buttons.push({id,x,y,w,h,label,color:color||'#7b68ee',cb,hover:false})}
+function addBtn(id,x,y,w,h,label,color,cb,opts){buttons.push({id,x,y,w,h,label,color:color||'#fff',cb,hover:false,...(opts||{})})}
 function clearBtns(){buttons=[]}
-function drawBtn(b){if(b.color==='transparent')return;X.save();drawRoundRect(b.x,b.y,b.w,b.h,6);X.fillStyle=b.hover?b.color+'44':'#0a0a2a';X.fill();X.strokeStyle=b.color;X.lineWidth=b.hover?3:2;X.stroke();X.fillStyle=b.hover?'#fff':b.color;X.font='bold '+(b.h>40?'16':'13')+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';X.fillText(b.label,b.x+b.w/2,b.y+b.h/2);X.restore()}
+function drawBtn(b){
+  if(b.color==='transparent')return;
+  X.save();
+  const r=b.h>40?8:6;
+  X.beginPath();
+  X.moveTo(b.x+r,b.y);X.lineTo(b.x+b.w-r,b.y);X.quadraticCurveTo(b.x+b.w,b.y,b.x+b.w,b.y+r);
+  X.lineTo(b.x+b.w,b.y+b.h-r);X.quadraticCurveTo(b.x+b.w,b.y+b.h,b.x+b.w-r,b.y+b.h);
+  X.lineTo(b.x+r,b.y+b.h);X.quadraticCurveTo(b.x,b.y+b.h,b.x,b.y+b.h-r);
+  X.lineTo(b.x,b.y+r);X.quadraticCurveTo(b.x,b.y,b.x+r,b.y);X.closePath();
+  X.fillStyle=b.hover?hexToRgba(b.color,0.2):'rgba(20,20,30,0.8)';X.fill();
+  X.strokeStyle=b.color;X.lineWidth=b.hover?2.5:1.5;X.stroke();
+  X.fillStyle=b.hover?'#fff':b.color;
+  X.font='bold '+(b.fontSize||Math.min(16,b.h*0.4))+'px "Segoe UI",Arial,sans-serif';
+  X.textAlign='center';X.textBaseline='middle';
+  X.fillText(b.label,b.x+b.w/2,b.y+b.h/2);
+  X.restore();
+}
 
 // ============================================================
 // PARTICLE SYSTEM
@@ -76,341 +94,378 @@ function drawBtn(b){if(b.color==='transparent')return;X.save();drawRoundRect(b.x
 let particles=[];
 function spawnParticle(x,y,opts){
   particles.push({x,y,vx:opts.vx||0,vy:opts.vy||0,life:opts.life||30,maxLife:opts.life||30,
-    color:opts.color||'#fff',size:opts.size||3,text:opts.text||null,type:opts.type||'circle',
-    gravity:opts.gravity||0,friction:opts.friction||1,glow:opts.glow||false});
+    color:opts.color||'#fff',size:opts.size||3,text:opts.text||null,gravity:opts.gravity||0,friction:opts.friction||1,glow:opts.glow||false});
 }
-function updateParticles(){
-  for(let i=particles.length-1;i>=0;i--){
-    const p=particles[i];
-    p.x+=p.vx;p.y+=p.vy;p.vy+=p.gravity;p.vx*=p.friction;p.vy*=p.friction;p.life--;
-    if(p.life<=0)particles.splice(i,1);
-  }
-}
-function drawParticles(){
-  particles.forEach(p=>{
-    const alpha=p.life/p.maxLife;
-    X.globalAlpha=alpha;
-    if(p.text){
-      X.font='bold '+(p.size)+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-      if(p.glow){X.shadowColor=p.color;X.shadowBlur=8;}
-      X.fillStyle=p.color;X.fillText(p.text,p.x,p.y);
-      X.shadowBlur=0;
-    }else if(p.type==='ring'){
-      X.strokeStyle=p.color;X.lineWidth=2;
-      X.beginPath();X.arc(p.x,p.y,p.size*(1-alpha)*3,0,Math.PI*2);X.stroke();
-    }else{
-      if(p.glow){X.shadowColor=p.color;X.shadowBlur=6;}
-      X.fillStyle=p.color;
-      X.beginPath();X.arc(p.x,p.y,p.size*alpha,0,Math.PI*2);X.fill();
-      X.shadowBlur=0;
-    }
-    X.globalAlpha=1;
-  });
-}
+function updateParticles(){for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=p.gravity;p.vx*=p.friction;p.vy*=p.friction;p.life--;if(p.life<=0)particles.splice(i,1);}}
+function drawParticles(){particles.forEach(p=>{const alpha=p.life/p.maxLife;X.globalAlpha=alpha;if(p.text){X.font='bold '+p.size+'px "Segoe UI",sans-serif';X.textAlign='center';X.textBaseline='middle';if(p.glow){X.shadowColor=p.color;X.shadowBlur=8;}X.fillStyle=p.color;X.fillText(p.text,p.x,p.y);X.shadowBlur=0;}else{if(p.glow){X.shadowColor=p.color;X.shadowBlur=6;}X.fillStyle=p.color;X.beginPath();X.arc(p.x,p.y,p.size*alpha,0,Math.PI*2);X.fill();X.shadowBlur=0;}X.globalAlpha=1;});}
 
 // ============================================================
-// SCREEN SHAKE
+// DATA — ALL 17+ CATEGORIES (OG @wheeloffaith replica)
 // ============================================================
-let shakeAmount=0,shakeDecay=0.9;
-function triggerShake(amt){shakeAmount=Math.max(shakeAmount,amt);}
 
-// ============================================================
-// GAME DATA — RACES
-// ============================================================
+// Category color themes (matching OG)
+const CAT_COLORS={
+  race:'#2196F3',size:'#6B8E23',strength:'#9C27B0',speed:'#1565C0',
+  durability:'#C62828',iq:'#283593',fight:'#D32F2F',weapon:'#8B4513',
+  weaponMastery:'#B71C1C',enchantment:'#E91E63',extraPower:'#7B1FA2',
+  powerMastery:'#6A1B9A',weakness:'#00BCD4',apexForces:'#E8A0BF',
+  conquered:'#FF6F00',backstory:'#FF5722',title:'#9E9E9E',
+  cosmicPower:'#1A237E',whatConquered:'#FF8F00'
+};
+
+// 1. RACE — 36+ races (OG has ~40, blue/cyan wheel)
 const RACES=[
-  {id:'human',name:'Human',color:'#ddaa44',lore:'Versatile and adaptive.',
-    subs:[
-      {name:'Highborn',str:0,spd:0,iq:1,dur:1,trait:'Diplomacy: +1 all stats when allied with Human'},
-      {name:'Nomad',str:0,spd:2,iq:0,dur:0,trait:'Wanderer: immune to terrain debuffs'},
-      {name:'Berserker Tribe',str:2,spd:0,iq:-1,dur:1,trait:'Blood Rage: +2 STR below 30% HP'},
-      {name:'Mystic Bloodline',str:-1,spd:0,iq:3,dur:-1,trait:'Arcane Affinity: enchantments cost less'},
-      {name:'Ironborn',str:1,spd:-1,iq:0,dur:2,trait:'Iron Will: resist mind-control'},
-    ]},
-  {id:'elf',name:'Elf',color:'#44cc88',lore:'Agile and intelligent, masters of magic.',
-    subs:[
-      {name:'High Elf',str:-1,spd:1,iq:3,dur:-1,trait:'Arcane Mastery: free enchantment tier'},
-      {name:'Dark Elf',str:0,spd:2,iq:1,dur:-1,trait:'Shadow Veil: stealth +2 damage'},
-      {name:'Wood Elf',str:0,spd:3,iq:0,dur:-1,trait:'Forest Bond: +2 SPD in nature'},
-      {name:'Sea Elf',str:0,spd:1,iq:1,dur:0,trait:'Aquatic: immune to water damage'},
-      {name:'Blood Elf',str:1,spd:0,iq:2,dur:-1,trait:'Life Drain: heal 1 HP per attack'},
-    ]},
-  {id:'dwarf',name:'Dwarf',color:'#cc8833',lore:'Tough blacksmiths who hate magic.',
-    subs:[
-      {name:'Mountain Dwarf',str:2,spd:-1,iq:0,dur:2,trait:'Stone Skin: +1 DUR vs physical'},
-      {name:'Hill Dwarf',str:1,spd:0,iq:0,dur:2,trait:'Endurance: +10% max HP'},
-      {name:'Deep Dwarf',str:1,spd:-1,iq:1,dur:1,trait:'Darkvision: no darkness penalty'},
-      {name:'Forge Dwarf',str:2,spd:-2,iq:1,dur:1,trait:'Master Smith: enchant without mastery'},
-      {name:'Frost Dwarf',str:1,spd:-1,iq:0,dur:3,trait:'Cold Resistance: immune to ice'},
-    ]},
-  {id:'orc',name:'Orc',color:'#55aa33',lore:'Raw physical dominance.',
-    subs:[
-      {name:'War Orc',str:3,spd:0,iq:-2,dur:1,trait:'Relentless: act after 0 HP'},
-      {name:'Savage Orc',str:3,spd:1,iq:-3,dur:1,trait:'Frenzy: +1 STR per kill'},
-      {name:'Shaman Orc',str:1,spd:0,iq:1,dur:0,trait:'Spirit Caller: free spirit power'},
-      {name:'Half-Orc',str:2,spd:0,iq:0,dur:0,trait:'Versatile: no stat penalties'},
-      {name:'Ironhide Orc',str:2,spd:-1,iq:-1,dur:3,trait:'Thick Skin: reduce damage by 1'},
-    ]},
-  {id:'goblin',name:'Goblin',color:'#88cc22',lore:'Fast, chaotic, high risk high reward.',
-    subs:[
-      {name:'Cave Goblin',str:-1,spd:3,iq:0,dur:-1,trait:'Scurry: +15% dodge'},
-      {name:'Hobgoblin',str:1,spd:1,iq:1,dur:0,trait:'Tactical Mind: +1 IQ in groups'},
-      {name:'Bugbear',str:2,spd:0,iq:-1,dur:1,trait:'Ambush: first attack is double'},
-      {name:'Tinker Goblin',str:-1,spd:1,iq:3,dur:-1,trait:'Gadgeteer: craft weapons mid-fight'},
-      {name:'Plague Goblin',str:-1,spd:2,iq:0,dur:0,trait:'Toxic: 20% poison chance'},
-    ]},
-  {id:'skeleton',name:'Skeleton',color:'#ccccaa',lore:'Goofiest race. Absurd weaknesses, crazy weapons.',
-    subs:[
-      {name:'Warrior Skeleton',str:1,spd:1,iq:-1,dur:1,trait:'Undying: revive once at 25% HP'},
-      {name:'Lich',str:-1,spd:0,iq:4,dur:-1,trait:'Phylactery: reform in 3 turns'},
-      {name:'Bone Knight',str:2,spd:-1,iq:0,dur:2,trait:'Bone Armor: +2 DUR vs physical'},
-      {name:'Revenant',str:1,spd:0,iq:0,dur:1,trait:'Vengeful Spirit: +3 all vs killer'},
-      {name:'Wight',str:0,spd:1,iq:1,dur:0,trait:'Life Steal: drain 1 stat per hit'},
-    ]},
-  {id:'fairy',name:'Fairy',color:'#ff88dd',lore:'Glass cannons with flight.',
-    subs:[
-      {name:'Pixie',str:-2,spd:4,iq:1,dur:-2,trait:'Flight: avoid ground attacks'},
-      {name:'Sprite',str:-2,spd:3,iq:2,dur:-2,trait:'Invisibility: 1 turn (cd 3)'},
-      {name:'Dryad',str:0,spd:1,iq:1,dur:1,trait:'Nature Heal: regen 1 HP/turn'},
-      {name:'Changeling',str:0,spd:1,iq:2,dur:-1,trait:'Shapemask: copy appearance'},
-      {name:'Sylph',str:-1,spd:3,iq:1,dur:-1,trait:'Wind Walk: immune to slow'},
-    ]},
-  {id:'vampire',name:'Vampire',color:'#cc2244',lore:'Powerful but weak to sunlight and holy.',
-    subs:[
-      {name:'Noble Vampire',str:1,spd:2,iq:2,dur:-1,trait:'Charm: mind-control one enemy'},
-      {name:'Feral Vampire',str:3,spd:1,iq:-2,dur:1,trait:'Blood Frenzy: +2 STR in dark'},
-      {name:'Dhampir',str:1,spd:1,iq:1,dur:0,trait:'Daywalker: no sunlight weakness'},
-      {name:'Ancient Vampire',str:2,spd:2,iq:1,dur:0,trait:'Elder Power: -1 cooldowns'},
-      {name:'Nosferatu',str:2,spd:0,iq:0,dur:2,trait:'Terror Aura: enemies -1 all stats'},
-    ]},
-  {id:'dragon',name:'Dragonborn',color:'#ff6622',lore:'Elemental breath weapons and draconic heritage.',
-    subs:[
-      {name:'Fire Dragonborn',str:2,spd:0,iq:0,dur:1,trait:'Breath Weapon: fire cone AoE'},
-      {name:'Ice Dragonborn',str:1,spd:0,iq:1,dur:1,trait:'Breath Weapon: ice + slow'},
-      {name:'Storm Dragonborn',str:1,spd:1,iq:1,dur:0,trait:'Breath Weapon: lightning + stun'},
-      {name:'Shadow Dragonborn',str:1,spd:1,iq:1,dur:0,trait:'Breath Weapon: shadow + fear'},
-      {name:'Ancient Dragon',str:3,spd:-1,iq:2,dur:3,trait:'Dragon Form: massive, flight, slow'},
-    ]},
-  {id:'elemental',name:'Elemental',color:'#44aaff',lore:'Above most races in power hierarchy.',
-    subs:[
-      {name:'Fire Elemental',str:2,spd:1,iq:0,dur:-1,trait:'Burning Aura: 1 dmg/turn to adjacent'},
-      {name:'Water Elemental',str:0,spd:1,iq:1,dur:1,trait:'Fluid Form: immune to crits'},
-      {name:'Earth Elemental',str:1,spd:-2,iq:0,dur:4,trait:'Immovable: no knockback'},
-      {name:'Air Elemental',str:-1,spd:4,iq:0,dur:-1,trait:'Intangible: 25% phase through'},
-      {name:'Void Elemental',str:0,spd:0,iq:3,dur:0,trait:'Nullify: cancel one enchantment'},
-    ]},
-  {id:'werewolf',name:'Werebeast',color:'#aa7744',lore:'Dual forms — human and beast.',
-    subs:[
-      {name:'Werewolf',str:2,spd:2,iq:-1,dur:0,trait:'Transform: shift between forms'},
-      {name:'Werebear',str:3,spd:-1,iq:-1,dur:2,trait:'Rage Form: +3 STR, -2 IQ'},
-      {name:'Weretiger',str:1,spd:3,iq:0,dur:-1,trait:'Pounce: first attack is crit'},
-      {name:'Weredragon',str:2,spd:0,iq:1,dur:1,trait:'Hybrid Form: breath + claws'},
-      {name:'Skinwalker',str:0,spd:1,iq:2,dur:0,trait:'Mimic: copy enemy racial trait'},
-    ]},
-  {id:'golem',name:'Golem',color:'#888899',lore:'Constructed beings. High durability.',
-    subs:[
-      {name:'Stone Golem',str:3,spd:-3,iq:-1,dur:4,trait:'Indestructible: immune to crits'},
-      {name:'Iron Golem',str:3,spd:-2,iq:0,dur:3,trait:'Magnetic: disarm metal weapons'},
-      {name:'Crystal Golem',str:1,spd:-1,iq:2,dur:2,trait:'Reflect: 20% reflect magic'},
-      {name:'Flesh Golem',str:2,spd:0,iq:-2,dur:2,trait:'Regenerate: heal 2 HP/turn'},
-      {name:'Clockwork',str:1,spd:1,iq:2,dur:0,trait:'Overclock: double SPD 2 turns'},
-    ]},
-  {id:'demon',name:'Demon',color:'#cc3355',lore:'High-tier with strong offensive powers.',
-    subs:[
-      {name:'Imp',str:-1,spd:3,iq:1,dur:-1,trait:'Trickster: swap positions once'},
-      {name:'Succubus',str:0,spd:1,iq:3,dur:-1,trait:'Enthrall: charm 1 turn'},
-      {name:'Pit Fiend',str:3,spd:0,iq:1,dur:1,trait:'Hellfire: bonus fire damage'},
-      {name:'Shadow Demon',str:1,spd:2,iq:1,dur:-1,trait:'Phase: teleport to shadows'},
-      {name:'Arch-Devil',str:2,spd:0,iq:2,dur:1,trait:'Infernal Pact: -2 HP for +2 stat'},
-    ]},
-  {id:'giant',name:'Giant',color:'#cc9966',lore:'Highest raw STR. Massive and slow.',
-    subs:[
-      {name:'Hill Giant',str:3,spd:-2,iq:-2,dur:2,trait:'Crush: unarmed = weapon damage'},
-      {name:'Frost Giant',str:3,spd:-1,iq:0,dur:2,trait:'Cold Aura: melee enemies -1 SPD'},
-      {name:'Fire Giant',str:3,spd:-1,iq:1,dur:1,trait:'Forge Master: +1 fire damage'},
-      {name:'Storm Giant',str:2,spd:0,iq:2,dur:1,trait:'Lightning Call: AoE every 3 turns'},
-      {name:'Titan',str:4,spd:-2,iq:1,dur:3,trait:'Colossal: forced Large+'},
-    ]},
-  {id:'merfolk',name:'Merfolk',color:'#3388cc',lore:'Terrain-dependent. Powerful in water.',
-    subs:[
-      {name:'Sea Siren',str:0,spd:1,iq:2,dur:0,trait:'Siren Song: stun 1 turn (cd 3)'},
-      {name:'Deep One',str:2,spd:0,iq:0,dur:2,trait:'Pressure Adapted: immune to crush'},
-      {name:'Coral Guardian',str:1,spd:-1,iq:1,dur:2,trait:'Reef Shield: block projectiles'},
-      {name:'Tide Caller',str:0,spd:1,iq:3,dur:-1,trait:'Water Mastery: 2x water damage'},
-      {name:'Leviathan Kin',str:3,spd:0,iq:0,dur:1,trait:'Monstrous Form: grow in water'},
-    ]},
+  'Human','Elf','Dwarf','Orc','Goblin','Gnomes','Fey','Skeletons','Merfolk','Birdkin',
+  'Dryad','Centaur','Chimekin','Reptile','Boardborn','Nightborn','Slimes','Elemental',
+  'Darwizzies','Cosmic Warrior','Voidwalker','Symbiote','Demon','Angel','Artisan',
+  'Dragon','Gargoyle','Golem','Giant','Genies','Vampire','Spirit','Werebeast',
+  'Hive Mind','Fortunas','Dispensian','Cosmic Mind','Soulweaver','Cyborg','Trolls'
 ];
 
-// ============================================================
-// GAME DATA — ARCHETYPES
-// ============================================================
-const ARCHETYPES=[
-  {id:'warrior',name:'Warrior',color:'#cc4444',str:2,spd:0,iq:0,dur:1,desc:'Melee combat specialist'},
-  {id:'paladin',name:'Paladin',color:'#ffcc44',str:1,spd:0,iq:1,dur:1,desc:'Holy knight with divine powers'},
-  {id:'mage',name:'Mage',color:'#6644cc',str:-1,spd:0,iq:3,dur:0,desc:'Master of arcane magic'},
-  {id:'rogue',name:'Rogue',color:'#333333',str:0,spd:2,iq:1,dur:0,desc:'Stealth and precision strikes'},
-  {id:'ranger',name:'Ranger',color:'#33aa55',str:1,spd:1,iq:1,dur:0,desc:'Versatile wilderness fighter'},
-  {id:'ninja',name:'Ninja',color:'#222244',str:0,spd:3,iq:0,dur:0,desc:'Speed-based shadow arts'},
-  {id:'gladiator',name:'Gladiator',color:'#dd6633',str:2,spd:1,iq:0,dur:0,desc:'Arena combat champion'},
-  {id:'berserker',name:'Berserker',color:'#dd2222',str:3,spd:0,iq:-1,dur:1,desc:'Unstoppable rage fighter'},
-  {id:'necromancer',name:'Necromancer',color:'#554488',str:0,spd:0,iq:2,dur:0,desc:'Commands undead forces'},
-  {id:'martial_artist',name:'Martial Artist',color:'#dd8833',str:1,spd:2,iq:0,dur:0,desc:'Unarmed combat master'},
-  {id:'slayer',name:'Slayer',color:'#aa2233',str:2,spd:1,iq:0,dur:0,desc:'Monster hunting specialist'},
-  {id:'rider',name:'Rider',color:'#886633',str:1,spd:0,iq:0,dur:1,desc:'Mounted combatant'},
-  {id:'dual_wielder',name:'Dual Wielder',color:'#5577aa',str:1,spd:1,iq:0,dur:0,desc:'Two weapon fighting style'},
-  {id:'weaver',name:'Weaver',color:'#8844aa',str:0,spd:0,iq:2,dur:1,desc:'Reality-bending spell weaver'},
-  {id:'equaliser',name:'Equaliser',color:'#aaaaaa',str:0,spd:0,iq:0,dur:0,desc:'Balances all stats to average'},
-];
+// 2. SIZE — heights (green wheel)
+const SIZES=['3.5ft','4ft','4.5ft','5ft','5.5ft','6ft','6.5ft','7ft','7.5ft','8ft','8.5ft','9ft','9.5ft'];
 
-// ============================================================
-// GAME DATA — WEAPONS
-// ============================================================
+// 3. STRENGTH — tier scale (purple wheel)
+const STRENGTH=['Darwizzy','Weak','Mid','Peak Human','Superhuman','Mighty','Herculean','Cosmic','Universal','Boundless'];
+
+// 4. SPEED — tier scale (blue wheel)
+const SPEED=['Darwizzy','Slow','Mid','Peak Human','Superhuman','Supersonic','Light Speed','Cosmic','Universal','Omnipresent'];
+
+// 5. DURABILITY — tier scale (red wheel)
+const DURABILITY=['Darwizzy','Fragile','Mid','Peak Human','Superhuman','Nuclear','Planetary','Cosmic','Universal','Regenerative'];
+
+// 6. IQ — tier scale (indigo wheel)
+const IQ_TIERS=['Darwizzy','Dumb','Mid','Quite Sharp','Sharp','Genius','Prodigious','Nigh-Omniscience','Omniscient','Cosmic'];
+
+// 7. FIGHT — tier scale (red/salmon wheel)
+const FIGHT=['Darwizzy','Rookie','Amateur','Skilled','Champion','Meta-Martial','Planetary Fighter','Cosmic Brawler','Universal Gladiator','Unbeatable'];
+
+// 8. WEAPON — 80+ weapons (dark red/brown wheel)
 const WEAPONS=[
-  {id:'sword',name:'Longsword',color:'#cccccc',type:'melee',dmg:3,spd:0,range:'mid',desc:'Balanced blade'},
-  {id:'axe',name:'Battle Axe',color:'#aa6633',type:'melee',dmg:4,spd:-1,range:'mid',desc:'Heavy cleaving strikes'},
-  {id:'dagger',name:'Daggers',color:'#888888',type:'melee',dmg:2,spd:2,range:'short',desc:'Fast dual strikes'},
-  {id:'spear',name:'Spear',color:'#bbaa77',type:'melee',dmg:3,spd:0,range:'long',desc:'Reach advantage'},
-  {id:'hammer',name:'War Hammer',color:'#666677',type:'melee',dmg:5,spd:-2,range:'short',desc:'Crushing blows'},
-  {id:'bow',name:'Longbow',color:'#997744',type:'ranged',dmg:3,spd:1,range:'far',desc:'Precision ranged'},
-  {id:'staff',name:'Magic Staff',color:'#7744cc',type:'magic',dmg:2,spd:0,range:'far',desc:'Channels spells'},
-  {id:'scythe',name:'Void Scythe',color:'#553377',type:'melee',dmg:4,spd:-1,range:'long',desc:'Dark reaping arcs'},
-  {id:'fists',name:'Bare Fists',color:'#ddaa88',type:'melee',dmg:2,spd:3,range:'short',desc:'Rapid unarmed strikes'},
-  {id:'whip',name:'Chain Whip',color:'#aa7755',type:'melee',dmg:2,spd:1,range:'long',desc:'Flexible reach weapon'},
-  {id:'crossbow',name:'Crossbow',color:'#886644',type:'ranged',dmg:4,spd:-1,range:'far',desc:'Powerful bolts'},
-  {id:'katana',name:'Katana',color:'#ddddee',type:'melee',dmg:3,spd:1,range:'mid',desc:'Swift precision cuts'},
-  {id:'shield',name:'Tower Shield',color:'#8888aa',type:'melee',dmg:1,spd:-1,range:'short',desc:'Massive defense, weak offense'},
-  {id:'claws',name:'Beast Claws',color:'#cc8844',type:'melee',dmg:3,spd:2,range:'short',desc:'Savage natural weapons'},
-  {id:'trident',name:'Trident',color:'#4488aa',type:'melee',dmg:3,spd:0,range:'long',desc:'Triple-pointed thrust'},
+  'No Weapon','Longsword','Broadsword','Katana','Rapier','Scimitar','Claymore','Falchion','Gladius',
+  'Zweihander','Dao','Khopesh','Cutlass','Saber','Flamberge','Estoc',
+  'Battle Axe','War Axe','Halberd','Bardiche','Tomahawk','Labrys','Dane Axe',
+  'War Hammer','Mace','Morningstar','Flail','Maul','Club','Scepter',
+  'Spear','Trident','Pike','Javelin','Lance','Glaive','Naginata','Guandao',
+  'Daggers','Kris','Stiletto','Tanto','Kukri','Karambit','Kunai','Shuriken',
+  'Longbow','Shortbow','Crossbow','Repeating Crossbow','Compound Bow',
+  'Blowgun','Sling','Throwing Knives','Boomerang','Bolas','Net',
+  'Staff','Bo Staff','Quarterstaff','Magic Staff','Wand','Scepter of Power',
+  'Whip','Chain Whip','Flail Chain','Kusarigama','Rope Dart',
+  'Claws','Gauntlets','Knuckle Dusters','Iron Fist','Tiger Claws',
+  'Shield','Tower Shield','Buckler','Targe',
+  'Scythe','War Scythe','Sickle','Kama',
+  'Gunblade','Pistol','Musket','Cannon','Hand Cannon',
+  'Chakram','War Fan','Tessen','Meteor Hammer','Three-Section Staff',
+  'Nunchaku','Sai','Tonfa','Katar','Pata','Urumi','Bagh Nakh',
+  'Greatbow','Ballista Bolt','Harpoon','Hook Swords','Twin Blades',
+  'Forbidden Blade','Cursed Weapon','Divine Armament','Void Blade','Soul Reaper'
 ];
 
-// ============================================================
-// GAME DATA — ELEMENTS
-// ============================================================
-const ELEMENTS=[
-  {id:'fire',name:'Fire',color:'#ff4422',strong:'ice',weak:'water',desc:'Burns and damages over time'},
-  {id:'water',name:'Water',color:'#2266ff',strong:'fire',weak:'lightning',desc:'Flowing and adaptable'},
-  {id:'ice',name:'Ice',color:'#88ccff',strong:'wind',weak:'fire',desc:'Slows and freezes enemies'},
-  {id:'lightning',name:'Lightning',color:'#ffcc00',strong:'water',weak:'earth',desc:'Fast and stunning'},
-  {id:'earth',name:'Earth',color:'#886633',strong:'lightning',weak:'wind',desc:'Sturdy and immovable'},
-  {id:'wind',name:'Wind',color:'#88ddaa',strong:'earth',weak:'ice',desc:'Swift and evasive'},
-  {id:'shadow',name:'Shadow',color:'#443355',strong:'light',weak:'light',desc:'Darkness and stealth'},
-  {id:'light',name:'Light',color:'#ffeeaa',strong:'shadow',weak:'shadow',desc:'Holy and purifying'},
-  {id:'void',name:'Void',color:'#332244',strong:'light',weak:'earth',desc:'Nullifies and erases'},
-  {id:'nature',name:'Nature',color:'#44aa33',strong:'earth',weak:'fire',desc:'Growth and healing'},
+// 9. WEAPON MASTERY — tier scale (deep red wheel)
+const WEAPON_MASTERY=['Darwizzy','Novice','Apprentice','Adept','Expert','Master','Grand Master','Transcendent','Universal','Cosmic'];
+
+// 10. ENCHANTMENT — 120+ enchantments (rainbow wheel)
+const ENCHANTMENTS=[
+  'Tidal Force','Madness Touch','Sorrow Edge','Hex','Jinx','Momentum','Marksman Sight',
+  'Cursed Edge','Berserk','Light','Darkness','Gambling','Tickle Edge','Time Warp',
+  'Lifesteal','Poisoned','Titan\'s Downfall','Underclass\'s Doom','Plasma','Cosmic',
+  'Knockback','Gravity','Heavy Impact','Voidtouch','Power Negation','Swift','Rampage',
+  'Fire','Sonic Boom','Thunderous','Whirlwind Cloak','Invisibility Shift','Echo Strike',
+  'Phase Pull','Illusionism','Magnetism','Petrification','Necrotic Amplifier',
+  'Arcanic','Atomic Forging','Bifrost','Waning','Obsidian','Magma','Dimensional',
+  'Star Siphon','Chaos Infused','Lemon Juice','Paper Cut','Reality Anchor',
+  'Scaly Touch','Acid Tick','Sticky','Unblockable','Symbiotic Induction',
+  'Living Weapon','Enlargement','Mimic','Unbreakable','Recoiling','Hooked',
+  'Earthbound','Counterpart','Painless','Fearmonger','Bloodlust','Weighted',
+  'Absolution','Arcanic Consumption','Apotheosis','Eternal Bind','Traumatic',
+  'Blighted Edge','Comically Small','Extendo','Enchant Negation','Power Anchor',
+  'Torsion','Cybernetic','Responsive','Plank Rift','Luck','Minigun','Stun',
+  'Godslayer','Karmic Strike','Nerve Strike','Organ Seeker','Coward\'s Bane',
+  'Homing','Masterwork Edge','Boomerang','Seismic','Simplifier','Necrothin Pull',
+  'Multiphase','Soul Shatter','Ice Edge','Crumbling','Comically Large','Freezer+',
+  'Hell Forged','Ego Shrive','Menu','Lag','Vertigo','Lake','Sorrow',
+  'Marble Surface','Mana Burst','Crystal Cage','Warp','Bone Splinter',
+  'Shadow Weave','Starfall','Lunar Edge','Solar Flare','Chrono Slash',
+  'Dream Eater','Spirit Bind','Blood Pact','Iron Maiden','Thorn Armor',
+  'Mirror Coat','Quantum Lock','Frostbite','Ember Trail','Storm Call',
+  'Venom Drip','Ghost Touch','Banishment','Null Zone','Overcharge',
+  'Siphon','Ricochet','Blinding Light','Crippling Blow','Death Mark',
+  'Reckoning','Final Stand','Undying Flame','No Enchantment'
 ];
 
-// ============================================================
-// GAME DATA — WEAKNESSES
-// ============================================================
+// 11. EXTRA POWER — 120+ manipulation powers (purple wheel)
+const EXTRA_POWERS=[
+  'Slow Motion Manipulation','Gravity Manipulation','Time Manipulation','Space Manipulation',
+  'Reality Manipulation','Mind Manipulation','Soul Manipulation','Blood Manipulation',
+  'Bone Manipulation','Darkness Manipulation','Light Manipulation','Shadow Manipulation',
+  'Fire Manipulation','Water Manipulation','Ice Manipulation','Lightning Manipulation',
+  'Earth Manipulation','Wind Manipulation','Metal Manipulation','Plant Manipulation',
+  'Sound Manipulation','Vibration Manipulation','Magnetic Manipulation','Electric Manipulation',
+  'Atomic Manipulation','Molecular Manipulation','Quantum Manipulation','Energy Manipulation',
+  'Force Manipulation','Kinetic Manipulation','Thermal Manipulation','Radiation Manipulation',
+  'Plasma Manipulation','Void Manipulation','Chaos Manipulation','Order Manipulation',
+  'Probability Manipulation','Luck Manipulation','Fate Manipulation','Destiny Manipulation',
+  'Dream Manipulation','Nightmare Manipulation','Memory Manipulation','Emotion Manipulation',
+  'Pain Manipulation','Fear Manipulation','Death Manipulation','Life Manipulation',
+  'Decay Manipulation','Growth Manipulation','Age Manipulation','Size Manipulation',
+  'Weight Manipulation','Density Manipulation','Pressure Manipulation','Friction Manipulation',
+  'Elasticity Manipulation','Viscosity Manipulation','Crystal Manipulation','Glass Manipulation',
+  'Sand Manipulation','Dust Manipulation','Ash Manipulation','Smoke Manipulation',
+  'Poison Manipulation','Acid Manipulation','Corrosion Manipulation','Rust Manipulation',
+  'Ink Manipulation','Paper Manipulation','Thread Manipulation','Fabric Manipulation',
+  'Wax Manipulation','Clay Manipulation','Mud Manipulation','Magma Manipulation',
+  'Lava Manipulation','Coral Manipulation','Fungus Manipulation','Moss Manipulation',
+  'Pheromone Manipulation','Scent Manipulation','Taste Manipulation','Color Manipulation',
+  'Illusion Manipulation','Mirror Manipulation','Reflection Manipulation','Echo Manipulation',
+  'Frequency Manipulation','Wavelength Manipulation','Dimension Manipulation','Portal Manipulation',
+  'Teleportation','Telepathy','Telekinesis','Psychometry','Precognition','Postcognition',
+  'Clairvoyance','Astral Projection','Possession','Seismic Control','Animal Control',
+  'Insect Control','Necromancy','Summoning','Conjuration','Transmutation',
+  'Alchemy','Enchanting','Cursing','Blessing','Healing','Regeneration',
+  'Absorption','Nullification','Amplification','Negation','Copycat',
+  'Adaptation','Evolution','Devolution','Petrification','Fossilization',
+  'Crystallization','Calcification','Magnetization','Electrification',
+  'Combustion','Detonation','Implosion','Explosion Manipulation',
+  'Vector Manipulation','Trajectory Manipulation','Momentum Manipulation',
+  'Inertia Manipulation','Entropy Manipulation','Conceptual Manipulation',
+  'Abstract Manipulation','Boundary Manipulation','Law Manipulation',
+  'Rule Manipulation','Logic Manipulation','Paradox Manipulation',
+  'No Extra Power'
+];
+
+// 12. POWER MASTERY — tier scale (purple wheel)
+const POWER_MASTERY=['Darwizzy','Dormant','Awakening','Controlled','Master','Archmage','Planetary','Cosmic','Universal','Omnipotent'];
+
+// 13. WEAKNESS — 80+ weaknesses (cyan wheel)
 const WEAKNESSES=[
-  {id:'sunlight',name:'Sunlight Vulnerability',desc:'Takes double damage from Light attacks',effect:'light_vuln'},
-  {id:'iron',name:'Iron Allergy',desc:'Takes extra damage from iron weapons',effect:'iron_vuln'},
-  {id:'water_weak',name:'Hydrophobia',desc:'Weakened near water; -2 all stats',effect:'water_vuln'},
-  {id:'slow',name:'Sluggish',desc:'Always acts last in combat',effect:'slow'},
-  {id:'glass',name:'Glass Cannon',desc:'-30% max HP',effect:'glass'},
-  {id:'cursed',name:'Cursed Blood',desc:'Cannot be healed',effect:'no_heal'},
-  {id:'berserker_rage',name:'Uncontrollable Rage',desc:'Cannot retreat from battle',effect:'no_retreat'},
-  {id:'prideful',name:'Prideful',desc:'Takes +20% damage from crits',effect:'crit_vuln'},
-  {id:'fragile_mind',name:'Fragile Mind',desc:'IQ-based attacks deal +50% damage',effect:'mind_vuln'},
-  {id:'loud',name:'Loud & Clumsy',desc:'Cannot dodge; enemies always detect',effect:'no_dodge'},
-  {id:'tiny',name:'Tiny Frame',desc:'Knockback distance doubled',effect:'knockback'},
-  {id:'greedy',name:'Greedy',desc:'Pauses to pick up loot; distracted',effect:'distracted'},
+  'Syphilis','ADHD','Bad Knees','Anxious','Overthinker','Nihilistic','Chronic Self Sabotage',
+  'Impulsive','Haunted','Homely Overuse','Energy Oversensitivity','Sound Sensitivity',
+  'Crystal Collapse','Morphine','Mana Addiction','Paralysis','Limited Vision',
+  'Overconfident','Burnout','Chronic Pain','Blind Rage','Fragile Ego',
+  'Sleep Deprived','Fear of Heights','Claustrophobic','Agoraphobic','Hydrophobic',
+  'Pyrophobic','Hemophilia','Bad Luck','Colorblind','Deaf','Mute','Amnesiac',
+  'Narcoleptic','Insomniac','Allergic to Magic','Allergic to Iron','Allergic to Silver',
+  'Sunlight Vulnerability','Moonlight Weakness','Holy Water Burns','Cursed Blood',
+  'Glass Bones','Paper Skin','No Pain Tolerance','Extreme Ticklishness','Stutters in Battle',
+  'Monologues Too Long','Trips on Flat Surfaces','Drops Weapon Often',
+  'Gets Distracted by Shiny Things','Falls Asleep Mid-Fight','Sneezes at Critical Moments',
+  'Is Afraid of Own Power','Can\'t Swim','Terrible Sense of Direction',
+  'Trust Issues','Guilt Complex','Savior Complex','God Complex','Inferiority Complex',
+  'Cannot Lie','Cannot Kill','Cannot Retreat','Pacifist Until Provoked',
+  'Berserker Rage (Uncontrollable)','Power Fluctuations','Mana Sickness',
+  'Elemental Instability','Form Instability','Memory Gaps','Identity Crisis',
+  'Split Personality','Phantom Pain','Old War Wound','Cursed Mark',
+  'Soul Fragment Missing','Heart of Glass','Emotional Overflow','Apathetic',
+  'Crippling Nostalgia','Fear of the Dark','Cannot Be Alone','Cannot Trust Anyone',
+  'Addicted to Battle','Self Destructive','Martyr Complex','No Weakness'
 ];
 
+// 14. APEX FORCES — special tier (pink/mauve wheel)
+const APEX_FORCES=['None','None','None','Slightly Blessed','Powerful','Powerful','Slightly Corrupted','Favored','Him'];
+
+// 15. HOW YOU CONQUERED — conquest methods (warm colors)
+const CONQUERED=[
+  'With a world ending power',
+  'Through unmatched mastery of a forbidden weapon',
+  'Turned every enemy against each other',
+  'Through sheer overwhelming force',
+  'With a devious masterplan',
+  'Struck before anyone knew who he was',
+  'He literally outstated everyone',
+  'Undefeated in every duel he had to take'
+];
+
+// 16. CHARACTER'S BACKSTORY — 35+ backstories (rainbow wheel)
+const BACKSTORIES=[
+  'Just some random guy','Made in a lab','Found their powers in a dump',
+  'Their origin story is so embarrassing','Trained by a legend','Rose from absolute nothing',
+  'Descended from something...','Was exiled and came back stronger',
+  'Built themselves from scratch','Disgraced warrior seeking redemption',
+  'Grew up on a farm','Former merchant','Small town nobody',
+  'Just wanted a quiet life','Ran away from home','Failed magician',
+  'Looking for purpose','Searching for more','Wandered endlessly',
+  'Learned the hard way','Was used as a test subject','Chose duty over love',
+  'Found out by the one with no choice','Nobody knows where they came from',
+  'Appeared one day and decided to stay','Was merely superior in their reality',
+  'Comes from a world where everyone is a fighter',
+  'Survived something that should have killed them',
+  'Survived everything in one night','Created to be a weapon',
+  'Watched their world slowly die','Last of their kind',
+  'Lost during a war','He who gave the world a chance',
+  'The hero we deserved','The super computer',
+  'The one who made it all','Was never meant to be anything',
+  'Struck before anyone knew who he was',
+  'Conquered everything for fun','Fell from grace'
+];
+
+// 17. TITLE — 100+ titles (rainbow wheel)
+const TITLES=[
+  'The Hypeman','The Wanderer','The Destroyer','The Creator','The Fallen',
+  'The Redeemed','The Forsaken','The Unbreakable','The Silent','The Storm',
+  'The Phantom','The Butcher','The Saint','The Sinner','The Last One',
+  'The First','The Eternal','The Mortal','The Undying','The Forgotten',
+  'The Remembered','The Chosen','The Rejected','The Beloved','The Feared',
+  'The Merciful','The Ruthless','The Patient','The Wrathful','The Kind',
+  'The Cruel','The Just','The Corrupt','The Pure','The Tainted',
+  'The Brave','The Coward','The Genius','The Fool','The King',
+  'The Pawn','The Shadow','The Light','The Void','The Flame',
+  'The Frost','The Thunder','The Earthquake','The Tsunami','The Hurricane',
+  'The Eclipse','The Dawn','The Dusk','The Midnight','The Noon',
+  'The Apex','The Bottom','The Climber','The Peak','The Valley',
+  'The Mountain','The Ocean','The Sky','The Earth','The Star',
+  'The Moon','The Sun','The Comet','The Meteor','The Nova',
+  'The Nebula','The Galaxy','The Universe','The Multiverse','The Omni',
+  'The Alpha','The Omega','The Beginning','The End','The Loop',
+  'The Paradox','The Anomaly','The Glitch','The Error','The Fix',
+  'The Problem','The Solution','The Question','The Answer','The Riddle',
+  'The Enigma','The Mystery','The Legend','The Myth','The Truth',
+  'The Lie','The Dream','The Nightmare','The Reality','The Illusion',
+  'The One','The Zero','The Infinity','The Nothing','The Everything',
+  'The Goat','The Underdog','The Dark Horse','The Wild Card','The Ace',
+  'The Joker','The Wild One','The Lone Wolf','The Pack Leader','The Outcast',
+  'The Prodigy','The Veteran','The Rookie','The Natural','The Grinder'
+];
+
+// CONDITIONAL: COSMIC POWER (if race = Cosmic Warrior/Cosmic Mind)
+const COSMIC_POWERS=[
+  'Star Creation','Star Flames','Gravity Manipulation','Lunar Manipulation',
+  'Singularity Creation','Mass Manipulation','Space Manipulation',
+  'Time Distortion','Nebular Creation','Cosmic Dust'
+];
+
+// CONDITIONAL: WHAT DID YOU CONQUER
+const WHAT_CONQUERED=['Galaxy','Solar System','Planet','Asteroid'];
+
 // ============================================================
-// GAME DATA — COMPANIONS
+// WHEEL CATEGORY DEFINITIONS
 // ============================================================
-const COMPANIONS=[
-  {id:'wolf',name:'Dire Wolf',color:'#888888',str:2,spd:2,iq:0,dur:1,atkStyle:'melee'},
-  {id:'hawk',name:'War Hawk',color:'#aa8844',str:1,spd:3,iq:1,dur:0,atkStyle:'dive'},
-  {id:'bear',name:'Cave Bear',color:'#664422',str:3,spd:-1,iq:0,dur:3,atkStyle:'melee'},
-  {id:'serpent',name:'Shadow Serpent',color:'#44aa55',str:2,spd:2,iq:1,dur:0,atkStyle:'poison'},
-  {id:'golem_comp',name:'Mini Golem',color:'#999999',str:1,spd:-1,iq:0,dur:4,atkStyle:'tank'},
-  {id:'imp_comp',name:'Familiar Imp',color:'#cc4466',str:0,spd:2,iq:3,dur:0,atkStyle:'magic'},
-  {id:'phoenix',name:'Phoenix Chick',color:'#ff8822',str:1,spd:1,iq:1,dur:1,atkStyle:'fire'},
-  {id:'none',name:'Lone Wolf',color:'#555555',str:0,spd:0,iq:0,dur:0,atkStyle:'none'},
+const WHEEL_CATEGORIES=[
+  {id:'race',num:1,label:'Race',icon:'🧬',color:'#2196F3',items:RACES},
+  {id:'size',num:2,label:'Size',icon:'📏',color:'#6B8E23',items:SIZES},
+  {id:'strength',num:3,label:'Strength',icon:'🏋️',color:'#9C27B0',items:STRENGTH},
+  {id:'speed',num:4,label:'Speed',icon:'⚡',color:'#1565C0',items:SPEED},
+  {id:'durability',num:5,label:'Durability',icon:'🛡️',color:'#C62828',items:DURABILITY},
+  {id:'iq',num:6,label:'IQ',icon:'🧠',color:'#283593',items:IQ_TIERS},
+  {id:'fight',num:7,label:'Fight',icon:'🥷',color:'#D32F2F',items:FIGHT},
+  {id:'weapon',num:8,label:'Weapon',icon:'⚔️',color:'#8B4513',items:WEAPONS},
+  {id:'weaponMastery',num:9,label:'Weapon Mastery',icon:'⚔️',color:'#B71C1C',items:WEAPON_MASTERY},
+  {id:'enchantment',num:10,label:'Enchantment',icon:'💎',color:'#E91E63',items:ENCHANTMENTS},
+  {id:'extraPower',num:11,label:'Extra Power',icon:'🔮',color:'#7B1FA2',items:EXTRA_POWERS},
+  {id:'powerMastery',num:12,label:'Power Mastery',icon:'🔮',color:'#6A1B9A',items:POWER_MASTERY},
+  {id:'weakness',num:13,label:'Weakness',icon:'⚰️',color:'#00BCD4',items:WEAKNESSES},
+  {id:'apexForces',num:14,label:'Apex Forces',icon:'⭐',color:'#E8A0BF',items:APEX_FORCES},
+  {id:'conquered',num:15,label:'How you conquered?',icon:'💀',color:'#FF6F00',items:CONQUERED},
+  {id:'backstory',num:16,label:"Character's Backstory",icon:'📝',color:'#FF5722',items:BACKSTORIES},
+  {id:'title',num:17,label:'Title',icon:'💀',color:'#9E9E9E',items:TITLES},
+];
+
+// Conditional wheels (injected after specific results)
+const CONDITIONAL_WHEELS=[
+  {id:'cosmicPower',label:'Cosmic Power',icon:'✨',color:'#1A237E',items:COSMIC_POWERS,
+   trigger:{category:'race',values:['Cosmic Warrior','Cosmic Mind']}},
+  {id:'whatConquered',label:'What did you conquer?',icon:'✨',color:'#FF8F00',items:WHAT_CONQUERED,
+   trigger:{category:'conquered',values:null}}, // always triggers after conquered
 ];
 
 // ============================================================
 // GAME STATE
 // ============================================================
 let screen='title';
-let spinState={phase:'idle',wheelIdx:0,angle:0,speed:0,targetSlice:-1,result:null};
-let currentChar={name:'',race:null,subRace:null,archetype:null,weapon:null,element:null,weakness:null,companion:null,stats:{str:5,spd:5,iq:5,dur:5},traits:[]};
+let wheelQueue=[];    // ordered list of wheel IDs to spin
+let wheelIdx=0;       // current wheel index in queue
+let charResult={};    // results keyed by wheel ID
 let savedChars=[];
 let selectPage=0;
 
-const WHEEL_ORDER=[
-  {id:'race',label:'RACE',items:()=>RACES.map(r=>({label:r.name,color:r.color,data:r}))},
-  {id:'subrace',label:'SUB-RACE',items:()=>{
-    if(!currentChar.race)return[];
-    return currentChar.race.subs.map(s=>({label:s.name,color:lighten(currentChar.race.color,20),data:s}));
-  }},
-  {id:'archetype',label:'ARCHETYPE',items:()=>ARCHETYPES.map(a=>({label:a.name,color:a.color,data:a}))},
-  {id:'element',label:'ELEMENT',items:()=>ELEMENTS.map(e=>({label:e.name,color:e.color,data:e}))},
-  {id:'weapon',label:'WEAPON',items:()=>WEAPONS.map(w=>({label:w.name,color:w.color,data:w}))},
-  {id:'companion',label:'COMPANION',items:()=>COMPANIONS.map(c=>({label:c.name,color:c.color,data:c}))},
-  {id:'weakness',label:'WEAKNESS',items:()=>WEAKNESSES.map(w=>({label:w.name,color:'#cc4444',data:w}))},
-];
-let wheelStep=0;
+// Spin state
+let spin={phase:'idle',angle:0,speed:0,targetIdx:-1,result:null,landedIdx:-1};
 
-let battleState=null;
-let battleTime=0;
-let battleLog=[];
+// Battle state
+let battleState=null,battleTime=0,battleLog=[];
 
-try{savedChars=JSON.parse(localStorage.getItem('wof_chars')||'[]');}catch(e){savedChars=[];}
-function saveChars(){try{localStorage.setItem('wof_chars',JSON.stringify(savedChars));}catch(e){}}
+try{savedChars=JSON.parse(localStorage.getItem('wof2_chars')||'[]');}catch(e){savedChars=[];}
+function saveChars(){try{localStorage.setItem('wof2_chars',JSON.stringify(savedChars));}catch(e){}}
+
+// Build the wheel queue (main categories + conditional)
+function buildWheelQueue(){
+  wheelQueue=WHEEL_CATEGORIES.map(c=>c.id);
+  wheelIdx=0;
+  charResult={};
+}
+
+function getCurrentWheel(){
+  const id=wheelQueue[wheelIdx];
+  let cat=WHEEL_CATEGORIES.find(c=>c.id===id);
+  if(!cat){
+    const cond=CONDITIONAL_WHEELS.find(c=>c.id===id);
+    if(cond)cat=cond;
+  }
+  return cat;
+}
+
+// Check and insert conditional wheels after a spin
+function checkConditionals(){
+  const lastId=wheelQueue[wheelIdx];
+  const lastResult=charResult[lastId];
+  CONDITIONAL_WHEELS.forEach(cw=>{
+    if(wheelQueue.includes(cw.id))return; // already added
+    const t=cw.trigger;
+    if(t.category===lastId){
+      if(t.values===null || t.values.includes(lastResult)){
+        // Insert conditional wheel right after current
+        wheelQueue.splice(wheelIdx+1,0,cw.id);
+      }
+    }
+  });
+}
 
 // ============================================================
-// WHEEL SPINNER
+// WHEEL SPIN MECHANICS
 // ============================================================
-function startSpin(){
-  const wheel=WHEEL_ORDER[wheelStep];
-  const items=wheel.items();
-  if(items.length===0)return;
-  spinState.phase='spinning';
-  spinState.angle=Math.random()*Math.PI*2;
-  spinState.speed=0.15+Math.random()*0.1;
-  spinState.targetSlice=rand(0,items.length-1);
-  spinState.result=null;
+function startSpin(cat){
+  const items=cat.items;
+  if(!items||items.length===0)return;
+  spin.phase='spinning';
+  spin.angle=Math.random()*Math.PI*2;
+  spin.speed=0.2+Math.random()*0.15;
+  spin.targetIdx=rand(0,items.length-1);
+  spin.result=null;
+  spin.landedIdx=-1;
   SFX.spin();
 }
 
+let lastTickAngle=0;
 function updateSpin(){
-  if(spinState.phase!=='spinning')return;
-  spinState.angle+=spinState.speed;
-  spinState.speed*=0.985;
-  if(spinState.speed<0.002){
-    spinState.phase='landed';
-    const wheel=WHEEL_ORDER[wheelStep];
-    const items=wheel.items();
-    const sliceAngle=Math.PI*2/items.length;
-    const normAngle=((spinState.angle%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
-    const idx=Math.floor(normAngle/sliceAngle)%items.length;
-    spinState.result=items[idx];
-    applySpinResult(wheel.id,spinState.result);
-    SFX.land();
-  }
-}
+  if(spin.phase!=='spinning')return;
+  spin.angle+=spin.speed;
+  spin.speed*=0.988;
 
-function applySpinResult(wheelId,result){
-  const d=result.data;
-  switch(wheelId){
-    case 'race':currentChar.race=d;break;
-    case 'subrace':
-      currentChar.subRace=d;
-      currentChar.stats.str+=d.str;currentChar.stats.spd+=d.spd;
-      currentChar.stats.iq+=d.iq;currentChar.stats.dur+=d.dur;
-      currentChar.traits.push(d.trait);
-      break;
-    case 'archetype':
-      currentChar.archetype=d;
-      currentChar.stats.str+=d.str;currentChar.stats.spd+=d.spd;
-      currentChar.stats.iq+=d.iq;currentChar.stats.dur+=d.dur;
-      break;
-    case 'element':currentChar.element=d;break;
-    case 'weapon':currentChar.weapon=d;break;
-    case 'companion':currentChar.companion=d;break;
-    case 'weakness':currentChar.weakness=d;break;
+  // Tick sound as segments pass
+  const cat=getCurrentWheel();
+  if(cat){
+    const sliceAngle=Math.PI*2/cat.items.length;
+    const currentSlice=Math.floor(((spin.angle%(Math.PI*2))+(Math.PI*2))%(Math.PI*2)/sliceAngle);
+    const lastSlice=Math.floor(((lastTickAngle%(Math.PI*2))+(Math.PI*2))%(Math.PI*2)/sliceAngle);
+    if(currentSlice!==lastSlice&&spin.speed>0.01)SFX.tick();
+  }
+  lastTickAngle=spin.angle;
+
+  if(spin.speed<0.001){
+    spin.phase='landed';
+    if(cat){
+      const items=cat.items;
+      const sliceAngle=Math.PI*2/items.length;
+      // The pointer is at the top (angle 0 = right, so top = -PI/2)
+      // We need to figure out which slice the pointer points to
+      const normAngle=(((-spin.angle-Math.PI/2)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
+      const idx=Math.floor(normAngle/sliceAngle)%items.length;
+      spin.landedIdx=idx;
+      spin.result=items[idx];
+      charResult[cat.id]=spin.result;
+      checkConditionals();
+      SFX.land();
+    }
   }
 }
 
@@ -418,1121 +473,848 @@ function applySpinResult(wheelId,result){
 // DRAW: TITLE SCREEN
 // ============================================================
 function drawTitle(){
-  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
-  X.strokeStyle='#1a1a2a';X.lineWidth=1;
-  for(let i=0;i<W;i+=40){X.beginPath();X.moveTo(i,0);X.lineTo(i,H);X.stroke();}
-  for(let i=0;i<H;i+=40){X.beginPath();X.moveTo(0,i);X.lineTo(W,i);X.stroke();}
+  clearBtns();
+  X.fillStyle='#000';X.fillRect(0,0,VW,VH);
 
-  const t=Date.now()*0.002;
-  const titleY=isMobile?100:120;
+  // Subtle grid
+  X.strokeStyle='#111';X.lineWidth=1;
+  for(let i=0;i<VW;i+=50){X.beginPath();X.moveTo(i,0);X.lineTo(i,VH);X.stroke();}
+  for(let i=0;i<VH;i+=50){X.beginPath();X.moveTo(0,i);X.lineTo(VW,i);X.stroke();}
 
-  // Animated rune circle
-  X.save();X.translate(W/2,titleY-10);X.rotate(t*0.3);
-  X.strokeStyle='#ffaa2230';X.lineWidth=2;
-  X.beginPath();X.arc(0,0,isMobile?60:80,0,Math.PI*2);X.stroke();
-  for(let i=0;i<8;i++){
-    const a=i*Math.PI/4;
-    X.beginPath();X.moveTo(Math.cos(a)*(isMobile?55:75),Math.sin(a)*(isMobile?55:75));
-    X.lineTo(Math.cos(a)*(isMobile?65:85),Math.sin(a)*(isMobile?65:85));X.stroke();
-  }
-  // Inner rune circle rotating opposite
-  X.rotate(-t*0.6);X.strokeStyle='#cc44ff20';
-  X.beginPath();X.arc(0,0,isMobile?40:55,0,Math.PI*2);X.stroke();
-  for(let i=0;i<12;i++){
-    const a=i*Math.PI/6;
-    X.beginPath();X.moveTo(Math.cos(a)*(isMobile?36:50),Math.sin(a)*(isMobile?36:50));
-    X.lineTo(Math.cos(a)*(isMobile?44:60),Math.sin(a)*(isMobile?44:60));X.stroke();
-  }
+  const t=Date.now()*0.001;
+  const cx=VW/2,titleY=VH*0.22;
+
+  // Animated glow circle
+  X.save();X.translate(cx,titleY);
+  X.rotate(t*0.3);X.strokeStyle='rgba(33,150,243,0.15)';X.lineWidth=2;
+  X.beginPath();X.arc(0,0,80,0,Math.PI*2);X.stroke();
+  for(let i=0;i<12;i++){const a=i*Math.PI/6;X.beginPath();X.moveTo(Math.cos(a)*75,Math.sin(a)*75);X.lineTo(Math.cos(a)*90,Math.sin(a)*90);X.stroke();}
+  X.rotate(-t*0.6);X.strokeStyle='rgba(156,39,176,0.12)';
+  X.beginPath();X.arc(0,0,55,0,Math.PI*2);X.stroke();
   X.restore();
 
-  // Title with glow
-  X.font='bold '+(isMobile?'28':'40')+'px Consolas,Courier New,monospace';
+  // Title
+  X.font='bold '+(isMobile?32:48)+'px "Segoe UI",Arial,sans-serif';
   X.textAlign='center';X.textBaseline='middle';
-  X.shadowColor='#ffaa22';X.shadowBlur=20;
-  X.fillStyle='#ffaa22';
-  X.fillText('WHEEL OF',W/2,titleY-20);
-  X.fillText('FAITH',W/2,titleY+20);
+  X.shadowColor='#2196F3';X.shadowBlur=30;
+  X.fillStyle='#fff';
+  X.fillText('WHEEL OF',cx,titleY-22);
+  X.fillText('FAITH',cx,titleY+28);
   X.shadowBlur=0;
 
-  X.font=(isMobile?'11':'14')+'px Consolas,Courier New,monospace';
-  X.fillStyle='#888';
-  X.fillText('15 Races // '+ARCHETYPES.length+' Archetypes // Real-Time Battle',W/2,titleY+55);
+  // Subtitle
+  X.font=(isMobile?13:16)+'px "Segoe UI",Arial,sans-serif';
+  X.fillStyle='#666';
+  X.fillText('17 Spins // '+RACES.length+' Races // '+WEAPONS.length+' Weapons // '+ENCHANTMENTS.length+'+ Enchantments',cx,titleY+65);
+  X.fillText('Inspired by @wheeloffaith',cx,titleY+85);
 
-  // Floating race icons
-  const iconR=isMobile?12:16;
-  const iconSpacing=Math.min(40,Math.floor((W-40)/Math.ceil(RACES.length/2)));
-  for(let row=0;row<2;row++){
-    const startIdx=row*Math.ceil(RACES.length/2);
-    const endIdx=Math.min(startIdx+Math.ceil(RACES.length/2),RACES.length);
-    const rowCount=endIdx-startIdx;
-    for(let i=startIdx;i<endIdx;i++){
-      const r=RACES[i];const ci=i-startIdx;
-      const bx=W/2+(ci-(rowCount-1)/2)*iconSpacing;
-      const by=titleY+90+row*40+Math.sin(t+i*0.7)*5;
-      const g=X.createRadialGradient(bx-iconR*0.2,by-iconR*0.2,iconR*0.1,bx,by,iconR);
-      g.addColorStop(0,lighten(r.color,40));g.addColorStop(1,r.color);
-      X.beginPath();X.arc(bx,by,iconR,0,Math.PI*2);X.fillStyle=g;X.fill();
-      X.strokeStyle=darken(r.color,20);X.lineWidth=1;X.stroke();
-    }
+  // Floating category icons
+  const icons=WHEEL_CATEGORIES.map(c=>c.icon);
+  const iconCount=Math.min(icons.length,17);
+  const iconSpacing=Math.min(42,Math.floor((VW-60)/iconCount));
+  const iconY=titleY+120;
+  X.font='20px serif';
+  for(let i=0;i<iconCount;i++){
+    const ix=cx+(i-(iconCount-1)/2)*iconSpacing;
+    const iy=iconY+Math.sin(t*1.5+i*0.5)*6;
+    X.globalAlpha=0.7;X.fillText(icons[i],ix-10,iy);X.globalAlpha=1;
   }
 
-  const btnW=200,btnH=50,btnX=W/2-btnW/2;
-  let btnY=titleY+185;
-  addBtn('create',btnX,btnY,btnW,btnH,'CREATE CHARACTER','#ffaa22',()=>{
-    screen='spin';wheelStep=0;spinState={phase:'idle',angle:0,speed:0,result:null};
-    currentChar={name:'',race:null,subRace:null,archetype:null,weapon:null,element:null,weakness:null,companion:null,stats:{str:5,spd:5,iq:5,dur:5},traits:[]};
-  });
-  btnY+=60;
-  addBtn('roster',btnX,btnY,btnW,btnH,'MY ROSTER ('+savedChars.length+')','#4488cc',()=>{screen='roster';selectPage=0;});
-  btnY+=60;
+  // Buttons
+  const btnW=Math.min(280,VW-60),btnH=55,btnX=cx-btnW/2;
+  let btnY=iconY+50;
+
+  addBtn('create',btnX,btnY,btnW,btnH,'CREATE CHARACTER','#2196F3',()=>{
+    buildWheelQueue();screen='spin';spin={phase:'idle',angle:0,speed:0,result:null,landedIdx:-1};
+  },{fontSize:18});
+  btnY+=70;
+
+  addBtn('roster',btnX,btnY,btnW,btnH,'MY ROSTER ('+savedChars.length+')','#4CAF50',()=>{screen='roster';selectPage=0;},{fontSize:18});
+  btnY+=70;
+
   if(savedChars.length>=2){
-    addBtn('battle',btnX,btnY,btnW,btnH,'BATTLE','#cc4444',()=>{screen='battleSelect';selectPage=0;battleSelectP1=0;battleSelectP2=1;});
-    btnY+=60;
+    addBtn('battle',btnX,btnY,btnW,btnH,'BATTLE','#F44336',()=>{screen='battleSelect';selectPage=0;battleSelectP1=0;battleSelectP2=1;},{fontSize:18});
   }
 
-  X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('WoF v1.1.0 // soloforte.ai',W/2,H-20);
+  X.font='11px "Segoe UI",sans-serif';X.fillStyle='#333';X.textAlign='center';
+  X.fillText('WoF v2.0.0 // soloforte.ai',cx,VH-15);
   buttons.forEach(drawBtn);
 }
 
 // ============================================================
-// DRAW: WHEEL SPIN SCREEN
+// DRAW: WHEEL SPIN SCREEN (OG Style — full screen wheel)
 // ============================================================
 function drawSpin(){
-  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  clearBtns();
+  X.fillStyle='#000';X.fillRect(0,0,VW,VH);
 
-  const wheel=WHEEL_ORDER[wheelStep];
-  const items=wheel.items();
-  if(items.length===0){wheelStep++;return;}
+  const cat=getCurrentWheel();
+  if(!cat){
+    // All spins done
+    screen='charDone';return;
+  }
+  const items=cat.items;
+  if(!items||items.length===0){wheelIdx++;return;}
 
-  X.font='bold '+(isMobile?'18':'24')+'px Consolas,Courier New,monospace';
-  X.textAlign='center';X.textBaseline='middle';
-  X.fillStyle='#ffaa22';
-  X.fillText('SPIN '+(wheelStep+1)+'/'+WHEEL_ORDER.length+': '+wheel.label,W/2,30);
+  const totalSpins=wheelQueue.length;
+  const currentSpin=wheelIdx+1;
 
-  // Progress bar
-  const pbW=W-60,pbH=8,pbX=30,pbY=50;
-  X.fillStyle='#222';drawRoundRect(pbX,pbY,pbW,pbH,4);X.fill();
-  const prog=(wheelStep/WHEEL_ORDER.length)*pbW;
-  X.fillStyle='#ffaa22';drawRoundRect(pbX,pbY,Math.max(8,prog),pbH,4);X.fill();
+  // === TOP SECTION: Icon + Category Label + Result ===
+  const topY=isMobile?50:55;
 
-  // Draw wheel
-  const cx=W/2,cy=isMobile?220:210,wr=isMobile?110:130;
+  // Category icon (emoji)
+  X.font='36px serif';X.textAlign='center';X.textBaseline='middle';
+  X.fillText(cat.icon||'🎯',VW/2,topY-5);
+
+  // Category label pill
+  const pillText=(cat.num||'')+'.'+cat.label;
+  X.font='bold '+(isMobile?15:18)+'px "Segoe UI",Arial,sans-serif';
+  const pillW=X.measureText(pillText).width+30;
+  const pillH=32;
+  const pillX=VW/2-pillW/2,pillY=topY+22;
+  X.beginPath();
+  X.moveTo(pillX+8,pillY);X.lineTo(pillX+pillW-8,pillY);X.quadraticCurveTo(pillX+pillW,pillY,pillX+pillW,pillY+8);
+  X.lineTo(pillX+pillW,pillY+pillH-8);X.quadraticCurveTo(pillX+pillW,pillY+pillH,pillX+pillW-8,pillY+pillH);
+  X.lineTo(pillX+8,pillY+pillH);X.quadraticCurveTo(pillX,pillY+pillH,pillX,pillY+pillH-8);
+  X.lineTo(pillX,pillY+8);X.quadraticCurveTo(pillX,pillY,pillX+8,pillY);X.closePath();
+  X.fillStyle='#222';X.fill();
+  X.fillStyle=cat.color||'#2196F3';
+  X.font='bold '+(isMobile?14:17)+'px "Segoe UI",Arial,sans-serif';
+  X.fillText(pillText,VW/2,pillY+pillH/2);
+
+  // Result text (big bold) — only when landed
+  let resultY=pillY+pillH+15;
+  if(spin.phase==='landed'&&spin.result){
+    X.font='bold '+(isMobile?24:36)+'px "Segoe UI",Arial,sans-serif';
+    X.fillStyle='#fff';
+    // Wrap long text
+    const maxW=VW-40;
+    const txt=spin.result;
+    if(X.measureText(txt).width>maxW){
+      X.font='bold '+(isMobile?18:26)+'px "Segoe UI",Arial,sans-serif';
+    }
+    X.fillText(txt,VW/2,resultY+15);
+    resultY+=isMobile?40:55;
+  }else{
+    resultY+=10;
+  }
+
+  // === WHEEL ===
+  const wheelCenterY=spin.phase==='landed'?(resultY+VH*0.9)/2:VH*0.52;
+  const maxR=Math.min(VW*0.42,VH*0.32);
+  const wr=maxR;
+  const cx=VW/2,cy=wheelCenterY;
+
   const sliceAngle=Math.PI*2/items.length;
+  const baseColor=cat.color||'#2196F3';
 
-  X.save();X.translate(cx,cy);X.rotate(-spinState.angle);
+  X.save();X.translate(cx,cy);X.rotate(spin.angle);
+
   for(let i=0;i<items.length;i++){
-    const startA=i*sliceAngle;
-    const endA=(i+1)*sliceAngle;
+    const startA=i*sliceAngle-Math.PI/2;
+    const endA=(i+1)*sliceAngle-Math.PI/2;
+
+    // Alternate shade for segments
+    let segColor;
+    if(items.length<=15){
+      // For small wheels: use color variations
+      const hueShift=(i/items.length)*60-30;
+      segColor=i%2===0?lighten(baseColor,hueShift):darken(baseColor,20+hueShift);
+    }else{
+      // For large wheels: alternate between 2-3 shades
+      const shades=[baseColor,darken(baseColor,25),darken(baseColor,50),lighten(baseColor,15)];
+      segColor=shades[i%shades.length];
+    }
+
+    // If landed, highlight the winner and dim others
+    if(spin.phase==='landed'){
+      if(i===spin.landedIdx){
+        segColor=lighten(baseColor,60);
+      }else{
+        segColor=darken(baseColor,80);
+      }
+    }
+
     X.beginPath();X.moveTo(0,0);X.arc(0,0,wr,startA,endA);X.closePath();
-    X.fillStyle=i%2===0?items[i].color:darken(items[i].color,30);X.fill();
-    X.strokeStyle='#0a0a1a';X.lineWidth=2;X.stroke();
-    const labelA=startA+sliceAngle/2;
-    const lr=wr*0.65;
-    X.save();X.translate(Math.cos(labelA)*lr,Math.sin(labelA)*lr);
-    X.rotate(labelA+Math.PI/2);
-    X.font='bold '+(items.length>12?'8':'10')+'px Consolas,Courier New,monospace';
-    X.fillStyle='#fff';X.textAlign='center';X.textBaseline='middle';
-    const lbl=items[i].label.length>10?items[i].label.substring(0,9)+'.':items[i].label;
-    X.fillText(lbl,0,0);
+    X.fillStyle=segColor;X.fill();
+    X.strokeStyle='rgba(0,0,0,0.5)';X.lineWidth=1.5;X.stroke();
+
+    // Text label
+    const midA=startA+sliceAngle/2;
+    const textR=wr*0.68;
+    X.save();
+    X.translate(Math.cos(midA)*textR,Math.sin(midA)*textR);
+    X.rotate(midA+Math.PI/2);
+
+    // Font size based on number of items and text length
+    let fontSize=Math.min(14,Math.max(6,wr*0.08));
+    if(items.length>30)fontSize=Math.min(10,Math.max(5,wr*0.05));
+    if(items.length>60)fontSize=Math.min(8,Math.max(4,wr*0.035));
+    if(items.length>100)fontSize=Math.min(6,Math.max(3,wr*0.025));
+
+    X.font='bold '+fontSize+'px "Segoe UI",Arial,sans-serif';
+    X.textAlign='center';X.textBaseline='middle';
+
+    // Dim non-winner text when landed
+    if(spin.phase==='landed'&&i!==spin.landedIdx){
+      X.fillStyle='rgba(255,255,255,0.2)';
+    }else{
+      X.fillStyle='#fff';
+    }
+
+    let label=items[i];
+    const maxTextW=wr*0.55;
+    if(X.measureText(label).width>maxTextW){
+      label=label.substring(0,Math.floor(label.length*maxTextW/X.measureText(label).width))+'..';
+    }
+    X.fillText(label,0,0);
     X.restore();
   }
   X.restore();
 
-  // Pointer
-  X.beginPath();X.moveTo(cx,cy-wr-15);X.lineTo(cx-10,cy-wr-30);X.lineTo(cx+10,cy-wr-30);X.closePath();
-  X.fillStyle='#ffaa22';X.fill();
+  // Center hub
+  const hubR=wr*0.12;
+  X.beginPath();X.arc(cx,cy,hubR,0,Math.PI*2);
+  const hubGrad=X.createRadialGradient(cx,cy,hubR*0.3,cx,cy,hubR);
+  hubGrad.addColorStop(0,'#444');hubGrad.addColorStop(1,'#111');
+  X.fillStyle=hubGrad;X.fill();
+  X.strokeStyle='#333';X.lineWidth=3;X.stroke();
 
-  // Center circle
-  X.beginPath();X.arc(cx,cy,20,0,Math.PI*2);X.fillStyle='#1a1a2a';X.fill();
-  X.strokeStyle='#ffaa22';X.lineWidth=2;X.stroke();
+  // Inner hub ring
+  X.beginPath();X.arc(cx,cy,hubR*0.5,0,Math.PI*2);
+  X.strokeStyle='#555';X.lineWidth=2;X.stroke();
 
-  if(spinState.phase==='idle'){
-    addBtn('spin',W/2-60,cy+wr+30,120,40,'SPIN!','#ffaa22',()=>{startSpin();});
-  }else if(spinState.phase==='landed'&&spinState.result){
-    X.font='bold '+(isMobile?'14':'18')+'px Consolas,Courier New,monospace';
-    X.fillStyle='#fff';X.textAlign='center';
-    X.fillText(spinState.result.label+'!',W/2,cy+wr+30);
+  // Outer rim
+  X.beginPath();X.arc(cx,cy,wr+3,0,Math.PI*2);
+  X.strokeStyle='#222';X.lineWidth=5;X.stroke();
 
-    const d=spinState.result.data;
-    X.font=(isMobile?'11':'13')+'px Consolas,Courier New,monospace';
-    X.fillStyle='#aaa';
-    if(d.desc)X.fillText(d.desc,W/2,cy+wr+50);
-    if(d.trait)X.fillText(d.trait,W/2,cy+wr+50);
-    if(d.str!==undefined){
-      const statStr='STR:'+((d.str>=0?'+':'')+d.str)+' SPD:'+((d.spd>=0?'+':'')+d.spd)+' IQ:'+((d.iq>=0?'+':'')+d.iq)+' DUR:'+((d.dur>=0?'+':'')+d.dur);
-      X.fillText(statStr,W/2,cy+wr+68);
-    }
+  // Pointer at top
+  const ptrY=cy-wr-12;
+  X.beginPath();X.moveTo(cx,cy-wr+2);X.lineTo(cx-10,ptrY-8);X.lineTo(cx+10,ptrY-8);X.closePath();
+  X.fillStyle='#fff';X.fill();
+  X.strokeStyle='#888';X.lineWidth=1;X.stroke();
 
-    addBtn('next',W/2-60,cy+wr+85,120,36,'NEXT >>','#ffaa22',()=>{
-      wheelStep++;spinState={phase:'idle',angle:0,speed:0,result:null};
-      if(wheelStep>=WHEEL_ORDER.length)screen='charDone';
-    });
+  // === BOTTOM: Spin button or Next button ===
+  if(spin.phase==='idle'){
+    const btnW=160,btnH=50;
+    addBtn('spin',cx-btnW/2,VH-btnH-30,btnW,btnH,'SPIN!',cat.color||'#2196F3',()=>{startSpin(cat);},{fontSize:20});
+  }else if(spin.phase==='landed'){
+    const btnW=160,btnH=45;
+    addBtn('next',cx-btnW/2,VH-btnH-25,btnW,btnH,'NEXT >>',cat.color||'#2196F3',()=>{
+      wheelIdx++;
+      spin={phase:'idle',angle:Math.random()*Math.PI*2,speed:0,result:null,landedIdx:-1};
+      if(wheelIdx>=wheelQueue.length)screen='charDone';
+    },{fontSize:16});
   }
 
-  // Current stats sidebar
-  const sx=isMobile?10:W-160,sy=isMobile?cy+wr+130:70;
-  X.font='bold 12px Consolas,Courier New,monospace';X.textAlign='left';
-  X.fillStyle='#ffaa22';X.fillText('CURRENT BUILD:',sx,sy);
-  X.font='11px Consolas,Courier New,monospace';X.fillStyle='#ccc';
-  let ly=sy+18;
-  if(currentChar.race){X.fillText('Race: '+currentChar.race.name,sx,ly);ly+=15;}
-  if(currentChar.subRace){X.fillText('Sub: '+currentChar.subRace.name,sx,ly);ly+=15;}
-  if(currentChar.archetype){X.fillText('Class: '+currentChar.archetype.name,sx,ly);ly+=15;}
-  if(currentChar.element){X.fillText('Element: '+currentChar.element.name,sx,ly);ly+=15;}
-  if(currentChar.weapon){X.fillText('Weapon: '+currentChar.weapon.name,sx,ly);ly+=15;}
-  if(currentChar.companion){X.fillText('Companion: '+currentChar.companion.name,sx,ly);ly+=15;}
-  ly+=5;
-  X.fillStyle='#ff6644';X.fillText('STR: '+currentChar.stats.str,sx,ly);ly+=14;
-  X.fillStyle='#44aaff';X.fillText('SPD: '+currentChar.stats.spd,sx,ly);ly+=14;
-  X.fillStyle='#ffcc44';X.fillText('IQ:  '+currentChar.stats.iq,sx,ly);ly+=14;
-  X.fillStyle='#44cc88';X.fillText('DUR: '+currentChar.stats.dur,sx,ly);
+  // Progress indicator (small dots at bottom)
+  const dotY=VH-12;
+  const dotSpacing=8;
+  const totalDots=Math.min(wheelQueue.length,20);
+  const dotsStartX=cx-(totalDots-1)*dotSpacing/2;
+  for(let i=0;i<totalDots;i++){
+    X.beginPath();X.arc(dotsStartX+i*dotSpacing,dotY,2.5,0,Math.PI*2);
+    X.fillStyle=i<wheelIdx?cat.color:(i===wheelIdx?'#fff':'#333');
+    X.fill();
+  }
 
-  addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+  // Spin counter
+  X.font='12px "Segoe UI",sans-serif';X.fillStyle='#555';X.textAlign='center';
+  X.fillText(currentSpin+'/'+totalSpins,VW/2,dotY-12);
+
+  // Back button
+  addBtn('back',10,10,60,30,'< Back','#666',()=>{screen='title';},{fontSize:12});
+
   buttons.forEach(drawBtn);
 }
 
 // ============================================================
-// DRAW: CHARACTER DONE
+// DRAW: CHARACTER DONE — OG-style character card
 // ============================================================
 function drawCharDone(){
-  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  clearBtns();
+  X.fillStyle='#000';X.fillRect(0,0,VW,VH);
 
-  X.font='bold '+(isMobile?'22':'30')+'px Consolas,Courier New,monospace';
-  X.textAlign='center';X.textBaseline='middle';
-  X.shadowColor='#ffaa22';X.shadowBlur=15;X.fillStyle='#ffaa22';
-  X.fillText('CHARACTER CREATED!',W/2,40);X.shadowBlur=0;
+  // Fantasy background gradient based on race/element
+  const raceColor=CAT_COLORS.race;
+  const grad=X.createLinearGradient(0,0,VW,VH);
+  grad.addColorStop(0,'#000');grad.addColorStop(0.3,darken(raceColor,100));
+  grad.addColorStop(0.7,darken('#7B1FA2',100));grad.addColorStop(1,'#000');
+  X.fillStyle=grad;X.fillRect(0,0,VW,VH);
 
-  // Draw character card
-  const cardW=Math.min(W-40,400),cardH=isMobile?420:350;
-  const cardX=W/2-cardW/2,cardY=70;
-  drawRoundRect(cardX,cardY,cardW,cardH,12);
-  X.fillStyle='#111128';X.fill();
-  X.strokeStyle=currentChar.race?currentChar.race.color:'#ffaa22';X.lineWidth=2;X.stroke();
-
-  // Character ball
-  const ballR=30,ballX=cardX+50,ballY=cardY+50;
-  const rc=currentChar.race?currentChar.race.color:'#888';
-  drawBall(ballX,ballY,ballR,rc);
-
-  // Info
-  const tx=ballX+ballR+20;let ty=cardY+30;
-  X.font='bold 16px Consolas,Courier New,monospace';X.textAlign='left';
-  X.fillStyle='#fff';
-  const charName=currentChar.name||'Unnamed Hero';
-  X.fillText(charName,tx,ty);ty+=22;
-
-  X.font='13px Consolas,Courier New,monospace';X.fillStyle='#ccc';
-  if(currentChar.subRace)X.fillText(currentChar.subRace.name+' '+currentChar.race.name,tx,ty);
-  else if(currentChar.race)X.fillText(currentChar.race.name,tx,ty);
-  ty+=18;
-  if(currentChar.archetype){X.fillText(currentChar.archetype.name,tx,ty);ty+=18;}
-  if(currentChar.element){X.fillStyle=currentChar.element.color;X.fillText(currentChar.element.name+' Element',tx,ty);ty+=18;}
-
-  // Stats
-  ty=cardY+120;const statX=cardX+20;
-  const stats=[
-    {label:'STR',val:currentChar.stats.str,color:'#ff6644',max:15},
-    {label:'SPD',val:currentChar.stats.spd,color:'#44aaff',max:15},
-    {label:'IQ',val:currentChar.stats.iq,color:'#ffcc44',max:15},
-    {label:'DUR',val:currentChar.stats.dur,color:'#44cc88',max:15},
-  ];
-  const barW=cardW-80;
-  stats.forEach(s=>{
-    X.font='bold 12px Consolas,Courier New,monospace';X.textAlign='left';
-    X.fillStyle=s.color;X.fillText(s.label,statX,ty);
-    X.fillText(s.val,statX+barW+10,ty);
-    const bx=statX+35,bw=barW-40,bh=10;
-    X.fillStyle='#222';drawRoundRect(bx,ty-7,bw,bh,3);X.fill();
-    const filled=Math.max(0,Math.min(1,s.val/s.max))*bw;
-    X.fillStyle=s.color;drawRoundRect(bx,ty-7,Math.max(4,filled),bh,3);X.fill();
-    ty+=25;
-  });
-
-  // Equipment & traits
-  ty+=5;X.font='12px Consolas,Courier New,monospace';X.fillStyle='#aaa';X.textAlign='left';
-  if(currentChar.weapon){X.fillText('Weapon: '+currentChar.weapon.name+' (DMG:'+currentChar.weapon.dmg+')',statX,ty);ty+=16;}
-  if(currentChar.companion&&currentChar.companion.id!=='none'){X.fillText('Companion: '+currentChar.companion.name,statX,ty);ty+=16;}
-  if(currentChar.weakness){X.fillStyle='#cc4444';X.fillText('Weakness: '+currentChar.weakness.name,statX,ty);ty+=16;}
-
-  if(currentChar.traits.length>0){
-    ty+=5;X.fillStyle='#888';X.font='11px Consolas,Courier New,monospace';
-    currentChar.traits.forEach(t=>{
-      if(ty<cardY+cardH-10){X.fillText('• '+t,statX,ty);ty+=14;}
-    });
+  // Particle effects
+  const t=Date.now()*0.001;
+  for(let i=0;i<30;i++){
+    const px=((Math.sin(t*0.3+i*2.1)*0.5+0.5)*VW);
+    const py=((Math.cos(t*0.2+i*1.7)*0.5+0.5)*VH);
+    const alpha=Math.sin(t+i)*0.3+0.3;
+    X.beginPath();X.arc(px,py,1.5,0,Math.PI*2);
+    X.fillStyle=hexToRgba('#fff',Math.max(0,alpha));X.fill();
   }
 
-  const nameY=cardY+cardH+20;
-  addBtn('nameChar',W/2-100,nameY,200,36,'NAME CHARACTER','#ffaa22',()=>{
+  // Character silhouette/avatar area
+  const avatarY=isMobile?VH*0.08:VH*0.05;
+  const avatarH=VH*0.28;
+  const avatarCx=VW/2;
+
+  // Stylized character figure (silhouette with glow)
+  X.save();
+  X.shadowColor=raceColor;X.shadowBlur=40;
+
+  // Head
+  X.beginPath();X.arc(avatarCx,avatarY+avatarH*0.2,avatarH*0.12,0,Math.PI*2);
+  X.fillStyle='rgba(255,255,255,0.1)';X.fill();
+
+  // Body
+  X.beginPath();
+  X.moveTo(avatarCx-avatarH*0.15,avatarY+avatarH*0.35);
+  X.lineTo(avatarCx+avatarH*0.15,avatarY+avatarH*0.35);
+  X.lineTo(avatarCx+avatarH*0.2,avatarY+avatarH*0.9);
+  X.lineTo(avatarCx-avatarH*0.2,avatarY+avatarH*0.9);
+  X.closePath();
+  X.fillStyle='rgba(255,255,255,0.06)';X.fill();
+
+  // Aura rings
+  X.strokeStyle=hexToRgba(raceColor,0.3);X.lineWidth=2;
+  X.beginPath();X.arc(avatarCx,avatarY+avatarH*0.45,avatarH*0.35+Math.sin(t*2)*5,0,Math.PI*2);X.stroke();
+  X.strokeStyle=hexToRgba('#7B1FA2',0.2);
+  X.beginPath();X.arc(avatarCx,avatarY+avatarH*0.45,avatarH*0.45+Math.cos(t*1.5)*8,0,Math.PI*2);X.stroke();
+  X.shadowBlur=0;
+  X.restore();
+
+  // Character name
+  const charName=charResult.title?charResult.title:'Unnamed';
+  const nameY=avatarY+avatarH+15;
+  X.font='bold '+(isMobile?22:30)+'px "Segoe UI",Arial,sans-serif';
+  X.textAlign='center';X.textBaseline='middle';
+  X.shadowColor='#fff';X.shadowBlur=10;
+  X.fillStyle='#fff';
+  X.fillText(charName,VW/2,nameY);
+  X.shadowBlur=0;
+
+  // Stats card
+  const cardX=20,cardW=VW-40;
+  let sy=nameY+30;
+  const lineH=isMobile?22:26;
+
+  // Stat bars (OG style: label on left, colored bar, value text)
+  const statEntries=[
+    {label:'RACE',value:charResult.race||'—',color:'#2196F3'},
+    {label:'SIZE',value:charResult.size||'—',color:'#6B8E23'},
+    {label:'TITLE',value:charResult.title||'—',color:'#9E9E9E'},
+    {label:'BACKSTORY',value:charResult.backstory||'—',color:'#FF5722'},
+  ];
+
+  const tierEntries=[
+    {label:'STRENGTH',value:charResult.strength||'—',color:'#9C27B0',tier:STRENGTH},
+    {label:'SPEED',value:charResult.speed||'—',color:'#1565C0',tier:SPEED},
+    {label:'DURABILITY',value:charResult.durability||'—',color:'#C62828',tier:DURABILITY},
+    {label:'IQ',value:charResult.iq||'—',color:'#283593',tier:IQ_TIERS},
+    {label:'FIGHT',value:charResult.fight||'—',color:'#D32F2F',tier:FIGHT},
+  ];
+
+  const equipEntries=[
+    {label:'WEAPON',value:charResult.weapon||'—',color:'#8B4513'},
+    {label:'W.MASTERY',value:charResult.weaponMastery||'—',color:'#B71C1C'},
+    {label:'ENCHANTMENT',value:charResult.enchantment||'—',color:'#E91E63'},
+    {label:'POWER',value:charResult.extraPower||'—',color:'#7B1FA2'},
+    {label:'P.MASTERY',value:charResult.powerMastery||'—',color:'#6A1B9A'},
+    {label:'WEAKNESS',value:charResult.weakness||'—',color:'#00BCD4'},
+    {label:'APEX FORCE',value:charResult.apexForces||'—',color:'#E8A0BF'},
+    {label:'CONQUERED',value:charResult.conquered||'—',color:'#FF6F00'},
+  ];
+
+  // Add conditional results if present
+  if(charResult.cosmicPower)equipEntries.push({label:'COSMIC PWR',value:charResult.cosmicPower,color:'#1A237E'});
+  if(charResult.whatConquered)equipEntries.push({label:'CONQUERED',value:charResult.whatConquered,color:'#FF8F00'});
+
+  const fontSize=isMobile?10:13;
+  const labelW=isMobile?75:100;
+  const barX=cardX+labelW+5;
+  const barW=cardW-labelW-10;
+
+  // Draw text stats
+  statEntries.forEach(s=>{
+    X.font='bold '+fontSize+'px "Segoe UI",sans-serif';X.textAlign='left';X.textBaseline='middle';
+    X.fillStyle='#888';X.fillText(s.label,cardX,sy);
+    X.fillStyle=s.color;X.font=fontSize+'px "Segoe UI",sans-serif';
+    let val=s.value;
+    if(X.measureText(val).width>barW)val=val.substring(0,20)+'..';
+    X.fillText(val,barX,sy);
+    sy+=lineH;
+  });
+
+  sy+=5;
+
+  // Draw tier bars
+  tierEntries.forEach(s=>{
+    X.font='bold '+fontSize+'px "Segoe UI",sans-serif';X.textAlign='left';X.textBaseline='middle';
+    X.fillStyle='#888';X.fillText(s.label,cardX,sy);
+
+    // Bar background
+    const barH=isMobile?10:14;
+    const barY=sy-barH/2;
+    X.fillStyle='#1a1a1a';
+    X.fillRect(barX,barY,barW,barH);
+
+    // Bar fill based on tier position
+    const tierIdx=s.tier?s.tier.indexOf(s.value):-1;
+    const tierMax=s.tier?s.tier.length:1;
+    const fillPct=tierIdx>=0?(tierIdx+1)/tierMax:0;
+    X.fillStyle=s.color;
+    X.fillRect(barX,barY,barW*fillPct,barH);
+
+    // Value text on bar
+    X.fillStyle='#fff';X.font='bold '+(fontSize-1)+'px "Segoe UI",sans-serif';
+    X.fillText(s.value,barX+5,sy);
+    sy+=lineH;
+  });
+
+  sy+=5;
+
+  // Draw equipment entries
+  equipEntries.forEach(s=>{
+    X.font='bold '+fontSize+'px "Segoe UI",sans-serif';X.textAlign='left';X.textBaseline='middle';
+    X.fillStyle='#888';X.fillText(s.label,cardX,sy);
+    X.fillStyle=s.color;X.font=fontSize+'px "Segoe UI",sans-serif';
+    let val=s.value;
+    const maxValW=barW;
+    if(X.measureText(val).width>maxValW)val=val.substring(0,25)+'..';
+    X.fillText(val,barX,sy);
+    sy+=lineH;
+  });
+
+  // Buttons
+  sy=Math.max(sy+15,VH-90);
+  const btnW=Math.min(200,VW*0.4);
+
+  addBtn('saveChar',VW/2-btnW-10,sy,btnW,40,'SAVE CHARACTER','#4CAF50',()=>{
     const name=prompt('Name your character:');
     if(name&&name.trim()){
-      currentChar.name=name.trim().substring(0,20);
-      savedChars.push(JSON.parse(JSON.stringify(currentChar)));
+      charResult._name=name.trim().substring(0,25);
+      savedChars.push({...charResult,_saved:Date.now()});
       saveChars();
       screen='title';
     }
-  });
+  },{fontSize:14});
 
-  addBtn('skip',W/2-60,nameY+45,120,30,'SKIP (Random)','#888',()=>{
-    const names=['Ragnor','Zelda','Thorne','Lyra','Kael','Vex','Nyx','Ash','Storm','Blaze','Dusk','Fang','Nova','Echo','Rune','Sable','Crow','Jade','Grimm','Sol','Zara','Rex','Luna','Onyx'];
-    currentChar.name=pick(names);
-    savedChars.push(JSON.parse(JSON.stringify(currentChar)));
+  addBtn('randSave',VW/2+10,sy,btnW,40,'RANDOM NAME','#FF9800',()=>{
+    const names=['Ragnor','Zelda','Thorne','Lyra','Kael','Vex','Nyx','Ash','Storm','Blaze','Dusk','Fang','Nova','Echo','Rune','Sable','Crow','Jade','Grimm','Sol','Zara','Rex','Luna','Onyx','Basti','Valor','Omen','Hex','Cipher','Wraith','Phantom','Aegis','Nexus'];
+    charResult._name=pick(names);
+    savedChars.push({...charResult,_saved:Date.now()});
     saveChars();
     screen='title';
-  });
+  },{fontSize:14});
 
-  addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+  addBtn('back',10,10,60,30,'< Back','#666',()=>{screen='title';},{fontSize:12});
+
   buttons.forEach(drawBtn);
-}
-
-// ============================================================
-// DRAW BALL HELPER
-// ============================================================
-function drawBall(x,y,r,color,opts){
-  opts=opts||{};
-  const g=X.createRadialGradient(x-r*0.25,y-r*0.25,r*0.1,x,y,r);
-  g.addColorStop(0,lighten(color,50));g.addColorStop(0.6,color);g.addColorStop(1,darken(color,30));
-  if(opts.glow){X.shadowColor=color;X.shadowBlur=opts.glow;}
-  X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fillStyle=g;X.fill();
-  X.strokeStyle=darken(color,40);X.lineWidth=opts.strokeW||2;X.stroke();
-  X.shadowBlur=0;
-  // Highlight
-  X.beginPath();X.arc(x-r*0.25,y-r*0.25,r*0.18,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.35)';X.fill();
-  // Element ring
-  if(opts.element){
-    X.strokeStyle=opts.element;X.lineWidth=2;X.setLineDash([3,3]);
-    X.beginPath();X.arc(x,y,r+4,0,Math.PI*2);X.stroke();
-    X.setLineDash([]);
-  }
 }
 
 // ============================================================
 // DRAW: ROSTER
 // ============================================================
 function drawRoster(){
-  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  clearBtns();X.fillStyle='#000';X.fillRect(0,0,VW,VH);
 
-  X.font='bold '+(isMobile?'20':'26')+'px Consolas,Courier New,monospace';
+  X.font='bold '+(isMobile?22:28)+'px "Segoe UI",Arial,sans-serif';
   X.textAlign='center';X.textBaseline='middle';
-  X.shadowColor='#4488cc';X.shadowBlur=15;X.fillStyle='#4488cc';
-  X.fillText('MY ROSTER ('+savedChars.length+')',W/2,30);X.shadowBlur=0;
+  X.fillStyle='#4CAF50';X.fillText('MY ROSTER ('+savedChars.length+')',VW/2,30);
 
   if(savedChars.length===0){
-    X.font='14px Consolas,Courier New,monospace';X.fillStyle='#666';
-    X.fillText('No characters yet. Create one!',W/2,H/2);
-    addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+    X.font='14px "Segoe UI",sans-serif';X.fillStyle='#555';
+    X.fillText('No characters yet. Create one!',VW/2,VH/2);
+    addBtn('back',10,10,60,30,'< Back','#666',()=>{screen='title';},{fontSize:12});
     buttons.forEach(drawBtn);return;
   }
 
-  const cardH=isMobile?70:65;const startY=55;
-  const perPage=Math.floor((H-startY-50)/cardH);
+  const cardH=isMobile?75:70;const startY=55;
+  const perPage=Math.floor((VH-startY-60)/cardH);
   const totalPages=Math.ceil(savedChars.length/perPage);
   if(selectPage>=totalPages)selectPage=totalPages-1;
   const pageStart=selectPage*perPage;
   const pageChars=savedChars.slice(pageStart,pageStart+perPage);
 
-  const cardW=Math.min(W-30,450),cardX=W/2-cardW/2;
+  const cardW=Math.min(VW-30,500),cardX=VW/2-cardW/2;
   pageChars.forEach((ch,i)=>{
     const cy=startY+i*cardH;
-    drawRoundRect(cardX,cy,cardW,cardH-4,8);
-    X.fillStyle='#111128';X.fill();
-    X.strokeStyle=(ch.race?ch.race.color:'#888')+'66';X.lineWidth=1.5;X.stroke();
 
-    const br=isMobile?16:18;
-    const bx=cardX+br+10,by=cy+cardH/2-2;
-    const rc=ch.race?ch.race.color:'#888';
-    drawBall(bx,by,br,rc);
+    // Card bg
+    X.beginPath();
+    const r=8;
+    X.moveTo(cardX+r,cy);X.lineTo(cardX+cardW-r,cy);X.quadraticCurveTo(cardX+cardW,cy,cardX+cardW,cy+r);
+    X.lineTo(cardX+cardW,cy+cardH-6-r);X.quadraticCurveTo(cardX+cardW,cy+cardH-6,cardX+cardW-r,cy+cardH-6);
+    X.lineTo(cardX+r,cy+cardH-6);X.quadraticCurveTo(cardX,cy+cardH-6,cardX,cy+cardH-6-r);
+    X.lineTo(cardX,cy+r);X.quadraticCurveTo(cardX,cy,cardX+r,cy);X.closePath();
+    X.fillStyle='#111';X.fill();
+    X.strokeStyle='#2196F333';X.lineWidth=1;X.stroke();
 
-    const tx=bx+br+12;
-    X.font='bold 13px Consolas,Courier New,monospace';X.textAlign='left';X.textBaseline='middle';
-    X.fillStyle='#fff';X.fillText(ch.name||'Unnamed',tx,cy+16);
-    X.font='11px Consolas,Courier New,monospace';X.fillStyle='#aaa';
-    const info=(ch.subRace?ch.subRace.name+' ':'')+
-      (ch.race?ch.race.name:'')+
-      (ch.archetype?' // '+ch.archetype.name:'')+
-      (ch.element?' // '+ch.element.name:'');
-    X.fillText(info.substring(0,45),tx,cy+34);
+    // Color accent bar
+    X.fillStyle=CAT_COLORS.race;
+    X.fillRect(cardX,cy,4,cardH-6);
 
-    X.font='10px Consolas,Courier New,monospace';
-    X.fillStyle='#ff6644';X.fillText('S:'+ch.stats.str,tx,cy+50);
-    X.fillStyle='#44aaff';X.fillText('P:'+ch.stats.spd,tx+40,cy+50);
-    X.fillStyle='#ffcc44';X.fillText('I:'+ch.stats.iq,tx+80,cy+50);
-    X.fillStyle='#44cc88';X.fillText('D:'+ch.stats.dur,tx+120,cy+50);
+    const tx=cardX+15;
+    X.font='bold 14px "Segoe UI",sans-serif';X.textAlign='left';X.textBaseline='middle';
+    X.fillStyle='#fff';X.fillText(ch._name||'Unnamed',tx,cy+16);
 
-    addBtn('del'+i,cardX+cardW-35,cy+cardH/2-12,25,24,'X','#cc4444',()=>{
+    X.font='11px "Segoe UI",sans-serif';X.fillStyle='#aaa';
+    const info=(ch.race||'')+' // '+(ch.fight||'')+' // '+(ch.title||'');
+    X.fillText(info.substring(0,50),tx,cy+34);
+
+    X.font='10px "Segoe UI",sans-serif';X.fillStyle='#888';
+    const stats='STR:'+tierShort(ch.strength)+' SPD:'+tierShort(ch.speed)+' DUR:'+tierShort(ch.durability)+' IQ:'+tierShort(ch.iq);
+    X.fillText(stats,tx,cy+50);
+
+    // Delete button
+    addBtn('del'+i,cardX+cardW-35,cy+cardH/2-14,28,28,'X','#F44336',()=>{
       savedChars.splice(pageStart+i,1);saveChars();
-    });
+    },{fontSize:12});
   });
 
   if(totalPages>1){
-    const navY=H-40;
-    X.font='bold 13px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#888';
-    X.fillText((selectPage+1)+'/'+totalPages,W/2,navY);
-    if(selectPage>0)addBtn('rPrev',W/2-100,navY-12,50,24,'PREV','#4488cc',()=>{selectPage--;});
-    if(selectPage<totalPages-1)addBtn('rNext',W/2+50,navY-12,50,24,'NEXT','#4488cc',()=>{selectPage++;});
+    const navY=VH-35;
+    X.font='13px "Segoe UI",sans-serif';X.textAlign='center';X.fillStyle='#666';
+    X.fillText((selectPage+1)+'/'+totalPages,VW/2,navY);
+    if(selectPage>0)addBtn('rPrev',VW/2-80,navY-12,50,24,'PREV','#4CAF50',()=>{selectPage--;},{fontSize:11});
+    if(selectPage<totalPages-1)addBtn('rNext',VW/2+30,navY-12,50,24,'NEXT','#4CAF50',()=>{selectPage++;},{fontSize:11});
   }
 
-  addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+  addBtn('back',10,10,60,30,'< Back','#666',()=>{screen='title';},{fontSize:12});
   buttons.forEach(drawBtn);
 }
 
+function tierShort(val){
+  if(!val)return'—';
+  if(val.length<=6)return val;
+  return val.substring(0,5)+'..';
+}
+
 // ============================================================
-// DRAW: BATTLE SELECT
+// BATTLE SELECT
 // ============================================================
 let battleSelectP1=0,battleSelectP2=1;
 function drawBattleSelect(){
-  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  clearBtns();X.fillStyle='#000';X.fillRect(0,0,VW,VH);
 
-  X.font='bold '+(isMobile?'20':'26')+'px Consolas,Courier New,monospace';
+  X.font='bold '+(isMobile?20:26)+'px "Segoe UI",sans-serif';
   X.textAlign='center';X.textBaseline='middle';
-  X.shadowColor='#cc4444';X.shadowBlur=15;X.fillStyle='#cc4444';
-  X.fillText('SELECT FIGHTERS',W/2,30);X.shadowBlur=0;
+  X.fillStyle='#F44336';X.fillText('SELECT FIGHTERS',VW/2,30);
 
   if(savedChars.length<2){
-    X.font='14px Consolas,Courier New,monospace';X.fillStyle='#666';
-    X.fillText('Need at least 2 characters!',W/2,H/2);
-    addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+    X.font='14px "Segoe UI",sans-serif';X.fillStyle='#555';
+    X.fillText('Need at least 2 characters!',VW/2,VH/2);
+    addBtn('back',10,10,60,30,'< Back','#666',()=>{screen='title';},{fontSize:12});
     buttons.forEach(drawBtn);return;
   }
 
-  const p1=savedChars[battleSelectP1];
-  const p2=savedChars[battleSelectP2];
-  const colW=(W-40)/2;
+  const p1=savedChars[battleSelectP1],p2=savedChars[battleSelectP2];
+  const colW=(VW-50)/2;
 
-  drawFighterCard(20,60,colW-10,p1,'P1','#4488ff');
-  addBtn('p1prev',20,60+200,50,30,'<','#4488ff',()=>{battleSelectP1=(battleSelectP1-1+savedChars.length)%savedChars.length;if(battleSelectP1===battleSelectP2)battleSelectP1=(battleSelectP1-1+savedChars.length)%savedChars.length;});
-  addBtn('p1next',colW-40,60+200,50,30,'>','#4488ff',()=>{battleSelectP1=(battleSelectP1+1)%savedChars.length;if(battleSelectP1===battleSelectP2)battleSelectP1=(battleSelectP1+1)%savedChars.length;});
+  drawFighterPreview(20,60,colW,p1,'P1','#2196F3');
+  drawFighterPreview(VW/2+5,60,colW,p2,'P2','#F44336');
 
-  X.font='bold 24px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#ffaa22';
-  X.fillText('VS',W/2,170);
+  addBtn('p1prev',20,260,40,30,'<','#2196F3',()=>{battleSelectP1=(battleSelectP1-1+savedChars.length)%savedChars.length;if(battleSelectP1===battleSelectP2)battleSelectP1=(battleSelectP1-1+savedChars.length)%savedChars.length;},{fontSize:14});
+  addBtn('p1next',colW-20,260,40,30,'>','#2196F3',()=>{battleSelectP1=(battleSelectP1+1)%savedChars.length;if(battleSelectP1===battleSelectP2)battleSelectP1=(battleSelectP1+1)%savedChars.length;},{fontSize:14});
 
-  drawFighterCard(W/2+10,60,colW-10,p2,'P2','#cc4444');
-  addBtn('p2prev',W/2+10,60+200,50,30,'<','#cc4444',()=>{battleSelectP2=(battleSelectP2-1+savedChars.length)%savedChars.length;if(battleSelectP2===battleSelectP1)battleSelectP2=(battleSelectP2-1+savedChars.length)%savedChars.length;});
-  addBtn('p2next',W-50,60+200,50,30,'>','#cc4444',()=>{battleSelectP2=(battleSelectP2+1)%savedChars.length;if(battleSelectP2===battleSelectP1)battleSelectP2=(battleSelectP2+1)%savedChars.length;});
+  X.font='bold 24px "Segoe UI",sans-serif';X.textAlign='center';X.fillStyle='#fff';
+  X.fillText('VS',VW/2,180);
 
-  addBtn('fight',W/2-80,H-90,160,50,'FIGHT!','#cc4444',()=>{
+  addBtn('p2prev',VW/2+5,260,40,30,'<','#F44336',()=>{battleSelectP2=(battleSelectP2-1+savedChars.length)%savedChars.length;if(battleSelectP2===battleSelectP1)battleSelectP2=(battleSelectP2-1+savedChars.length)%savedChars.length;},{fontSize:14});
+  addBtn('p2next',VW-40,260,40,30,'>','#F44336',()=>{battleSelectP2=(battleSelectP2+1)%savedChars.length;if(battleSelectP2===battleSelectP1)battleSelectP2=(battleSelectP2+1)%savedChars.length;},{fontSize:14});
+
+  addBtn('fight',VW/2-80,VH-90,160,50,'FIGHT!','#F44336',()=>{
     initBattle(savedChars[battleSelectP1],savedChars[battleSelectP2]);
     screen='battle';
-  });
+  },{fontSize:20});
 
-  addBtn('back',10,10,70,28,'< BACK','#888',()=>{screen='title';});
+  addBtn('back',10,10,60,30,'< Back','#666',()=>{screen='title';},{fontSize:12});
   buttons.forEach(drawBtn);
 }
 
-function drawFighterCard(x,y,w,ch,label,color){
-  drawRoundRect(x,y,w,190,8);X.fillStyle='#111128';X.fill();
-  X.strokeStyle=color;X.lineWidth=2;X.stroke();
+function drawFighterPreview(x,y,w,ch,label,color){
+  // Card
+  X.beginPath();const r=8;
+  X.moveTo(x+r,y);X.lineTo(x+w-r,y);X.quadraticCurveTo(x+w,y,x+w,y+r);
+  X.lineTo(x+w,y+190-r);X.quadraticCurveTo(x+w,y+190,x+w-r,y+190);
+  X.lineTo(x+r,y+190);X.quadraticCurveTo(x,y+190,x,y+190-r);
+  X.lineTo(x,y+r);X.quadraticCurveTo(x,y,x+r,y);X.closePath();
+  X.fillStyle='#111';X.fill();X.strokeStyle=color;X.lineWidth=2;X.stroke();
 
-  X.font='bold 14px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
+  X.font='bold 14px "Segoe UI",sans-serif';X.textAlign='center';X.textBaseline='middle';
   X.fillStyle=color;X.fillText(label,x+w/2,y+16);
 
-  const rc=ch.race?ch.race.color:'#888';
-  const br=22,bx=x+w/2,by=y+55;
-  const ec=ch.element?ch.element.color:null;
-  drawBall(bx,by,br,rc,{element:ec});
+  X.font='bold 13px "Segoe UI",sans-serif';X.fillStyle='#fff';
+  X.fillText(ch._name||'Unnamed',x+w/2,y+45);
 
-  X.font='bold 13px Consolas,Courier New,monospace';X.fillStyle='#fff';
-  X.fillText(ch.name||'Unnamed',x+w/2,y+90);
-  X.font='10px Consolas,Courier New,monospace';X.fillStyle='#aaa';
-  X.fillText((ch.subRace?ch.subRace.name+' ':'')+(ch.race?ch.race.name:''),x+w/2,y+106);
-  if(ch.archetype)X.fillText(ch.archetype.name,x+w/2,y+120);
+  X.font='10px "Segoe UI",sans-serif';X.fillStyle='#aaa';
+  X.fillText(ch.race||'',x+w/2,y+62);
+  X.fillText(ch.title||'',x+w/2,y+76);
 
-  X.font='10px Consolas,Courier New,monospace';X.textAlign='left';
-  const sx=x+10;
-  X.fillStyle='#ff6644';X.fillText('STR:'+ch.stats.str,sx,y+140);
-  X.fillStyle='#44aaff';X.fillText('SPD:'+ch.stats.spd,sx+w/2,y+140);
-  X.fillStyle='#ffcc44';X.fillText('IQ:'+ch.stats.iq,sx,y+156);
-  X.fillStyle='#44cc88';X.fillText('DUR:'+ch.stats.dur,sx+w/2,y+156);
-
-  if(ch.element){
-    X.textAlign='center';X.fillStyle=ch.element.color;X.font='10px Consolas,Courier New,monospace';
-    X.fillText(ch.element.name,x+w/2,y+175);
-  }
+  X.font='10px "Segoe UI",sans-serif';X.textAlign='left';
+  const sx=x+8;
+  X.fillStyle='#9C27B0';X.fillText('STR: '+(ch.strength||'—'),sx,y+100);
+  X.fillStyle='#1565C0';X.fillText('SPD: '+(ch.speed||'—'),sx,y+115);
+  X.fillStyle='#C62828';X.fillText('DUR: '+(ch.durability||'—'),sx,y+130);
+  X.fillStyle='#283593';X.fillText('IQ: '+(ch.iq||'—'),sx,y+145);
+  X.fillStyle='#D32F2F';X.fillText('FGT: '+(ch.fight||'—'),sx,y+160);
+  X.fillStyle='#8B4513';X.fillText('WPN: '+tierShort(ch.weapon||'—'),sx,y+175);
 }
 
 // ============================================================
-// BATTLE ENGINE — ENHANCED v1.1
+// BATTLE ENGINE — Tier-based combat
 // ============================================================
-function getWeaponRange(weapon){
-  if(!weapon)return 60;
-  const ranges={short:50,mid:70,long:90,far:120};
-  return ranges[weapon.range]||60;
+function tierToNum(val,tierArr){
+  if(!val||!tierArr)return 3;
+  const idx=tierArr.indexOf(val);
+  return idx>=0?idx:3;
 }
 
-function hasTraitEffect(ch,keyword){
-  if(!ch.traits)return false;
-  return ch.traits.some(t=>t.toLowerCase().includes(keyword.toLowerCase()));
+function getCharPower(ch){
+  return {
+    str:tierToNum(ch.strength,STRENGTH),
+    spd:tierToNum(ch.speed,SPEED),
+    dur:tierToNum(ch.durability,DURABILITY),
+    iq:tierToNum(ch.iq,IQ_TIERS),
+    fight:tierToNum(ch.fight,FIGHT),
+    wm:tierToNum(ch.weaponMastery,WEAPON_MASTERY),
+    pm:tierToNum(ch.powerMastery,POWER_MASTERY),
+  };
 }
 
 function initBattle(ch1,ch2){
-  const makeHP=(dur,weakness)=>{
-    let hp=50+dur*8;
-    if(weakness&&weakness.effect==='glass')hp=Math.round(hp*0.7);
-    if(hasTraitEffect(ch1===ch1?ch1:ch2,'Endurance'))hp=Math.round(hp*1.1);
-    return hp;
-  };
-  const hp1=makeHP(ch1.stats.dur,ch1.weakness);
-  const hp2=makeHP(ch2.stats.dur,ch2.weakness);
+  const p1=getCharPower(ch1),p2=getCharPower(ch2);
+  const hp1=50+(p1.dur*12);
+  const hp2=50+(p2.dur*12);
 
   battleState={
-    f1:makeFighter(ch1,hp1,W*0.25,H/2,'left',1,'#4488ff'),
-    f2:makeFighter(ch2,hp2,W*0.75,H/2,'right',-1,'#cc4444'),
-    phase:'intro',introTimer:0,introPhase:0,winner:null,resultTimer:0,
-    battleStats:{f1:{dmgDealt:0,hits:0,crits:0,dodges:0,compHits:0},f2:{dmgDealt:0,hits:0,crits:0,dodges:0,compHits:0}},
+    f1:{...ch1,power:p1,hp:hp1,maxHp:hp1,x:VW*0.25,y:VH/2,alive:true,atkCd:0,hitFlash:0,scale:1},
+    f2:{...ch2,power:p2,hp:hp2,maxHp:hp2,x:VW*0.75,y:VH/2,alive:true,atkCd:0,hitFlash:0,scale:1},
+    phase:'intro',introTimer:0,winner:null,resultTimer:0,
   };
   battleTime=0;particles=[];battleLog=[];
-  addBattleLog(ch1.name+' vs '+ch2.name+'!','#ffaa22');
-}
-
-function makeFighter(ch,hp,x,y,side,facing,teamColor){
-  const comp=ch.companion&&ch.companion.id!=='none'?{
-    ...ch.companion,hp:15+ch.companion.dur*5,maxHp:15+ch.companion.dur*5,
-    x:x+(side==='left'?-30:30),y:y+25,atkCd:0,alive:true
-  }:null;
-
-  return {
-    ...ch,hp,maxHp:hp,x,y,vx:0,vy:0,atkCd:0,side,alive:true,facing,teamColor,
-    comp,specialCd:0,specialReady:false,
-    // Trait flags
-    revived:false,firstAtk:true,poisonTimer:0,regenTimer:0,
-    stunTimer:0,dodgeChance:0,lifesteal:false,
-    // Visual
-    atkAnim:0,hitFlash:0,scale:1,
-  };
+  addBattleLog(ch1._name+' vs '+ch2._name+'!','#fff');
 }
 
 function addBattleLog(msg,color){
   battleLog.unshift({msg,color:color||'#aaa',life:180});
-  if(battleLog.length>8)battleLog.pop();
-}
-
-function applyTraits(f){
-  if(!f.traits)return;
-  f.traits.forEach(t=>{
-    const tl=t.toLowerCase();
-    if(tl.includes('dodge')||tl.includes('scurry'))f.dodgeChance+=15;
-    if(tl.includes('life drain')||tl.includes('life steal'))f.lifesteal=true;
-    if(tl.includes('regen'))f.regenTimer=1;
-    if(tl.includes('terror aura')||tl.includes('nosferatu'))f._terrorAura=true;
-  });
+  if(battleLog.length>6)battleLog.pop();
 }
 
 function updateBattle(){
   if(!battleState)return;
   battleTime++;
 
-  // Intro cutscene — BBA style
   if(battleState.phase==='intro'){
     battleState.introTimer++;
-    // Phase 0: P1 card slide in (0-60)
-    // Phase 1: VS slam (60-90)
-    // Phase 2: P2 card slide in (90-150)
-    // Phase 3: FIGHT flash (150-180)
-    if(battleState.introTimer===1)SFX.introSlam();
-    if(battleState.introTimer===60)SFX.vsDrop();
-    if(battleState.introTimer===90)SFX.introSlam();
-    if(battleState.introTimer===150){SFX.vsDrop();triggerShake(8);}
-    if(battleState.introTimer>=180){
+    if(battleState.introTimer>=120){
       battleState.phase='fight';
-      applyTraits(battleState.f1);
-      applyTraits(battleState.f2);
-      // Terror aura
-      if(battleState.f1._terrorAura){
-        battleState.f2.stats={...battleState.f2.stats};
-        battleState.f2.stats.str=Math.max(1,battleState.f2.stats.str-1);
-        battleState.f2.stats.spd=Math.max(1,battleState.f2.stats.spd-1);
-        addBattleLog(battleState.f1.name+'\'s Terror Aura!','#cc2244');
-      }
-      if(battleState.f2._terrorAura){
-        battleState.f1.stats={...battleState.f1.stats};
-        battleState.f1.stats.str=Math.max(1,battleState.f1.stats.str-1);
-        battleState.f1.stats.spd=Math.max(1,battleState.f1.stats.spd-1);
-        addBattleLog(battleState.f2.name+'\'s Terror Aura!','#cc2244');
-      }
     }
     return;
   }
 
   if(battleState.phase==='result'){
     battleState.resultTimer++;
-    // Victory particles
     if(battleState.resultTimer%3===0&&battleState.winner){
       const w=battleState.winner;
-      for(let i=0;i<2;i++){
-        spawnParticle(w.x+rand(-20,20),w.y+rand(-20,20),{
-          vx:rand(-3,3)*0.5,vy:rand(-4,-1)*0.5,life:40,
-          color:pick(['#ffaa22','#ffcc00','#ff8800','#fff']),size:rand(2,4),glow:true,gravity:0.05
-        });
-      }
+      spawnParticle(w.x+rand(-30,30),w.y+rand(-30,30),{
+        vx:rand(-2,2)*0.5,vy:rand(-3,-1)*0.5,life:40,
+        color:pick(['#FFD700','#fff','#FF6F00']),size:rand(2,4),glow:true,gravity:0.05
+      });
     }
-    updateParticles();
-    return;
+    updateParticles();return;
   }
 
   const f1=battleState.f1,f2=battleState.f2;
-
-  // Check both alive
-  const fighters=[f1,f2];
-  fighters.forEach(f=>{
+  [f1,f2].forEach(f=>{
     if(!f.alive)return;
-
     const enemy=f===f1?f2:f1;
-    const myStats=f===f1?battleState.battleStats.f1:battleState.battleStats.f2;
     if(!enemy.alive)return;
 
     const dx=enemy.x-f.x,dy=enemy.y-f.y;
     const dist=Math.sqrt(dx*dx+dy*dy);
-    const spd=1.5+Math.max(0,f.stats.spd)*0.3;
-    const atkRange=getWeaponRange(f.weapon);
+    const spd=1.5+f.power.spd*0.4;
 
-    // Movement AI — smarter based on IQ
-    if(f.stunTimer>0){f.stunTimer--;return;}
-
-    // Ranged characters try to keep distance
-    const isRanged=f.weapon&&(f.weapon.type==='ranged'||f.weapon.type==='magic');
-    const idealDist=isRanged?atkRange*0.8:atkRange*0.5;
-
-    if(dist>idealDist+20){
-      f.x+=dx/dist*spd;
-      f.y+=dy/dist*spd;
-    }else if(dist<idealDist-20&&isRanged){
-      f.x-=dx/dist*spd*0.7;
-      f.y-=dy/dist*spd*0.7;
-    }
-
-    // IQ-based evasion (lateral movement)
-    const iqFactor=Math.max(0,f.stats.iq)*0.2;
-    f.x+=Math.sin(battleTime*0.06+f.x*0.1)*iqFactor;
-    f.y+=Math.cos(battleTime*0.05+f.y*0.1)*iqFactor*0.8;
-
-    // Keep in bounds
-    f.x=clamp(f.x,40,W-40);f.y=clamp(f.y,70,H-70);
-
-    // Regen trait
-    if(f.regenTimer&&battleTime%60===0&&f.hp<f.maxHp){
-      f.hp=Math.min(f.maxHp,f.hp+1);
-      spawnParticle(f.x,f.y-25,{text:'+1',color:'#44cc88',size:12,vy:-1,life:30,glow:true});
-    }
-
-    // Blood Rage trait — +2 STR below 30% HP
-    if(hasTraitEffect(f,'Blood Rage')&&f.hp<f.maxHp*0.3&&!f._bloodRageActive){
-      f._bloodRageActive=true;
-      f.stats={...f.stats,str:f.stats.str+2};
-      addBattleLog(f.name+' Blood Rage!','#ff2222');
-      for(let i=0;i<8;i++)spawnParticle(f.x,f.y,{vx:rand(-3,3),vy:rand(-3,3),life:25,color:'#ff2222',size:3,glow:true});
-    }
+    // Move toward enemy
+    if(dist>80){f.x+=dx/dist*spd;f.y+=dy/dist*spd;}
 
     // Attack
-    if(f.atkCd<=0&&dist<atkRange){
-      // Dodge check
-      let dodged=false;
-      const enemyDodge=enemy.dodgeChance+(enemy.weakness&&enemy.weakness.effect==='no_dodge'?-100:0);
-      if(rand(1,100)<=Math.max(0,enemyDodge)){
-        dodged=true;
-        const es=f===f1?battleState.battleStats.f2:battleState.battleStats.f1;
-        es.dodges++;
-        spawnParticle(enemy.x,enemy.y-20,{text:'DODGE',color:'#88ccff',size:13,vy:-1.5,life:35,glow:true});
-        f.atkCd=Math.max(10,40-Math.max(0,f.stats.spd)*3);
-        return;
-      }
+    f.atkCd--;
+    if(f.atkCd<=0&&dist<100){
+      const atkPower=f.power.str*2+f.power.fight+f.power.wm;
+      const def=enemy.power.dur+enemy.power.fight*0.5;
+      let dmg=Math.max(1,atkPower-def+rand(-2,3));
 
-      const baseDmg=Math.max(1,f.stats.str)+(f.weapon?f.weapon.dmg:1);
-      const def=Math.max(0,enemy.stats.dur)*0.5;
-      let dmg=Math.max(1,Math.round(baseDmg-def+rand(-1,2)));
-
-      // Element bonus
-      let elemBonus=false;
-      if(f.element&&enemy.element&&f.element.strong===enemy.element.id){
-        dmg=Math.round(dmg*1.5);elemBonus=true;
-      }
-      // Element weakness
-      if(f.element&&enemy.element&&f.element.weak===enemy.element.id){
-        dmg=Math.max(1,Math.round(dmg*0.7));
-      }
-      // Weakness effects
-      if(enemy.weakness){
-        if(enemy.weakness.effect==='light_vuln'&&f.element&&f.element.id==='light')dmg*=2;
-        if(enemy.weakness.effect==='crit_vuln'){}// handled below
-        if(enemy.weakness.effect==='mind_vuln'&&f.stats.iq>enemy.stats.iq)dmg=Math.round(dmg*1.5);
-      }
-
-      // Crit chance
-      const critChance=5+Math.max(0,f.stats.iq)*2;
+      // Crit chance based on IQ
+      const critChance=5+f.power.iq*3;
       const isCrit=rand(1,100)<=critChance;
-      if(isCrit){
-        let critMult=1.8;
-        if(enemy.weakness&&enemy.weakness.effect==='crit_vuln')critMult=2.2;
-        dmg=Math.round(dmg*critMult);
-        SFX.crit();myStats.crits++;
-      }else{SFX.hit();}
+      if(isCrit){dmg=Math.floor(dmg*1.8);SFX.crit();}else{SFX.hit();}
 
-      // Ambush trait — first attack double
-      if(f.firstAtk&&hasTraitEffect(f,'Ambush')){
-        dmg*=2;
-        addBattleLog(f.name+' AMBUSH!','#ffcc00');
-      }
-      f.firstAtk=false;
-
-      // Shield damage reduction
-      if(enemy.weapon&&enemy.weapon.id==='shield'){
-        dmg=Math.max(1,Math.round(dmg*0.6));
-        SFX.block();
-      }
-
-      // Thick Skin trait
-      if(hasTraitEffect(enemy,'Thick Skin')||hasTraitEffect(enemy,'reduce damage')){
-        dmg=Math.max(1,dmg-1);
-      }
-
-      enemy.hp-=dmg;
-      myStats.dmgDealt+=dmg;myStats.hits++;
-
-      // Lifesteal
-      if(f.lifesteal&&f.hp<f.maxHp){
-        f.hp=Math.min(f.maxHp,f.hp+1);
-        spawnParticle(f.x,f.y-20,{text:'+1',color:'#cc2244',size:11,vy:-1,life:25});
-      }
-
-      // Poison trait
-      if(hasTraitEffect(f,'Toxic')||hasTraitEffect(f,'poison')){
-        if(rand(1,100)<=20){
-          enemy.poisonTimer=5;
-          addBattleLog(enemy.name+' poisoned!','#88cc22');
-        }
-      }
-
-      // Attack animation
-      f.atkAnim=10;
-      enemy.hitFlash=8;
-      triggerShake(isCrit?5:2);
-
-      // Damage particle
-      const pColor=isCrit?'#ffcc00':elemBonus?(f.element.color):'#ff4444';
-      spawnParticle(enemy.x+rand(-10,10),enemy.y-25,{
-        text:isCrit?dmg+'!!':''+dmg,color:pColor,size:isCrit?16:14,vy:-1.5,life:40,glow:isCrit
-      });
-
-      // Element hit effect
-      if(elemBonus&&f.element){
-        SFX.elemHit();
-        for(let i=0;i<6;i++){
-          spawnParticle(enemy.x,enemy.y,{vx:rand(-4,4),vy:rand(-4,4),life:20,color:f.element.color,size:rand(2,4),glow:true});
-        }
-        spawnParticle(enemy.x,enemy.y,{life:15,color:f.element.color,size:8,type:'ring'});
-      }
-
-      // Weapon-specific hit effects
-      if(f.weapon){
-        if(f.weapon.type==='ranged'){
-          // Arrow trail
-          for(let i=0;i<3;i++){
-            spawnParticle(lerp(f.x,enemy.x,i/3),lerp(f.y,enemy.y,i/3),{life:10,color:'#aa8844',size:2});
-          }
-        }else if(f.weapon.type==='magic'){
-          // Magic burst
-          for(let i=0;i<4;i++){
-            spawnParticle(enemy.x+rand(-15,15),enemy.y+rand(-15,15),{vx:0,vy:-1,life:20,color:'#aa66ff',size:3,glow:true});
-          }
-        }
-      }
-
-      // Attack cooldown (SPD-based)
-      f.atkCd=Math.max(12,50-Math.max(0,f.stats.spd)*3-(f.weapon?f.weapon.spd*3:0));
-
-      // Check death
-      if(enemy.hp<=0){
-        // Undying trait check
-        if(hasTraitEffect(enemy,'Undying')&&!enemy.revived){
-          enemy.hp=Math.round(enemy.maxHp*0.25);
-          enemy.revived=true;
-          addBattleLog(enemy.name+' REVIVES!','#ffcc00');
-          for(let i=0;i<12;i++)spawnParticle(enemy.x,enemy.y,{vx:rand(-3,3),vy:rand(-4,0),life:30,color:'#ffcc00',size:3,glow:true});
-          triggerShake(6);
-        }else{
-          enemy.hp=0;enemy.alive=false;
-          battleState.winner=f;
-          battleState.phase='result';
-          // Kill companion too
-          if(enemy.comp)enemy.comp.alive=false;
-
-          if(f===battleState.f1)SFX.victory();else SFX.victory();
-          addBattleLog(f.name+' wins!','#ffaa22');
-          triggerShake(10);
-
-          // Death explosion
-          for(let i=0;i<20;i++){
-            spawnParticle(enemy.x+rand(-10,10),enemy.y+rand(-10,10),{
-              vx:rand(-5,5),vy:rand(-5,5),life:40,
-              color:enemy.race?enemy.race.color:'#888',size:rand(2,5),gravity:0.1,friction:0.97
-            });
-          }
-        }
-      }
-    }
-    if(f.atkCd>0)f.atkCd--;
-    if(f.atkAnim>0)f.atkAnim--;
-    if(f.hitFlash>0)f.hitFlash--;
-
-    // Poison tick
-    if(f.poisonTimer>0&&battleTime%30===0){
-      f.poisonTimer--;
-      f.hp=Math.max(1,f.hp-2);
-      spawnParticle(f.x,f.y-20,{text:'-2',color:'#88cc22',size:12,vy:-1,life:25});
-    }
-
-    // Companion AI
-    if(f.comp&&f.comp.alive){
-      const c=f.comp;
-      const cdx=enemy.x-c.x,cdy=enemy.y-c.y;
-      const cdist=Math.sqrt(cdx*cdx+cdy*cdy);
-      const cspd=1+Math.max(0,c.spd)*0.25;
-
-      // Follow owner loosely, attack enemy when close
-      const ownerDx=f.x+(f.side==='left'?-25:25)-c.x;
-      const ownerDy=f.y+20-c.y;
-      const ownerDist=Math.sqrt(ownerDx*ownerDx+ownerDy*ownerDy);
-
-      if(cdist<80){
-        // Attack mode
-        c.x+=cdx/cdist*cspd*0.8;
-        c.y+=cdy/cdist*cspd*0.8;
-      }else if(ownerDist>50){
-        // Return to owner
-        c.x+=ownerDx/ownerDist*cspd;
-        c.y+=ownerDy/ownerDist*cspd;
-      }
-      c.x=clamp(c.x,30,W-30);c.y=clamp(c.y,70,H-60);
-
-      if(c.atkCd<=0&&cdist<60){
-        const cDmg=Math.max(1,Math.round(c.str*0.8+rand(0,2)));
-        enemy.hp-=cDmg;
-        c.atkCd=40;
-        SFX.companionAtk();
-        const cs=f===f1?battleState.battleStats.f1:battleState.battleStats.f2;
-        cs.compHits++;
-        spawnParticle(enemy.x+rand(-8,8),enemy.y-15,{text:''+cDmg,color:c.color,size:11,vy:-1.2,life:30});
+      // Dodge based on speed
+      const dodgeChance=(enemy.power.spd-f.power.spd)*5;
+      if(rand(1,100)<=dodgeChance){
+        addBattleLog(enemy._name+' dodged!','#1565C0');
+        spawnParticle(enemy.x,enemy.y-20,{text:'DODGE',color:'#1565C0',size:16,vy:-1,life:30,glow:true});
+      }else{
+        enemy.hp-=dmg;
+        enemy.hitFlash=10;
+        addBattleLog(f._name+' hit for '+dmg+(isCrit?' CRIT!':''),'#F44336');
+        spawnParticle(enemy.x,enemy.y-20,{text:'-'+dmg,color:isCrit?'#FFD700':'#F44336',size:isCrit?20:16,vy:-1.5,life:30,glow:true});
 
         if(enemy.hp<=0){
           enemy.hp=0;enemy.alive=false;
-          battleState.winner=f;battleState.phase='result';
-          SFX.victory();addBattleLog(c.name+' finishes '+enemy.name+'!','#ffaa22');
-          triggerShake(10);
-          for(let i=0;i<20;i++){
-            spawnParticle(enemy.x+rand(-10,10),enemy.y+rand(-10,10),{
-              vx:rand(-5,5),vy:rand(-5,5),life:40,
-              color:enemy.race?enemy.race.color:'#888',size:rand(2,5),gravity:0.1,friction:0.97
-            });
-          }
+          battleState.phase='result';battleState.winner=f;
+          addBattleLog(f._name+' WINS!','#FFD700');
+          SFX.victory();
         }
       }
-      if(c.atkCd>0)c.atkCd--;
+      f.atkCd=Math.max(10,40-f.power.spd*3);
     }
+
+    f.hitFlash=Math.max(0,f.hitFlash-1);
   });
-
-  // Battle log fade
-  battleLog.forEach(l=>{if(l.life>0)l.life--;});
-  battleLog=battleLog.filter(l=>l.life>0);
-
-  // Shake decay
-  if(shakeAmount>0)shakeAmount*=shakeDecay;
-  if(shakeAmount<0.5)shakeAmount=0;
-
   updateParticles();
 }
 
-// ============================================================
-// DRAW: BATTLE
-// ============================================================
 function drawBattle(){
-  clearBtns();
+  clearBtns();X.fillStyle='#000';X.fillRect(0,0,VW,VH);
+  if(!battleState)return;
 
-  // Apply screen shake
-  X.save();
-  if(shakeAmount>0){
-    X.translate(rand(-1,1)*shakeAmount,rand(-1,1)*shakeAmount);
-  }
-
-  X.fillStyle='#0a0a1a';X.fillRect(-10,-10,W+20,H+20);
-
-  // Arena grid
-  X.strokeStyle='#1a1a3a';X.lineWidth=1;
-  for(let i=0;i<W;i+=30){X.beginPath();X.moveTo(i,0);X.lineTo(i,H);X.stroke();}
-  for(let i=0;i<H;i+=30){X.beginPath();X.moveTo(0,i);X.lineTo(W,i);X.stroke();}
-
-  if(!battleState){X.restore();return;}
+  // Battle gradient bg
+  const grad=X.createLinearGradient(0,0,VW,VH);
+  grad.addColorStop(0,'#0a0a1a');grad.addColorStop(1,'#1a0a0a');
+  X.fillStyle=grad;X.fillRect(0,0,VW,VH);
 
   const f1=battleState.f1,f2=battleState.f2;
 
-  // ── INTRO CUTSCENE ──
   if(battleState.phase==='intro'){
     const t=battleState.introTimer;
-
-    // Phase 1: P1 card slides in from left (0-60)
-    if(t<60){
-      const prog=Math.min(1,t/40);
-      const eased=1-Math.pow(1-prog,3); // ease out cubic
-      const cardX=lerp(-250,20,eased);
-      drawIntroBattleCard(cardX,H/2-80,220,160,f1,'#4488ff',prog);
-    }else{
-      drawIntroBattleCard(20,H/2-80,220,160,f1,'#4488ff',1);
-    }
-
-    // Phase 2: VS slam (60-90)
-    if(t>=60&&t<90){
-      const prog=(t-60)/30;
-      const scale=prog<0.5?lerp(3,1,prog*2):1;
-      const alpha=Math.min(1,prog*2);
-      X.save();X.translate(W/2,H/2);X.scale(scale,scale);
+    // P1 slide in
+    if(t<50){
+      const alpha=t/50;
       X.globalAlpha=alpha;
-      X.font='bold 36px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-      X.shadowColor='#ffaa22';X.shadowBlur=20;
-      X.fillStyle='#ffaa22';X.fillText('VS',0,0);
-      X.shadowBlur=0;X.globalAlpha=1;X.restore();
-    }else if(t>=90){
-      X.font='bold 36px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-      X.shadowColor='#ffaa22';X.shadowBlur=15;
-      X.fillStyle='#ffaa22';X.fillText('VS',W/2,H/2);
-      X.shadowBlur=0;
+      X.font='bold 20px "Segoe UI",sans-serif';X.textAlign='center';X.fillStyle='#2196F3';
+      X.fillText(f1._name||'Fighter 1',VW*0.25,VH/2);
+      X.font='12px "Segoe UI",sans-serif';X.fillStyle='#aaa';
+      X.fillText(f1.race||'',VW*0.25,VH/2+22);
     }
-
-    // Phase 3: P2 card slides in from right (90-150)
-    if(t>=90&&t<150){
-      const prog=Math.min(1,(t-90)/40);
-      const eased=1-Math.pow(1-prog,3);
-      const cardX=lerp(W+30,W-240,eased);
-      drawIntroBattleCard(cardX,H/2-80,220,160,f2,'#cc4444',prog);
-    }else if(t>=150){
-      drawIntroBattleCard(W-240,H/2-80,220,160,f2,'#cc4444',1);
+    // VS
+    if(t>=50&&t<80){
+      X.globalAlpha=(t-50)/30;
+      X.font='bold 48px "Segoe UI",sans-serif';X.textAlign='center';X.fillStyle='#fff';
+      X.fillText('VS',VW/2,VH/2);
     }
-
-    // Phase 4: FIGHT! flash (150-180)
-    if(t>=150){
-      const prog=(t-150)/30;
-      if(prog<1){
-        const flashAlpha=Math.sin(prog*Math.PI);
-        X.globalAlpha=flashAlpha;
-        X.fillStyle='#fff';X.fillRect(0,0,W,H);
-        X.globalAlpha=1;
-        const fScale=lerp(4,1,prog);
-        X.save();X.translate(W/2,H/2);X.scale(fScale,fScale);
-        X.font='bold 40px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-        X.fillStyle='#cc4444';X.fillText('FIGHT!',0,0);
-        X.restore();
-      }
+    // P2 slide in
+    if(t>=80&&t<120){
+      X.globalAlpha=(t-80)/40;
+      X.font='bold 20px "Segoe UI",sans-serif';X.textAlign='center';X.fillStyle='#F44336';
+      X.fillText(f2._name||'Fighter 2',VW*0.75,VH/2);
+      X.font='12px "Segoe UI",sans-serif';X.fillStyle='#aaa';
+      X.fillText(f2.race||'',VW*0.75,VH/2+22);
     }
-
-    X.restore();
+    X.globalAlpha=1;
     buttons.forEach(drawBtn);return;
   }
 
-  // ── BATTLE PHASE ──
-
-  // HP bars
-  drawHPBar(10,10,W/2-20,f1,'#4488ff');
-  drawHPBar(W/2+10,10,W/2-20,f2,'#cc4444');
-
-  // Companion indicator under HP bars
-  if(f1.comp&&f1.comp.alive){
-    X.font='9px Consolas,Courier New,monospace';X.textAlign='left';X.fillStyle=f1.comp.color;
-    X.fillText(f1.comp.name+' HP:'+f1.comp.hp,12,42);
-  }
-  if(f2.comp&&f2.comp.alive){
-    X.font='9px Consolas,Courier New,monospace';X.textAlign='right';X.fillStyle=f2.comp.color;
-    X.fillText(f2.comp.name+' HP:'+f2.comp.hp,W-12,42);
-  }
-
-  // Timer
-  const secs=Math.floor(battleTime/60);
-  X.font='bold 12px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#555';
-  X.fillText(Math.floor(secs/60)+':'+String(secs%60).padStart(2,'0'),W/2,24);
-
-  // Draw companions
-  [f1,f2].forEach(f=>{
-    if(f.comp&&f.comp.alive){
-      const c=f.comp;
-      const cr=10;
-      drawBall(c.x,c.y,cr,c.color,{strokeW:1});
-      // Companion name
-      X.font='8px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-      X.fillStyle='#888';X.fillText(c.name.split(' ').pop(),c.x,c.y+cr+8);
-    }
-  });
-
   // Draw fighters
-  [f1,f2].forEach(f=>{
-    if(!f.alive){X.globalAlpha=0.2;}
-    const rc=f.race?f.race.color:'#888';
-    const br=22+(f.atkAnim>0?2:0);
-    const ec=f.element?f.element.color:null;
+  [f1,f2].forEach((f,i)=>{
+    const color=i===0?'#2196F3':'#F44336';
 
-    // Hit flash
-    if(f.hitFlash>0){
-      X.globalAlpha=0.5+Math.sin(f.hitFlash*2)*0.5;
-    }
+    // Fighter circle
+    X.save();
+    if(f.hitFlash>0){X.shadowColor='#F44336';X.shadowBlur=20;}
+    if(!f.alive){X.globalAlpha=0.3;}
 
-    drawBall(f.x,f.y,br,rc,{element:ec,glow:f.atkAnim>0?12:0});
+    X.beginPath();X.arc(f.x,f.y,25,0,Math.PI*2);
+    const fGrad=X.createRadialGradient(f.x-5,f.y-5,3,f.x,f.y,25);
+    fGrad.addColorStop(0,lighten(color,40));fGrad.addColorStop(1,color);
+    X.fillStyle=fGrad;X.fill();
+    X.strokeStyle=darken(color,30);X.lineWidth=2;X.stroke();
+    X.shadowBlur=0;
 
-    // Weapon indicator (small icon near ball)
-    if(f.weapon&&f.alive){
-      const wx=f.x+f.facing*25,wy=f.y-5;
-      X.font='bold 10px Consolas,Courier New,monospace';X.textAlign='center';
-      X.fillStyle=f.weapon.color;
-      const wIcons={sword:'/',axe:'T',dagger:'//',spear:'|',hammer:'T',bow:')',staff:'|',scythe:'J',fists:'*',whip:'~',crossbow:'>',katana:'/',shield:'D',claws:'W',trident:'Y'};
-      X.fillText(wIcons[f.weapon.id]||'?',wx,wy);
-    }
+    // Name label
+    X.font='bold 11px "Segoe UI",sans-serif';X.textAlign='center';X.fillStyle='#fff';
+    X.fillText(f._name||'?',f.x,f.y-35);
 
-    // Name tag
-    X.font='bold 10px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-    X.fillStyle='#fff';X.fillText(f.name||'???',f.x,f.y+br+14);
+    // HP bar
+    const hpW=60,hpH=6,hpX=f.x-hpW/2,hpY=f.y-45;
+    X.fillStyle='#333';X.fillRect(hpX,hpY,hpW,hpH);
+    const hpPct=Math.max(0,f.hp/f.maxHp);
+    X.fillStyle=hpPct>0.5?'#4CAF50':hpPct>0.25?'#FF9800':'#F44336';
+    X.fillRect(hpX,hpY,hpW*hpPct,hpH);
 
-    // Poison indicator
-    if(f.poisonTimer>0){
-      X.fillStyle='#88cc2288';
-      X.beginPath();X.arc(f.x+br+2,f.y-br+2,4,0,Math.PI*2);X.fill();
-    }
-
-    // Stun indicator
-    if(f.stunTimer>0){
-      X.font='10px Consolas,Courier New,monospace';X.fillStyle='#ffcc00';
-      X.fillText('*',f.x,f.y-br-8);
-    }
-
-    X.globalAlpha=1;
+    X.globalAlpha=1;X.restore();
   });
+
+  // Battle log
+  const logX=10,logY=VH-20;
+  battleLog.forEach((l,i)=>{
+    const alpha=Math.min(1,l.life/60);
+    X.globalAlpha=alpha;X.font='11px "Segoe UI",sans-serif';X.textAlign='left';
+    X.fillStyle=l.color;X.fillText(l.msg,logX,logY-i*16);
+    l.life--;
+  });
+  X.globalAlpha=1;
+  battleLog=battleLog.filter(l=>l.life>0);
 
   // Draw particles
   drawParticles();
 
-  // Battle log (bottom left)
-  const logX=10,logY=H-10;
-  battleLog.forEach((l,i)=>{
-    if(i>5)return;
-    const alpha=Math.min(1,l.life/30);
-    X.globalAlpha=alpha*0.8;
-    X.font='9px Consolas,Courier New,monospace';X.textAlign='left';X.textBaseline='bottom';
-    X.fillStyle=l.color;
-    X.fillText(l.msg,logX,logY-i*13);
-  });
-  X.globalAlpha=1;
+  // Result
+  if(battleState.phase==='result'&&battleState.winner){
+    X.font='bold '+(isMobile?24:36)+'px "Segoe UI",sans-serif';X.textAlign='center';
+    X.shadowColor='#FFD700';X.shadowBlur=20;
+    X.fillStyle='#FFD700';
+    X.fillText(battleState.winner._name+' WINS!',VW/2,60);
+    X.shadowBlur=0;
 
-  // ── RESULT SCREEN ──
-  if(battleState.phase==='result'){
-    const rt=battleState.resultTimer;
-    const overlayAlpha=Math.min(0.7,rt/60);
-    X.fillStyle='rgba(0,0,0,'+overlayAlpha+')';X.fillRect(0,0,W,H);
-
-    if(rt>20){
-      // Winner glow pulse
-      const w=battleState.winner;
-      const pulse=Math.sin(rt*0.1)*5+15;
-      X.shadowColor=w.race?w.race.color:'#ffaa22';X.shadowBlur=pulse;
-      drawBall(W/2,H/2-60,35,w.race?w.race.color:'#888',{glow:pulse,element:w.element?w.element.color:null});
-      X.shadowBlur=0;
-
-      // Winner name
-      X.font='bold '+(isMobile?'22':'28')+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-      X.shadowColor='#ffaa22';X.shadowBlur=10;
-      X.fillStyle='#ffaa22';
-      X.fillText((w.name||'???')+' WINS!',W/2,H/2);
-      X.shadowBlur=0;
-
-      // Stats recap
-      if(rt>50){
-        const ws=w===f1?battleState.battleStats.f1:battleState.battleStats.f2;
-        const ls=w===f1?battleState.battleStats.f2:battleState.battleStats.f1;
-        X.font='12px Consolas,Courier New,monospace';X.fillStyle='#aaa';
-        X.fillText('HP: '+w.hp+'/'+w.maxHp+'  |  DMG: '+ws.dmgDealt+'  |  Hits: '+ws.hits+'  |  Crits: '+ws.crits,W/2,H/2+30);
-        if(ws.compHits>0)X.fillText('Companion hits: '+ws.compHits,W/2,H/2+48);
-      }
-    }
-
-    if(rt>80){
-      addBtn('again',W/2-100,H/2+65,90,32,'REMATCH','#ffaa22',()=>{initBattle(savedChars[battleSelectP1],savedChars[battleSelectP2]);});
-      addBtn('menu',W/2+10,H/2+65,90,32,'MENU','#888',()=>{screen='title';battleState=null;particles=[];});
+    if(battleState.resultTimer>60){
+      addBtn('back',VW/2-60,VH-80,120,40,'BACK','#666',()=>{screen='title';battleState=null;},{fontSize:14});
     }
   }
 
-  X.restore();
+  addBtn('quit',10,10,50,28,'Quit','#666',()=>{screen='title';battleState=null;},{fontSize:11});
   buttons.forEach(drawBtn);
 }
 
-function drawIntroBattleCard(x,y,w,h,f,color,prog){
-  X.save();
-  X.globalAlpha=Math.min(1,prog*1.5);
-  drawRoundRect(x,y,w,h,10);
-  X.fillStyle='#111128';X.fill();
-  X.strokeStyle=color;X.lineWidth=3;X.stroke();
-
-  // Character ball
-  const rc=f.race?f.race.color:'#888';
-  const ec=f.element?f.element.color:null;
-  drawBall(x+w/2,y+45,28,rc,{element:ec,glow:8});
-
-  // Name
-  X.font='bold 14px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-  X.fillStyle='#fff';X.fillText(f.name||'???',x+w/2,y+85);
-
-  // Info
-  X.font='10px Consolas,Courier New,monospace';X.fillStyle='#aaa';
-  X.fillText((f.subRace?f.subRace.name+' ':'')+(f.race?f.race.name:''),x+w/2,y+100);
-  if(f.archetype)X.fillText(f.archetype.name,x+w/2,y+114);
-
-  // Stats
-  X.font='10px Consolas,Courier New,monospace';X.textAlign='left';
-  const sx=x+15;
-  X.fillStyle='#ff6644';X.fillText('STR:'+f.stats.str,sx,y+134);
-  X.fillStyle='#44aaff';X.fillText('SPD:'+f.stats.spd,sx+55,y+134);
-  X.fillStyle='#ffcc44';X.fillText('IQ:'+f.stats.iq,sx+110,y+134);
-  X.fillStyle='#44cc88';X.fillText('DUR:'+f.stats.dur,sx+155,y+134);
-
-  // Weapon + Element
-  X.textAlign='center';X.font='9px Consolas,Courier New,monospace';
-  if(f.weapon){X.fillStyle='#ccc';X.fillText(f.weapon.name,x+w/2,y+150);}
-
-  X.globalAlpha=1;X.restore();
-}
-
-function drawHPBar(x,y,w,f,color){
-  const h=25;
-  drawRoundRect(x,y,w,h,5);X.fillStyle='#111';X.fill();
-  X.strokeStyle='#333';X.lineWidth=1;X.stroke();
-  const pct=clamp(f.hp/f.maxHp,0,1);
-  const barColor=pct>0.5?color:pct>0.25?'#ffaa22':'#cc2222';
-  if(pct>0){
-    drawRoundRect(x+2,y+2,Math.max(4,(w-4)*pct),h-4,4);
-    X.fillStyle=barColor;X.fill();
-    // Gradient overlay
-    const grad=X.createLinearGradient(x,y,x,y+h);
-    grad.addColorStop(0,'rgba(255,255,255,0.15)');grad.addColorStop(0.5,'rgba(255,255,255,0)');grad.addColorStop(1,'rgba(0,0,0,0.1)');
-    X.fillStyle=grad;X.fill();
-  }
-  X.font='bold 11px Consolas,Courier New,monospace';X.textAlign='left';X.textBaseline='middle';
-  X.fillStyle='#fff';X.fillText((f.name||'???')+' '+f.hp+'/'+f.maxHp,x+6,y+h/2);
-}
-
 // ============================================================
-// INPUT
+// INPUT HANDLING
 // ============================================================
-function handleClick(mx,my){
-  SFX.click();
-  for(const b of buttons){
+function handleInput(mx,my){
+  for(let i=buttons.length-1;i>=0;i--){
+    const b=buttons[i];
     if(mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h){
-      if(b.cb)b.cb();return;
+      if(b.cb){b.cb();SFX.click();}
+      return true;
     }
   }
+  return false;
 }
-function handleMove(mx,my){
+
+C.addEventListener('click',e=>{
+  const r=C.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
+  handleInput(mx,my);
+});
+C.addEventListener('touchend',e=>{
+  e.preventDefault();
+  if(e.changedTouches&&e.changedTouches[0]){
+    const r=C.getBoundingClientRect();
+    const mx=e.changedTouches[0].clientX-r.left,my=e.changedTouches[0].clientY-r.top;
+    handleInput(mx,my);
+  }
+},{passive:false});
+
+// Hover tracking
+C.addEventListener('mousemove',e=>{
+  const r=C.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
   buttons.forEach(b=>{b.hover=mx>=b.x&&mx<=b.x+b.w&&my>=b.y&&my<=b.y+b.h;});
-}
-C.addEventListener('click',e=>{const p=gmp(e);handleClick(p.x,p.y);});
-C.addEventListener('mousemove',e=>{const p=gmp(e);handleMove(p.x,p.y);});
-C.addEventListener('touchstart',e=>{e.preventDefault();const p=gmp(e);handleClick(p.x,p.y);},{passive:false});
+});
 
 // ============================================================
-// GAME LOOP
+// MAIN GAME LOOP
 // ============================================================
-function loop(time){
-  const dpr=window.devicePixelRatio||1;X.setTransform(dpr,0,0,dpr,0,0);X.save();X.scale(sc,sc);
+function gameLoop(){
   switch(screen){
     case 'title':drawTitle();break;
     case 'spin':updateSpin();drawSpin();break;
@@ -1541,12 +1323,9 @@ function loop(time){
     case 'battleSelect':drawBattleSelect();break;
     case 'battle':updateBattle();drawBattle();break;
   }
-  X.restore();
-  requestAnimationFrame(loop);
+  requestAnimationFrame(gameLoop);
 }
-requestAnimationFrame(t=>{loop(t);});
-
+gameLoop();
 </script>
-<script>if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(function(){});}</script>
 </body>
 </html>
