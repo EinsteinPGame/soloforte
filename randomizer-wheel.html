@@ -267,6 +267,38 @@
     }
     .home-link:hover { color: #fff; }
 
+    /* Presets */
+    .presets-section {
+      width: 100%;
+    }
+    .presets-label {
+      color: #aaa;
+      font-size: 0.85rem;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .presets-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 6px;
+    }
+    .preset-btn {
+      padding: 8px 10px;
+      background: #151528;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #ccc;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .preset-btn:hover { border-color: #7b68ee; color: #fff; background: #1a1a3a; }
+    .preset-btn .preset-icon { margin-right: 4px; }
+
     /* Winner Overlay */
     .winner-overlay {
       display: none;
@@ -358,6 +390,10 @@
       <button class="btn btn-shuffle" onclick="shuffleEntries()">Shuffle</button>
       <button class="btn btn-save" onclick="saveAll()">Save</button>
       <button class="btn btn-clear" onclick="clearAll()">Clear</button>
+    </div>
+    <div class="presets-section">
+      <span class="presets-label">Quick Presets</span>
+      <div class="presets-grid" id="presetsGrid"></div>
     </div>
     <div class="input-section">
       <label>Enter items (one per line) &mdash; paste from anywhere!</label>
@@ -766,6 +802,43 @@
         '<li>' + (i + 1) + '. ' + h.replace(/</g, '&lt;') + '</li>'
       ).join('');
     }
+
+    // --- Presets ---
+    const PRESETS = [
+      { name: 'Yes / No', icon: '?', items: ['Yes', 'No'] },
+      { name: 'Yes / No / Maybe', icon: '?', items: ['Yes', 'No', 'Maybe'] },
+      { name: 'Numbers 1-10', icon: '#', items: ['1','2','3','4','5','6','7','8','9','10'] },
+      { name: 'Days of Week', icon: 'D', items: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] },
+      { name: 'Coin Flip', icon: 'C', items: ['Heads', 'Tails'] },
+      { name: 'Rock Paper Scissors', icon: 'R', items: ['Rock', 'Paper', 'Scissors'] },
+      { name: 'Dice (1-6)', icon: 'D', items: ['1','2','3','4','5','6'] },
+      { name: 'Colors', icon: 'C', items: ['Red','Orange','Yellow','Green','Blue','Purple','Pink','White','Black'] },
+      { name: 'Directions', icon: 'N', items: ['North','South','East','West'] },
+      { name: 'Alphabet A-Z', icon: 'A', items: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('') },
+      { name: 'Months', icon: 'M', items: ['January','February','March','April','May','June','July','August','September','October','November','December'] },
+      { name: 'Truth or Dare', icon: 'T', items: ['Truth', 'Dare'] },
+      { name: 'Priority', icon: 'P', items: ['High', 'Medium', 'Low', 'Skip'] },
+      { name: 'Who Pays?', icon: '$', items: ['Person 1', 'Person 2', 'Person 3', 'Person 4', 'Split equally'] },
+      { name: 'Meal Picker', icon: 'F', items: ['Pizza','Burger','Sushi','Ramen','Pasta','Tacos','Salad','Fried Rice','Sandwich','Curry'] },
+    ];
+
+    function renderPresets() {
+      const grid = document.getElementById('presetsGrid');
+      grid.innerHTML = PRESETS.map((p, i) =>
+        '<button class="preset-btn" onclick="loadPreset(' + i + ')" title="' + p.items.join(', ') + '">' +
+        '<span class="preset-icon">' + p.icon + '</span> ' + p.name + '</button>'
+      ).join('');
+    }
+
+    function loadPreset(idx) {
+      const preset = PRESETS[idx];
+      if (!preset) return;
+      document.getElementById('entries').value = preset.items.join('\n');
+      updateWheel();
+      showToast('Loaded: ' + preset.name);
+    }
+
+    renderPresets();
 
     // --- Init ---
     loadData();
