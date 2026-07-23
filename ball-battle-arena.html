@@ -2369,6 +2369,496 @@ function updateVictoryCutscene(dt){
   }
 }
 
+// ============================================================
+// CHARACTER-SPECIFIC VICTORY/DEFEAT PRE-ANIMATIONS
+// ============================================================
+const charAnimData={}; // runtime state for char-specific anims
+function drawCharVictoryAnim(charId,x,y,r,color,t,isWin){
+  const dt=t-120; // relative to phase 1 start
+  if(dt<0||dt>150)return; // only play for 2.5s
+  const p=dt/150; // 0-1 progress
+  const fn=isWin?CHAR_WIN_ANIMS[charId]:CHAR_LOSE_ANIMS[charId];
+  if(fn)fn(x,y,r,color,dt,p);
+}
+const CHAR_WIN_ANIMS={
+  mantis(x,y,r,c,dt,p){
+    // Two blade lines extend in X pattern, slash outward with red trails
+    const ext=Math.min(1,dt/60)*r*2.5;
+    X.strokeStyle='#ff3333';X.lineWidth=3;X.shadowColor='#ff0000';X.shadowBlur=8;
+    const angles=[Math.PI*-0.25,Math.PI*0.25,Math.PI*0.75,Math.PI*1.25];
+    for(let i=0;i<4;i++){
+      const a=angles[i];
+      X.globalAlpha=0.8;X.beginPath();
+      X.moveTo(x,y);X.lineTo(x+Math.cos(a)*ext,y+Math.sin(a)*ext);X.stroke();
+      // Trail particles at tips
+      if(dt>50&&Math.random()<0.4){
+        X.fillStyle='#ff4444';X.globalAlpha=0.6;
+        X.beginPath();X.arc(x+Math.cos(a)*ext+(Math.random()-0.5)*6,y+Math.sin(a)*ext+(Math.random()-0.5)*6,2+Math.random()*3,0,Math.PI*2);X.fill();
+      }
+    }
+    // Pulse on full extension
+    if(dt>55&&dt<75){
+      X.globalAlpha=(1-(dt-55)/20)*0.5;
+      X.beginPath();X.arc(x,y,r*1.3,0,Math.PI*2);X.fillStyle='#ff2222';X.fill();
+    }
+    X.shadowBlur=0;X.globalAlpha=1;
+  },
+  gorilla(x,y,r,c,dt,p){
+    // Double flex with shockwave rings + ground cracks
+    const flex1=dt<40?Math.sin(dt/40*Math.PI):0;
+    const flex2=dt>50&&dt<90?Math.sin((dt-50)/40*Math.PI):0;
+    const scale=1+flex1*0.3+flex2*0.3;
+    X.save();X.translate(x,y);X.scale(scale,scale);
+    X.beginPath();X.arc(0,0,r,0,Math.PI*2);X.fillStyle=c;X.globalAlpha=0.5;X.fill();
+    X.restore();
+    // Shockwave rings on each flex peak
+    const rings=[];
+    if(dt>20)rings.push(dt-20);
+    if(dt>70)rings.push(dt-70);
+    rings.forEach(rt=>{
+      if(rt<50){
+        X.globalAlpha=Math.max(0,0.4-rt/50*0.4);
+        X.strokeStyle='#ff8800';X.lineWidth=3;
+        X.beginPath();X.arc(x,y,r+rt*3,0,Math.PI*2);X.stroke();
+      }
+    });
+    // Ground cracks after second flex
+    if(dt>85){
+      X.strokeStyle='#666';X.lineWidth=2;X.globalAlpha=Math.min(1,(dt-85)/20);
+      for(let i=0;i<3;i++){
+        const a=-Math.PI*0.3+i*Math.PI*0.3;
+        X.beginPath();X.moveTo(x,y+r);
+        X.lineTo(x+Math.cos(a)*30,y+r+Math.sin(a)*25+20);X.stroke();
+      }
+    }
+    X.globalAlpha=1;
+  },
+  monowire(x,y,r,c,dt,p){
+    // Cyan wire whips 360, outer circle constricts and snaps
+    const whipProgress=Math.min(1,dt/80);
+    const whipAngle=whipProgress*Math.PI*2;
+    X.strokeStyle='#00ffff';X.lineWidth=2;X.shadowColor='#00ffff';X.shadowBlur=12;
+    X.globalAlpha=0.9;
+    // Draw arc trail
+    X.beginPath();X.arc(x,y,r*2.2,0,whipAngle);X.stroke();
+    // After full circle, constrict and snap
+    if(dt>80&&dt<120){
+      const ct=(dt-80)/40;
+      const snapR=r*2.2*(1-ct*0.6);
+      X.globalAlpha=0.8;X.beginPath();X.arc(x,y,snapR,0,Math.PI*2);X.stroke();
+      // Snap flash
+      if(dt>115){
+        X.globalAlpha=(1-(dt-115)/15)*0.8;
+        X.beginPath();X.arc(x,y,r*1.5,0,Math.PI*2);X.fillStyle='#ffffff';X.fill();
+      }
+    }
+    // Post-snap particles
+    if(dt>118){
+      for(let i=0;i<2;i++){
+        const a=Math.random()*Math.PI*2;const d=r*1.5+Math.random()*20;
+        X.fillStyle='#00ffff';X.globalAlpha=Math.max(0,0.5-(dt-118)/30);
+        X.beginPath();X.arc(x+Math.cos(a)*d,y+Math.sin(a)*d,2,0,Math.PI*2);X.fill();
+      }
+    }
+    X.shadowBlur=0;X.globalAlpha=1;
+  },
+  pls(x,y,r,c,dt,p){
+    // Three projectiles launch upward, burst into fireworks
+    const projY=dt<60?y-dt*3:y-180;
+    const angles=[-0.3,0,0.3];
+    if(dt<60){
+      angles.forEach((a,i)=>{
+        const px=x+a*dt*1.5;const py=y-dt*3;
+        X.fillStyle='#ffaa00';X.globalAlpha=0.8;X.shadowColor='#ff8800';X.shadowBlur=6;
+        X.beginPath();X.arc(px,py,4,0,Math.PI*2);X.fill();
+        // Trail
+        for(let t2=0;t2<3;t2++){
+          X.globalAlpha=0.3-t2*0.1;
+          X.beginPath();X.arc(px-a*t2*4,py+t2*8,3-t2,0,Math.PI*2);X.fill();
+        }
+      });
+    }
+    // Firework bursts
+    if(dt>=60&&dt<120){
+      const bt=dt-60;
+      angles.forEach((a,i)=>{
+        const bx=x+a*90;const by=y-180;
+        for(let j=0;j<8;j++){
+          const ba=Math.PI*2*j/8+i*0.5;const bd=bt*2.5;
+          X.globalAlpha=Math.max(0,0.7-bt/60);
+          X.fillStyle=i%2===0?'#ffcc00':'#ff8800';
+          X.beginPath();X.arc(bx+Math.cos(ba)*bd,by+Math.sin(ba)*bd,2,0,Math.PI*2);X.fill();
+        }
+      });
+    }
+    X.shadowBlur=0;X.globalAlpha=1;
+  },
+  sandy(x,y,r,c,dt,p){
+    // Afterimage zigzag copies, then all snap back with flash
+    const numCopies=5;
+    if(dt<80){
+      const cp=Math.min(1,dt/80);
+      for(let i=0;i<Math.floor(cp*numCopies);i++){
+        const ox=(i%2===0?1:-1)*(30+i*20);const oy=(i-2)*15;
+        X.globalAlpha=0.6-i*0.1;
+        X.fillStyle=c;
+        X.beginPath();X.arc(x+ox,y+oy,r,0,Math.PI*2);X.fill();
+      }
+    }
+    // Snap back flash
+    if(dt>=80&&dt<100){
+      X.globalAlpha=(1-(dt-80)/20)*0.7;
+      X.fillStyle='#ffffff';X.beginPath();X.arc(x,y,r*2,0,Math.PI*2);X.fill();
+    }
+    // Speed lines
+    if(dt>80&&dt<110){
+      X.strokeStyle='rgba(255,255,255,'+Math.max(0,0.4-(dt-80)/30)+')';X.lineWidth=1.5;
+      for(let i=0;i<8;i++){
+        const a=Math.PI*2*i/8;
+        X.beginPath();
+        X.moveTo(x+Math.cos(a)*r*1.5,y+Math.sin(a)*r*1.5);
+        X.lineTo(x+Math.cos(a)*r*4,y+Math.sin(a)*r*4);X.stroke();
+      }
+    }
+    // Blue tint overlay
+    if(dt<100){
+      X.globalAlpha=0.1;X.fillStyle='#4488ff';X.fillRect(0,0,W,H);
+    }
+    X.globalAlpha=1;
+  },
+  throwing(x,y,r,c,dt,p){
+    // Knives orbit in widening spiral, fly out, boomerang back as star
+    const numKnives=3;
+    if(dt<70){
+      // Spiraling out
+      for(let i=0;i<numKnives;i++){
+        const a=dt*0.1+i*Math.PI*2/numKnives;
+        const d=r*1.5+dt*0.8;
+        const kx=x+Math.cos(a)*d;const ky=y+Math.sin(a)*d;
+        X.save();X.translate(kx,ky);X.rotate(a+Math.PI/2);
+        X.fillStyle='#ccccdd';X.beginPath();X.moveTo(0,-6);X.lineTo(3,4);X.lineTo(-3,4);X.closePath();X.fill();
+        // Silver trail
+        X.globalAlpha=0.3;X.strokeStyle='#ffffff';X.lineWidth=1;
+        X.beginPath();X.moveTo(0,4);X.lineTo(0,12);X.stroke();
+        X.restore();
+      }
+    }
+    // Embed as star pattern
+    if(dt>=90){
+      const embedAlpha=Math.min(1,(dt-90)/20);
+      for(let i=0;i<numKnives;i++){
+        const a=i*Math.PI*2/numKnives-Math.PI/2;
+        const kx=x+Math.cos(a)*r*1.8;const ky=y+Math.sin(a)*r*1.8;
+        X.save();X.translate(kx,ky);X.rotate(a+Math.PI);
+        X.globalAlpha=embedAlpha;X.fillStyle='#ccccdd';
+        X.beginPath();X.moveTo(0,-6);X.lineTo(3,4);X.lineTo(-3,4);X.closePath();X.fill();
+        // Glint
+        if(dt>100&&dt<120){
+          X.globalAlpha=(1-(dt-100)/20)*0.8;X.fillStyle='#ffffff';
+          X.beginPath();X.arc(0,-4,3,0,Math.PI*2);X.fill();
+        }
+        X.restore();
+      }
+    }
+    X.globalAlpha=1;
+  },
+  katana(x,y,r,c,dt,p){
+    // Horizontal slash, then vertical cross, cherry blossom petals
+    X.shadowColor='#ffffff';X.shadowBlur=15;X.strokeStyle='#ffffff';X.lineWidth=3;
+    if(dt<40){
+      // Horizontal slash
+      const slashW=Math.min(1,dt/30)*W*0.7;
+      X.globalAlpha=0.9;X.beginPath();
+      X.moveTo(x-slashW/2,y);X.lineTo(x+slashW/2,y);X.stroke();
+    }
+    if(dt>30&&dt<70){
+      // Vertical slash
+      const slashH=Math.min(1,(dt-30)/30)*H*0.5;
+      X.globalAlpha=0.9;X.beginPath();
+      X.moveTo(x,y-slashH/2);X.lineTo(x,y+slashH/2);X.stroke();
+      // Keep horizontal visible
+      X.globalAlpha=Math.max(0,0.9-(dt-30)/60);
+      X.beginPath();X.moveTo(x-W*0.35,y);X.lineTo(x+W*0.35,y);X.stroke();
+    }
+    X.shadowBlur=0;
+    // Cherry blossom petals
+    if(dt>60){
+      if(!charAnimData._katanaPetals)charAnimData._katanaPetals=[];
+      if(dt<90&&Math.random()<0.5){
+        charAnimData._katanaPetals.push({x:x+(Math.random()-0.5)*40,y:y-10,vy:0.5+Math.random(),vx:(Math.random()-0.5)*0.8,life:60});
+      }
+      charAnimData._katanaPetals.forEach(pt=>{
+        pt.x+=pt.vx+Math.sin(pt.life*0.1)*0.3;pt.y+=pt.vy;pt.life--;
+        if(pt.life>0){
+          X.globalAlpha=Math.min(0.7,pt.life/30);X.fillStyle='#ffaacc';
+          X.beginPath();X.arc(pt.x,pt.y,2.5,0,Math.PI*2);X.fill();
+        }
+      });
+      charAnimData._katanaPetals=charAnimData._katanaPetals.filter(pt=>pt.life>0);
+    }
+    X.globalAlpha=1;
+  },
+  berserk(x,y,r,c,dt,p){
+    // Rapid crimson pulses, growing, massive shockwave, screen shake
+    const pulseCount=Math.min(4,Math.floor(dt/15));
+    const scale=1+pulseCount*0.1;
+    X.save();X.translate(x,y);X.scale(scale,scale);
+    // Pulsing between base and crimson
+    const isPulse=dt%15<8;
+    X.fillStyle=isPulse?'#cc0000':c;X.globalAlpha=0.6;
+    X.beginPath();X.arc(0,0,r,0,Math.PI*2);X.fill();
+    X.restore();
+    // Massive shockwave at frame 60+
+    if(dt>60&&dt<110){
+      const st=dt-60;
+      X.globalAlpha=Math.max(0,0.5-st/50);
+      X.strokeStyle='#ff2222';X.lineWidth=4;
+      X.beginPath();X.arc(x,y,r+st*5,0,Math.PI*2);X.stroke();
+    }
+    // Ember particles rising
+    if(dt>50){
+      for(let i=0;i<2;i++){
+        const ex=x+(Math.random()-0.5)*r*2;const ey=y-Math.random()*30-(dt-50)*0.5;
+        X.fillStyle='#ff4400';X.globalAlpha=Math.max(0,0.5-(dt-50)/100);
+        X.beginPath();X.arc(ex,ey,1.5,0,Math.PI*2);X.fill();
+      }
+    }
+    X.globalAlpha=1;
+  }
+};
+const CHAR_LOSE_ANIMS={
+  mantis(x,y,r,c,dt,p){
+    // Blades extend halfway, glitch/stutter, retract. Self-stab malfunction + short circuit
+    const ext=dt<30?dt/30*r*1.2:dt<50?r*1.2*(1-(dt-30)/20*0.3+Math.sin(dt*2)*0.15):r*0.4*(1-Math.min(1,(dt-50)/40));
+    X.strokeStyle=dt<50?'#ff3333':'#666';X.lineWidth=2;X.globalAlpha=0.7;
+    // Blades stutter inward (self-stab)
+    const angles=[Math.PI*-0.25,Math.PI*0.25];
+    angles.forEach(a=>{
+      X.beginPath();X.moveTo(x,y);X.lineTo(x+Math.cos(a)*ext,y+Math.sin(a)*ext);X.stroke();
+    });
+    // Self-stab: blades point inward after stutter
+    if(dt>45&&dt<90){
+      const stabP=Math.min(1,(dt-45)/30);
+      X.strokeStyle='#ff2222';X.lineWidth=2;
+      [Math.PI*0.75,Math.PI*1.25].forEach(a=>{
+        const sLen=r*0.8*stabP;
+        X.beginPath();X.moveTo(x+Math.cos(a)*r*1.2,y+Math.sin(a)*r*1.2);
+        X.lineTo(x+Math.cos(a)*(r*1.2-sLen),y+Math.sin(a)*(r*1.2-sLen));X.stroke();
+      });
+    }
+    // Short circuit sparks
+    if(dt>60){
+      X.fillStyle='#ffff00';X.globalAlpha=Math.max(0,0.6-(dt-60)/60);
+      for(let i=0;i<3;i++){
+        X.beginPath();X.arc(x+(Math.random()-0.5)*r,y+(Math.random()-0.5)*r,1.5,0,Math.PI*2);X.fill();
+      }
+    }
+    X.globalAlpha=1;
+  },
+  gorilla(x,y,r,c,dt,p){
+    // Shockwave opens hole in ground, falls in
+    if(dt<40){
+      // Attempted flex
+      const s=1+Math.sin(dt/40*Math.PI)*0.15;
+      X.save();X.translate(x,y);X.scale(s,s);
+      X.fillStyle=c;X.globalAlpha=0.5;X.beginPath();X.arc(0,0,r,0,Math.PI*2);X.fill();
+      X.restore();
+    }
+    // Ground crack opens
+    if(dt>35){
+      const crackW=Math.min(r*3,(dt-35)*2);
+      X.fillStyle='#111';X.globalAlpha=Math.min(0.9,(dt-35)/40);
+      X.beginPath();
+      X.ellipse(x,y+r+5,crackW,crackW*0.3,0,0,Math.PI*2);X.fill();
+      // Ball sinking
+      if(dt>55){
+        const sinkP=Math.min(1,(dt-55)/50);
+        X.fillStyle=c;X.globalAlpha=0.5*(1-sinkP);
+        X.beginPath();X.arc(x,y+sinkP*r*2,r*(1-sinkP*0.3),0,Math.PI*2);X.fill();
+      }
+    }
+    X.globalAlpha=1;
+  },
+  monowire(x,y,r,c,dt,p){
+    // Wire extends then goes limp, droops, fizzles into dashed segments. Dance + Lucy pose win is handled in win
+    const wireLen=dt<30?dt/30*r*3:r*3;
+    if(dt<60){
+      X.strokeStyle='#00aaaa';X.lineWidth=1.5;X.globalAlpha=0.7;
+      // Wire droops via bezier
+      const droopY=dt>30?(dt-30)*0.8:0;
+      X.beginPath();X.moveTo(x,y);
+      X.quadraticCurveTo(x+wireLen*0.5,y+droopY,x+wireLen*0.8,y+droopY*1.5);X.stroke();
+    }
+    // Wire breaks into dashed segments
+    if(dt>=50){
+      X.strokeStyle='#006666';X.lineWidth=1;X.globalAlpha=Math.max(0,0.6-(dt-50)/60);
+      X.setLineDash([8,6]);
+      X.beginPath();X.moveTo(x,y);X.lineTo(x+r*2,y+(dt-50)*0.5);X.stroke();
+      X.setLineDash([]);
+    }
+    X.globalAlpha=1;
+  },
+  pls(x,y,r,c,dt,p){
+    // Implosion backfire — projectile sputters then implodes inward
+    if(dt<40){
+      // Sputtering projectile above
+      const vis=Math.sin(dt*0.8)>0;
+      if(vis){
+        X.fillStyle='#ffaa00';X.globalAlpha=0.6;
+        X.beginPath();X.arc(x,y-r*1.5,4,0,Math.PI*2);X.fill();
+      }
+    }
+    // Implosion — energy pulls inward
+    if(dt>40&&dt<100){
+      const impT=dt-40;
+      X.strokeStyle='#ff6600';X.lineWidth=1.5;
+      for(let i=0;i<6;i++){
+        const a=Math.PI*2*i/6;
+        const startR=r*3-impT*0.5;const endR=r*0.5;
+        if(startR>endR){
+          X.globalAlpha=Math.max(0,0.5-impT/60);
+          X.beginPath();
+          X.moveTo(x+Math.cos(a)*startR,y+Math.sin(a)*startR);
+          X.lineTo(x+Math.cos(a)*endR,y+Math.sin(a)*endR);X.stroke();
+        }
+      }
+    }
+    // Grey smoke
+    if(dt>60){
+      X.fillStyle='#888';X.globalAlpha=Math.max(0,0.3-(dt-60)/80);
+      for(let i=0;i<2;i++){
+        X.beginPath();X.arc(x+(Math.random()-0.5)*15,y-r-(dt-60)*0.3-Math.random()*10,3+Math.random()*3,0,Math.PI*2);X.fill();
+      }
+    }
+    X.globalAlpha=1;
+  },
+  sandy(x,y,r,c,dt,p){
+    // Dash attempt, overheat, rubber-band back, SYSTEM OVERHEAT text
+    if(dt<30){
+      // Dash right with afterimage
+      const dashX=dt*1.5;
+      X.fillStyle='#4488ff';X.globalAlpha=0.3;
+      X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fill();
+      X.fillStyle=c;X.globalAlpha=0.5;
+      X.beginPath();X.arc(x+dashX,y,r,0,Math.PI*2);X.fill();
+    }
+    // Overheat — afterimage turns red
+    if(dt>25&&dt<50){
+      X.fillStyle='#ff2222';X.globalAlpha=0.4;
+      X.beginPath();X.arc(x+45,y,r,0,Math.PI*2);X.fill();
+    }
+    // Rubber-band back
+    if(dt>40&&dt<70){
+      const rbP=(dt-40)/30;
+      const rbX=45*(1-rbP);
+      X.fillStyle=c;X.globalAlpha=0.5;
+      X.beginPath();X.arc(x+rbX,y,r,0,Math.PI*2);X.fill();
+    }
+    // SYSTEM OVERHEAT text
+    if(dt>50&&dt<130){
+      X.globalAlpha=Math.min(0.6,(dt-50)/20);
+      X.font='bold 10px Consolas,monospace';X.textAlign='center';
+      X.fillStyle='#ff4444';
+      // Glitch effect
+      const glitch=dt>90?String.fromCharCode(...'SYSTEM OVERHEAT'.split('').map(c=>dt>100&&Math.random()>0.7?33+Math.floor(Math.random()*90):c.charCodeAt(0))):'SYSTEM OVERHEAT';
+      X.fillText(glitch,x,y-r-15);
+    }
+    X.globalAlpha=1;
+  },
+  throwing(x,y,r,c,dt,p){
+    // Knives boomerang back and stab him
+    if(dt<40){
+      // Knives thrown outward
+      for(let i=0;i<3;i++){
+        const a=-0.5+i*0.5;const d=dt*3;
+        X.save();X.translate(x+Math.cos(a)*d,y+Math.sin(a)*d);X.rotate(a+dt*0.15);
+        X.fillStyle='#aaaabb';X.beginPath();X.moveTo(0,-5);X.lineTo(2,3);X.lineTo(-2,3);X.closePath();X.fill();
+        X.restore();
+      }
+    }
+    // Boomerang back
+    if(dt>50&&dt<90){
+      const rbP=(dt-50)/40;
+      for(let i=0;i<3;i++){
+        const startD=120;const a=-0.5+i*0.5+Math.PI; // reversed
+        const d=startD*(1-rbP);
+        const kx=x+Math.cos(a+Math.PI)*d;const ky=y+Math.sin(a+Math.PI)*d;
+        X.save();X.translate(kx,ky);X.rotate(a+Math.PI+dt*0.1);
+        X.fillStyle='#aaaabb';X.beginPath();X.moveTo(0,-5);X.lineTo(2,3);X.lineTo(-2,3);X.closePath();X.fill();
+        X.restore();
+      }
+    }
+    // Knives embed in the ball
+    if(dt>=85){
+      X.globalAlpha=Math.min(1,(dt-85)/15);
+      for(let i=0;i<3;i++){
+        const a=-0.8+i*0.8;
+        X.save();X.translate(x+Math.cos(a)*r*0.6,y+Math.sin(a)*r*0.6);X.rotate(a);
+        X.fillStyle='#888';X.beginPath();X.moveTo(0,-5);X.lineTo(2,3);X.lineTo(-2,3);X.closePath();X.fill();
+        X.restore();
+      }
+    }
+    X.globalAlpha=1;
+  },
+  katana(x,y,r,c,dt,p){
+    // Slash begins but stops at 60%, shatters, falls. Wound line
+    const slashP=Math.min(0.6,dt/50*0.6);
+    if(dt<70){
+      X.strokeStyle='#ffffff';X.lineWidth=2;X.globalAlpha=0.7;X.shadowColor='#fff';X.shadowBlur=8;
+      X.beginPath();X.moveTo(x-W*0.25,y);X.lineTo(x-W*0.25+W*0.5*slashP,y);X.stroke();
+      X.shadowBlur=0;
+    }
+    // Slash shatters into falling segments
+    if(dt>=50&&dt<120){
+      const shP=(dt-50)/70;
+      X.strokeStyle='#888';X.lineWidth=1.5;
+      for(let i=0;i<4;i++){
+        const sx=x-W*0.1+i*20;const sy=y+shP*40+i*5;
+        X.globalAlpha=Math.max(0,0.6-shP);
+        X.save();X.translate(sx,sy);X.rotate(shP*0.5+i*0.3);
+        X.beginPath();X.moveTo(-8,0);X.lineTo(8,0);X.stroke();
+        X.restore();
+      }
+    }
+    // Red wound line on the ball
+    if(dt>40){
+      X.strokeStyle='#ff2222';X.lineWidth=2;X.globalAlpha=Math.min(0.8,(dt-40)/30);
+      X.beginPath();X.moveTo(x-r*0.7,y-r*0.4);X.lineTo(x+r*0.7,y+r*0.4);X.stroke();
+    }
+    X.globalAlpha=1;
+  },
+  berserk(x,y,r,c,dt,p){
+    // Gun jams, fires in face — berserk inflates, turns red, destabilizes, deflates
+    if(dt<30){
+      // Inflate attempt
+      const s=1+dt/30*0.3;
+      X.save();X.translate(x,y);X.scale(s,s);
+      X.fillStyle='#cc0000';X.globalAlpha=0.5;X.beginPath();X.arc(0,0,r,0,Math.PI*2);X.fill();
+      X.restore();
+    }
+    // Gun jam flash
+    if(dt>25&&dt<45){
+      X.globalAlpha=(1-(dt-25)/20)*0.7;X.fillStyle='#ffff00';
+      X.beginPath();X.arc(x+r*0.8,y-r*0.3,6,0,Math.PI*2);X.fill();
+      // Backfire sparks
+      X.fillStyle='#ff4400';
+      for(let i=0;i<4;i++){
+        X.beginPath();X.arc(x+(Math.random()-0.5)*r*2,y+(Math.random()-0.5)*r*2,2,0,Math.PI*2);X.fill();
+      }
+    }
+    // Deflate and dim
+    if(dt>40){
+      const defP=Math.min(1,(dt-40)/60);
+      const s=1.3-defP*0.5;
+      X.save();X.translate(x,y);X.scale(s,s);
+      X.fillStyle=c;X.globalAlpha=0.4*(1-defP*0.5);
+      X.beginPath();X.arc(0,0,r,0,Math.PI*2);X.fill();
+      X.restore();
+    }
+    X.globalAlpha=1;
+  }
+};
+
 function drawVictoryCutscene(){
   const vc=victoryCutscene;
   if(!vc.active||!vc.winner)return;
@@ -2450,6 +2940,14 @@ function drawVictoryCutscene(){
     // Darken overlay
     const darkAlpha=Math.min(0.65,(t-60)/80*0.65);
     X.fillStyle='rgba(0,0,0,'+darkAlpha+')';X.fillRect(0,0,W,H);
+
+    // Character-specific pre-animations (play during phase 1)
+    if(w&&!vc.isDefeat){
+      drawCharVictoryAnim(w.char.id,w.x,w.y,w.radius||25,w.char.color,t,true);
+    }
+    if(vc.isDefeat&&vc.loser){
+      drawCharVictoryAnim(vc.loser.char.id,vc.loser.x,vc.loser.y,vc.loser.radius||25,vc.loser.char.color,t,false);
+    }
 
     if(!vc.isDefeat){
       // ── VICTORY: Winner celebration ──
