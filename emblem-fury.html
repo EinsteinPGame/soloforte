@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Emblem Fury V6.6</title>
+<title>Emblem Fury V7.0</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;overflow:hidden;font-family:'Courier New',monospace;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
@@ -84,7 +84,7 @@ canvas{display:block;position:relative;z-index:1}
 
 <div id="title-screen" class="screen-overlay">
   <h1 style="color:#ff4444">EMBLEM FURY</h1>
-  <h2 style="color:#666;font-size:1.1rem">DOOM-Style FPS Roguelike V6.1</h2>
+  <h2 style="color:#666;font-size:1.1rem">DOOM-Style FPS Roguelike V7.0</h2>
   <p>WASD/Mouse to move & aim | Click to shoot | Q=Skill | E=Ult | TAB=Inventory</p>
   <h2 style="color:#aaa;font-size:1.1rem;margin-top:14px;margin-bottom:6px">Difficulty</h2>
   <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;flex-wrap:wrap">
@@ -97,7 +97,7 @@ canvas{display:block;position:relative;z-index:1}
   <div style="display:flex;gap:12px;justify-content:center;margin-bottom:14px;flex-wrap:wrap">
     <button onclick="startStoryMode()" style="padding:12px 32px;font-size:1.1rem;border:2px solid #ff4444;color:#ff4444;background:rgba(255,40,40,0.15);border-radius:8px;cursor:pointer;font-weight:bold;letter-spacing:1px;animation:uGlow 2s infinite">STORY MODE</button>
   </div>
-  <h2 style="color:#666;font-size:0.85rem;margin-bottom:6px">— or play Roguelike —</h2>
+  <h2 style="color:#666;font-size:0.85rem;margin-bottom:6px">— Dungeon Roguelike (3 Acts · Scrolls · Shops · Bosses) —</h2>
   <h2 style="color:#aaa;font-size:1.1rem;margin-bottom:6px">Choose Your Hero (14 characters)</h2>
   <div class="char-select" id="char-select-container"></div>
 </div>
@@ -3975,6 +3975,669 @@ killEnemy=function(e){
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ── END STORY MODE ───────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── DUNGEON ROGUELIKE MODE (Gunfire Reborn + Roboquest Hybrid) V7.0 ─────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── SCROLLS (Passive buffs collected during runs) ──
+const SCROLLS=[
+  // Common (tier 0)
+  {name:'Iron Resolve',desc:'+15% Max HP',tier:0,color:'#aaa',icon:'\u{1F6E1}',apply:p=>{const b=Math.floor(p.maxHp*0.15);p.maxHp+=b;p.hp+=b;}},
+  {name:'Steady Aim',desc:'+10% Crit Chance',tier:0,color:'#aaa',icon:'\u{1F3AF}',apply:p=>{p.critChance+=0.1;}},
+  {name:'Swift Feet',desc:'+15% Move Speed',tier:0,color:'#aaa',icon:'\u{1F45F}',apply:p=>{p.speedBuff+=0.15;}},
+  {name:'Sharp Edge',desc:'+20% Weapon Damage',tier:0,color:'#aaa',icon:'\u{1F5E1}',apply:p=>{p.allDmgMult*=1.2;}},
+  {name:'Thick Skin',desc:'+8 Defense',tier:0,color:'#aaa',icon:'\u{1FAA8}',apply:p=>{p.def+=8;}},
+  {name:'Quick Draw',desc:'+15% Fire Rate',tier:0,color:'#aaa',icon:'\u26A1',apply:p=>{p.atkSpdMult*=1.15;}},
+  {name:'Scavenger',desc:'+30% Gold from kills',tier:0,color:'#aaa',icon:'\u{1F4B0}',apply:()=>{dGoldMult+=0.3;}},
+  {name:'Adrenaline',desc:'+10 ATK',tier:0,color:'#aaa',icon:'\u{1F4AA}',apply:p=>{p.atk+=10;}},
+  {name:'Vampiric Touch',desc:'+5% Lifesteal',tier:0,color:'#aaa',icon:'\u{1FA78}',apply:p=>{p.lifesteal+=0.05;}},
+  {name:'Second Wind',desc:'Regen 1% HP/sec',tier:0,color:'#aaa',icon:'\u{1F32C}',apply:p=>{p.regenRate+=0.01;}},
+  // Rare (tier 1)
+  {name:'Blazing Rounds',desc:'25% chance to burn on hit',tier:1,color:'#48f',icon:'\u{1F525}',apply:p=>{p.burnChance+=0.25;}},
+  {name:'Chain Reaction',desc:'Kills explode for AoE dmg',tier:1,color:'#48f',icon:'\u{1F4A5}',apply:p=>{p.chaosExplosion=true;}},
+  {name:'Life Tap',desc:'+12% Lifesteal',tier:1,color:'#48f',icon:'\u2764',apply:p=>{p.lifesteal+=0.12;}},
+  {name:'Berserker Blood',desc:'Below 40% HP: +50% damage',tier:1,color:'#48f',icon:'\u{1F621}',apply:p=>{p.bloodRage=true;}},
+  {name:'Crystal Shield',desc:'+30% Max HP, +5 DEF',tier:1,color:'#48f',icon:'\u{1F48E}',apply:p=>{const b=Math.floor(p.maxHp*0.3);p.maxHp+=b;p.hp+=b;p.def+=5;}},
+  {name:'Storm Caller',desc:'Hits chain lightning to 3 enemies',tier:1,color:'#48f',icon:'\u{1F329}',apply:p=>{p.chainChance+=0.5;p.chainTargets=Math.max(p.chainTargets,3);}},
+  {name:'Shadow Strike',desc:'+35% Crit Damage',tier:1,color:'#48f',icon:'\u{1F311}',apply:p=>{p.critMult+=0.35;}},
+  {name:'Executioner',desc:'3x damage below 20% HP',tier:1,color:'#48f',icon:'\u2694',apply:p=>{p.executeThreshold=0.2;}},
+  {name:'Rapid Recovery',desc:'Regen 3% HP/sec',tier:1,color:'#48f',icon:'\u{1F49A}',apply:p=>{p.regenRate+=0.03;}},
+  {name:'Piercing Shots',desc:'Bullets pierce 1 enemy',tier:1,color:'#48f',icon:'\u{1F3F9}',apply:p=>{if(!p._pierceBuff)p._pierceBuff=0;p._pierceBuff++;}},
+  // Legendary (tier 2)
+  {name:"Death's Embrace",desc:'+25% Lifesteal, kills heal 10%',tier:2,color:'#fa0',icon:'\u2620',apply:p=>{p.lifesteal+=0.25;p.healOnKill+=0.1;}},
+  {name:'Elemental Mastery',desc:'All attacks burn + chain lightning',tier:2,color:'#fa0',icon:'\u{1F52E}',apply:p=>{p.burnChance+=0.3;p.chainChance+=0.3;p.chainTargets=Math.max(p.chainTargets,4);}},
+  {name:'Undying Will',desc:'Revive once with 50% HP',tier:2,color:'#fa0',icon:'\u2728',apply:p=>{p.reviveAvailable=true;}},
+  {name:'Chaos Engine',desc:'+50% dmg, +30% fire rate, -20% HP',tier:2,color:'#fa0',icon:'\u2699',apply:p=>{p.allDmgMult*=1.5;p.atkSpdMult*=1.3;p.maxHp=Math.floor(p.maxHp*0.8);p.hp=Math.min(p.hp,p.maxHp);}},
+  {name:'Dragon Soul',desc:'+80% damage, fire aura',tier:2,color:'#fa0',icon:'\u{1F409}',apply:p=>{p.allDmgMult*=1.8;p.fireAura=true;p.fireAuraRange=5;}},
+  {name:'Void Walker',desc:'15% ignore damage, +25% speed',tier:2,color:'#fa0',icon:'\u{1F573}',apply:p=>{p.voidPhase+=0.15;p.speedBuff+=0.25;}},
+  {name:'Blood Moon',desc:'+20% lifesteal, +30% crit',tier:2,color:'#fa0',icon:'\u{1F319}',apply:p=>{p.lifesteal+=0.2;p.critChance+=0.3;}},
+  {name:'Thunder God',desc:'All hits chain to 5 enemies',tier:2,color:'#fa0',icon:'\u26A1',apply:p=>{p.chainChance=1;p.chainTargets=5;p.atk+=40;}},
+  {name:'Immortal Fortress',desc:'+100% HP, +20 DEF, 5% regen',tier:2,color:'#fa0',icon:'\u{1F3F0}',apply:p=>{p.maxHp*=2;p.hp=p.maxHp;p.def+=20;p.regenRate+=0.05;}},
+  {name:'Apocalypse',desc:'Kills explode + burn + chain all',tier:2,color:'#fa0',icon:'\u{1F30B}',apply:p=>{p.chaosExplosion=true;p.burnChance=1;p.chainChance=1;p.chainTargets=6;p.allDmgMult*=1.3;}},
+];
+
+// ── BIOMES (3 Acts) ──
+const DUNGEON_ACTS=[
+  {name:'Forsaken Dungeon',
+   enemies:[0,1,2,6,7,17],elites:[3,4,8,12],boss:0,bossAlt:1,
+   roomCount:7,shopAt:[2,5],eliteAt:[4]},
+  {name:'Void Realm',
+   enemies:[3,7,14,19,20,22],elites:[8,13,18,23],boss:8,bossAlt:9,
+   roomCount:8,shopAt:[3,6],eliteAt:[4,7]},
+  {name:"Dragon's Domain",
+   enemies:[9,13,15,19,20,24],elites:[4,8,10,14],boss:37,bossAlt:38,
+   roomCount:9,shopAt:[3,6],eliteAt:[4,7,8]},
+];
+
+// ── ROOM TEMPLATES ──
+const ROOM_TEMPLATES=[
+  // 0: Open arena — corner pillars
+  (m,w,h)=>{[[5,5],[5,w-6],[h-6,5],[h-6,w-6],[Math.floor(h/2),Math.floor(w/2)]].forEach(([r,c])=>{if(r>0&&r<h-1&&c>0&&c<w-1)m[r][c]=1;});},
+  // 1: Pillared hall — grid
+  (m,w,h)=>{for(let r=3;r<h-3;r+=4)for(let c=3;c<w-3;c+=4)m[r][c]=1;},
+  // 2: L-shape cover walls
+  (m,w,h)=>{const cx=Math.floor(w/2),cy=Math.floor(h/2);
+    [[cy-4,cx-5,3,1],[cy-4,cx-5,1,3],[cy-4,cx+3,3,1],[cy-4,cx+5,1,3],
+     [cy+2,cx-5,3,1],[cy+4,cx-5,1,3],[cy+2,cx+3,3,1],[cy+4,cx+5,1,3]]
+    .forEach(([r,c,rh,rw])=>{for(let dr=0;dr<rh;dr++)for(let dc=0;dc<rw;dc++)if(r+dr>0&&r+dr<h-1&&c+dc>0&&c+dc<w-1)m[r+dr][c+dc]=1;});},
+  // 3: Ring arena
+  (m,w,h)=>{const cx=w/2,cy=h/2,r1=Math.min(w,h)/2-3,r2=r1-1.5;
+    for(let r=1;r<h-1;r++)for(let c=1;c<w-1;c++){const d=Math.sqrt((r-cy)**2+(c-cx)**2);if(d>r2&&d<r1&&Math.random()<0.65)m[r][c]=1;}},
+  // 4: Scattered cover
+  (m,w,h)=>{for(let i=0;i<12;i++){const r=2+Math.floor(Math.random()*(h-4)),c=2+Math.floor(Math.random()*(w-4));
+    if(Math.abs(r-h/2)>2||Math.abs(c-w/2)>2)m[r][c]=1;}},
+];
+
+// ── DUNGEON STATE ──
+let dungeonMode=false,dAct=0,dRoom=0,dRooms=[],dGold=0,dGoldMult=1;
+let dCollectedScrolls=[],dRoomCleared=false,dTotalKills=0;
+let dRoomEnemyCount=0;
+let dShopWeapons=[],dShopScrolls=[];
+let dActTransitionTimer=0,dRewardOptions=[];
+
+// Meta-progression
+let dSoulEssence=0,dPermanentUpgrades={hp:0,atk:0,def:0,spd:0,gold:0};
+(function loadMeta(){try{const d=JSON.parse(localStorage.getItem('ef_meta')||'{}');dSoulEssence=d.se||0;dPermanentUpgrades=d.up||{hp:0,atk:0,def:0,spd:0,gold:0};}catch(e){}})();
+function saveMeta(){try{localStorage.setItem('ef_meta',JSON.stringify({se:dSoulEssence,up:dPermanentUpgrades}));}catch(e){}}
+
+// ── DUNGEON ROOM MAP GENERATION ──
+function generateDungeonMap(templateIdx){
+  for(let r=0;r<MAP_H;r++){
+    WORLD_MAP[r]=[];MAP[r]=[];
+    for(let c=0;c<MAP_W;c++){
+      const v=(r===0||r===MAP_H-1||c===0||c===MAP_W-1)?1:0;
+      WORLD_MAP[r][c]=v;MAP[r][c]=v;
+    }
+  }
+  ROOM_TEMPLATES[templateIdx%ROOM_TEMPLATES.length](WORLD_MAP,MAP_W,MAP_H);
+  for(let r=0;r<MAP_H;r++)for(let c=0;c<MAP_W;c++)MAP[r][c]=WORLD_MAP[r][c];
+}
+
+// ── START RUN ──
+function startDungeon(){
+  dungeonMode=true;storyActive=false;
+  dAct=0;dRoom=0;dGold=0;dGoldMult=1+dPermanentUpgrades.gold*0.1;
+  dCollectedScrolls=[];dTotalKills=0;
+  player.maxHp+=dPermanentUpgrades.hp*10;
+  player.hp=player.maxHp;
+  player.atk+=dPermanentUpgrades.atk*3;
+  player.def+=dPermanentUpgrades.def*2;
+  player.speedBuff+=dPermanentUpgrades.spd*0.05;
+  startDungeonAct();
+}
+
+function startDungeonAct(){
+  const act=DUNGEON_ACTS[dAct];
+  if(!act){dungeonVictory();return;}
+  dRoom=0;dRooms=[];
+  for(let i=0;i<act.roomCount;i++){
+    if(i===act.roomCount-1)dRooms.push({type:'boss',template:0});
+    else if(act.shopAt.includes(i))dRooms.push({type:'shop',template:0});
+    else if(act.eliteAt.includes(i))dRooms.push({type:'elite',template:randInt(0,ROOM_TEMPLATES.length-1)});
+    else dRooms.push({type:'combat',template:randInt(0,ROOM_TEMPLATES.length-1)});
+  }
+  gameState='dungeonActIntro';dActTransitionTimer=2500;
+}
+
+function startDungeonRoom(){
+  const room=dRooms[dRoom];
+  if(!room){dAct++;startDungeonAct();return;}
+  if(room.type==='shop'){generateShop();gameState='dungeonShop';return;}
+
+  generateDungeonMap(room.template);
+  player.x=MAP_W/2;player.y=MAP_H/2;player.angle=0;
+  enemies=[];projectiles=[];particles=[];pickups=[];damageNumbers=[];crescentProjectiles=[];
+  dRoomCleared=false;dRoomEnemyCount=0;
+
+  const act=DUNGEON_ACTS[dAct];
+  const scaling=1+(dAct*0.5)+(dRoom*0.1);
+
+  if(room.type==='boss'){
+    const bossIdx=(Math.random()<0.5)?act.boss:act.bossAlt;
+    const BD=BOSSES[Math.min(bossIdx,BOSSES.length-1)];
+    const sp=findSpawnPoint();
+    enemies.push({
+      x:sp.x,y:sp.y,typeName:BD.name,isBoss:true,name:BD.name,
+      hp:BD.hp*scaling*diffSettings.bossHpMult,maxHp:BD.hp*scaling*diffSettings.bossHpMult,
+      damage:BD.damage*scaling*diffSettings.enemyDmgMult,speed:BD.speed,
+      attackCd:1000,attackTimer:0,ranged:true,rangedCd:3000,rangedTimer:0,
+      radius:0.5,dead:false,hitFlash:0,fireTimer:BD.fireRate||2000,fireRate:BD.fireRate||2000,
+      range:BD.range||8,size:BD.size||0.8,color:BD.color||'#f00',
+      bossAbils:BD.bossAbils||[],xp:100,
+    });
+    dRoomEnemyCount=1;
+    announceAbility('BOSS: '+BD.name,'#f00');
+  } else {
+    const pool=room.type==='elite'?act.elites:act.enemies;
+    const count=room.type==='elite'?randInt(3,5):randInt(5,8+dAct*2);
+    for(let i=0;i<count;i++){
+      const etIdx=pool[randInt(0,pool.length-1)];
+      const ET=ENEMY_TYPES[Math.min(etIdx,ENEMY_TYPES.length-1)];
+      const sp=findSpawnPoint();
+      const hpM=room.type==='elite'?1.8:1,dmgM=room.type==='elite'?1.4:1;
+      enemies.push({
+        x:sp.x,y:sp.y,typeName:ET.name,isBoss:false,
+        hp:ET.hp*scaling*hpM*diffSettings.enemyHpMult,maxHp:ET.hp*scaling*hpM*diffSettings.enemyHpMult,
+        damage:ET.damage*scaling*dmgM*diffSettings.enemyDmgMult,speed:ET.speed,
+        fireRate:ET.fireRate||1500,fireTimer:ET.fireRate||1500,
+        range:ET.range||8,size:ET.size||0.4,color:ET.color||'#888',
+        radius:0.35,dead:false,hitFlash:0,xp:ET.xp||5,
+        burns:ET.burns,freezeOnHit:ET.freezeOnHit,poisonOnHit:ET.poisonOnHit,
+      });
+    }
+    dRoomEnemyCount=count;
+    if(room.type==='elite')announceAbility('ELITE ROOM!','#ff0');
+    else announceAbility('Room '+(dRoom+1),'#fff');
+  }
+  gameState='playing';
+  if(!isTouchDevice&&document.pointerLockElement!==C)C.requestPointerLock();
+  lastTime=performance.now();
+}
+
+function checkDungeonRoomClear(){
+  if(dRoomCleared)return;
+  if(enemies.filter(e=>e.hp>0).length===0&&dRoomEnemyCount>0){
+    dRoomCleared=true;
+    const room=dRooms[dRoom];
+    if(room.type==='boss'){
+      announceAbility('ACT COMPLETE!','#ffd700');
+      setTimeout(()=>{dAct++;if(dAct>=DUNGEON_ACTS.length)dungeonVictory();else startDungeonAct();},2000);
+    } else {
+      announceAbility('ROOM CLEARED!','#0f0');
+      setTimeout(()=>showScrollReward(),1200);
+    }
+  }
+}
+
+// ── SCROLL REWARD ──
+function showScrollReward(){
+  const room=dRooms[dRoom];
+  const maxTier=room&&room.type==='elite'?2:dAct>=2?2:dAct>=1?1:0;
+  dRewardOptions=[];
+  const pool=SCROLLS.filter(s=>s.tier<=maxTier);
+  for(let attempts=0;dRewardOptions.length<3&&attempts<50;attempts++){
+    let tier=0;const roll=Math.random();
+    if(room&&room.type==='elite'){tier=roll<0.35?2:roll<0.7?1:0;}
+    else{tier=roll<0.08+dAct*0.05?Math.min(maxTier,2):roll<0.25+dAct*0.1?Math.min(maxTier,1):0;}
+    const tp=pool.filter(s=>s.tier===tier);
+    if(tp.length>0){const s=tp[randInt(0,tp.length-1)];if(!dRewardOptions.find(r=>r.name===s.name))dRewardOptions.push(s);}
+  }
+  while(dRewardOptions.length<3)dRewardOptions.push(SCROLLS[randInt(0,SCROLLS.length-1)]);
+  gameState='dungeonReward';
+  if(document.pointerLockElement)document.exitPointerLock();
+}
+
+function selectScroll(idx){
+  if(idx<0||idx>=dRewardOptions.length)return;
+  const scroll=dRewardOptions[idx];
+  dCollectedScrolls.push(scroll);scroll.apply(player);
+  playSound('emblemSelect');
+  dRoom++;startDungeonRoom();
+}
+
+// ── SHOP ──
+function generateShop(){
+  dShopWeapons=[];dShopScrolls=[];
+  for(let i=0;i<3;i++){
+    const wIdx=randInt(0,WEAPON_TYPES.length-1);
+    const w={...WEAPON_TYPES[wIdx],tier:Math.random()<0.25?2:Math.random()<0.5?'1+':1,kills:0};
+    dShopWeapons.push({weapon:w,price:Math.floor((w.tier===2?150:w.tier==='1+'?100:60)*(1+dAct*0.5)),bought:false});
+  }
+  dShopWeapons.push({weapon:null,healing:true,price:Math.floor(40*(1+dAct*0.3)),bought:false,desc:'Heal to full HP'});
+  const sPool=SCROLLS.filter(s=>!dCollectedScrolls.find(c=>c.name===s.name));
+  for(let i=0;i<2&&sPool.length>0;i++){
+    const s=sPool.splice(randInt(0,sPool.length-1),1)[0];
+    dShopScrolls.push({scroll:s,price:s.tier===2?200:s.tier===1?120:60,bought:false});
+  }
+}
+
+function buyShopItem(type,idx){
+  if(type==='weapon'){
+    const item=dShopWeapons[idx];if(!item||item.bought||dGold<item.price)return;
+    dGold-=item.price;
+    if(item.healing)player.hp=player.maxHp;else player.weapons.push(item.weapon);
+    item.bought=true;playSound('pickupWeapon');
+  } else {
+    const item=dShopScrolls[idx];if(!item||item.bought||dGold<item.price)return;
+    dGold-=item.price;dCollectedScrolls.push(item.scroll);item.scroll.apply(player);
+    item.bought=true;playSound('emblemSelect');
+  }
+}
+
+function leaveShop(){dRoom++;startDungeonRoom();}
+
+// ── VICTORY / DEATH ──
+function dungeonVictory(){
+  const essence=Math.floor(10+dTotalKills*0.5+dAct*20);
+  dSoulEssence+=essence;saveMeta();
+  gameState='dungeonVictory';
+  if(document.pointerLockElement)document.exitPointerLock();
+}
+
+function dungeonDeath(){
+  const essence=Math.floor(5+dTotalKills*0.3+dAct*10);
+  dSoulEssence+=essence;saveMeta();
+  gameState='dungeonDeath';player.hp=0;
+  if(document.pointerLockElement)document.exitPointerLock();
+}
+
+// ── META UPGRADES ──
+const META_UPGRADES=[
+  {name:'Vitality',stat:'hp',desc:'+10 Max HP/lv',cost:l=>(l+1)*15,max:10},
+  {name:'Strength',stat:'atk',desc:'+3 ATK/lv',cost:l=>(l+1)*20,max:10},
+  {name:'Endurance',stat:'def',desc:'+2 DEF/lv',cost:l=>(l+1)*15,max:10},
+  {name:'Agility',stat:'spd',desc:'+5% Speed/lv',cost:l=>(l+1)*18,max:8},
+  {name:'Fortune',stat:'gold',desc:'+10% Gold/lv',cost:l=>(l+1)*12,max:10},
+];
+
+function buyMetaUpgrade(idx){
+  const up=META_UPGRADES[idx];
+  const lv=dPermanentUpgrades[up.stat]||0;
+  if(lv>=up.max)return;
+  const cost=up.cost(lv);
+  if(dSoulEssence<cost)return;
+  dSoulEssence-=cost;dPermanentUpgrades[up.stat]=lv+1;saveMeta();
+}
+
+// ── DUNGEON UI RENDERING ──
+function renderDungeonActIntro(){
+  const ctx2=canvas.getContext('2d');
+  const act=DUNGEON_ACTS[dAct];
+  ctx2.fillStyle='#000';ctx2.fillRect(0,0,W,H);
+  ctx2.fillStyle='rgba(0,0,0,0.9)';ctx2.fillRect(0,0,W,H*0.12);ctx2.fillRect(0,H*0.88,W,H*0.12);
+  const progress=Math.min(1,(2500-dActTransitionTimer)/600);
+  ctx2.save();ctx2.globalAlpha=progress;
+  ctx2.fillStyle='#ffd700';ctx2.font='bold '+Math.min(W*0.08,60)+'px monospace';ctx2.textAlign='center';
+  ctx2.fillText('ACT '+(dAct+1),W/2,H*0.4);
+  ctx2.fillStyle='#fff';ctx2.font='bold '+Math.min(W*0.04,32)+'px monospace';
+  ctx2.fillText(act.name.toUpperCase(),W/2,H*0.52);
+  ctx2.fillStyle='#888';ctx2.font=Math.min(W*0.025,18)+'px monospace';
+  ctx2.fillText(act.roomCount+' rooms',W/2,H*0.62);
+  ctx2.fillStyle='#555';ctx2.font='14px monospace';
+  ctx2.fillText('Click or press any key to start',W/2,H*0.75);
+  ctx2.restore();
+}
+
+function renderDungeonReward(){
+  const ctx2=canvas.getContext('2d');
+  ctx2.fillStyle='rgba(0,0,0,0.92)';ctx2.fillRect(0,0,W,H);
+  ctx2.fillStyle='#0f0';ctx2.font='bold '+Math.min(W*0.05,36)+'px monospace';ctx2.textAlign='center';
+  ctx2.fillText('ROOM CLEARED!',W/2,H*0.12);
+  ctx2.fillStyle='#aaa';ctx2.font=Math.min(W*0.025,18)+'px monospace';
+  ctx2.fillText('Choose a Scroll',W/2,H*0.19);
+
+  const cardW=Math.min(220,W*0.26),cardH=240,gap=20;
+  const totalCW=dRewardOptions.length*cardW+(dRewardOptions.length-1)*gap;
+  const startX=W/2-totalCW/2;
+  const tierColors=['#aaa','#48f','#fa0'],tierNames=['Common','Rare','Legendary'];
+
+  dRewardOptions.forEach((s,i)=>{
+    const x=startX+i*(cardW+gap),y=H*0.25;
+    ctx2.fillStyle='rgba(20,20,40,0.9)';ctx2.strokeStyle=tierColors[s.tier];ctx2.lineWidth=2;
+    roundedRect(ctx2,x,y,cardW,cardH,8);ctx2.fill();ctx2.stroke();
+    ctx2.font=Math.min(40,cardW*0.18)+'px serif';ctx2.textAlign='center';ctx2.fillStyle='#fff';
+    ctx2.fillText(s.icon,x+cardW/2,y+45);
+    ctx2.fillStyle=tierColors[s.tier];ctx2.font='bold '+Math.min(15,cardW*0.07)+'px monospace';
+    ctx2.fillText(s.name,x+cardW/2,y+75);
+    ctx2.fillStyle='#888';ctx2.font=Math.min(11,cardW*0.05)+'px monospace';
+    ctx2.fillText(tierNames[s.tier],x+cardW/2,y+95);
+    ctx2.fillStyle='#ccc';ctx2.font=Math.min(13,cardW*0.06)+'px monospace';
+    wrapText(ctx2,s.desc,x+cardW/2,y+120,cardW-20,16);
+    ctx2.fillStyle='#555';ctx2.font=Math.min(11,cardW*0.05)+'px monospace';
+    ctx2.fillText('['+(i+1)+'] or Click',x+cardW/2,y+cardH-15);
+  });
+  ctx2.fillStyle='#fa0';ctx2.font='bold 14px monospace';ctx2.textAlign='right';
+  ctx2.fillText('Gold: '+dGold,W-20,30);
+}
+
+function renderDungeonShop(){
+  const ctx2=canvas.getContext('2d');
+  ctx2.fillStyle='rgba(0,0,0,0.95)';ctx2.fillRect(0,0,W,H);
+  ctx2.fillStyle='#fa0';ctx2.font='bold '+Math.min(W*0.05,36)+'px monospace';ctx2.textAlign='center';
+  ctx2.fillText('SHOP',W/2,H*0.08);
+  ctx2.fillStyle='#ffd700';ctx2.font='bold '+Math.min(W*0.03,20)+'px monospace';
+  ctx2.fillText('Gold: '+dGold,W/2,H*0.14);
+
+  ctx2.fillStyle='#fff';ctx2.font='bold 15px monospace';
+  ctx2.fillText('WEAPONS & SUPPLIES',W/2,H*0.21);
+
+  const itemW=Math.min(170,W*0.2),itemH=110,gap=12;
+  const wAll=dShopWeapons;
+  const twW=wAll.length*itemW+(wAll.length-1)*gap;
+  const wsX=W/2-twW/2;
+
+  wAll.forEach((item,i)=>{
+    const x=wsX+i*(itemW+gap),y=H*0.24;
+    ctx2.fillStyle=item.bought?'rgba(20,40,20,0.5)':'rgba(20,20,40,0.9)';
+    ctx2.strokeStyle=item.bought?'#333':dGold>=item.price?'#0f0':'#f44';ctx2.lineWidth=2;
+    roundedRect(ctx2,x,y,itemW,itemH,6);ctx2.fill();ctx2.stroke();
+    if(item.healing){
+      ctx2.fillStyle=item.bought?'#555':'#0f0';ctx2.font='bold 13px monospace';ctx2.textAlign='center';
+      ctx2.fillText('Full Heal',x+itemW/2,y+35);
+      ctx2.fillStyle=item.bought?'#555':'#4f4';ctx2.font='11px monospace';
+      ctx2.fillText('Restore all HP',x+itemW/2,y+55);
+    } else {
+      ctx2.fillStyle=item.bought?'#555':(item.weapon.color||'#aaa');ctx2.font='bold 13px monospace';ctx2.textAlign='center';
+      ctx2.fillText(item.weapon.name,x+itemW/2,y+30);
+      ctx2.fillStyle=item.bought?'#555':'#aaa';ctx2.font='11px monospace';
+      ctx2.fillText('DMG:'+item.weapon.damage+' T'+item.weapon.tier,x+itemW/2,y+50);
+      ctx2.fillText(item.weapon.desc||'',x+itemW/2,y+65);
+    }
+    ctx2.fillStyle=item.bought?'#555':(dGold>=item.price?'#ffd700':'#f44');ctx2.font='bold 13px monospace';
+    ctx2.fillText(item.bought?'SOLD':Math.floor(item.price)+'g',x+itemW/2,y+itemH-15);
+  });
+
+  ctx2.fillStyle='#fff';ctx2.font='bold 15px monospace';ctx2.textAlign='center';
+  ctx2.fillText('SCROLLS',W/2,H*0.54);
+  const sAll=dShopScrolls;
+  const tsW=sAll.length*itemW+(sAll.length-1)*gap;
+  const ssX=W/2-tsW/2;
+
+  sAll.forEach((item,i)=>{
+    const x=ssX+i*(itemW+gap),y=H*0.58;
+    const tc=['#aaa','#48f','#fa0'];
+    ctx2.fillStyle=item.bought?'rgba(20,40,20,0.5)':'rgba(20,20,40,0.9)';
+    ctx2.strokeStyle=item.bought?'#333':(dGold>=item.price?tc[item.scroll.tier]:'#f44');ctx2.lineWidth=2;
+    roundedRect(ctx2,x,y,itemW,itemH,6);ctx2.fill();ctx2.stroke();
+    ctx2.font='22px serif';ctx2.textAlign='center';ctx2.fillStyle='#fff';
+    ctx2.fillText(item.scroll.icon,x+itemW/2,y+30);
+    ctx2.fillStyle=item.bought?'#555':tc[item.scroll.tier];ctx2.font='bold 12px monospace';
+    ctx2.fillText(item.scroll.name,x+itemW/2,y+50);
+    ctx2.fillStyle=item.bought?'#555':'#aaa';ctx2.font='10px monospace';
+    ctx2.fillText(item.scroll.desc,x+itemW/2,y+68);
+    ctx2.fillStyle=item.bought?'#555':(dGold>=item.price?'#ffd700':'#f44');ctx2.font='bold 13px monospace';
+    ctx2.fillText(item.bought?'SOLD':item.price+'g',x+itemW/2,y+itemH-12);
+  });
+
+  // Continue button
+  const btnW=200,btnH=40,btnX=W/2-btnW/2,btnY=H*0.86;
+  ctx2.fillStyle='rgba(40,60,40,0.8)';ctx2.strokeStyle='#0f0';ctx2.lineWidth=2;
+  roundedRect(ctx2,btnX,btnY,btnW,btnH,6);ctx2.fill();ctx2.stroke();
+  ctx2.fillStyle='#0f0';ctx2.font='bold 16px monospace';ctx2.textAlign='center';
+  ctx2.fillText('CONTINUE \u2192',W/2,btnY+26);
+  ctx2.fillStyle='#666';ctx2.font='11px monospace';
+  ctx2.fillText('Scrolls: '+dCollectedScrolls.length+' | [Enter] to continue',W/2,H*0.96);
+}
+
+function renderDungeonEnd(victory){
+  const ctx2=canvas.getContext('2d');
+  ctx2.fillStyle='#000';ctx2.fillRect(0,0,W,H);
+  ctx2.fillStyle=victory?'#ffd700':'#f00';
+  ctx2.font='bold '+Math.min(W*0.07,50)+'px monospace';ctx2.textAlign='center';
+  ctx2.fillText(victory?'VICTORY!':'DEFEATED',W/2,H*0.18);
+  ctx2.fillStyle='#fff';ctx2.font=Math.min(W*0.03,20)+'px monospace';
+  if(!victory){const act=DUNGEON_ACTS[dAct]||DUNGEON_ACTS[0];ctx2.fillText('Fell in '+act.name+' \u2014 Room '+(dRoom+1),W/2,H*0.27);}
+  else ctx2.fillText('You conquered all 3 Acts!',W/2,H*0.27);
+  ctx2.fillText('Kills: '+dTotalKills+' | Scrolls: '+dCollectedScrolls.length+' | Gold: '+dGold,W/2,H*0.34);
+  const se=victory?Math.floor(10+dTotalKills*0.5+2*20):Math.floor(5+dTotalKills*0.3+dAct*10);
+  ctx2.fillStyle='#a0f';ctx2.fillText('+'+se+' Soul Essence',W/2,H*0.41);
+
+  // Meta upgrades
+  ctx2.fillStyle='#a0f';ctx2.font='bold 16px monospace';
+  ctx2.fillText('Soul Essence: '+dSoulEssence,W/2,H*0.5);
+  const upW=Math.min(140,W*0.17),upH=65,g2=8;
+  const tw2=META_UPGRADES.length*upW+(META_UPGRADES.length-1)*g2;
+  const sx2=W/2-tw2/2;
+  META_UPGRADES.forEach((up,i)=>{
+    const lv=dPermanentUpgrades[up.stat]||0,cost=up.cost(lv),maxed=lv>=up.max;
+    const x=sx2+i*(upW+g2),y=H*0.55;
+    ctx2.fillStyle=maxed?'rgba(40,40,20,0.6)':'rgba(20,20,40,0.8)';
+    ctx2.strokeStyle=maxed?'#555':(dSoulEssence>=cost?'#a0f':'#444');ctx2.lineWidth=1;
+    roundedRect(ctx2,x,y,upW,upH,4);ctx2.fill();ctx2.stroke();
+    ctx2.fillStyle=maxed?'#555':'#fff';ctx2.font='bold 11px monospace';ctx2.textAlign='center';
+    ctx2.fillText(up.name,x+upW/2,y+15);
+    ctx2.fillStyle=maxed?'#555':'#aaa';ctx2.font='10px monospace';
+    ctx2.fillText('Lv '+lv+'/'+up.max,x+upW/2,y+28);
+    ctx2.fillText(up.desc,x+upW/2,y+42);
+    ctx2.fillStyle=maxed?'#555':(dSoulEssence>=cost?'#a0f':'#666');ctx2.font='bold 11px monospace';
+    ctx2.fillText(maxed?'MAX':cost+' SE',x+upW/2,y+upH-8);
+  });
+  ctx2.fillStyle='#666';ctx2.font='14px monospace';ctx2.textAlign='center';
+  ctx2.fillText('Click below or [Enter] to restart',W/2,H*0.92);
+}
+
+function drawDungeonHUD(){
+  const ctx2=canvas.getContext('2d');ctx2.save();
+  const hpPct=player.hp/player.maxHp;
+  ctx2.fillStyle='rgba(0,0,0,0.6)';ctx2.fillRect(10,H-44,200,18);
+  ctx2.fillStyle=hpPct>0.5?'#0f0':hpPct>0.25?'#fa0':'#f00';
+  ctx2.fillRect(10,H-44,200*hpPct,18);
+  ctx2.strokeStyle='#fff';ctx2.lineWidth=1;ctx2.strokeRect(10,H-44,200,18);
+  ctx2.fillStyle='#fff';ctx2.font='bold 11px monospace';
+  ctx2.fillText('HP '+Math.ceil(player.hp)+'/'+player.maxHp,14,H-30);
+  if(hpPct<0.4){const alpha=Math.max(0,Math.min(0.5,(0.4-hpPct)/0.4))*(0.7+0.3*Math.sin(Date.now()/300));
+    const grad=ctx2.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
+    grad.addColorStop(0,'rgba(180,0,0,0)');grad.addColorStop(1,'rgba(180,0,0,'+alpha+')');
+    ctx2.fillStyle=grad;ctx2.fillRect(0,0,W,H);}
+  const act=DUNGEON_ACTS[dAct]||DUNGEON_ACTS[0];
+  const room=dRooms[dRoom];const roomLabel=room?room.type.toUpperCase():'';
+  ctx2.fillStyle='#fff';ctx2.font='bold 13px monospace';ctx2.textAlign='left';
+  ctx2.fillText(act.name+' \u2014 Room '+(dRoom+1)+'/'+dRooms.length+' ['+roomLabel+']',10,22);
+  ctx2.fillStyle='#ffd700';ctx2.fillText('Gold: '+dGold,10,40);
+  const alive=enemies.filter(e=>e.hp>0).length;
+  ctx2.fillStyle=dRoomCleared?'#0f0':'#f88';ctx2.fillText(dRoomCleared?'CLEARED':'Enemies: '+alive,10,58);
+  const w=getWeapon();
+  if(w){ctx2.fillStyle='#fff';ctx2.fillText(w.name+' [T'+(w.tier||1)+']',10,76);
+    if(w.ammo!==Infinity)ctx2.fillText('AMMO: '+w.ammo,10,92);}
+  let yOff=w&&w.ammo!==Infinity?108:92;
+  if(equippedArmorIndex>=0){const ar=player.armors[equippedArmorIndex];
+    ctx2.fillStyle=armorAbilityCooldown>0?'#fa0':'#0f0';
+    ctx2.fillText('[SHIFT] '+ar.name+': '+(armorAbilityCooldown>0?Math.ceil(armorAbilityCooldown/1000)+'s':'READY'),10,yOff);yOff+=16;}
+  const skCd=player.skillCooldown>0?Math.ceil(player.skillCooldown/1000)+'s':'RDY';
+  const ulCd=player.ultCooldown>0?Math.ceil(player.ultCooldown/1000)+'s':'RDY';
+  ctx2.fillStyle='#fff';ctx2.fillText('[Q]'+skCd+' [E]'+ulCd,10,yOff);
+  // Crosshair
+  const cx=W/2,cy=H/2;ctx2.strokeStyle='rgba(255,255,255,0.8)';ctx2.lineWidth=1.5;
+  ctx2.beginPath();ctx2.moveTo(cx-10,cy);ctx2.lineTo(cx+10,cy);ctx2.stroke();
+  ctx2.beginPath();ctx2.moveTo(cx,cy-10);ctx2.lineTo(cx,cy+10);ctx2.stroke();
+  ctx2.beginPath();ctx2.arc(cx,cy,3,0,Math.PI*2);ctx2.stroke();
+  drawMinimap(ctx2,W,H);
+  // Scroll pips
+  let spX=W-10;
+  dCollectedScrolls.forEach(s=>{
+    ctx2.fillStyle=['#aaa','#48f','#fa0'][s.tier];ctx2.globalAlpha=0.85;
+    ctx2.beginPath();ctx2.arc(spX,30,7,0,Math.PI*2);ctx2.fill();
+    ctx2.globalAlpha=1;ctx2.font='10px serif';ctx2.textAlign='center';
+    ctx2.fillText(s.icon,spX,34);spX-=18;
+  });
+  // Progress bar
+  const barW=Math.min(400,W*0.5),barH=6,barX=W/2-barW/2,barY=H-8;
+  ctx2.globalAlpha=0.5;ctx2.fillStyle='#333';ctx2.fillRect(barX,barY,barW,barH);
+  ctx2.fillStyle='#0f0';ctx2.fillRect(barX,barY,barW*((dRoom+1)/dRooms.length),barH);
+  ctx2.globalAlpha=1;ctx2.textAlign='left';ctx2.restore();
+}
+
+// ── HELPER: roundedRect (canvas compat) ──
+function roundedRect(ctx,x,y,w,h,r){
+  ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
+}
+
+function wrapText(ctx,text,cx,y,maxW,lineH){
+  const words=text.split(' ');let line='';
+  words.forEach(w=>{const test=line+w+' ';
+    if(ctx.measureText(test).width>maxW&&line){ctx.fillText(line.trim(),cx,y);y+=lineH;line=w+' ';}
+    else line=test;});
+  if(line)ctx.fillText(line.trim(),cx,y);
+}
+
+// ── DUNGEON INPUT ──
+function handleDungeonClick(e){
+  const mx=e.clientX||(e.touches&&e.touches[0]?e.touches[0].clientX:W/2);
+  const my=e.clientY||(e.touches&&e.touches[0]?e.touches[0].clientY:H/2);
+
+  if(gameState==='dungeonReward'){
+    const cardW=Math.min(220,W*0.26),cardH=240,gap=20;
+    const totalCW=dRewardOptions.length*cardW+(dRewardOptions.length-1)*gap;
+    const startX=W/2-totalCW/2;
+    dRewardOptions.forEach((s,i)=>{
+      const x=startX+i*(cardW+gap),y=H*0.25;
+      if(mx>=x&&mx<=x+cardW&&my>=y&&my<=y+cardH)selectScroll(i);
+    });
+  } else if(gameState==='dungeonShop'){
+    const itemW=Math.min(170,W*0.2),itemH=110,gap=12;
+    const twW=dShopWeapons.length*itemW+(dShopWeapons.length-1)*gap;
+    const wsX=W/2-twW/2;
+    dShopWeapons.forEach((item,i)=>{
+      const x=wsX+i*(itemW+gap),y=H*0.24;
+      if(mx>=x&&mx<=x+itemW&&my>=y&&my<=y+itemH)buyShopItem('weapon',i);
+    });
+    const tsW=dShopScrolls.length*itemW+(dShopScrolls.length-1)*gap;
+    const ssX=W/2-tsW/2;
+    dShopScrolls.forEach((item,i)=>{
+      const x=ssX+i*(itemW+gap),y=H*0.58;
+      if(mx>=x&&mx<=x+itemW&&my>=y&&my<=y+itemH)buyShopItem('scroll',i);
+    });
+    const btnW=200,btnH=40,btnX=W/2-btnW/2,btnY=H*0.86;
+    if(mx>=btnX&&mx<=btnX+btnW&&my>=btnY&&my<=btnY+btnH)leaveShop();
+  } else if(gameState==='dungeonVictory'||gameState==='dungeonDeath'){
+    const upW=Math.min(140,W*0.17),upH=65,g2=8;
+    const tw2=META_UPGRADES.length*upW+(META_UPGRADES.length-1)*g2;
+    const sx2=W/2-tw2/2;
+    let hitUpgrade=false;
+    META_UPGRADES.forEach((up,i)=>{
+      const x=sx2+i*(upW+g2),y=H*0.55;
+      if(mx>=x&&mx<=x+upW&&my>=y&&my<=y+upH){buyMetaUpgrade(i);hitUpgrade=true;}
+    });
+    if(!hitUpgrade&&my>H*0.85){dungeonMode=false;location.reload();}
+  } else if(gameState==='dungeonActIntro'){
+    dActTransitionTimer=0;
+  }
+}
+
+function handleDungeonKey(e){
+  if(gameState==='dungeonReward'){const k=parseInt(e.key);if(k>=1&&k<=3)selectScroll(k-1);}
+  else if(gameState==='dungeonShop'){if(e.key==='Enter'||e.key===' ')leaveShop();}
+  else if(gameState==='dungeonActIntro'){dActTransitionTimer=0;}
+  else if(gameState==='dungeonVictory'||gameState==='dungeonDeath'){if(e.key==='Enter'||e.key===' '){dungeonMode=false;location.reload();}}
+}
+
+// ── PATCH: Override selectChar for dungeon mode ──
+const _dOrigSelectChar=selectChar;
+selectChar=function(idx){
+  if(storyActive){_dOrigSelectChar(idx);return;}
+  // Dungeon roguelike mode
+  const ch=CHARACTERS[idx];
+  player.character=idx;
+  player.weapons=[{...WEAPON_TYPES[0],tier:1,kills:0}];
+  player.weaponIndex=0;
+  player.maxHp=Math.floor((ch.hp||120)*diffSettings.playerHpMult);
+  player.hp=player.maxHp;player.speed=ch.speed||3.0;
+  player.atk=10;player.def=0;player.crit=5;player.level=1;player.xp=0;player.xpNeeded=15;player.kills=0;
+  player.emblems={};player.armors=[];equippedArmorIndex=-1;
+  player.burnChance=0;player.slowChance=0;player.chainChance=0;player.critMult=1.5;
+  player.lifesteal=0;player.dmgReduction=0;player.regenRate=0;player.speedBuff=0;
+  player.allDmgMult=1;player.atkSpdMult=1;player.voidPhase=0;player.critChance=0.05;
+  player.healOnKill=0;player.executeThreshold=0;player.chaosExplosion=false;
+  player.fireAura=false;player.bloodRage=false;player.reviveAvailable=false;
+  player.chainTargets=0;
+  playerAbilityCards={};
+  score=0;totalKills=0;gameTime=0;
+  document.getElementById('title-screen').style.display='none';
+  initAudio();lastTime=performance.now();
+  startDungeon();requestAnimationFrame(gameLoop);
+};
+
+// ── PATCH: Override triggerDeath for dungeon mode ──
+const _dOrigTriggerDeath=triggerDeath;
+triggerDeath=function(){
+  if(dungeonMode){dungeonDeath();return;}
+  _dOrigTriggerDeath();
+};
+
+// ── PATCH: Override game loop for dungeon mode ──
+const _dPrevGameLoop=gameLoop;
+gameLoop=function(ts){
+  if(!dungeonMode){_dPrevGameLoop(ts);return;}
+  const dt=Math.min(ts-lastTime,50);lastTime=ts;
+  const ctx2=canvas.getContext('2d');
+  ctx2.clearRect(0,0,canvas.width,canvas.height);
+
+  if(gameState==='dungeonActIntro'){
+    dActTransitionTimer-=dt;renderDungeonActIntro();
+    if(dActTransitionTimer<=0)startDungeonRoom();
+    requestAnimationFrame(gameLoop);return;
+  }
+  if(gameState==='dungeonReward'){renderDungeonReward();requestAnimationFrame(gameLoop);return;}
+  if(gameState==='dungeonShop'){renderDungeonShop();requestAnimationFrame(gameLoop);return;}
+  if(gameState==='dungeonVictory'){renderDungeonEnd(true);requestAnimationFrame(gameLoop);return;}
+  if(gameState==='dungeonDeath'){renderDungeonEnd(false);requestAnimationFrame(gameLoop);return;}
+
+  if(gameState==='playing'){
+    gameTime+=dt;
+    updatePlayer(dt);updateEnemies(dt);updateProjectiles(dt);
+    updateParticles(dt);updateDamageNumbers(dt);updatePickups(dt);
+    updatePassiveRegen(dt);applyEmblemPassives(dt);
+    // No updateSpawning — enemies pre-spawned per room
+    checkDungeonRoomClear();
+    try{renderScene();}catch(err){}
+    drawWeaponView();renderParticles(ctx2);renderDamageNumbers(ctx2);
+    drawDungeonHUD();
+    if(player.hawkFlyTimer>0){ctx2.save();ctx2.globalAlpha=0.25;ctx2.fillStyle='#08f';ctx2.fillRect(0,0,W,H);ctx2.restore();}
+    if(player.ultVisualTimer>0){ctx2.save();ctx2.globalAlpha=0.2;ctx2.fillStyle='#f00';ctx2.fillRect(0,0,W,H);ctx2.restore();}
+  } else if(gameState==='paused'){
+    try{renderScene();}catch(e){}
+    ctx2.fillStyle='rgba(0,0,0,0.55)';ctx2.fillRect(0,0,W,H);
+    ctx2.fillStyle='#fff';ctx2.font='bold 2.5rem monospace';ctx2.textAlign='center';
+    ctx2.fillText('PAUSED',W/2,H/2-20);ctx2.font='1rem monospace';
+    ctx2.fillText('[P] or [Esc] to resume',W/2,H/2+30);
+    ctx2.font='0.85rem monospace';
+    ctx2.fillText('Act '+(dAct+1)+': '+(DUNGEON_ACTS[dAct]?.name||'')+' \u2014 Room '+(dRoom+1),W/2,H/2+60);
+    ctx2.fillText('Scrolls: '+dCollectedScrolls.length+' | Gold: '+dGold,W/2,H/2+80);
+  } else if(gameState==='emblemSelect'||gameState==='bossReward'){
+    try{renderScene();}catch(e){}
+    ctx2.fillStyle='rgba(0,0,0,0.7)';ctx2.fillRect(0,0,W,H);
+  } else if(gameState==='inventory'){
+    try{renderScene();}catch(e){}
+    ctx2.fillStyle='rgba(0,0,0,0.75)';ctx2.fillRect(0,0,W,H);
+  }
+  requestAnimationFrame(gameLoop);
+};
+
+// ── PATCH: Gold from kills ──
+const _dOrigOnEnemyKill=onEnemyKill;
+onEnemyKill=function(e){
+  _dOrigOnEnemyKill(e);
+  if(dungeonMode){dGold+=Math.floor((e.isBoss?50:randInt(5,12))*dGoldMult);dTotalKills++;}
+};
+
+// ── DUNGEON EVENT LISTENERS ──
+document.addEventListener('click',e=>{if(dungeonMode)handleDungeonClick(e);});
+document.addEventListener('touchstart',e=>{if(dungeonMode)handleDungeonClick(e);},{passive:true});
+document.addEventListener('keydown',e=>{if(dungeonMode)handleDungeonKey(e);});
+
+// ── UPDATE TITLE SCREEN TEXT ──
+(function(){
+  const sub=document.querySelector('#title-screen h2');
+  if(sub&&sub.textContent.includes('V7.0'))sub.textContent='DOOM-Style FPS Roguelike V7.0';
+})();
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ── END DUNGEON ROGUELIKE MODE ──────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ── FINAL INIT ────────────────────────────────────────────────────────────────
