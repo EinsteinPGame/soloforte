@@ -379,6 +379,33 @@ const BONE_LINEAGE=['Darwizzies','Goblins','Humans','Dwarves','Merfolk','Fairy',
 // CONDITIONAL: PRIMORDIAL TYPE
 const PRIMORDIAL_TYPES=['Death','Life','Eternity','Time','Chaos','Destiny'];
 
+// CONDITIONAL: DEMON RANK (if race = Demon)
+const DEMON_RANKS=['Lesser Demon','Greater Demon','Archfiend','Demon Lord','Demon King'];
+
+// CONDITIONAL: ANGEL ORDER (if race = Angel)
+const ANGEL_ORDERS=['Guardian','Seraph','Cherub','Archangel','Throne','Dominion'];
+
+// CONDITIONAL: DRAGON TYPE (if race = Dragon/Dragonborn/Dragon Slayer)
+const DRAGON_TYPES=['Fire Dragon','Ice Dragon','Storm Dragon','Shadow Dragon','Celestial Dragon','Void Dragon','Earth Dragon','Sea Dragon'];
+
+// CONDITIONAL: ELEMENTAL AFFINITY (if race = Elemental)
+const ELEMENTAL_AFFINITIES=['Fire','Water','Earth','Air','Lightning','Ice','Magma','Storm','Crystal','Shadow'];
+
+// CONDITIONAL: GOD DOMAIN (if race = God/Demi-God)
+const GOD_DOMAINS=['War','Wisdom','Death','Nature','Sea','Sky','Sun','Moon','Forge','Harvest','Trickery','Love'];
+
+// CONDITIONAL: VAMPIRE BLOODLINE (if race = Vampire)
+const VAMPIRE_BLOODLINES=['Nosferatu','Strigoi','Dhampir','Daywalker','Ancient One','Progenitor'];
+
+// CONDITIONAL: WEREBEAST FORM (if race = Werebeast)
+const WEREBEAST_FORMS=['Werewolf','Werebear','Weretiger','Wereshark','Wereraven','Wereserpent'];
+
+// CONDITIONAL: SYMBIOTE BOND (if race = Symbiote)
+const SYMBIOTE_BONDS=['Parasitic','Mutualistic','Dominant','Hivemind','Unstable'];
+
+// CONDITIONAL: REINCARNATION ORIGIN (if race = Reincarnation/Evil Reincarnation)
+const REINCARNATION_ORIGINS=['Hero of Old','Fallen King','Ancient Sage','Forgotten Champion','Betrayed General','Lost Prophet'];
+
 // ============================================================
 // WHEEL CATEGORY DEFINITIONS
 // ============================================================
@@ -416,6 +443,24 @@ const CONDITIONAL_WHEELS=[
    trigger:{category:'race',values:['Primordial']}},
   {id:'whatConquered',label:'What did you conquer?',icon:'🌍',color:'#FF8F00',items:WHAT_CONQUERED,
    trigger:{category:'conquered',values:null}}, // always triggers after conquered
+  {id:'demonRank',label:'Demon Rank',icon:'😈',color:'#B71C1C',items:DEMON_RANKS,
+   trigger:{category:'race',values:['Demon']}},
+  {id:'angelOrder',label:'Angel Order',icon:'👼',color:'#E3F2FD',items:ANGEL_ORDERS,
+   trigger:{category:'race',values:['Angel']}},
+  {id:'dragonType',label:'Dragon Type',icon:'🐉',color:'#FF6D00',items:DRAGON_TYPES,
+   trigger:{category:'race',values:['Dragon','Dragonborn','Dragon Slayer']}},
+  {id:'elementalAffinity',label:'Elemental Affinity',icon:'🔥',color:'#FF9800',items:ELEMENTAL_AFFINITIES,
+   trigger:{category:'race',values:['Elemental']}},
+  {id:'godDomain',label:'Divine Domain',icon:'⚜️',color:'#FFD700',items:GOD_DOMAINS,
+   trigger:{category:'race',values:['God','Demi-God']}},
+  {id:'vampireBloodline',label:'Vampire Bloodline',icon:'🧛',color:'#880E4F',items:VAMPIRE_BLOODLINES,
+   trigger:{category:'race',values:['Vampire']}},
+  {id:'werebeastForm',label:'Werebeast Form',icon:'🐺',color:'#5D4037',items:WEREBEAST_FORMS,
+   trigger:{category:'race',values:['Werebeast']}},
+  {id:'symbionteBond',label:'Symbiote Bond',icon:'🦠',color:'#4A148C',items:SYMBIOTE_BONDS,
+   trigger:{category:'race',values:['Symbiote']}},
+  {id:'reincarnationOrigin',label:'Past Life',icon:'🔄',color:'#37474F',items:REINCARNATION_ORIGINS,
+   trigger:{category:'race',values:['Reincarnation','Evil Reincarnation']}},
 ];
 
 // ============================================================
@@ -586,7 +631,7 @@ function drawTitle(){
   }
 
   X.font='11px "Segoe UI",sans-serif';X.fillStyle='#333';X.textAlign='center';
-  X.fillText('WoF v2.1.0 // soloforte.ai',cx,VH-15);
+  X.fillText('WoF v2.2.0 // soloforte.ai',cx,VH-15);
   buttons.forEach(drawBtn);
 }
 
@@ -693,10 +738,24 @@ function drawSpin(){
       segColor=shades[i%shades.length];
     }
 
-    // Landed: highlight winner, dim others
+    // Landed: highlight winner with category-specific glow, dim others
     if(spin.phase==='landed'){
       if(i===spin.landedIdx){
-        segColor=isRainbow?rainbowHslLit(i,items.length):lighten(baseColor,60);
+        // Category-specific highlight: bright saturated version of category color
+        const catHighlights={
+          race:'#42A5F5',size:'#8BC34A',strength:'#CE93D8',speed:'#42A5F5',
+          durability:'#EF5350',iq:'#5C6BC0',fight:'#FF5252',weapon:'#D2691E',
+          weaponMastery:'#FF1744',enchantment:'#FF4081',extraPower:'#E040FB',
+          powerMastery:'#D500F9',weakness:'#26C6DA',apexForces:'#F48FB1',
+          conquered:'#FFA726',backstory:'#FF7043',title:'#E0E0E0',
+          cosmicPower:'#536DFE',fairyPowers:'#F8BBD0',mythicalBeast:'#FF8A65',
+          boneLineage:'#CFD8DC',primordialType:'#7C4DFF',whatConquered:'#FFB74D',
+          demonRank:'#EF5350',angelOrder:'#90CAF9',dragonType:'#FF9100',
+          elementalAffinity:'#FFB74D',godDomain:'#FFE082',vampireBloodline:'#F48FB1',
+          werebeastForm:'#8D6E63',symbionteBond:'#CE93D8',reincarnationOrigin:'#78909C'
+        };
+        if(isRainbow){segColor=rainbowHslLit(i,items.length);}
+        else{segColor=catHighlights[cat.id]||lighten(baseColor,60);}
       }else{
         segColor=isRainbow?rainbowHslDark(i,items.length):darken(baseColor,80);
       }
@@ -909,6 +968,15 @@ function drawCharDone(){
   if(charResult.boneLineage)equipEntries.push({label:'BONE LINE',value:charResult.boneLineage,color:'#B0BEC5'});
   if(charResult.primordialType)equipEntries.push({label:'PRIMORDIAL',value:charResult.primordialType,color:'#311B92'});
   if(charResult.whatConquered)equipEntries.push({label:'CONQUERED',value:charResult.whatConquered,color:'#FF8F00'});
+  if(charResult.demonRank)equipEntries.push({label:'DEMON RANK',value:charResult.demonRank,color:'#B71C1C'});
+  if(charResult.angelOrder)equipEntries.push({label:'ANGEL ORDER',value:charResult.angelOrder,color:'#E3F2FD'});
+  if(charResult.dragonType)equipEntries.push({label:'DRAGON TYPE',value:charResult.dragonType,color:'#FF6D00'});
+  if(charResult.elementalAffinity)equipEntries.push({label:'ELEMENT',value:charResult.elementalAffinity,color:'#FF9800'});
+  if(charResult.godDomain)equipEntries.push({label:'DOMAIN',value:charResult.godDomain,color:'#FFD700'});
+  if(charResult.vampireBloodline)equipEntries.push({label:'BLOODLINE',value:charResult.vampireBloodline,color:'#880E4F'});
+  if(charResult.werebeastForm)equipEntries.push({label:'FORM',value:charResult.werebeastForm,color:'#5D4037'});
+  if(charResult.symbionteBond)equipEntries.push({label:'BOND',value:charResult.symbionteBond,color:'#4A148C'});
+  if(charResult.reincarnationOrigin)equipEntries.push({label:'PAST LIFE',value:charResult.reincarnationOrigin,color:'#37474F'});
 
   const fontSize=isMobile?10:13;
   const labelW=isMobile?75:100;
