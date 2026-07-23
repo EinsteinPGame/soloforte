@@ -139,22 +139,22 @@ All animations are designed for **2D canvas** rendering: particle systems, color
 
 | Aspect | Description |
 |---|---|
-| **Victory** | Dark red (blood) tendrils extend from the circle — 5-6 curved bezier lines that whip outward and arc gracefully, like blood manipulation (Flowing Red Scale). The tendrils harden (become solid lines with sharper edges). Small red droplet particles float upward from the tendrils. The circle's marking appears: a horizontal line across the bridge (nose marking, drawn as a dark band across the upper-middle of the circle). A faint ghostly outline of two smaller circles appears beside him (his brothers). Duration: 2.5s. |
-| **Defeat** | Blood tendrils extend but lose cohesion — they waver and drip apart (the bezier curves decompose into disconnected droplet particles falling downward). The circle staggers (quick horizontal oscillation). A tear drop (single small blue-tinted particle) falls from the top of the circle. His brothers' outlines appear faintly, then fade — he reaches toward them (circle shifts slightly). Duration: 2s. |
+| **Victory** | Multiple blood orbs (6-8 dark red spheres) materialize around him in a ring formation. They begin orbiting — slowly at first, then accelerating. Each orb trails dark red particle streams. At peak speed, the orbs align and pulse with crimson energy simultaneously. Screen tints dark red. Duration: 2.5s. |
+| **Defeat** | Same blood orbs materialize and start orbiting — but they destabilize, wobble out of formation, then detonate one by one ON him. Each explosion = red burst + screen shake. He staggers with each impact. Final orb is the biggest explosion, leaving him cracked and dimmed. Duration: 2s. |
 
 #### 15. Toji
 
 | Aspect | Description |
 |---|---|
 | **Victory** | The circle has zero cursed energy — no glow, no aura, just a clean solid dark green circle. A long diagonal line (the Inverted Spear of Heaven / Split Soul Katana) appears, held at the circle's side. In one fluid motion, the line sweeps in a wide arc. The slash is so clean that a thin white gap appears across the canvas (like reality was cut). The circle stands perfectly still, completely unfazed. No particles, no flash — the restraint IS the flex. A small confident smirk line curves on the circle. Duration: 2s. |
-| **Defeat** | Toji doesn't go down easy. The circle takes a hit (screen shake) but barely moves. A second hit — a small crack. He lunges forward (circle moves 20px toward the opponent's last position) for one final slash (line sweep), then stops mid-motion. The smirk line fades. The circle slowly tips (rotates 15 degrees) and the weapon line falls away, clattering (line drops and bounces with decreasing amplitude). Duration: 2s. |
+| **Defeat** | Toji activates his weapon triangle formation — three weapons appear in a triangular orbit pattern around him (the special move callback). He hovers through the triangle confidently. But misjudges the rotation — one of the orbiting weapons clips him, then impales through the circle. The weapon line sticks out the other side. Circle goes still. A darkly comedic end for the strongest sorcerer killer. Duration: 2s. |
 
 #### 16. Mechamaru
 
 | Aspect | Description |
 |---|---|
 | **Victory** | The circle transforms — mechanical panel lines (4-6 short straight lines) appear across its surface, giving it a mech-suit look. A large cannon barrel (thick horizontal line) extends from the right side. Energy charges at the barrel tip (small bright blue-white circle growing from 0 to full radius over 1s, with electric crackle particles). Fires a massive beam — thick bright blue line across the screen with electric particle edges. "Ultimate Mechamaru" text faintly overlays in blue monospace font, then fades. Duration: 3s. |
-| **Defeat** | Mechanical panels crack open (the surface lines widen into gaps). Sparks and smoke (yellow spark particles + grey rising circles) pour from the gaps. The cannon barrel droops (rotates 30 degrees downward). The energy charge at the tip fizzles (small pop of scattered blue particles). The circle's blue dims to gunmetal grey, and a final wisp of grey smoke rises. One panel falls off (a small rectangle detaches and drops). Duration: 2s. |
+| **Defeat** | Camera pulls back to show Ultimate Mechamaru's massive form — it sparks, cracks, then EXPLODES into hundreds of small first-phase Mechamaru fragments (tiny circles scattering everywhere), each one popping with small spark bursts. The main circle watches the destruction. Then slowly turns around — a single weapon (blade/beam line) is closing in from behind. Screen cuts to black on contact. Duration: 2.5s. |
 
 #### 17. Kashimo
 
@@ -175,7 +175,7 @@ All animations are designed for **2D canvas** rendering: particle systems, color
 | Aspect | Description |
 |---|---|
 | **Victory** | Raw output. The circle compresses slightly (0.95x scale) as it charges — a visible heat distortion effect (slight wobble of nearby canvas elements / a wavy displacement ring). Then it fires the strongest cursed energy blast: a WIDE beam (thick gradient line, bright orange-white core with darker orange edges) that fills a quarter of the screen width. The beam sustains for 1s, leaving a scorched trail (darkened pixels along the path). The circle barely moves. Pure power. Duration: 2.5s. |
-| **Defeat** | Ryu charges another blast — the compression begins, heat distortion starts — but the energy dissipates before firing (the charging glow fizzles from white back to dull orange, shrinking). The circle exhales (subtle 1.05x scale then back). A single frustrated pulse of weak orange energy radiates outward and fades almost immediately. The circle's color dulls. He couldn't output enough. Duration: 1.5s. |
+| **Defeat** | Ryu charges the beam — compression starts, heat distortion builds, energy at the barrel tip grows brighter and brighter. At peak charge, his hair (a few upward lines from the top of the circle) sizzles, crinkles, and falls flat (lines droop downward). The charge fizzles — energy disperses weakly. Circle deflates slightly. Couldn't even get his hair to cooperate. Duration: 1.5s. |
 
 #### 20. Higuruma
 
@@ -292,12 +292,12 @@ Several animations use full-canvas effects. These should be utility functions:
 | 11 | Yuta & Rika | Dual circles, claws, bond ring | Rika destabilizes and dissolves |
 | 12 | Mahoraga | Dharma wheel spin + adaptation colors | Wheel spokes break, circle cracks |
 | 13 | Dabura Karaba | Light pillars + levitate + sword up | Pillars corrupt to darkness, close in |
-| 14 | Choso | Blood tendrils + brothers' ghosts | Tendrils collapse, tear falls |
-| 15 | Toji | Single clean slash, reality gap | Refuses to fall, final lunge |
-| 16 | Mechamaru | Mech panels + cannon beam | Panels crack open, sparks and smoke |
+| 14 | Choso | Blood orbs orbit + crimson pulse | Orbs destabilize + explode on him |
+| 15 | Toji | Single clean slash, reality gap | Weapon triangle impales himself |
+| 16 | Mechamaru | Mech panels + cannon beam | Ultimate explodes, weapon closes in |
 | 17 | Kashimo | Lightning eruption from all sides | Electricity fails, final spark dies |
 | 18 | Nanami | 7:3 ratio grid + precise strike | Grid misaligns, clock runs out |
-| 19 | Ryu | Massive wide beam, sustained fire | Charge fizzles, not enough output |
+| 19 | Ryu | Massive wide beam, sustained fire | Hair sizzles out, charge fizzles |
 | 20 | Higuruma | Gavel slam + GUILTY verdict seal | Gavel cracks, verdict reversed |
 | 21 | Yuji | Black Flash punch, inverted flash | Takes hits, keeps pushing forward |
 | 22 | Naoya | Frame-skip speed triangle + smirk | Form instability, stuck mid-shift |
