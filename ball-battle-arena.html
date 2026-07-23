@@ -4672,9 +4672,9 @@ function attackMahito(f,enemy,chaos){
 
   // Apply Transfiguration Charge
   if(enemy.mahitoTransformImmune<=0){
-    const chargeThreshold=7;
+    const chargeThreshold=f.mahitoPassiveTriggered?4:7; // True Form: 4 charges to transform
     enemy.mahitoChargeCount=Math.min(chargeThreshold,(enemy.mahitoChargeCount||0)+1);
-    enemy.mahitoChargeDecay=240; // 4 seconds at 60fps
+    enemy.mahitoChargeDecay=f.mahitoPassiveTriggered?300:240; // True Form: 5s, Normal: 4s
     enemy.mahitoTransfiguredBy=f;
 
     // Speed reduction per charge (nonlinear: 5,5,6,6,8,10 = cumulative 5,10,16,22,30,40%)
@@ -4683,10 +4683,11 @@ function attackMahito(f,enemy,chaos){
     enemy.speed=enemy.baseSpeed*(1-reduction);
 
     // Visual feedback
-    if(enemy.mahitoChargeCount>=5){
-      spawnDmgNum(enemy.x,enemy.y-20,enemy.mahitoChargeCount+'/7','#6b3a7a',false);
+    const nearThresh=enemy.mahitoChargeCount>=chargeThreshold-2;
+    if(nearThresh){
+      spawnDmgNum(enemy.x,enemy.y-20,enemy.mahitoChargeCount+'/'+chargeThreshold,'#6b3a7a',false);
     }else{
-      spawnDmgNum(enemy.x,enemy.y-20,enemy.mahitoChargeCount+'/7','#5a8a8a',false);
+      spawnDmgNum(enemy.x,enemy.y-20,enemy.mahitoChargeCount+'/'+chargeThreshold,'#5a8a8a',false);
     }
 
     // Check for full transformation
@@ -4751,19 +4752,20 @@ function relicMahito(f,enemy){
 
   // Instant 4 charges to enemies inside domain
   const domainR=f.mahitoDomainRadius||250;
+  const domThresh=f.mahitoPassiveTriggered?4:7;
   fighters.forEach(t=>{
     if(t.side===f.side||t.dead)return;
     if(dist(f,t)<=domainR&&!t.mahitoTransformed){
       const prev=t.mahitoChargeCount||0;
-      t.mahitoChargeCount=Math.min(7,prev+4);
-      t.mahitoChargeDecay=240;
+      t.mahitoChargeCount=Math.min(domThresh,prev+4);
+      t.mahitoChargeDecay=f.mahitoPassiveTriggered?300:240;
       t.mahitoTransfiguredBy=f;
       // Apply speed reduction
       const speedReductions=[0,0.05,0.10,0.16,0.22,0.30,0.40,1.0];
       t.speed=t.baseSpeed*(1-speedReductions[Math.min(t.mahitoChargeCount,7)]);
-      spawnDmgNum(t.x,t.y-20,'+4 CHARGES ('+t.mahitoChargeCount+'/7)','#6b3a7a',true);
+      spawnDmgNum(t.x,t.y-20,'+4 CHARGES ('+t.mahitoChargeCount+'/'+domThresh+')','#6b3a7a',true);
       // Immediate transform if at threshold
-      if(t.mahitoChargeCount>=7)mahitoTransformEnemy(f,t);
+      if(t.mahitoChargeCount>=domThresh)mahitoTransformEnemy(f,t);
     }
   });
 
@@ -4787,17 +4789,18 @@ function updateRelicMahito(f,enemy,dt){
   }
 
   // Ongoing: +1 charge per 1.5s (90 frames) to enemies inside domain
+  const tickThresh=f.mahitoPassiveTriggered?4:7;
   if(f.mahitoDomainTimer%90===0&&f.mahitoDomainTimer>0){
     fighters.forEach(t=>{
       if(t.side===f.side||t.dead||t.mahitoTransformed)return;
       if(dist(f,t)<=domainR){
-        t.mahitoChargeCount=Math.min(7,(t.mahitoChargeCount||0)+1);
-        t.mahitoChargeDecay=240; // pause decay inside domain (refresh timer)
+        t.mahitoChargeCount=Math.min(tickThresh,(t.mahitoChargeCount||0)+1);
+        t.mahitoChargeDecay=f.mahitoPassiveTriggered?300:240;
         t.mahitoTransfiguredBy=f;
         const speedReductions=[0,0.05,0.10,0.16,0.22,0.30,0.40,1.0];
         t.speed=t.baseSpeed*(1-speedReductions[Math.min(t.mahitoChargeCount,7)]);
-        spawnDmgNum(t.x,t.y-15,t.mahitoChargeCount+'/7','#5a8a8a',false);
-        if(t.mahitoChargeCount>=7)mahitoTransformEnemy(f,t);
+        spawnDmgNum(t.x,t.y-15,t.mahitoChargeCount+'/'+tickThresh,'#5a8a8a',false);
+        if(t.mahitoChargeCount>=tickThresh)mahitoTransformEnemy(f,t);
       }
     });
   }
@@ -13483,8 +13486,61 @@ function drawBall(f){
     case 'mahito':{
       const dom=f.mahitoDomainActive?'DOMAIN ':'';
       const passive=f.mahitoPassiveTriggered?'ISB ':'';
-      X.fillText(dom+passive+'Hits:'+f.mahitoHitCount+'/5',f.x,statY);
+      const eChg=fighters.find(t=>t.side!==f.side&&!t.dead);
+      const chg=eChg?(eChg.mahitoChargeCount||0):0;
+      X.fillText(dom+passive+'Charges:'+chg+'/7',f.x,statY);
       break;}
+  }
+
+  // Mahito charge soul marks on this fighter
+  if(f.mahitoChargeCount>0&&!f.mahitoTransformed){
+    const cc=f.mahitoChargeCount;
+    const markY=f.y-f.radius-18;
+    const totalW=cc*8;
+    const startX=f.x-totalW/2+4;
+    for(let i=0;i<cc;i++){
+      const mx=startX+i*8;
+      const bob=Math.sin(battleTime*0.15+i*0.8)*2;
+      const urgent=cc>=5;
+      // Soul mark — small diamond
+      X.save();
+      X.translate(mx,markY+bob);
+      X.rotate(Math.PI/4);
+      X.fillStyle=urgent?'#6b3a7a':'#5a8a8a';
+      X.shadowColor=urgent?'#9a5aaa':'#5a8a8a';
+      X.shadowBlur=urgent?8:4;
+      X.fillRect(-3,-3,6,6);
+      X.shadowBlur=0;
+      X.restore();
+    }
+    // Charge count text
+    X.font='bold 9px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=cc>=5?'#9a5aaa':'#7ababa';
+    X.fillText(cc+'/7',f.x,markY-8);
+  }
+
+  // Transform overlay — teal-gray distortion when fully transfigured
+  if(f.mahitoTransformed){
+    X.save();
+    X.globalAlpha=0.4+Math.sin(battleTime*0.2)*0.1;
+    X.fillStyle='#5a8a8a';
+    X.beginPath();X.arc(f.x,f.y,f.radius*0.85,0,Math.PI*2);X.fill();
+    // Stitch marks across body
+    X.strokeStyle='#3a6a6a';X.lineWidth=1.5;X.globalAlpha=0.6;
+    for(let i=0;i<4;i++){
+      const sa=battleTime*0.05+i*Math.PI/2;
+      X.beginPath();
+      X.moveTo(f.x+Math.cos(sa)*f.radius*0.3,f.y+Math.sin(sa)*f.radius*0.3);
+      X.lineTo(f.x+Math.cos(sa)*f.radius*0.7,f.y+Math.sin(sa)*f.radius*0.7);
+      X.stroke();
+    }
+    // "TRANSFIGURED" text above
+    X.globalAlpha=0.7+Math.sin(battleTime*0.15)*0.2;
+    X.font='bold 10px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#5a8a8a';X.shadowColor='#5a8a8a';X.shadowBlur=6;
+    X.fillText('TRANSFIGURED',f.x,f.y-f.radius-24);
+    X.shadowBlur=0;
+    X.restore();
   }
 
   // Burn visual
@@ -15559,7 +15615,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'LORE COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.22.0 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.23.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -18277,6 +18333,67 @@ function drawBattle(){
         X.beginPath();X.moveTo(f.x-130,f.y+gy);X.lineTo(f.x+130,f.y+gy);X.stroke();
       }
       X.restore();
+    }
+  });
+
+  // Mahito domain boundary circle
+  fighters.forEach(f=>{
+    if(f.char&&f.char.id==='mahito'&&f.mahitoDomainActive&&f.mahitoDomainTimer>0){
+      const domR=f.mahitoDomainRadius||250;
+      const pulse=Math.sin(battleTime*0.08)*0.08+0.92;
+      const fadeAlpha=Math.min(1,f.mahitoDomainTimer/30); // fade out last 0.5s
+      X.save();
+      // Fleshy zone fill
+      const dg=X.createRadialGradient(f.x,f.y,0,f.x,f.y,domR*pulse);
+      dg.addColorStop(0,'rgba(90,138,138,0.0)');
+      dg.addColorStop(0.6,'rgba(90,138,138,0.04)');
+      dg.addColorStop(0.85,'rgba(90,138,138,0.10)');
+      dg.addColorStop(1,'rgba(90,138,138,0.18)');
+      X.globalAlpha=fadeAlpha;
+      X.fillStyle=dg;X.beginPath();X.arc(f.x,f.y,domR*pulse,0,Math.PI*2);X.fill();
+      // Boundary ring
+      X.strokeStyle='#5a8a8a';X.lineWidth=2;X.globalAlpha=fadeAlpha*(0.4+Math.sin(battleTime*0.12)*0.15);
+      X.shadowColor='#5a8a8a';X.shadowBlur=12;
+      X.beginPath();X.arc(f.x,f.y,domR*pulse,0,Math.PI*2);X.stroke();
+      // Inner ring
+      X.strokeStyle='rgba(90,138,138,0.2)';X.lineWidth=1;X.shadowBlur=0;
+      X.beginPath();X.arc(f.x,f.y,domR*pulse*0.6,0,Math.PI*2);X.stroke();
+      // Stitch marks around boundary (organic/fleshy feel)
+      X.strokeStyle='rgba(90,138,138,0.3)';X.lineWidth=1.5;
+      for(let i=0;i<12;i++){
+        const sa=battleTime*0.02+i*Math.PI/6;
+        const sx=f.x+Math.cos(sa)*domR*pulse*0.95;
+        const sy=f.y+Math.sin(sa)*domR*pulse*0.95;
+        X.beginPath();X.moveTo(sx-4,sy-4);X.lineTo(sx+4,sy+4);X.stroke();
+      }
+      X.restore();
+    }
+  });
+
+  // Mahito transfigured human projectiles
+  fighters.forEach(f=>{
+    if(f.char&&f.char.id==='mahito'&&f.mahitoProjectiles){
+      f.mahitoProjectiles.forEach(p=>{
+        X.save();
+        const lifeAlpha=Math.min(1,p.life/10);
+        X.globalAlpha=lifeAlpha;
+        // Flesh blob body
+        X.fillStyle='#8a7a6a';
+        X.shadowColor='#7a6b5a';X.shadowBlur=8;
+        X.beginPath();X.ellipse(p.x,p.y,p.radius*1.2,p.radius*0.8,Math.atan2(p.vy,p.vx),0,Math.PI*2);X.fill();
+        X.shadowBlur=0;
+        // Face — two dot eyes and mouth line
+        const fa=Math.atan2(p.vy,p.vx);
+        const ex1x=p.x+Math.cos(fa+0.4)*4,ex1y=p.y+Math.sin(fa+0.4)*4;
+        const ex2x=p.x+Math.cos(fa-0.4)*4,ex2y=p.y+Math.sin(fa-0.4)*4;
+        X.fillStyle='#2a1a0a';
+        X.beginPath();X.arc(ex1x,ex1y,1.5,0,Math.PI*2);X.fill();
+        X.beginPath();X.arc(ex2x,ex2y,1.5,0,Math.PI*2);X.fill();
+        // Open mouth
+        const mx=p.x+Math.cos(fa)*2,my=p.y+Math.sin(fa)*2;
+        X.beginPath();X.arc(mx,my,2.5,0,Math.PI*2);X.fillStyle='#1a0a0a';X.fill();
+        X.restore();
+      });
     }
   });
 
