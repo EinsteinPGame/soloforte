@@ -28,7 +28,7 @@ canvas{display:block}
 
 <div id="title-screen" class="screen-overlay">
   <h1 style="color:#0ff">TIMESTRIKE</h1>
-  <p style="color:#a8f;font-size:1.1rem">BULLET TIME SHOOTER V2</p>
+  <p style="color:#a8f;font-size:1.1rem">BULLET TIME SHOOTER V3</p>
   <p id="controls-hint">WASD: Move | Mouse: Aim | Click: Shoot</p>
   <p id="controls-hint2">R: Switch Weapon | E/Space: Melee | Stop Moving = Bullet Time</p>
   <div class="btn-row" style="margin-top:16px" id="mode-row">
@@ -37,8 +37,10 @@ canvas{display:block}
   </div>
   <p id="mode-desc" style="color:#666;font-size:0.8rem;margin:4px 0">FPS: First-person raycaster | Classic: Top-down shooter</p>
   <div class="btn-row">
-    <button class="gbtn" onclick="showLevelSelect()">START GAME</button>
+    <button class="gbtn" onclick="showLevelSelect()">CAMPAIGN</button>
+    <button class="gbtn" onclick="startSurvival()" style="border-color:#f80;color:#f80">SURVIVAL</button>
   </div>
+  <p id="survival-best" style="color:#555;font-size:0.75rem;margin-top:2px"></p>
   <div class="btn-row" id="continue-row" style="display:none">
     <button class="gbtn" id="continue-btn">CONTINUE</button>
   </div>
@@ -65,7 +67,7 @@ canvas{display:block}
   <p id="gameover-stats"></p>
   <div class="btn-row">
     <button class="gbtn" id="retry-btn">RETRY</button>
-    <button class="gbtn" onclick="showLevelSelect()">LEVEL SELECT</button>
+    <button class="gbtn" id="gameover-menu-btn" onclick="showTitle()">MENU</button>
   </div>
 </div>
 
@@ -107,10 +109,13 @@ function sfxBoss(){playSound(80,0.5,'sawtooth',0.12)}
 function sfxLevelComplete(){playSound(523,0.15,'triangle',0.12);setTimeout(()=>playSound(659,0.15,'triangle',0.12),150);setTimeout(()=>playSound(784,0.3,'triangle',0.12),300)}
 
 // Save
-let save={level:1,bestTimes:{}};
-function loadSave(){try{const s=localStorage.getItem('timestrike_save');if(s)save=JSON.parse(s)}catch(e){}}
+let save={level:1,bestTimes:{},survivalBest:0};
+function loadSave(){try{const s=localStorage.getItem('timestrike_save');if(s){const p=JSON.parse(s);save={...save,...p}}}catch(e){}}
 function saveSave(){try{localStorage.setItem('timestrike_save',JSON.stringify(save))}catch(e){}}
 loadSave();
+
+// Survival mode
+let survivalMode=false,survivalWave=0;
 
 function setMode(mode){
   if(isMobile)mode='classic';
@@ -147,6 +152,7 @@ let gameOver=false,levelComplete=false;
 let damageVignette=0,hitMarkerTimer=0;
 let comboCount=0,comboTimer=0,score=0,bestCombo=0;
 let hpPickups=[]; // {x,y,amount,life}
+let currentWaves=[];
 let walls=[];
 let movingWalls=[];
 let barrels=[];
@@ -212,6 +218,37 @@ function getWaves(lvl){
   return w;
 }
 
+function getSurvivalWaves(wave){
+  const w=[];
+  const types=['grunt','rusher','sniper_e','bomber','teleporter','tank','shield'];
+  const available=types.slice(0,Math.min(2+Math.floor(wave/2),types.length));
+  const baseCount=3+Math.floor(wave*0.8);
+  const numTypes=Math.min(1+Math.floor(wave/3),available.length);
+  // Wave 1 composition
+  const w1=[];
+  for(let i=0;i<numTypes;i++){
+    const t=available[Math.min(i,available.length-1)];
+    const c=Math.max(1,Math.floor(baseCount/(numTypes+1))+(i===0?2:0));
+    w1.push({type:t,count:c});
+  }
+  w.push(w1);
+  // Wave 2 (harder)
+  if(wave>1){
+    const w2=[];
+    for(let i=0;i<Math.min(numTypes+1,available.length);i++){
+      const t=available[i%available.length];
+      const c=Math.max(1,Math.floor(baseCount/numTypes));
+      w2.push({type:t,count:c});
+    }
+    w.push(w2);
+  }
+  // Boss every 5 waves
+  if(wave>0&&wave%5===0){
+    w.push([{type:wave%10===0?'boss_final':'boss_mini',count:1}]);
+  }
+  return w;
+}
+
 function createEnemy(type,x,y){
   const base={x,y,type,alive:true,angle:0,fireCooldown:Math.random()*2,hitFlash:0,knockback:{x:0,y:0}};
   switch(type){
@@ -250,6 +287,7 @@ function initLevel(lvl){
   player={x:spawnX,y:spawnY,angle:0,pitch:0,hp:100,maxHp:100,
     fireCooldown:0,invuln:0,bobPhase:0,muzzleFlash:0,weaponBob:0};
   waveIndex=0;waveTimer=1;wavesCleared=false;
+  if(survivalMode){currentWaves=getSurvivalWaves(1);survivalWave=0;}
   levelTimer=0;killCount=0;shotsFired=0;shotsHit=0;
   gameOver=false;levelComplete=false;
   bossActive=false;bossHP=0;bossMaxHP=0;
@@ -798,7 +836,7 @@ function update(dt){
   const aliveCount=enemies.filter(e=>e.alive).length;
   enemiesRemaining=aliveCount;
   if(aliveCount===0&&!wavesCleared){
-    const allWaves=getWaves(currentLevel);
+    const allWaves=survivalMode?currentWaves:getWaves(currentLevel);
     if(waveIndex<allWaves.length){
       waveTimer-=realDt;
       if(waveTimer<=0){spawnEnemiesForWave(allWaves[waveIndex]);waveIndex++;waveTimer=2;}
@@ -959,6 +997,23 @@ function addParticles(x,y,count,color,speed=0.05){
 
 let overlayText='',overlayAlpha=0,overlayColor='#0f0';
 function completeLevel(){
+  if(survivalMode){
+    // Survival: heal 25%, start next wave
+    survivalWave++;
+    if(survivalWave>save.survivalBest){save.survivalBest=survivalWave;saveSave();}
+    player.hp=Math.min(player.maxHp,player.hp+player.maxHp*0.25);
+    overlayText='WAVE '+survivalWave+' CLEAR!';overlayColor='#0ff';overlayAlpha=1;
+    sfxLevelComplete();
+    setTimeout(()=>{
+      overlayAlpha=0;
+      // Load next survival wave
+      const nextWaves=getSurvivalWaves(survivalWave+1);
+      waveIndex=0;waveTimer=0;wavesCleared=false;
+      levelComplete=false;
+      currentWaves=nextWaves;
+    },1500);
+    return;
+  }
   levelComplete=true;sfxLevelComplete();
   if(currentLevel<=15&&currentLevel>=save.level){save.level=Math.min(currentLevel+1,16);}
   const timeKey='l'+currentLevel;
@@ -1440,7 +1495,7 @@ function drawHUD(){
 
   // Level + enemies
   X.fillStyle='#fff';X.font='14px "Courier New"';X.textAlign='center';
-  const lvlText=currentLevel===16?'BOSS RUSH':`LEVEL ${currentLevel}`;
+  const lvlText=survivalMode?`SURVIVAL — WAVE ${survivalWave+1}`:currentLevel===16?'BOSS RUSH':`LEVEL ${currentLevel}`;
   X.fillText(lvlText,W/2,22);
 
   X.fillStyle='#f88';X.font='12px "Courier New"';X.textAlign='right';
@@ -1568,7 +1623,7 @@ function getRating(){
 
 // ── SCREENS ──
 function showTitle(){
-  gameState='title';
+  gameState='title';survivalMode=false;
   document.exitPointerLock&&document.exitPointerLock();
   document.getElementById('title-screen').style.display='flex';
   document.getElementById('levelselect-screen').style.display='none';
@@ -1580,6 +1635,14 @@ function showTitle(){
       startLevel(Math.min(save.level,15));
     };
   }
+  const bestEl=document.getElementById('survival-best');
+  if(bestEl)bestEl.textContent=save.survivalBest>0?`SURVIVAL BEST: WAVE ${save.survivalBest}`:'';
+}
+
+function startSurvival(){
+  survivalMode=true;survivalWave=0;
+  // Use open arena map (last map - most open)
+  startLevel(MAPS.length);
 }
 
 function showLevelSelect(){
@@ -1642,9 +1705,16 @@ function showComplete(){
 function showGameOver(){
   const screen=document.getElementById('gameover-screen');
   screen.style.display='flex';
-  document.getElementById('gameover-stats').innerHTML=
-    `TIME: ${formatTime(levelTimer)} | KILLS: ${killCount} | SCORE: ${score}<br>BEST COMBO: ${bestCombo}x`;
-  document.getElementById('retry-btn').onclick=()=>startLevel(currentLevel);
+  if(survivalMode){
+    if(survivalWave>save.survivalBest){save.survivalBest=survivalWave;saveSave();}
+    document.getElementById('gameover-stats').innerHTML=
+      `SURVIVED: WAVE ${survivalWave} | KILLS: ${killCount} | SCORE: ${score}<br>BEST COMBO: ${bestCombo}x | BEST WAVE: ${save.survivalBest}`;
+    document.getElementById('retry-btn').onclick=()=>{startSurvival()};
+  }else{
+    document.getElementById('gameover-stats').innerHTML=
+      `TIME: ${formatTime(levelTimer)} | KILLS: ${killCount} | SCORE: ${score}<br>BEST COMBO: ${bestCombo}x`;
+    document.getElementById('retry-btn').onclick=()=>startLevel(currentLevel);
+  }
 }
 
 // ── MAIN LOOP ──
@@ -1671,6 +1741,12 @@ function loop(t){
 }
 requestAnimationFrame(t=>{lastTime=t;loop(t)});
 showTitle();
+
+// Expose to global scope for HTML onclick
+window.showTitle=showTitle;
+window.showLevelSelect=showLevelSelect;
+window.setMode=setMode;
+window.startSurvival=startSurvival;
 
 })();
 </script>
