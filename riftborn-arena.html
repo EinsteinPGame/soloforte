@@ -1705,6 +1705,7 @@ function drawBattle(){
 
   // Move select
   if(b.phase==='moveSelect'&&p){
+    const enemy=getActiveE();
     p.moves.forEach((m,i)=>{
       const mv=MOVES[m.name];
       const bx=15,by=botY+10+i*36,bw=W-30,bh=32;
@@ -1715,6 +1716,13 @@ function drawBattle(){
       drawText(m.name,bx+10,by+5,13,TYPE_COLORS[mv?.type||'Normal']);
       drawText(`${mv?.cat||'???'}`,bx+150,by+5,11,'#888');
       drawText(`Pow:${mv?.power||'-'}`,bx+220,by+5,11,'#aaa');
+      // Type effectiveness indicator
+      if(enemy&&mv?.power&&mv.cat!=='Status'){
+        const eff=TYPE_CHART[mv.type||'Normal']?.[enemy.type]||1;
+        if(eff>=2)drawText('SE',bw-10,by+5,10,'#44ff44');
+        else if(eff<=0)drawText('X',bw-10,by+5,10,'#ff4444');
+        else if(eff<1)drawText('NVE',bw-10,by+5,10,'#ff8844');
+      }
       drawEnergyBar(bx+10,by+22,80,6,m.energy,m.maxEnergy);
       drawText(`${m.energy}/${m.maxEnergy}`,bx+95,by+19,9,'#5577cc');
       if(sel)drawText('Back: tap bottom',W-140,botY+H*0.35,10,'#555');
