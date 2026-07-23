@@ -2855,9 +2855,14 @@ function movePlayer(dx,dy){
   // Set facing direction
   if(dy>0)ex.dir=0;else if(dy<0)ex.dir=1;else if(dx<0)ex.dir=2;else if(dx>0)ex.dir=3;
   const tx=ex.px+dx,ty=ex.py+dy;
-  // Check exits first
+  // Check exits first — trigger fade transition
   for(const e of m.exits){
-    if(tx===e.x&&ty===e.y){initExplore(e.to,e.sx,e.sy);return}
+    if(tx===e.x&&ty===e.y){
+      if(_mapTrans.active)return;
+      const dir=e.x===0?'left':e.x>=m.w-1?'right':e.y===0?'up':'down';
+      _mapTrans={active:true,phase:'out',alpha:0,targetMap:e.to,sx:e.sx,sy:e.sy,dir};
+      return;
+    }
   }
   if(tx<0||ty<0||tx>=m.w||ty>=m.h)return;
   const tile=getTile(m,tx,ty);
@@ -2884,6 +2889,20 @@ function startTrainerBattle(tr){
 }
 
 function updateExplore(){
+  // Map transition animation
+  if(_mapTrans.active){
+    if(_mapTrans.phase==='out'){
+      _mapTrans.alpha+=0.06;
+      if(_mapTrans.alpha>=1){
+        _mapTrans.alpha=1;_mapTrans.phase='in';
+        initExplore(_mapTrans.targetMap,_mapTrans.sx,_mapTrans.sy);
+      }
+    }else if(_mapTrans.phase==='in'){
+      _mapTrans.alpha-=0.05;
+      if(_mapTrans.alpha<=0){_mapTrans.alpha=0;_mapTrans.active=false;_mapTrans.phase='none';}
+    }
+    return; // Block movement during transition
+  }
   const ex=GS.explore;
   if(ex.walking){
     ex.walkProgress+=0.12;
@@ -2956,6 +2975,9 @@ function drawPlayerSprite(px,py,dir,frame,sz){
 
 // Smooth camera state
 let _camX=0,_camY=0,_camInit=false;
+
+// Map transition state
+let _mapTrans={active:false,phase:'none',alpha:0,targetMap:null,sx:0,sy:0,dir:'right'};
 
 function drawExplore(){
   const ex=GS.explore,m=MAPS[ex.mapId];if(!m)return;
@@ -3153,6 +3175,28 @@ function drawExplore(){
     drawRect(10,mby,W-20,mbh,'rgba(20,20,40,0.92)',8);
     X.strokeStyle='#4488ff';X.lineWidth=2;X.beginPath();X.roundRect(10,mby,W-20,mbh,8);X.stroke();
     drawText(ex.msgText,24,mby+15,13,'#e0e0e0');
+  }
+
+  // Map transition overlay (fade + directional slide)
+  if(_mapTrans.active){
+    const a=_mapTrans.alpha;
+    // Sliding black panel from movement direction
+    X.fillStyle=`rgba(8,8,20,${Math.min(1,a*1.2)})`;
+    const d=_mapTrans.dir;
+    if(_mapTrans.phase==='out'){
+      // Panel slides in from the exit direction
+      if(d==='right'){X.fillRect(W*(1-a),0,W*a+2,H)}
+      else if(d==='left'){X.fillRect(0,0,W*a+2,H)}
+      else if(d==='up'){X.fillRect(0,0,W,H*a+2)}
+      else{X.fillRect(0,H*(1-a),W,H*a+2)}
+    }else{
+      // Panel slides away in the opposite direction
+      const ia=1-a;
+      if(d==='right'){X.fillRect(0,0,W*a+2,H)}
+      else if(d==='left'){X.fillRect(W*(1-a),0,W*a+2,H)}
+      else if(d==='up'){X.fillRect(0,H*(1-a),W,H*a+2)}
+      else{X.fillRect(0,0,W,H*a+2)}
+    }
   }
 }
 
