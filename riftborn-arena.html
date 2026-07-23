@@ -640,7 +640,7 @@ const ITEM_DEFS=[
 // GAME STATE
 // ============================================================
 let GS={
-  scene:'title', // title, intro, starterPick, overworld, battle, bag, team, shop, arenaSelect, summary, champion, credits, champHub, champCatch
+  scene:'title', // title, intro, starterPick, overworld, battle, bag, team, shop, riftdex, riftdexDetail, arenaSelect, summary, champion, credits, champHub, champCatch
   player:{
     name:'',
     team:[],     // Array of creature instances
@@ -665,6 +665,7 @@ let GS={
   moveSelectIdx:0,
   targetSelectIdx:0,
   scrollOffset:0,
+  dexDetail:null,
   anim:{active:false,type:null,timer:0,data:{}},
   particles:[],
   introStep:0,
@@ -1336,7 +1337,7 @@ function drawTitle(){
   const champBest=parseInt(localStorage.getItem('riftborn_champbest')||'0');
   if(champBest>0)drawTextCenter(`Defense Best: ${champBest}`,W/2,btnY+135,11,'#ffd700');
 
-  drawTextCenter('v1.1 — 108 Riftborn, 8 Arenas + Champion Defense',W/2,H-30,11,'#555');
+  drawTextCenter('v1.2 — 108 Riftborn, 8 Arenas + Champion Defense + Riftdex',W/2,H-30,11,'#555');
 }
 
 // ============================================================
@@ -1487,6 +1488,7 @@ function drawOverworld(){
     {label:`Explore: ${ROUTES[GS.route].name}`,sub:`Lv ${ROUTES[GS.route].minLvl}-${ROUTES[GS.route].maxLvl}`},
     {label:'Arena Challenge',sub:GS.arenaIdx<8?ARENAS[GS.arenaIdx].name:'Champion!'},
     {label:'Team',sub:`${tp.length} Riftborn`},
+    {label:'Riftdex',sub:`${GS.player.seen.size}/${RIFTBORN_DB.length} seen`},
     {label:'Bag',sub:'Items & Shells'},
     {label:'Shop',sub:'Buy supplies'},
     {label:'Routes',sub:'Change location'},
@@ -1839,6 +1841,127 @@ function drawBagView(){
 }
 
 // ============================================================
+// SCENE: RIFTDEX
+// ============================================================
+function drawRiftdex(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  drawText('Riftdex',15,15,20,'#7b68ee');
+  drawText(`${GS.player.seen.size} seen / ${GS.player.caught.size} caught`,15,38,11,'#888');
+  drawButton(W-80,10,65,28,'Back',false);
+
+  const sorted=RIFTBORN_DB.filter(r=>!r.legendary).sort((a,b)=>a.id-b.id);
+  const legendaries=RIFTBORN_DB.filter(r=>r.legendary).sort((a,b)=>a.id-b.id);
+  const all=[...sorted,...legendaries];
+  const rowH=42,startY=55;
+  const visibleRows=Math.floor((H-80)/rowH);
+  GS.scrollOffset=clamp(GS.scrollOffset,0,Math.max(0,all.length-visibleRows));
+
+  for(let i=0;i<visibleRows;i++){
+    const idx=GS.scrollOffset+i;
+    if(idx>=all.length)break;
+    const r=all[idx];
+    const ry=startY+i*rowH;
+    const seen=GS.player.seen.has(r.id);
+    const caught=GS.player.caught.has(r.id);
+
+    drawRect(10,ry,W-20,38,GS.menuIdx===idx?'#1a1a4a':'#12122a',6);
+    X.strokeStyle=caught?TYPE_COLORS[r.type]:(seen?'#444':'#222');X.lineWidth=1;
+    X.beginPath();X.roundRect(10,ry,W-20,38,6);X.stroke();
+
+    // Number
+    drawText(`#${String(r.id).padStart(3,'0')}`,20,ry+5,12,seen?'#888':'#333');
+
+    if(seen){
+      drawCreature(60,ry+18,r,1,false,16);
+      drawText(r.name,82,ry+5,13,TYPE_COLORS[r.type]);
+      drawTypeTag(82,ry+22,r.type);
+      if(r.legendary){drawText('★',W-40,ry+8,16,'#ffcc00')}
+      if(caught){drawText('●',W-55,ry+10,12,'#44cc44')}
+    }else{
+      drawText('???',82,ry+10,13,'#333');
+    }
+  }
+
+  // Scroll indicators
+  if(GS.scrollOffset>0)drawText('▲',W/2,50,14,'#7b68ee','center');
+  if(GS.scrollOffset+visibleRows<all.length)drawText('▼',W/2,H-20,14,'#7b68ee','center');
+}
+
+function drawRiftdexDetail(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  const r=GS.dexDetail;if(!r)return;
+  const seen=GS.player.seen.has(r.id);
+  const caught=GS.player.caught.has(r.id);
+
+  drawText(`#${String(r.id).padStart(3,'0')} ${seen?r.name:'???'}`,15,15,20,TYPE_COLORS[r.type]);
+  drawButton(W-80,10,65,28,'Back',false);
+
+  if(!seen){drawText('Not yet encountered.',W/2,H/2,16,'#555','center');return}
+
+  // Creature display
+  drawCreature(W/2,90,r,1,false,48);
+
+  let y=140;
+  drawTypeTag(W/2-25,y,r.type);y+=28;
+
+  if(r.legendary){drawText('★ Legendary',W/2,y,14,'#ffcc00','center');y+=22}
+  drawText(caught?'Status: Caught ●':'Status: Seen',W/2,y,12,caught?'#44cc44':'#aaa','center');y+=25;
+
+  // Stats
+  if(caught){
+    const stats=['hp','atk','def','spAtk','spDef','spd'];
+    const labels=['HP','ATK','DEF','SP.ATK','SP.DEF','SPD'];
+    const maxStat=Math.max(...stats.map(s=>r.stats[s]));
+    stats.forEach((s,i)=>{
+      const val=r.stats[s];
+      drawText(labels[i],20,y,11,'#888');
+      drawText(String(val),75,y,11,'#e0e0e0');
+      const barX=100,barMax=W-130;
+      drawRect(barX,y+2,barMax,10,'#1a1a2e',4);
+      const fill=Math.min(1,val/150);
+      const barColor=fill>0.7?'#44cc44':fill>0.4?'#ffcc00':'#ff4444';
+      drawRect(barX,y+2,barMax*fill,10,barColor,4);
+      y+=20;
+    });
+    y+=10;
+  }
+
+  // Description
+  if(r.desc){
+    X.font='12px Consolas, monospace';X.textAlign='left';X.textBaseline='top';
+    X.fillStyle='#aaa';
+    const words=r.desc.split(' ');let line='',ly=y;
+    words.forEach(w=>{
+      const test=line+w+' ';
+      if(X.measureText(test).width>W-40){X.fillText(line,20,ly);ly+=18;line=w+' '}
+      else line=test;
+    });
+    if(line)X.fillText(line,20,ly);y=ly+25;
+  }
+
+  // Evolution info
+  if(r.evolves){
+    const evo=RB_BY_ID[r.evolves.into];
+    if(evo){
+      const evoSeen=GS.player.seen.has(evo.id);
+      drawText(`Evolves into: ${evoSeen?evo.name:'???'} at Lv ${r.evolves.level}`,20,y,12,'#7b68ee');
+      y+=20;
+    }
+  }
+
+  // Moves
+  if(caught){
+    drawText('Base Moves:',20,y,12,'#7b68ee');y+=18;
+    r.moves.forEach(m=>{
+      const mv=MOVES[m];
+      drawText(`${m}`,30,y,11,TYPE_COLORS[mv?.type||'Normal']);
+      drawText(`${mv?.type||'Normal'} | Pwr ${mv?.power||'—'} | Acc ${mv?.acc||'—'}`,isMobile?130:180,y,10,'#666');
+      y+=16;
+    });
+  }
+}
+
+// ============================================================
 // SCENE: SHOP
 // ============================================================
 function drawShop(){
@@ -2036,6 +2159,13 @@ C.addEventListener('touchend',e=>{
   }
 });
 
+C.addEventListener('wheel',e=>{
+  if(GS.scene==='riftdex'){
+    e.preventDefault();
+    GS.scrollOffset+=e.deltaY>0?3:-3;
+    GS.scrollOffset=Math.max(0,GS.scrollOffset);
+  }
+},{passive:false});
 // Keyboard input for name entry
 const mobNameInput=document.getElementById('mob-name');
 mobNameInput.addEventListener('input',()=>{
@@ -2114,7 +2244,7 @@ function handleInput(key){
 
   else if(scene==='overworld'){
     if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(0,GS.menuIdx-1);
-    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(6,GS.menuIdx+1);
+    if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(7,GS.menuIdx+1);
     if(key==='Enter'||key===' ')handleOverworldSelect();
   }
 
@@ -2130,23 +2260,41 @@ function handleInput(key){
 
   else if(scene==='bag'){
     if(key==='Escape'||key==='Backspace'){
-      GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3;
+      GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=4;
     }
+  }
+
+  else if(scene==='riftdex'){
+    const sorted=RIFTBORN_DB.filter(r=>!r.legendary).sort((a,b)=>a.id-b.id);
+    const legendaries=RIFTBORN_DB.filter(r=>r.legendary).sort((a,b)=>a.id-b.id);
+    const all=[...sorted,...legendaries];
+    const rowH=42,visibleRows=Math.floor((H-80)/rowH);
+    if(key==='ArrowUp'||key==='w'){GS.scrollOffset=Math.max(0,GS.scrollOffset-1)}
+    if(key==='ArrowDown'||key==='s'){GS.scrollOffset=Math.min(Math.max(0,all.length-visibleRows),GS.scrollOffset+1)}
+    if(key==='Enter'||key===' '){
+      const idx=GS.scrollOffset;
+      if(idx<all.length){GS.dexDetail=all[idx];GS.scene='riftdexDetail'}
+    }
+    if(key==='Escape'||key==='Backspace'){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3}
+  }
+
+  else if(scene==='riftdexDetail'){
+    if(key==='Escape'||key==='Backspace'){GS.scene='riftdex';GS.dexDetail=null}
   }
 
   else if(scene==='shop'){
     if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(-1,GS.menuIdx-1);
     if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(11,GS.menuIdx+1);
-    if(key==='Escape'||key==='Backspace'){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=4}
+    if(key==='Escape'||key==='Backspace'){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=5}
     if(key==='Enter'||key===' ')handleShopBuy();
   }
 
   else if(scene==='routeSelect'){
     if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(-1,GS.menuIdx-1);
     if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(ROUTES.length-1,GS.menuIdx+1);
-    if(key==='Escape'||key==='Backspace'){GS.scene='overworld';GS.menuIdx=5}
+    if(key==='Escape'||key==='Backspace'){GS.scene='overworld';GS.menuIdx=6}
     if(key==='Enter'||key===' '){
-      if(GS.menuIdx===-1){GS.scene='overworld';GS.menuIdx=5}
+      if(GS.menuIdx===-1){GS.scene='overworld';GS.menuIdx=6}
       else{
         const unlocked=GS.menuIdx<=GS.player.badges.length+1;
         if(unlocked){GS.route=GS.menuIdx;GS.scene='overworld';GS.menuIdx=0}
@@ -2276,7 +2424,7 @@ function handleClick(cx,cy){
 
   else if(scene==='overworld'){
     const btnH=44,startY=70;
-    for(let i=0;i<7;i++){
+    for(let i=0;i<8;i++){
       const by=startY+i*(btnH+8);
       if(cy>=by&&cy<=by+btnH){GS.menuIdx=i;handleOverworldSelect();return}
     }
@@ -2291,7 +2439,31 @@ function handleClick(cx,cy){
   }
 
   else if(scene==='bag'){
+    if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=4}
+  }
+
+  else if(scene==='riftdex'){
     if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3}
+    else{
+      // Click on a creature entry to see details
+      const rowH=42,startY=55;
+      const sorted=RIFTBORN_DB.filter(r=>!r.legendary).sort((a,b)=>a.id-b.id);
+      const legendaries=RIFTBORN_DB.filter(r=>r.legendary).sort((a,b)=>a.id-b.id);
+      const all=[...sorted,...legendaries];
+      const visibleRows=Math.floor((H-80)/rowH);
+      for(let i=0;i<visibleRows;i++){
+        const idx=GS.scrollOffset+i;
+        if(idx>=all.length)break;
+        const ry=startY+i*rowH;
+        if(cy>=ry&&cy<=ry+rowH){
+          GS.dexDetail=all[idx];GS.scene='riftdexDetail';return;
+        }
+      }
+    }
+  }
+
+  else if(scene==='riftdexDetail'){
+    if(cx>=W-80&&cy<=38){GS.scene='riftdex';GS.dexDetail=null}
   }
 
   else if(scene==='shop'){
@@ -2305,7 +2477,7 @@ function handleClick(cx,cy){
   }
 
   else if(scene==='routeSelect'){
-    if(cx>=W-80&&cy<=38){GS.scene='overworld';GS.menuIdx=5;return}
+    if(cx>=W-80&&cy<=38){GS.scene='overworld';GS.menuIdx=6;return}
     ROUTES.forEach((r,i)=>{
       const y=55+i*42;
       if(cy>=y&&cy<=y+36){GS.menuIdx=i;handleInput('Enter')}
@@ -2349,13 +2521,15 @@ function handleOverworldSelect(){
       GS.scene='arenaSelect';GS.menuIdx=GS.arenaIdx;break;
     case 2: // Team
       GS.scene='team';GS.menuIdx=0;GS.subMenu=null;break;
-    case 3: // Bag
+    case 3: // Riftdex
+      GS.scene='riftdex';GS.menuIdx=0;GS.scrollOffset=0;break;
+    case 4: // Bag
       GS.scene='bag';GS.subMenu=null;break;
-    case 4: // Shop
+    case 5: // Shop
       GS.scene='shop';GS.menuIdx=0;break;
-    case 5: // Routes
+    case 6: // Routes
       GS.scene='routeSelect';GS.menuIdx=GS.route;break;
-    case 6: // Save
+    case 7: // Save
       saveGame();break;
   }
 }
@@ -3147,9 +3321,9 @@ function drawExplore(){
   }
 
   // Quick buttons at bottom
-  const btnW2=isMobile?70:80,btnH2=32,btnY2=H-38;
+  const btnW2=isMobile?60:72,btnH2=32,btnY2=H-38;
   drawRect(0,H-footerH,W,footerH,'#12122aee');
-  const btns=[{l:'Team',k:'t'},{l:'Bag',k:'b'},{l:'Save',k:'p'},{l:'Arena',k:'r'}];
+  const btns=[{l:'Team',k:'t'},{l:'Bag',k:'b'},{l:'Dex',k:'x'},{l:'Save',k:'p'},{l:'Arena',k:'r'}];
   btns.forEach((b,i)=>{
     const bx=10+i*(btnW2+6);
     drawButton(bx,btnY2,btnW2,btnH2,b.l,false);
@@ -3210,6 +3384,7 @@ function handleExploreInput(key){
   else if(key==='t'){GS.explore.prevScene='explore';GS.scene='team';GS.menuIdx=0;GS.subMenu=null}
   else if(key==='b'){GS.explore.prevScene='explore';GS.scene='bag';GS.subMenu=null}
   else if(key==='p'){saveGame();ex.msgText='Game saved!';ex.msgTimer=90}
+  else if(key==='x'){GS.explore.prevScene='explore';GS.scene='riftdex';GS.menuIdx=0;GS.scrollOffset=0}
   else if(key==='r'){GS.explore.prevScene='explore';GS.scene='arenaSelect';GS.menuIdx=GS.arenaIdx}
   else if(key==='Enter'||key===' '){
     // Interact with facing tile
@@ -3233,8 +3408,8 @@ function handleExploreClick(cx,cy){
   // Dismiss message
   if(ex.msgText&&ex.msgTimer>0){ex.msgTimer=0;ex.msgText='';return}
   // Quick buttons
-  const btnW2=isMobile?70:80,btnH2=32,btnY2=H-38;
-  const btns=['t','b','p','r'];
+  const btnW2=isMobile?60:72,btnH2=32,btnY2=H-38;
+  const btns=['t','b','x','p','r'];
   for(let i=0;i<btns.length;i++){
     const bx=10+i*(btnW2+6);
     if(cx>=bx&&cx<=bx+btnW2&&cy>=btnY2&&cy<=btnY2+btnH2){handleExploreInput(btns[i]);return}
@@ -3523,6 +3698,8 @@ function draw(){
     case 'battle':drawBattle();break;
     case 'team':drawTeamView();break;
     case 'bag':drawBagView();break;
+    case 'riftdex':drawRiftdex();break;
+    case 'riftdexDetail':drawRiftdexDetail();break;
     case 'shop':drawShop();break;
     case 'routeSelect':drawRouteSelect();break;
     case 'arenaSelect':drawArenaSelect();break;
