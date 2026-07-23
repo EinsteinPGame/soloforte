@@ -970,6 +970,7 @@ const QUICKHACKS=[
 // GAME STATE
 // ============================================================
 let screen='title';
+let _modeIdx=0; // gamemode select carousel index
 let p1Char=0,p2Char=1;
 let p1Elem=0,p2Elem=0;
 let p1Sponsor=-1,p2Sponsor=-1; // -1 = none, index into CHARS
@@ -1275,6 +1276,14 @@ function checkBtnHover(mx,my){for(let b of buttons)b.hover=(mx>=b.x&&mx<=b.x+b.w
 C.addEventListener('click',e=>{const p=gmp(e);checkBtnClick(p.x,p.y)});
 C.addEventListener('touchstart',e=>{e.preventDefault();SFX._init();const p=gmp(e);checkBtnClick(p.x,p.y)},{passive:false});
 C.addEventListener('mousemove',e=>{const p=gmp(e);checkBtnHover(p.x,p.y)});
+document.addEventListener('keydown',e=>{
+  if(screen==='modeSelect'){
+    if(e.key==='ArrowUp'||e.key==='w'){_modeIdx=(_modeIdx-1+GAME_MODES.length)%GAME_MODES.length;SFX.click();e.preventDefault();}
+    else if(e.key==='ArrowDown'||e.key==='s'){_modeIdx=(_modeIdx+1)%GAME_MODES.length;SFX.click();e.preventDefault();}
+    else if(e.key==='Enter'||e.key===' '){GAME_MODES[_modeIdx].action();SFX.click();e.preventDefault();}
+    else if(e.key==='Escape'||e.key==='Backspace'){screen='title';SFX.click();e.preventDefault();}
+  }
+});
 
 // ============================================================
 // PARTICLE SYSTEM
@@ -15396,15 +15405,186 @@ function drawTitle(){
     }
   }
 
-  const btnW=200,btnH=50;
-  addBtn('start',W/2-btnW/2,titleY+220,btnW,btnH,'1v1 BATTLE','#7b68ee',()=>{gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;selectTierPage=0;});
-  addBtn('2v2',W/2-btnW/2,titleY+280,btnW,btnH,'2v2 BATTLE','#33cc66',()=>{gameMode='2v2';screen='teamSelect';t1Char1=0;t1Char2=1;t2Char1=2;t2Char2=3;t1Elem1=0;t1Elem2=0;t2Elem1=0;t2Elem2=0;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_2v2SelPage=1;_2v2SelSlot=1;});
-  addBtn('br',W/2-btnW/2,titleY+340,btnW,btnH,'BATTLE ROYALE','#ff8800',()=>{gameMode='br';screen='brSelect';brChars=[0,1,2,3];brElems=[0,0,0,0];_brSelPage=1;_brSelSlot=0;});
-  addBtn('tourn',W/2-btnW/2,titleY+400,btnW,btnH,'TOURNAMENT','#ffcc00',()=>{gameMode='tournament';screen='tournSetup';tournPhase='setup';tournBracket=[];tournMatches=[];tournRound=0;tournCurrentMatch=-1;tournAutoPlay=false;});
-  addBtn('boss',W/2-btnW/2,titleY+460,btnW,btnH,'BOSS FIGHT','#cc4444',()=>{gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;selectTierPage=0;selectPage=0;});
-  addBtn('loreCombos',W/2-60,titleY+520,120,32,'LORE COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
+  // PLAY button — large, centered, pulsing glow
+  const playBtnW=220,playBtnH=60;
+  const playY=titleY+240;
+  const pulse=0.7+0.3*Math.sin(Date.now()*0.004);
+  X.save();
+  X.shadowColor='#7b68ee';X.shadowBlur=20*pulse;
+  drawRoundRect(W/2-playBtnW/2,playY,playBtnW,playBtnH,12);
+  X.fillStyle='#7b68ee';X.fill();
+  X.strokeStyle='#9b88ff';X.lineWidth=2;X.stroke();
+  X.shadowBlur=0;
+  X.font='bold '+(isMobile?'26':'32')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.fillStyle='#fff';
+  X.fillText('PLAY',W/2,playY+playBtnH/2);
+  X.restore();
+  addBtn('play',W/2-playBtnW/2,playY,playBtnW,playBtnH,'','#7b68ee',()=>{screen='modeSelect';_modeIdx=0;SFX.click();});
+
+  // Lore Combos — small link below
+  addBtn('loreCombos',W/2-60,playY+80,120,32,'LORE COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
+
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.18.0 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.22.0 // soloforte.ai',W/2,H-20);
+  buttons.forEach(drawBtn);
+}
+
+// ============================================================
+// GAMEMODE SELECT SCREEN
+// ============================================================
+const GAME_MODES=[
+  {id:'1v1',name:'1v1 BATTLE',desc:'Classic one-on-one combat. Pick your fighter and element.',color:'#7b68ee',icon:'sword',
+    action(){gameMode='1v1';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;selectTierPage=0;}},
+  {id:'2v2',name:'2v2 BATTLE',desc:'Team up! Two fighters per side in tag-team warfare.',color:'#33cc66',icon:'duo',
+    action(){gameMode='2v2';screen='teamSelect';t1Char1=0;t1Char2=1;t2Char1=2;t2Char2=3;t1Elem1=0;t1Elem2=0;t2Elem1=0;t2Elem2=0;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_2v2SelPage=1;_2v2SelSlot=1;}},
+  {id:'br',name:'BATTLE ROYALE',desc:'Four fighters enter, one survives. Free-for-all chaos.',color:'#ff8800',icon:'crown',
+    action(){gameMode='br';screen='brSelect';brChars=[0,1,2,3];brElems=[0,0,0,0];_brSelPage=1;_brSelSlot=0;}},
+  {id:'tournament',name:'TOURNAMENT',desc:'Bracket-style elimination. Crown the ultimate champion.',color:'#ffcc00',icon:'trophy',
+    action(){gameMode='tournament';screen='tournSetup';tournPhase='setup';tournBracket=[];tournMatches=[];tournRound=0;tournCurrentMatch=-1;tournAutoPlay=false;}},
+  {id:'boss',name:'BOSS FIGHT',desc:'3v1 raid battle against an overpowered boss character.',color:'#cc4444',icon:'skull',
+    action(){gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;selectTierPage=0;selectPage=0;}},
+];
+
+function drawModeIcon(cx,cy,type,sz,color){
+  X.save();X.strokeStyle=color;X.fillStyle=color;X.lineWidth=2;X.lineCap='round';
+  if(type==='sword'){
+    // Crossed swords
+    X.beginPath();X.moveTo(cx-sz,cy-sz);X.lineTo(cx+sz,cy+sz);X.stroke();
+    X.beginPath();X.moveTo(cx+sz,cy-sz);X.lineTo(cx-sz,cy+sz);X.stroke();
+    X.beginPath();X.moveTo(cx-sz*0.3,cy);X.lineTo(cx+sz*0.3,cy);X.stroke();
+  }else if(type==='duo'){
+    // Two circles
+    X.beginPath();X.arc(cx-sz*0.4,cy,sz*0.45,0,Math.PI*2);X.stroke();
+    X.beginPath();X.arc(cx+sz*0.4,cy,sz*0.45,0,Math.PI*2);X.stroke();
+  }else if(type==='crown'){
+    // Crown shape
+    X.beginPath();X.moveTo(cx-sz,cy+sz*0.4);X.lineTo(cx-sz,cy-sz*0.2);X.lineTo(cx-sz*0.5,cy+sz*0.1);
+    X.lineTo(cx,cy-sz*0.5);X.lineTo(cx+sz*0.5,cy+sz*0.1);X.lineTo(cx+sz,cy-sz*0.2);
+    X.lineTo(cx+sz,cy+sz*0.4);X.closePath();X.stroke();
+  }else if(type==='trophy'){
+    // Trophy cup
+    X.beginPath();X.arc(cx,cy-sz*0.1,sz*0.5,Math.PI,0);X.lineTo(cx+sz*0.2,cy+sz*0.3);
+    X.lineTo(cx-sz*0.2,cy+sz*0.3);X.closePath();X.stroke();
+    X.beginPath();X.moveTo(cx-sz*0.35,cy+sz*0.3);X.lineTo(cx+sz*0.35,cy+sz*0.3);X.stroke();
+  }else if(type==='skull'){
+    // Skull circle with eyes
+    X.beginPath();X.arc(cx,cy-sz*0.1,sz*0.55,0,Math.PI*2);X.stroke();
+    X.beginPath();X.arc(cx-sz*0.18,cy-sz*0.15,sz*0.12,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(cx+sz*0.18,cy-sz*0.15,sz*0.12,0,Math.PI*2);X.fill();
+    X.beginPath();X.moveTo(cx,cy+sz*0.05);X.lineTo(cx,cy+sz*0.25);X.stroke();
+  }
+  X.restore();
+}
+
+function drawModeSelect(){
+  clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+
+  // Grid background
+  X.strokeStyle='#1a1a3a';X.lineWidth=1;
+  for(let i=0;i<W;i+=40){X.beginPath();X.moveTo(i,0);X.lineTo(i,H);X.stroke();}
+  for(let i=0;i<H;i+=40){X.beginPath();X.moveTo(0,i);X.lineTo(W,i);X.stroke();}
+
+  // Header
+  X.font='bold '+(isMobile?'22':'30')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.shadowColor='#7b68ee';X.shadowBlur=15;
+  X.fillStyle='#7b68ee';
+  X.fillText('SELECT GAMEMODE',W/2,isMobile?45:55);
+  X.shadowBlur=0;
+
+  X.font=(isMobile?'11':'13')+'px Consolas,Courier New,monospace';
+  X.fillStyle='#666';
+  X.fillText('Choose your arena',W/2,isMobile?68:82);
+
+  // Mode cards — show all modes in a vertical list with the selected one highlighted
+  const modes=GAME_MODES;
+  const cardW=isMobile?W-40:Math.min(420,W-60);
+  const cardH=isMobile?85:100;
+  const gap=isMobile?8:12;
+  const startY=isMobile?90:110;
+  const totalH=modes.length*(cardH+gap)-gap;
+  const listY=startY;
+
+  for(let i=0;i<modes.length;i++){
+    const m=modes[i];
+    const cx=W/2-cardW/2;
+    const cy=listY+i*(cardH+gap);
+    const selected=i===_modeIdx;
+    const hoverPulse=selected?0.08*Math.sin(Date.now()*0.005):0;
+
+    // Card background
+    X.save();
+    drawRoundRect(cx,cy,cardW,cardH,10);
+    if(selected){
+      X.fillStyle=m.color+'22';X.fill();
+      X.strokeStyle=m.color;X.lineWidth=2.5;X.stroke();
+      X.shadowColor=m.color;X.shadowBlur=15;
+      drawRoundRect(cx,cy,cardW,cardH,10);
+      X.strokeStyle=m.color+'88';X.lineWidth=1;X.stroke();
+      X.shadowBlur=0;
+    }else{
+      X.fillStyle='#111128';X.fill();
+      X.strokeStyle='#333';X.lineWidth=1;X.stroke();
+    }
+    X.restore();
+
+    // Icon
+    const iconX=cx+(isMobile?35:45);
+    const iconY=cy+cardH/2;
+    const iconSz=isMobile?14:18;
+    drawModeIcon(iconX,iconY,m.icon,iconSz,selected?m.color:'#555');
+
+    // Mode name
+    const textX=cx+(isMobile?70:90);
+    X.font='bold '+(isMobile?'15':'18')+'px Consolas,Courier New,monospace';
+    X.textAlign='left';X.textBaseline='middle';
+    X.fillStyle=selected?'#fff':'#888';
+    X.fillText(m.name,textX,cy+cardH*0.38);
+
+    // Description
+    X.font=(isMobile?'10':'12')+'px Consolas,Courier New,monospace';
+    X.fillStyle=selected?'#aaa':'#555';
+    X.fillText(m.desc,textX,cy+cardH*0.65);
+
+    // Arrow indicator for selected
+    if(selected){
+      X.font='bold '+(isMobile?'16':'20')+'px Consolas,Courier New,monospace';
+      X.textAlign='right';X.textBaseline='middle';
+      X.fillStyle=m.color;
+      X.fillText('>',cx+cardW-15,cy+cardH/2);
+    }
+
+    // Click area
+    addBtn('mode_'+i,cx,cy,cardW,cardH,'',m.color,()=>{
+      if(_modeIdx===i){modes[i].action();SFX.click();}
+      else{_modeIdx=i;SFX.click();}
+    });
+  }
+
+  // Bottom: SELECT button for current mode + BACK
+  const selBtnW=isMobile?160:200;
+  const selBtnH=isMobile?40:45;
+  const selBtnY=listY+modes.length*(cardH+gap)+(isMobile?10:15);
+  const curMode=modes[_modeIdx];
+
+  X.save();
+  X.shadowColor=curMode.color;X.shadowBlur=12;
+  drawRoundRect(W/2-selBtnW/2,selBtnY,selBtnW,selBtnH,8);
+  X.fillStyle=curMode.color;X.fill();
+  X.shadowBlur=0;
+  X.font='bold '+(isMobile?'14':'16')+'px Consolas,Courier New,monospace';
+  X.textAlign='center';X.textBaseline='middle';
+  X.fillStyle='#fff';
+  X.fillText('SELECT',W/2,selBtnY+selBtnH/2);
+  X.restore();
+  addBtn('modeGo',W/2-selBtnW/2,selBtnY,selBtnW,selBtnH,'','#fff',()=>{modes[_modeIdx].action();SFX.click();});
+
+  addBtn('modeBack',10,10,80,30,'< BACK','#888',()=>{screen='title';SFX.click();});
+
+  X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
+  X.fillText('Use arrows or tap to select',W/2,H-15);
+
   buttons.forEach(drawBtn);
 }
 
@@ -19449,6 +19629,7 @@ function loop(time){
   const dpr=window.devicePixelRatio||1;X.setTransform(dpr,0,0,dpr,0,0);X.save();X.scale(sc,sc);
   switch(screen){
     case 'title':drawTitle();break;
+    case 'modeSelect':drawModeSelect();break;
     case 'loreCombos':drawLoreCombos();break;
     case 'select':try{drawSelect();}catch(e){console.error('BBA select error:',e);}break;
     case 'bossSelect':drawBossSelect();break;
