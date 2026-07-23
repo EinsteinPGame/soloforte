@@ -16070,13 +16070,15 @@ function updateIntroCutscene(dt){
   const ic=introCutscene;
   if(!ic.active)return;
   ic.timer+=dt;
-  // Phase 0: P1 slide in (0-90 frames = 1.5s)
-  // Phase 1: P2 slide in (90-180 frames = 1.5s)
-  // Phase 2: VS clash (180-240 frames = 1s)
-  // Phase 3: transition to battle (240+)
-  if(ic.timer<90)ic.phase=0;
-  else if(ic.timer<180)ic.phase=1;
-  else if(ic.timer<240){ic.phase=2;ic.vsFlash=Math.min(1,(ic.timer-180)/15);}
+  // Phase 0: P1 full-screen showcase (0-420 frames = 7s)
+  // Phase 1: P2 full-screen showcase (420-840 frames = 7s)
+  // Phase 2: Zoom out to show both side-by-side (840-960 = 2s)
+  // Phase 3: VS slam + FIGHT flash (960-1080 = 2s)
+  // Phase 4: transition to battle (1080+)
+  if(ic.timer<420)ic.phase=0;
+  else if(ic.timer<840)ic.phase=1;
+  else if(ic.timer<960)ic.phase=2;
+  else if(ic.timer<1080){ic.phase=3;ic.vsFlash=Math.min(1,(ic.timer-960)/15);}
   else{ic.active=false;screen='battle';startBattle();return;}
 }
 
@@ -16891,138 +16893,241 @@ function drawIntroCutscene(){
   // Black background
   X.fillStyle='#0a0a0e';X.fillRect(0,0,W,H);
   // Cinematic letterbox bars
-  const barH=H*0.12;
+  const barH=H*0.1;
   X.fillStyle='#000';X.fillRect(0,0,W,barH);X.fillRect(0,H-barH,W,barH);
-  // Subtle arena preview (dimmed)
-  X.globalAlpha=0.15;
-  X.fillStyle='#1a1a2e';X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
-  X.globalAlpha=1;
-
   const centerY=H/2;
   const fs=isMobile?1:1.3;
 
-  // Phase 0+: P1 character (slide from left)
-  if(ic.phase>=0){
-    const progress=Math.min(1,t/60); // 1 second to fully slide in
-    const eased=1-Math.pow(1-progress,3); // ease-out
-    const slideX=-W*0.3+eased*W*0.55; // slide to 25% from left
-    const ballX=W*0.25;
-    const alpha=Math.min(1,t/30);
-    X.globalAlpha=alpha;
-    // Character color accent line (left side)
-    X.fillStyle=ic.p1Char.color+'44';
-    X.fillRect(0,centerY-60*fs,ballX+40,120*fs);
-    // Color glow behind ball
-    const g1=X.createRadialGradient(ballX,centerY,0,ballX,centerY,80*fs);
-    g1.addColorStop(0,ic.p1Char.color+'66');g1.addColorStop(1,ic.p1Char.color+'00');
-    X.fillStyle=g1;X.fillRect(ballX-80*fs,centerY-80*fs,160*fs,160*fs);
-    // Ball
-    X.beginPath();X.arc(ballX,centerY,30*fs,0,Math.PI*2);
+  // Phase 0: P1 full-screen showcase (0-420 = 7s)
+  if(ic.phase===0){
+    drawCharFullScreen(ic.p1Char,ic.p1Elem,ic.p1Line,t,fs,false);
+  }
+
+  // Phase 1: P2 full-screen showcase (420-840 = 7s)
+  if(ic.phase===1){
+    const pt=t-420;
+    drawCharFullScreen(ic.p2Char,ic.p2Elem,ic.p2Line,pt,fs,true);
+  }
+
+  // Phase 2: Zoom out to side-by-side (840-960 = 2s)
+  if(ic.phase===2){
+    const zt=t-840; // 0-120
+    const zoomProgress=Math.min(1,zt/90); // 1.5s to zoom out
+    const eased=1-Math.pow(1-zoomProgress,3);
+    // P1 on left — zooms from full-screen center to 25%
+    const p1X=W/2+(W*0.25-W/2)*eased;
+    const p1BallR=Math.min(W,H)*0.3*(1-eased)+30*fs*eased;
+    const p1Alpha=1;
+    X.globalAlpha=p1Alpha;
+    // P1 glow
+    const g1=X.createRadialGradient(p1X,centerY,0,p1X,centerY,p1BallR*2.5);
+    g1.addColorStop(0,ic.p1Char.color+'44');g1.addColorStop(1,ic.p1Char.color+'00');
+    X.fillStyle=g1;X.fillRect(0,0,W/2,H);
+    // P1 ball
+    X.beginPath();X.arc(p1X,centerY,p1BallR,0,Math.PI*2);
     X.fillStyle=ic.p1Char.color;X.fill();
     X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
-    // Animated signature move showcase
-    if(t>15)drawCharIntroAnim(ic.p1Char.id,ballX,centerY-15*fs,t-15,fs,ic.p1Char.color);
-    X.globalAlpha=alpha;
-    // Name + tier
-    const t1=getTierLetter(ic.p1Char.id);
-    X.font='bold '+Math.round(20*fs)+'px Consolas,monospace';X.textAlign='left';
-    X.fillStyle='#fff';X.fillText(ic.p1Char.name,ballX+45*fs,centerY-12*fs);
-    X.font='bold '+Math.round(13*fs)+'px Consolas,monospace';
-    X.fillStyle=ic.p1Char.color;X.fillText('['+t1+'] '+ic.p1Char.playstyle,ballX+45*fs,centerY+8*fs);
-    // Element
-    if(ic.p1Elem){
-      X.font=Math.round(11*fs)+'px Consolas,monospace';
-      X.fillStyle='#888';X.fillText(ic.p1Elem.name+' Element',ballX+45*fs,centerY+24*fs);
+    // P1 name (fades in during zoom-out)
+    if(eased>0.5){
+      const nameAlpha=(eased-0.5)*2;
+      X.globalAlpha=nameAlpha;
+      const t1=getTierLetter(ic.p1Char.id);
+      X.font='bold '+Math.round(18*fs)+'px Consolas,monospace';X.textAlign='center';
+      X.fillStyle='#fff';X.fillText(ic.p1Char.name,p1X,centerY+p1BallR+22*fs);
+      X.font='bold '+Math.round(11*fs)+'px Consolas,monospace';
+      X.fillStyle=ic.p1Char.color;X.fillText('['+t1+']',p1X,centerY+p1BallR+38*fs);
     }
-    // Voiceline (appears after 0.5s)
-    if(t>30){
-      const lineAlpha=Math.min(1,(t-30)/20);
-      X.globalAlpha=lineAlpha;
-      X.font='italic '+Math.round(12*fs)+'px Consolas,monospace';
-      X.fillStyle='#ccc';X.fillText('"'+ic.p1Line+'"',ballX+45*fs,centerY+44*fs);
-    }
+    // P2 on right
+    const p2X=W/2+(W*0.75-W/2)*eased;
+    const p2BallR=Math.min(W,H)*0.3*(1-eased)+30*fs*eased;
     X.globalAlpha=1;
-  }
-
-  // Phase 1+: P2 character (slide from right)
-  if(ic.phase>=1){
-    const pt=t-90;
-    const progress=Math.min(1,pt/60);
-    const eased=1-Math.pow(1-progress,3);
-    const ballX=W*0.75;
-    const alpha=Math.min(1,pt/30);
-    X.globalAlpha=alpha;
-    // Character color accent line (right side)
-    X.fillStyle=ic.p2Char.color+'44';
-    X.fillRect(ballX-40,centerY-60*fs,W-ballX+40,120*fs);
-    // Color glow
-    const g2=X.createRadialGradient(ballX,centerY,0,ballX,centerY,80*fs);
-    g2.addColorStop(0,ic.p2Char.color+'66');g2.addColorStop(1,ic.p2Char.color+'00');
-    X.fillStyle=g2;X.fillRect(ballX-80*fs,centerY-80*fs,160*fs,160*fs);
-    // Ball
-    X.beginPath();X.arc(ballX,centerY,30*fs,0,Math.PI*2);
+    const g2=X.createRadialGradient(p2X,centerY,0,p2X,centerY,p2BallR*2.5);
+    g2.addColorStop(0,ic.p2Char.color+'44');g2.addColorStop(1,ic.p2Char.color+'00');
+    X.fillStyle=g2;X.fillRect(W/2,0,W/2,H);
+    X.beginPath();X.arc(p2X,centerY,p2BallR,0,Math.PI*2);
     X.fillStyle=ic.p2Char.color;X.fill();
     X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
-    // Animated signature move showcase (bosses get extra flashy — larger scale)
-    const isBoss=ic.p2Char.isBoss;
-    const p2Scale=isBoss?fs*1.4:fs;
-    if(pt>15)drawCharIntroAnim(ic.p2Char.id,ballX,centerY-15*p2Scale,pt-15,p2Scale,ic.p2Char.color);
-    X.globalAlpha=alpha;
-    // Name + tier
-    const t2=getTierLetter(ic.p2Char.id);
-    X.font='bold '+Math.round(20*fs)+'px Consolas,monospace';X.textAlign='right';
-    X.fillStyle='#fff';X.fillText(ic.p2Char.name,ballX-45*fs,centerY-12*fs);
-    X.font='bold '+Math.round(13*fs)+'px Consolas,monospace';
-    X.fillStyle=ic.p2Char.color;X.fillText(ic.p2Char.playstyle+' ['+t2+']',ballX-45*fs,centerY+8*fs);
-    // Element
-    if(ic.p2Elem){
-      X.font=Math.round(11*fs)+'px Consolas,monospace';
-      X.fillStyle='#888';X.fillText(ic.p2Elem.name+' Element',ballX-45*fs,centerY+24*fs);
-    }
-    // Voiceline
-    if(pt>30){
-      const lineAlpha=Math.min(1,(pt-30)/20);
-      X.globalAlpha=lineAlpha;
-      X.font='italic '+Math.round(12*fs)+'px Consolas,monospace';
-      X.fillStyle='#ccc';X.fillText('"'+ic.p2Line+'"',ballX-45*fs,centerY+44*fs);
+    if(eased>0.5){
+      const nameAlpha=(eased-0.5)*2;
+      X.globalAlpha=nameAlpha;
+      const t2=getTierLetter(ic.p2Char.id);
+      X.font='bold '+Math.round(18*fs)+'px Consolas,monospace';X.textAlign='center';
+      X.fillStyle='#fff';X.fillText(ic.p2Char.name,p2X,centerY+p2BallR+22*fs);
+      X.font='bold '+Math.round(11*fs)+'px Consolas,monospace';
+      X.fillStyle=ic.p2Char.color;X.fillText('['+t2+']',p2X,centerY+p2BallR+38*fs);
     }
     X.globalAlpha=1;
+    // Divider line between them
+    if(eased>0.3){
+      X.globalAlpha=(eased-0.3)*1.4;
+      X.strokeStyle='#ffffff33';X.lineWidth=2;
+      X.beginPath();X.moveTo(W/2,barH);X.lineTo(W/2,H-barH);X.stroke();
+      X.globalAlpha=1;
+    }
   }
 
-  // Phase 2: VS clash
-  if(ic.phase>=2){
-    const vt=t-180;
-    const scale=1+Math.max(0,1-vt/15)*2; // starts big, shrinks
-    const alpha=Math.min(1,vt/10);
-    X.globalAlpha=alpha;
+  // Phase 3: VS slam + FIGHT (960-1080 = 2s)
+  if(ic.phase===3){
+    const vt=t-960;
+    // Show both characters at final positions
+    const p1X=W*0.25,p2X=W*0.75,ballR=30*fs;
+    // P1
+    X.globalAlpha=1;
+    const g1=X.createRadialGradient(p1X,centerY,0,p1X,centerY,80*fs);
+    g1.addColorStop(0,ic.p1Char.color+'44');g1.addColorStop(1,ic.p1Char.color+'00');
+    X.fillStyle=g1;X.fillRect(0,0,W/2,H);
+    X.beginPath();X.arc(p1X,centerY,ballR,0,Math.PI*2);
+    X.fillStyle=ic.p1Char.color;X.fill();
+    X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
+    const t1=getTierLetter(ic.p1Char.id);
+    X.font='bold '+Math.round(18*fs)+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#fff';X.fillText(ic.p1Char.name,p1X,centerY+ballR+22*fs);
+    X.font='bold '+Math.round(11*fs)+'px Consolas,monospace';
+    X.fillStyle=ic.p1Char.color;X.fillText('['+t1+']',p1X,centerY+ballR+38*fs);
+    // P2
+    const g2=X.createRadialGradient(p2X,centerY,0,p2X,centerY,80*fs);
+    g2.addColorStop(0,ic.p2Char.color+'44');g2.addColorStop(1,ic.p2Char.color+'00');
+    X.fillStyle=g2;X.fillRect(W/2,0,W/2,H);
+    X.beginPath();X.arc(p2X,centerY,ballR,0,Math.PI*2);
+    X.fillStyle=ic.p2Char.color;X.fill();
+    X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
+    const t2=getTierLetter(ic.p2Char.id);
+    X.font='bold '+Math.round(18*fs)+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#fff';X.fillText(ic.p2Char.name,p2X,centerY+ballR+22*fs);
+    X.font='bold '+Math.round(11*fs)+'px Consolas,monospace';
+    X.fillStyle=ic.p2Char.color;X.fillText('['+t2+']',p2X,centerY+ballR+38*fs);
+    // VS text — slam in with elastic easing
+    const vsScale=vt<15?1+Math.max(0,1-vt/15)*3:1+Math.sin(Math.max(0,vt-15)*0.3)*0.1*Math.max(0,1-(vt-15)/60);
+    const vsAlpha=Math.min(1,vt/8);
+    X.globalAlpha=vsAlpha;
     X.save();
-    X.translate(W/2,centerY);X.scale(scale,scale);
-    X.font='bold '+Math.round(40*fs)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
-    X.shadowColor='#ffcc00';X.shadowBlur=30;
+    X.translate(W/2,centerY);X.scale(vsScale,vsScale);
+    X.font='bold '+Math.round(50*fs)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+    X.shadowColor='#ffcc00';X.shadowBlur=40;
     X.fillStyle='#ffcc00';X.fillText('VS',0,0);
     X.shadowBlur=0;
     X.restore();
     X.globalAlpha=1;
-    // Impact lines radiating from center
-    if(vt<20){
-      X.strokeStyle='rgba(255,204,0,'+(1-vt/20)*0.6+')';X.lineWidth=2;
-      for(let i=0;i<12;i++){
-        const a=Math.PI*2*i/12;
-        const inner=40+vt*2;const outer=80+vt*5;
+    // Impact lines
+    if(vt<25){
+      X.strokeStyle='rgba(255,204,0,'+(1-vt/25)*0.7+')';X.lineWidth=3;
+      for(let i=0;i<16;i++){
+        const a=Math.PI*2*i/16;
+        const inner=30+vt*3;const outer=70+vt*7;
         X.beginPath();
         X.moveTo(W/2+Math.cos(a)*inner,centerY+Math.sin(a)*inner);
         X.lineTo(W/2+Math.cos(a)*outer,centerY+Math.sin(a)*outer);
         X.stroke();
       }
     }
+    // FIGHT flash near the end
+    if(vt>75){
+      const ft=vt-75;
+      const fightAlpha=ft<15?ft/15:Math.max(0,1-(ft-15)/30);
+      const fightScale=ft<10?1+Math.max(0,1-ft/10)*2:1;
+      X.globalAlpha=fightAlpha;
+      X.save();
+      X.translate(W/2,centerY+60*fs);X.scale(fightScale,fightScale);
+      X.font='bold '+Math.round(36*fs)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+      X.shadowColor='#ff4444';X.shadowBlur=25;
+      X.fillStyle='#ff4444';X.fillText('FIGHT!',0,0);
+      X.shadowBlur=0;
+      X.restore();
+      X.globalAlpha=1;
+    }
   }
 
   // Skip button
+  X.globalAlpha=1;
   X.font=(isMobile?'11':'13')+'px Consolas,monospace';X.textAlign='right';
   X.fillStyle='#555';X.fillText('Tap to skip',W-15,H-barH-10);
   addBtn('introSkip',0,0,W,H,'','transparent',()=>{
     introCutscene.active=false;screen='battle';startBattle();
   });
+}
+
+function drawCharFullScreen(char,elem,voiceline,t,fs,isRight){
+  // Full-screen character showcase: big zoomed-in ball with signature animation
+  const centerY=H/2;
+  const fadeIn=Math.min(1,t/30); // 0.5s fade in
+  // Fade out near end (last 30 frames = 0.5s)
+  const fadeOut=t>390?Math.max(0,1-(t-390)/30):1;
+  const alpha=fadeIn*fadeOut;
+  X.globalAlpha=alpha;
+
+  // Full-screen color wash background
+  const bgGrad=X.createRadialGradient(W/2,centerY,0,W/2,centerY,Math.max(W,H)*0.7);
+  bgGrad.addColorStop(0,char.color+'33');bgGrad.addColorStop(0.5,char.color+'15');bgGrad.addColorStop(1,'#0a0a0e');
+  X.fillStyle=bgGrad;X.fillRect(0,0,W,H);
+
+  // Pulsing energy rings (background)
+  const numRings=3;
+  for(let i=0;i<numRings;i++){
+    const ringT=(t+i*80)%240;
+    const ringR=ringT*1.5;
+    const ringAlpha=Math.max(0,0.15-ringT/1600)*alpha;
+    X.globalAlpha=ringAlpha;
+    X.strokeStyle=char.color;X.lineWidth=2;
+    X.beginPath();X.arc(W/2,centerY-20*fs,ringR,0,Math.PI*2);X.stroke();
+  }
+  X.globalAlpha=alpha;
+
+  // Large ball — zoomed in (fills ~60% of screen height)
+  const bigR=Math.min(W,H)*0.25;
+  const ballY=centerY-20*fs;
+  // Glow behind ball
+  const glow=X.createRadialGradient(W/2,ballY,bigR*0.3,W/2,ballY,bigR*2.5);
+  glow.addColorStop(0,char.color+'55');glow.addColorStop(0.5,char.color+'22');glow.addColorStop(1,char.color+'00');
+  X.fillStyle=glow;X.fillRect(0,0,W,H);
+  // Ball
+  X.beginPath();X.arc(W/2,ballY,bigR,0,Math.PI*2);
+  X.fillStyle=char.color;X.fill();
+  X.strokeStyle='#ffffff44';X.lineWidth=3;X.stroke();
+  // Inner highlight
+  const hlGrad=X.createRadialGradient(W/2-bigR*0.25,ballY-bigR*0.25,0,W/2,ballY,bigR);
+  hlGrad.addColorStop(0,'rgba(255,255,255,0.2)');hlGrad.addColorStop(0.5,'rgba(255,255,255,0.05)');hlGrad.addColorStop(1,'rgba(255,255,255,0)');
+  X.fillStyle=hlGrad;X.beginPath();X.arc(W/2,ballY,bigR,0,Math.PI*2);X.fill();
+
+  // Animated signature move — scaled up (2x normal scale)
+  const animScale=fs*2;
+  if(t>30)drawCharIntroAnim(char.id,W/2,ballY-10*animScale,t-30,animScale,char.color);
+  X.globalAlpha=alpha;
+
+  // Character name — large, centered below ball
+  const nameY=ballY+bigR+35*fs;
+  // Name slides in
+  const nameSlide=Math.min(1,Math.max(0,(t-20)/40));
+  const nameEased=1-Math.pow(1-nameSlide,3);
+  const nameOffX=isRight?(1-nameEased)*80*fs:-(1-nameEased)*80*fs;
+  X.globalAlpha=alpha*nameSlide;
+
+  const tier=getTierLetter(char.id);
+  X.font='bold '+Math.round(32*fs)+'px Consolas,monospace';X.textAlign='center';
+  X.shadowColor=char.color;X.shadowBlur=15;
+  X.fillStyle='#fff';X.fillText(char.name,W/2+nameOffX,nameY);
+  X.shadowBlur=0;
+
+  // Tier + playstyle
+  X.font='bold '+Math.round(16*fs)+'px Consolas,monospace';
+  X.fillStyle=char.color;X.fillText('['+tier+'] '+char.playstyle,W/2+nameOffX,nameY+28*fs);
+
+  // Element
+  if(elem){
+    X.font=Math.round(13*fs)+'px Consolas,monospace';
+    X.fillStyle='#999';X.fillText(elem.name+' Element',W/2+nameOffX,nameY+50*fs);
+  }
+
+  // Voiceline (appears after 1.5s)
+  if(t>90){
+    const lineAlpha=Math.min(1,(t-90)/30)*alpha;
+    X.globalAlpha=lineAlpha;
+    X.font='italic '+Math.round(14*fs)+'px Consolas,monospace';
+    X.fillStyle='#ccc';
+    // Wrap long voicelines
+    const maxW=W*0.7;
+    X.fillText('"'+voiceline+'"',W/2+nameOffX,nameY+78*fs);
+  }
+  X.globalAlpha=1;
 }
 
 // ============================================================
@@ -17037,6 +17142,7 @@ function startBattle(){
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   sponsorCutsceneActive=false;sponsorCutsceneTimer=0;sponsorCutsceneData=null;
   allyComboActive=false;allyComboTimer=0;allyComboData=null;
+  victoryCutscene.active=false;victoryCutscene.timer=0;victoryCutscene.phase=0;victoryCutscene.continueReady=false;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   if(gameMode==='boss'){
     // Boss is side 1 (enemy), team is side 0 (3v1)
