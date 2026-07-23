@@ -257,8 +257,8 @@ const CANVAS_W = 900;
 const CANVAS_H = 500;
 const _isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || ('ontouchstart' in window && window.innerWidth < 768);
 const GRAVITY = _isMobile ? 0.55 : 0.50;
-const JUMP_FORCE = _isMobile ? -12 : -9.2;
-const MOVE_SPEED = _isMobile ? 4 : 3;
+const JUMP_FORCE = _isMobile ? -12 : -8.8;
+const MOVE_SPEED = _isMobile ? 4 : 2.6;
 const SPIKE_H = 22;
 const GATE_W = 32;
 const GATE_H = 54;
@@ -3719,18 +3719,25 @@ function render() {
 // =====================================================================
 let lastTime = 0;
 
+const FIXED_DT = 16.667; // 60fps fixed timestep
+let accumulator = 0;
+
 function gameLoop(ts) {
   if (!gameRunning) return;
-  const dt = Math.min(ts - lastTime, 50); // cap dt
+  const elapsed = Math.min(ts - lastTime, 100); // cap to avoid spiral of death
   lastTime = ts;
+  accumulator += elapsed;
 
-  if (shakeTimer > 0) shakeTimer -= dt;
+  // Fixed timestep: run physics at exactly 60fps regardless of monitor refresh rate
+  while (accumulator >= FIXED_DT) {
+    if (shakeTimer > 0) shakeTimer -= FIXED_DT;
+    updatePlayer(FIXED_DT);
+    updatePlatforms(FIXED_DT);
+    updateParticles(FIXED_DT);
+    accumulator -= FIXED_DT;
+  }
 
-  updatePlayer(dt);
-  updatePlatforms(dt);
-  updateParticles(dt);
   render();
-
   animFrameId = requestAnimationFrame(gameLoop);
 }
 
@@ -3738,6 +3745,7 @@ function startGameLoop() {
   cancelAnimationFrame(animFrameId);
   gameRunning = true;
   lastTime = performance.now();
+  accumulator = 0;
   animFrameId = requestAnimationFrame(gameLoop);
 }
 
