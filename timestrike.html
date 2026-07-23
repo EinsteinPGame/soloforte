@@ -337,9 +337,9 @@ if(isMobile){
       // Right 60% = aim + shoot + buttons
       else if(tx>=innerWidth*0.4){
         // Check button areas first (bigger hit zones for mobile)
-        const meleeR=45,swR=45;
-        const meleeX=innerWidth-55,meleeY=innerHeight-90;
-        const swX=innerWidth-130,swY=innerHeight-90;
+        const meleeR=50,swR=50;
+        const meleeX=innerWidth-60,meleeY=innerHeight-100;
+        const swX=innerWidth-140,swY=innerHeight-100;
         const dMelee=Math.sqrt((tx-meleeX)**2+(ty-meleeY)**2);
         const dSwitch=Math.sqrt((tx-swX)**2+(ty-swY)**2);
         if(dMelee<meleeR){triggerMelee();}
@@ -464,10 +464,18 @@ function update(dt){
   if(gameOver||levelComplete)return;
   const realDt=dt;
 
-  // Mobile joystick → keys mapping
+  // Mobile joystick → keys mapping (analog proportional)
+  let mobileAnalogX=0,mobileAnalogY=0;
   if(isMobile&&touchJoystick.active){
     const jd=Math.sqrt(touchJoystick.dx*touchJoystick.dx+touchJoystick.dy*touchJoystick.dy);
-    const deadZone=Math.min(18,innerWidth*0.025); // scale-aware dead zone
+    const deadZone=Math.min(18,innerWidth*0.025);
+    const maxR=60;
+    if(jd>deadZone){
+      mobileAnalogX=touchJoystick.dx/maxR;mobileAnalogY=touchJoystick.dy/maxR;
+      // Clamp to -1..1
+      const mag=Math.sqrt(mobileAnalogX*mobileAnalogX+mobileAnalogY*mobileAnalogY);
+      if(mag>1){mobileAnalogX/=mag;mobileAnalogY/=mag;}
+    }
     keys['w']=touchJoystick.dy<-deadZone;
     keys['s']=touchJoystick.dy>deadZone;
     keys['a']=touchJoystick.dx<-deadZone;
@@ -481,7 +489,7 @@ function update(dt){
     keys['arrowup']||keys['arrowleft']||keys['arrowdown']||keys['arrowright'];
   // Mobile: small grace period before bullet time (0.3s) so lifting joystick doesn't instantly freeze
   if(!player._btGrace)player._btGrace=0;
-  if(moving){player._btGrace=isMobile?0.3:0;}
+  if(moving){player._btGrace=isMobile?0.5:0;}
   else if(player._btGrace>0){player._btGrace-=realDt;}
   const btActive=!moving&&player._btGrace<=0;
   targetTimeScale=btActive?0.03:0.7;
@@ -526,7 +534,11 @@ function update(dt){
   const mlen=Math.sqrt(mx*mx+my*my);
   if(mlen>0){mx/=mlen;my/=mlen;}
 
-  const spd=MOVE_SPEED;
+  // On mobile, use analog joystick magnitude for proportional speed
+  const spd=MOVE_SPEED*(60*realDt); // frame-rate independent (base tuned for 60fps)
+  if(isMobile&&(mobileAnalogX!==0||mobileAnalogY!==0)){
+    mx=mobileAnalogX;my=mobileAnalogY;
+  }
   const nx=player.x+mx*spd;
   const ny=player.y+my*spd;
   const margin=0.2;
@@ -1334,10 +1346,10 @@ function drawHUD(){
     X.fillStyle='#0ff';
     X.beginPath();X.arc(jx+touchJoystick.dx,jy+touchJoystick.dy,20,0,Math.PI*2);X.fill();
 
-    // Action buttons (bottom right)
-    const btnSize=36;
+    // Action buttons (bottom right) — larger for mobile usability
+    const btnSize=42;
     // Melee button
-    const meleeX=W-55,meleeY=H-90;
+    const meleeX=W-60,meleeY=H-100;
     X.globalAlpha=meleeCooldown>0?0.15:0.35;
     X.fillStyle='#fff';
     X.beginPath();X.arc(meleeX,meleeY,btnSize,0,Math.PI*2);X.fill();
@@ -1346,7 +1358,7 @@ function drawHUD(){
     X.fillText('MELEE',meleeX,meleeY);
 
     // Weapon switch button
-    const swX=W-130,swY=H-90;
+    const swX=W-140,swY=H-100;
     X.globalAlpha=0.35;X.fillStyle=WEAPONS[currentWeapon].color;
     X.beginPath();X.arc(swX,swY,btnSize,0,Math.PI*2);X.fill();
     X.globalAlpha=0.8;X.fillStyle='#fff';
