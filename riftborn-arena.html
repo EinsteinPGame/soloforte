@@ -2082,15 +2082,30 @@ function drawRouteSelect(){
   drawButton(W-80,10,65,28,'Back',GS.menuIdx===-1);
 
   ROUTES.forEach((r,i)=>{
-    const y=55+i*42;
+    const y=55+i*52;
     const sel=GS.menuIdx===i;
     const unlocked=i<=GS.player.badges.length+1; // Unlock based on badges
-    drawRect(10,y,W-20,36,sel?'#1a1a4a':'#12122a',6);
+    drawRect(10,y,W-20,46,sel?'#1a1a4a':'#12122a',6);
     X.strokeStyle=sel?(unlocked?'#7b68ee':'#ff4444'):'#2a2a4a';X.lineWidth=sel?2:1;
-    X.beginPath();X.roundRect(10,y,W-20,36,6);X.stroke();
+    X.beginPath();X.roundRect(10,y,W-20,46,6);X.stroke();
     drawText(unlocked?r.name:'???',20,y+4,13,unlocked?(sel?'#e0e0e0':'#aaa'):'#444');
     drawText(unlocked?`Lv ${r.minLvl}-${r.maxLvl}`:'Locked',20,y+20,10,unlocked?'#888':'#555');
-    if(i===GS.route)drawText('(current)',W-100,y+10,10,'#7b68ee');
+    if(i===GS.route)drawText('(current)',W-100,y+4,10,'#7b68ee');
+    // Creature type icons for this route
+    if(unlocked&&r.encounters){
+      const maxShow=Math.min(r.encounters.length,isMobile?5:8);
+      for(let j=0;j<maxShow;j++){
+        const spec=RB_BY_ID[r.encounters[j]];
+        if(spec){
+          const caught=GS.player.caught.has(spec.id);
+          const seen=GS.player.seen.has(spec.id);
+          const ix=20+j*24,iy=y+32;
+          X.fillStyle=caught?TYPE_COLORS[spec.type]:seen?'#444':'#222';
+          X.beginPath();X.arc(ix+8,iy+4,8,0,Math.PI*2);X.fill();
+          if(!seen){drawText('?',ix+5,iy-1,10,'#555')}
+        }
+      }
+    }
   });
 }
 
