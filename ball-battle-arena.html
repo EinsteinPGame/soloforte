@@ -1210,6 +1210,9 @@ let shakeTimer=0,shakeAmt=0;
 // Intro cutscene state
 let introCutscene={active:false,timer:0,phase:0,p1Char:null,p2Char:null,p1Elem:null,p2Elem:null,
   p1Line:'',p2Line:'',vsFlash:0,skipBtn:false};
+// Victory/Defeat cutscene state
+let victoryCutscene={active:false,timer:0,phase:0,winner:null,loser:null,isDefeat:false,
+  winLine:'',shatterParts:[],statsShown:false,continueReady:false};
 let relicText='';
 let relicTextTimer=0;
 let relicTextColor='#fff';
@@ -2210,7 +2213,6 @@ function applyDotDamage(target,dmg,source){
 let wasDefeat=false; // boss won in boss mode
 function checkVictory(lastAttacker){
   if(gameMode==='br'){
-    // Battle Royale: elimination announcements
     const dead=fighters.filter(f=>!f.alive&&!f._eliminationLogged);
     dead.forEach(f=>{
       f._eliminationLogged=true;
@@ -2222,9 +2224,10 @@ function checkVictory(lastAttacker){
     const alive=fighters.filter(f=>f.alive);
     if(alive.length<=1){
       battleOver=true;winner=alive[0]||lastAttacker;
-      if(winner){addLog(winner.char.name+' WINS THE ROYALE!');showVoiceline(winner.char.id,'victory',winner.side);}
       wasDefeat=false;
-      setTimeout(()=>SFX.victory(),500);
+      if(winner){addLog(winner.char.name+' WINS THE ROYALE!');}
+      SFX.ko();
+      startVictoryCutscene(winner,lastAttacker);
     }
     return;
   }
@@ -2235,16 +2238,260 @@ function checkVictory(lastAttacker){
     const winLabel=gameMode==='boss'?(winner.char.isBoss?'BOSS':'TEAM'):gameMode==='2v2'?'TEAM 2':(winner.side===0?'P1':'P2');
     addLog(winLabel+' '+winner.char.name+' WINS!');
     wasDefeat=gameMode==='boss'&&winner.char.isBoss;
-    showVoiceline(winner.char.id,'victory',winner.side);
-    if(wasDefeat&&side0Alive.length===0){const loser=fighters.find(f=>f.side===0);if(loser)setTimeout(()=>showVoiceline(loser.char.id,'defeat',0),1500);}
-    SFX.ko();setTimeout(()=>wasDefeat?SFX.defeat():SFX.victory(),500);
+    SFX.ko();
+    startVictoryCutscene(winner,lastAttacker);
   } else if(side1Alive.length===0){
     battleOver=true;winner=lastAttacker||side0Alive[0];
     const winLabel=gameMode==='boss'?(winner.char.isBoss?'BOSS':'TEAM'):gameMode==='2v2'?'TEAM 1':(winner.side===0?'P1':'P2');
     addLog(winLabel+' '+winner.char.name+' WINS!');
     wasDefeat=false;
-    showVoiceline(winner.char.id,'victory',winner.side);
-    SFX.ko();setTimeout(()=>SFX.victory(),500);
+    SFX.ko();
+    startVictoryCutscene(winner,lastAttacker);
+  }
+}
+
+function startVictoryCutscene(w,lastAttacker){
+  const vc=victoryCutscene;
+  vc.active=true;vc.timer=0;vc.phase=0;
+  vc.winner=w;vc.isDefeat=wasDefeat;
+  vc.loser=fighters.find(f=>f!==w&&f.side!==(w?w.side:-1))||null;
+  vc.statsShown=false;vc.continueReady=false;
+  vc.shatterParts=[];
+  // Get voiceline for the cutscene
+  const vl=w?VOICELINES[w.char.id]:null;
+  const vtype=wasDefeat?'defeat':'victory';
+  vc.winLine=(vl&&vl[vtype]&&vl[vtype].length>0)?vl[vtype][Math.floor(Math.random()*vl[vtype].length)]:'';
+  // Generate shatter fragments for defeat
+  if(wasDefeat){
+    for(let i=0;i<24;i++){
+      const a=Math.PI*2*i/24+Math.random()*0.2;
+      vc.shatterParts.push({x:W/2,y:H/2,vx:Math.cos(a)*(3+Math.random()*5),vy:Math.sin(a)*(3+Math.random()*5),
+        rot:Math.random()*Math.PI*2,rotV:(Math.random()-0.5)*0.15,size:8+Math.random()*16,alpha:1});
+    }
+  }
+  // Delayed SFX
+  setTimeout(()=>wasDefeat?SFX.defeat():SFX.victory(),400);
+  // Show voiceline on winner
+  if(w)showVoiceline(w.char.id,wasDefeat?'defeat':'victory',w.side);
+  // Tournament auto-advance: skip cutscene after 3s
+  if(gameMode==='tournament'){vc._tournAutoTimer=180;}
+}
+
+function updateVictoryCutscene(dt){
+  const vc=victoryCutscene;
+  if(!vc.active)return;
+  vc.timer+=dt;
+  // Phase 0: slow-mo freeze + darken (0-40)
+  // Phase 1: text slam (40-100)
+  // Phase 2: stats fade-in + voiceline (100-160)
+  // Phase 3: continue ready (160+)
+  if(vc.timer<40)vc.phase=0;
+  else if(vc.timer<100)vc.phase=1;
+  else if(vc.timer<160)vc.phase=2;
+  else{vc.phase=3;vc.continueReady=true;}
+  // Update shatter particles (defeat)
+  vc.shatterParts.forEach(p=>{
+    p.x+=p.vx;p.y+=p.vy;p.vy+=0.08;p.rot+=p.rotV;
+    p.alpha=Math.max(0,p.alpha-0.005);
+  });
+  // Tournament auto-advance
+  if(gameMode==='tournament'&&vc._tournAutoTimer!==undefined){
+    vc._tournAutoTimer--;
+    if(vc._tournAutoTimer<=0){vc.active=false;tournFinishMatch(vc.winner?vc.winner.side:0);}
+  }
+}
+
+function drawVictoryCutscene(){
+  const vc=victoryCutscene;
+  if(!vc.active||!vc.winner)return;
+  const t=vc.timer;
+  const w=vc.winner;
+  const fs=isMobile?1:1.3;
+  const centerY=ARENA.y+ARENA.h/2;
+
+  // Phase 0+: Darken overlay (builds up)
+  const darkAlpha=Math.min(0.7,t/40*0.7);
+  X.fillStyle='rgba(0,0,0,'+darkAlpha+')';X.fillRect(0,0,W,H);
+
+  // Defeat: red vignette + shatter particles
+  if(vc.isDefeat){
+    const redAlpha=Math.min(0.25,t/60*0.25);
+    const vg=X.createRadialGradient(W/2,H/2,Math.min(W,H)*0.2,W/2,H/2,Math.max(W,H)*0.6);
+    vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(180,20,20,'+redAlpha+')');
+    X.fillStyle=vg;X.fillRect(0,0,W,H);
+    // Shatter fragments
+    vc.shatterParts.forEach(p=>{
+      if(p.alpha<=0)return;
+      X.save();X.translate(p.x,p.y);X.rotate(p.rot);
+      X.globalAlpha=p.alpha*0.7;
+      X.fillStyle='#cc2222';X.fillRect(-p.size/2,-p.size/2,p.size,p.size*0.6);
+      X.strokeStyle='#ff4444';X.lineWidth=1;X.strokeRect(-p.size/2,-p.size/2,p.size,p.size*0.6);
+      X.restore();
+    });
+    X.globalAlpha=1;
+  }
+
+  // Cinematic letterbox bars (slide in)
+  const barProgress=Math.min(1,t/30);
+  const barH=(isMobile?20:32)*barProgress;
+  X.fillStyle='#000';X.fillRect(0,0,W,barH);X.fillRect(0,H-barH,W,barH);
+
+  // Winner glow (pulses)
+  if(w&&t>10){
+    const glowAlpha=0.15+Math.sin(t*0.05)*0.08;
+    const rg=X.createRadialGradient(w.x,w.y,10,w.x,w.y,150);
+    rg.addColorStop(0,(vc.isDefeat?'#cc2222':w.char.color)+Math.round(glowAlpha*255).toString(16).padStart(2,'0'));
+    rg.addColorStop(1,'transparent');
+    X.fillStyle=rg;X.fillRect(0,0,W,H);
+  }
+
+  // Continuous winner particles
+  if(t>20&&Math.random()<0.5){
+    const pc=vc.isDefeat?'#cc4444':w.char.color;
+    spawnBurst(w.x+rand(-30,30),w.y+rand(-30,30),pc,2,3);
+  }
+  if(t>30&&Math.random()<0.2){
+    spawnBurst(rand(ARENA.x,ARENA.x+ARENA.w),rand(ARENA.y,ARENA.y+ARENA.h),
+      vc.isDefeat?'#882222':pick(['#ffcc00','#ffffff',w.char.color]),3,3);
+  }
+
+  // Phase 1+: Text slam with elastic easing
+  if(vc.phase>=1){
+    const pt=t-40;
+    const titleText=vc.isDefeat?'DEFEAT':
+      gameMode==='br'?w.char.name+' WINS THE ROYALE!':
+      gameMode==='2v2'?(w.side===0?'TEAM 1':'TEAM 2')+' WINS!':
+      w.char.name+' WINS!';
+    const titleColor=vc.isDefeat?'#cc4444':w.char.color;
+    // Elastic ease for slam effect: overshoot then settle
+    const rawP=Math.min(1,pt/25);
+    const elastic=rawP<1?1-Math.pow(1-rawP,3)*(Math.cos(rawP*Math.PI*2.5)*0.3+0.7):1;
+    const scale=0.3+elastic*0.7;
+    const textAlpha=Math.min(1,pt/15);
+    X.save();
+    X.globalAlpha=textAlpha;
+    X.translate(W/2,centerY-40*fs);X.scale(scale,scale);
+    X.font='bold '+Math.round(36*fs)+'px Consolas,Courier New,monospace';
+    X.textAlign='center';X.textBaseline='middle';
+    X.shadowColor=titleColor;X.shadowBlur=40;
+    // Outline
+    X.strokeStyle='#000';X.lineWidth=4;X.strokeText(titleText,0,0);
+    X.fillStyle=titleColor;X.fillText(titleText,0,0);
+    // Double glow pass
+    X.shadowBlur=60;X.globalAlpha=textAlpha*0.5;X.fillText(titleText,0,0);
+    X.restore();
+    X.shadowBlur=0;X.globalAlpha=1;
+
+    // Impact lines on slam (first 20 frames)
+    if(pt<20){
+      const lineAlpha=(1-pt/20)*0.5;
+      X.strokeStyle='rgba(255,255,255,'+lineAlpha+')';X.lineWidth=2;
+      for(let i=0;i<10;i++){
+        const a=Math.PI*2*i/10;
+        const inner=30+pt*3;const outer=60+pt*6;
+        X.beginPath();
+        X.moveTo(W/2+Math.cos(a)*inner,centerY-40*fs+Math.sin(a)*inner);
+        X.lineTo(W/2+Math.cos(a)*outer,centerY-40*fs+Math.sin(a)*outer);
+        X.stroke();
+      }
+    }
+
+    // Sub-label (tier matchup or team info)
+    if(pt>15){
+      const subAlpha=Math.min(1,(pt-15)/20);
+      X.globalAlpha=subAlpha;
+      X.font='bold '+Math.round(14*fs)+'px Consolas,monospace';
+      X.textAlign='center';X.fillStyle='#aaa';
+      if(gameMode==='br'){
+        const eliminated=fighters.filter(f=>!f.alive).map(f=>f.char.name).join(', ');
+        X.fillText('['+getTierLetter(w.char.id)+'] '+w.char.name+(eliminated?' defeated '+eliminated:''),W/2,centerY-10*fs);
+      } else if(gameMode==='2v2'){
+        const wTeam=fighters.filter(f=>f.side===w.side);
+        const lTeam=fighters.filter(f=>f.side!==w.side);
+        X.fillText(wTeam.map(f=>f.char.name).join(' + ')+' vs '+lTeam.map(f=>f.char.name).join(' + '),W/2,centerY-10*fs);
+      } else {
+        const winTier=getTierLetter(w.char.id);
+        const loser=vc.loser;
+        const loseTier=loser?getTierLetter(loser.char.id):'?';
+        X.fillText('['+winTier+'] vs ['+loseTier+(loser?' '+loser.char.name:'')+']',W/2,centerY-10*fs);
+      }
+      X.globalAlpha=1;
+    }
+  }
+
+  // Phase 2+: Stats recap fade-in + voiceline
+  if(vc.phase>=2){
+    const st=t-100;
+    const statsAlpha=Math.min(1,st/25);
+    X.globalAlpha=statsAlpha;
+    // Mini stats box
+    const boxW=isMobile?260:320;const boxH=isMobile?70:85;
+    const boxX=W/2-boxW/2;const boxY=centerY+15*fs;
+    X.fillStyle='rgba(10,10,30,0.8)';
+    drawRoundRect(boxX,boxY,boxW,boxH,8);X.fill();
+    X.strokeStyle=(vc.isDefeat?'#cc4444':w.char.color)+'66';X.lineWidth=1;
+    drawRoundRect(boxX,boxY,boxW,boxH,8);X.stroke();
+    // Stats content
+    const sFont=isMobile?10:12;
+    X.font=sFont+'px Consolas,monospace';X.textAlign='center';
+    const cols=['Hits','Damage','Crits','Duration'];
+    const p1Vals=[battleStats.p1Hits,Math.round(battleStats.p1Dmg),battleStats.p1Crits,''];
+    const p2Vals=[battleStats.p2Hits,Math.round(battleStats.p2Dmg),battleStats.p2Crits,(battleRealFrames/60).toFixed(1)+'s'];
+    const colW=boxW/4;
+    cols.forEach((c,i)=>{
+      const cx2=boxX+colW*i+colW/2;
+      X.fillStyle='#888';X.fillText(c,cx2,boxY+16);
+      if(i<3){
+        X.fillStyle='#33cc66';X.fillText(''+p1Vals[i],cx2-15,boxY+34);
+        X.fillStyle='#ff6644';X.fillText(''+p2Vals[i],cx2+15,boxY+34);
+      } else {
+        X.fillStyle='#ccc';X.fillText(p2Vals[i],cx2,boxY+34);
+      }
+    });
+    // Labels
+    X.font='bold '+sFont+'px Consolas,monospace';
+    const f1=fighters[0],f2=fighters[fighters.length>2?fighters.length-1:1];
+    if(f1&&f2){
+      X.fillStyle=f1.char.color;X.textAlign='left';X.fillText(f1.char.name,boxX+8,boxY+boxH-12);
+      X.fillStyle=f2.char.color;X.textAlign='right';X.fillText(f2.char.name,boxX+boxW-8,boxY+boxH-12);
+    }
+    X.textAlign='center';
+
+    // Voiceline
+    if(vc.winLine&&st>15){
+      const vlAlpha=Math.min(0.8,(st-15)/20);
+      X.globalAlpha=vlAlpha;
+      X.font='italic '+Math.round(12*fs)+'px Consolas,monospace';
+      X.fillStyle=vc.isDefeat?'#cc6666':w.char.color;
+      X.fillText('"'+vc.winLine+'"',W/2,boxY+boxH+20);
+    }
+    X.globalAlpha=1;
+  }
+
+  // Phase 3: Continue button
+  if(vc.phase>=3){
+    if(gameMode==='tournament'){
+      const autoSecs=Math.ceil((vc._tournAutoTimer||0)/60);
+      addBtn('vcContinue',W/2-80,centerY+120*fs,160,40,'Bracket ('+autoSecs+'s)','#ffcc00',()=>{
+        vc.active=false;tournFinishMatch(w.side);
+      });
+    } else {
+      addBtn('vcContinue',W/2-80,centerY+120*fs,160,40,'Continue','#7b68ee',()=>{
+        vc.active=false;screen='result';
+      });
+    }
+  }
+
+  // Skip hint
+  if(t>30){
+    X.font=(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='right';
+    X.fillStyle='#444';X.fillText('Tap to skip',W-15,H-barH-8);
+    // Only add skip button if continue not yet shown
+    if(!vc.continueReady){
+      addBtn('vcSkip',0,0,W,H,'','transparent',()=>{
+        vc.timer=160;vc.phase=3;vc.continueReady=true;
+      });
+    }
   }
 }
 
@@ -17918,54 +18165,10 @@ function drawBattle(){
     X.fillStyle='rgba(200,200,200,'+(1-i*0.2)+')';X.fillText(battleLog[i],ARENA.x+8,logY+10+i*12);
   }
 
-  // Victory overlay — CINEMATIC
-  if(battleOver&&winner){
-    if(Math.random()<0.4)spawnBurst(winner.x+rand(-40,40),winner.y+rand(-40,40),winner.char.color,4,5);
-    if(Math.random()<0.15)spawnBurst(rand(ARENA.x,ARENA.x+ARENA.w),rand(ARENA.y,ARENA.y+ARENA.h),pick(['#ffcc00','#ffffff',winner.char.color]),6,4);
+  // Victory/Defeat cutscene overlay
+  if(battleOver&&winner&&victoryCutscene.active){
     X.save();
-    // Full screen dark overlay
-    X.fillStyle='rgba(0,0,0,0.55)';X.fillRect(0,0,W,H);
-    // Cinematic letterbox bars
-    const barH=isMobile?18:28;
-    X.fillStyle='rgba(0,0,0,0.85)';X.fillRect(0,0,W,barH);X.fillRect(0,H-barH,W,barH);
-    // Radial glow behind winner
-    const rg=X.createRadialGradient(winner.x,winner.y,10,winner.x,winner.y,120);
-    rg.addColorStop(0,winner.char.color+'44');rg.addColorStop(1,'transparent');
-    X.fillStyle=rg;X.fillRect(0,0,W,H);
-    // Winner text
-    X.font='bold '+(isMobile?'28':'42')+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';
-    X.shadowColor=winner.char.color;X.shadowBlur=30;X.fillStyle=winner.char.color;
-    const winText=gameMode==='br'?winner.char.name+' WINS THE ROYALE!':gameMode==='2v2'?(winner.side===0?'TEAM 1':'TEAM 2')+' WINS!':winner.char.name+' WINS!';
-    X.fillText(winText,W/2,ARENA.y+ARENA.h/2-30);
-    X.strokeStyle='#000';X.lineWidth=3;X.strokeText(winText,W/2,ARENA.y+ARENA.h/2-30);
-    X.fillText(winText,W/2,ARENA.y+ARENA.h/2-30);
-    // Tier/team labels
-    X.font='bold '+(isMobile?'13':'16')+'px Consolas,monospace';
-    X.shadowBlur=10;X.fillStyle='#aaa';
-    if(gameMode==='br'){
-      const eliminated=fighters.filter(f=>!f.alive).map(f=>f.char.name).join(', ');
-      X.fillText('['+getTierLetter(winner.char.id)+'] '+winner.char.name+(eliminated?' defeated '+eliminated:''),W/2,ARENA.y+ARENA.h/2-5);
-    } else if(gameMode==='2v2'){
-      const wTeam=fighters.filter(f=>f.side===winner.side);
-      const lTeam=fighters.filter(f=>f.side!==winner.side);
-      X.fillText(wTeam.map(f=>f.char.name).join(' + ')+' vs '+lTeam.map(f=>f.char.name).join(' + '),W/2,ARENA.y+ARENA.h/2-5);
-    } else {
-      const winTier=getTierLetter(winner.char.id);
-      const loser=fighters.find(f=>f!==winner);
-      const loseTier=loser?getTierLetter(loser.char.id):'?';
-      X.fillText('['+winTier+'] vs ['+loseTier+(loser?' '+loser.char.name:'')+']',W/2,ARENA.y+ARENA.h/2-5);
-    }
-    X.shadowBlur=0;
-    if(gameMode==='tournament'){
-      // Auto-return to bracket after 3 seconds
-      if(!winner._tournAutoTimer)winner._tournAutoTimer=180;
-      winner._tournAutoTimer--;
-      const autoSecs=Math.ceil(winner._tournAutoTimer/60);
-      addBtn('result',W/2-80,ARENA.y+ARENA.h/2+20,160,40,'Bracket ('+autoSecs+'s)','#ffcc00',()=>{tournFinishMatch(winner.side);});
-      if(winner._tournAutoTimer<=0)tournFinishMatch(winner.side);
-    } else {
-      addBtn('result',W/2-80,ARENA.y+ARENA.h/2+20,160,40,'Continue','#7b68ee',()=>{screen='result';});
-    }
+    drawVictoryCutscene();
     X.restore();
   }
   buttons.forEach(drawBtn);
@@ -18991,6 +19194,7 @@ function loop(time){
         Object.keys(comboCounter).forEach(s=>{if(comboCounter[s].timer>0){comboCounter[s].timer--;if(comboCounter[s].timer<=0)comboCounter[s].count=0;}});
         for(let i=damageBarDecay.length-1;i>=0;i--){damageBarDecay[i].timer--;if(damageBarDecay[i].timer<=0)damageBarDecay.splice(i,1);}
         if(screenFlashTimer>0)screenFlashTimer--;
+        if(victoryCutscene.active)updateVictoryCutscene(1);
         battleAccum-=STEP_MS;
       }
       drawBattle();
