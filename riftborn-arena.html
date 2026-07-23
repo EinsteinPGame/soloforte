@@ -666,6 +666,7 @@ let GS={
   targetSelectIdx:0,
   scrollOffset:0,
   dexDetail:null,
+  typeChartOff:{x:0,y:0},
   anim:{active:false,type:null,timer:0,data:{}},
   particles:[],
   introStep:0,
@@ -1848,6 +1849,7 @@ function drawRiftdex(){
   drawText('Riftdex',15,15,20,'#7b68ee');
   drawText(`${GS.player.seen.size} seen / ${GS.player.caught.size} caught`,15,38,11,'#888');
   drawButton(W-80,10,65,28,'Back',false);
+  drawButton(W-155,10,65,28,'Types',false,'#225522');
 
   const sorted=RIFTBORN_DB.filter(r=>!r.legendary).sort((a,b)=>a.id-b.id);
   const legendaries=RIFTBORN_DB.filter(r=>r.legendary).sort((a,b)=>a.id-b.id);
@@ -1959,6 +1961,68 @@ function drawRiftdexDetail(){
       y+=16;
     });
   }
+}
+
+// ============================================================
+// SCENE: TYPE CHART
+// ============================================================
+function drawTypeChart(){
+  X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
+  drawText('Type Chart',15,15,20,'#7b68ee');
+  drawButton(W-80,10,65,28,'Back',false);
+
+  const types=TYPES;
+  const n=types.length; // 18
+  const cellSz=isMobile?16:20;
+  const labelW=isMobile?50:65;
+  const startX=labelW+4,startY=55;
+  const chartW=n*cellSz,chartH=n*cellSz;
+  const totalW=startX+chartW,totalH=startY+chartH;
+
+  // Scroll support
+  const offX=GS.typeChartOff?.x||0,offY=GS.typeChartOff?.y||0;
+
+  X.save();
+  // Column headers (defender types) — rotated
+  types.forEach((t,i)=>{
+    const cx=startX+i*cellSz+cellSz/2+offX;
+    if(cx<startX-5||cx>W)return;
+    X.save();X.translate(cx,startY-4);X.rotate(-Math.PI/3);
+    X.font=`${isMobile?7:9}px Consolas,monospace`;X.textAlign='left';X.textBaseline='middle';
+    X.fillStyle=TYPE_COLORS[t];X.fillText(t,0,0);
+    X.restore();
+  });
+
+  // Grid
+  types.forEach((atk,r)=>{
+    const ry=startY+r*cellSz+offY;
+    if(ry<startY-cellSz||ry>H)return;
+
+    // Row label (attacker)
+    X.font=`bold ${isMobile?8:10}px Consolas,monospace`;X.textAlign='right';X.textBaseline='middle';
+    X.fillStyle=TYPE_COLORS[atk];X.fillText(atk,labelW,ry+cellSz/2);
+
+    types.forEach((def,c)=>{
+      const cx=startX+c*cellSz+offX;
+      if(cx<startX-cellSz||cx>W)return;
+      const eff=TYPE_CHART[atk][def];
+      let bg='#111',fg='#444',txt='1';
+      if(eff===2){bg='#1b5e20';fg='#66ff66';txt='2'}
+      else if(eff===0.5){bg='#4a1515';fg='#ff6666';txt='½'}
+      else if(eff===0){bg='#1a1a1a';fg='#555';txt='0'}
+      X.fillStyle=bg;X.fillRect(cx,ry,cellSz-1,cellSz-1);
+      X.font=`bold ${isMobile?8:10}px Consolas,monospace`;X.textAlign='center';X.textBaseline='middle';
+      X.fillStyle=fg;X.fillText(txt,cx+cellSz/2,ry+cellSz/2);
+    });
+  });
+  X.restore();
+
+  // Legend
+  const ly=H-25;
+  X.font='10px Consolas,monospace';X.textAlign='left';X.textBaseline='top';
+  X.fillStyle='#66ff66';X.fillText('2 = Super Effective',10,ly);
+  X.fillStyle='#ff6666';X.fillText('½ = Not Very',isMobile?140:180,ly);
+  X.fillStyle='#555';X.fillText('0 = Immune',isMobile?240:320,ly);
 }
 
 // ============================================================
@@ -2282,6 +2346,10 @@ function handleInput(key){
     if(key==='Escape'||key==='Backspace'){GS.scene='riftdex';GS.dexDetail=null}
   }
 
+  else if(scene==='typeChart'){
+    if(key==='Escape'||key==='Backspace'){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3}
+  }
+
   else if(scene==='shop'){
     if(key==='ArrowUp'||key==='w')GS.menuIdx=Math.max(-1,GS.menuIdx-1);
     if(key==='ArrowDown'||key==='s')GS.menuIdx=Math.min(11,GS.menuIdx+1);
@@ -2444,6 +2512,7 @@ function handleClick(cx,cy){
 
   else if(scene==='riftdex'){
     if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='champHub'?'champHub':GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3}
+    else if(cx>=W-155&&cx<=W-90&&cy<=38){GS.scene='typeChart';GS.typeChartOff={x:0,y:0}}
     else{
       // Click on a creature entry to see details
       const rowH=42,startY=55;
@@ -2464,6 +2533,10 @@ function handleClick(cx,cy){
 
   else if(scene==='riftdexDetail'){
     if(cx>=W-80&&cy<=38){GS.scene='riftdex';GS.dexDetail=null}
+  }
+
+  else if(scene==='typeChart'){
+    if(cx>=W-80&&cy<=38){GS.scene=GS.explore.prevScene==='explore'?'explore':'overworld';GS.menuIdx=3}
   }
 
   else if(scene==='shop'){
@@ -3700,6 +3773,7 @@ function draw(){
     case 'bag':drawBagView();break;
     case 'riftdex':drawRiftdex();break;
     case 'riftdexDetail':drawRiftdexDetail();break;
+    case 'typeChart':drawTypeChart();break;
     case 'shop':drawShop();break;
     case 'routeSelect':drawRouteSelect();break;
     case 'arenaSelect':drawArenaSelect();break;
