@@ -1212,7 +1212,8 @@ let introCutscene={active:false,timer:0,phase:0,p1Char:null,p2Char:null,p1Elem:n
   p1Line:'',p2Line:'',vsFlash:0,skipBtn:false};
 // Victory/Defeat cutscene state
 let victoryCutscene={active:false,timer:0,phase:0,winner:null,loser:null,isDefeat:false,
-  winLine:'',shatterParts:[],statsShown:false,continueReady:false};
+  winLine:'',shatterParts:[],statsShown:false,continueReady:false,
+  lastHit:null,crackLines:[],dissolveParticles:[],grayscaleAlpha:0};
 let relicText='';
 let relicTextTimer=0;
 let relicTextColor='#fff';
@@ -2256,44 +2257,97 @@ function startVictoryCutscene(w,lastAttacker){
   vc.winner=w;vc.isDefeat=wasDefeat;
   vc.loser=fighters.find(f=>f!==w&&f.side!==(w?w.side:-1))||null;
   vc.statsShown=false;vc.continueReady=false;
-  vc.shatterParts=[];
+  vc.shatterParts=[];vc.crackLines=[];vc.dissolveParticles=[];vc.grayscaleAlpha=0;
+  // Capture last hit positions for slow-mo replay
+  vc.lastHit=null;
+  if(w&&vc.loser){
+    vc.lastHit={ax:w.x,ay:w.y,dx:vc.loser.x,dy:vc.loser.y,
+      aColor:w.char.color,dColor:vc.loser.char.color,
+      impactX:(w.x+vc.loser.x)/2,impactY:(w.y+vc.loser.y)/2};
+  } else if(w){
+    vc.lastHit={ax:w.x,ay:w.y,dx:W/2,dy:H/2,aColor:w.char.color,dColor:'#888',
+      impactX:W/2,impactY:H/2};
+  }
   // Get voiceline for the cutscene
   const vl=w?VOICELINES[w.char.id]:null;
   const vtype=wasDefeat?'defeat':'victory';
   vc.winLine=(vl&&vl[vtype]&&vl[vtype].length>0)?vl[vtype][Math.floor(Math.random()*vl[vtype].length)]:'';
-  // Generate shatter fragments for defeat
-  if(wasDefeat){
-    for(let i=0;i<24;i++){
-      const a=Math.PI*2*i/24+Math.random()*0.2;
-      vc.shatterParts.push({x:W/2,y:H/2,vx:Math.cos(a)*(3+Math.random()*5),vy:Math.sin(a)*(3+Math.random()*5),
-        rot:Math.random()*Math.PI*2,rotV:(Math.random()-0.5)*0.15,size:8+Math.random()*16,alpha:1});
+  // Generate crack lines for defeat loser ball (radiate from center)
+  const loserCX=vc.loser?vc.loser.x:W/2;
+  const loserCY=vc.loser?vc.loser.y:H/2;
+  for(let i=0;i<12;i++){
+    const a=Math.PI*2*i/12+(Math.random()-0.5)*0.4;
+    const len=25+Math.random()*40;
+    const branches=[];
+    // Sub-branches on each crack
+    if(Math.random()>0.4){
+      const bAt=0.3+Math.random()*0.5;
+      const bAng=a+(Math.random()-0.5)*1.2;
+      branches.push({at:bAt,angle:bAng,len:10+Math.random()*20});
     }
+    vc.crackLines.push({cx:loserCX,cy:loserCY,angle:a,len,branches});
+  }
+  // Generate shatter pieces (exaggerated angular chunks from loser position)
+  for(let i=0;i<32;i++){
+    const a=Math.PI*2*i/32+Math.random()*0.3;
+    const spd=4+Math.random()*8;
+    const sz=12+Math.random()*25;
+    // Angular polygon shape (3-6 sides)
+    const sides=3+Math.floor(Math.random()*4);
+    const verts=[];
+    for(let v=0;v<sides;v++){
+      const va=Math.PI*2*v/sides+Math.random()*0.5;
+      const vr=sz*(0.5+Math.random()*0.5);
+      verts.push({x:Math.cos(va)*vr,y:Math.sin(va)*vr});
+    }
+    vc.shatterParts.push({x:loserCX,y:loserCY,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd-2,
+      rot:Math.random()*Math.PI*2,rotV:(Math.random()-0.5)*0.2,
+      size:sz,alpha:1,color:vc.loser?vc.loser.char.color:'#888',verts,
+      dissolveTimer:0,dissolved:false});
   }
   // Delayed SFX
   setTimeout(()=>wasDefeat?SFX.defeat():SFX.victory(),400);
   // Show voiceline on winner
   if(w)showVoiceline(w.char.id,wasDefeat?'defeat':'victory',w.side);
-  // Tournament auto-advance: skip cutscene after 3s
-  if(gameMode==='tournament'){vc._tournAutoTimer=180;}
+  // Tournament auto-advance: skip cutscene after 5s (extended for new anim)
+  if(gameMode==='tournament'){vc._tournAutoTimer=300;}
 }
 
 function updateVictoryCutscene(dt){
   const vc=victoryCutscene;
   if(!vc.active)return;
   vc.timer+=dt;
-  // Phase 0: slow-mo freeze + darken (0-40)
-  // Phase 1: text slam (40-100)
-  // Phase 2: stats fade-in + voiceline (100-160)
-  // Phase 3: continue ready (160+)
-  if(vc.timer<40)vc.phase=0;
-  else if(vc.timer<100)vc.phase=1;
-  else if(vc.timer<160)vc.phase=2;
-  else{vc.phase=3;vc.continueReady=true;}
-  // Update shatter particles (defeat)
-  vc.shatterParts.forEach(p=>{
-    p.x+=p.vx;p.y+=p.vy;p.vy+=0.08;p.rot+=p.rotV;
-    p.alpha=Math.max(0,p.alpha-0.005);
-  });
+  // Phase 0 (0-120 = 2s): Slow-mo zoom on final hit impact
+  // Phase 1 (120-270 = 2.5s): Victory: celebration / Defeat: cracks → shatter
+  // Phase 2 (270-370 ≈ 1.7s): Text slam + defeat grayscale
+  // Phase 3 (370-440 ≈ 1.2s): Stats + voiceline
+  // Phase 4 (440+): Continue ready
+  if(vc.timer<120)vc.phase=0;
+  else if(vc.timer<270)vc.phase=1;
+  else if(vc.timer<370)vc.phase=2;
+  else if(vc.timer<440)vc.phase=3;
+  else{vc.phase=4;vc.continueReady=true;}
+  // Update shatter particles — start moving in phase 1 (after cracks, ~frame 180)
+  if(vc.timer>180){
+    vc.shatterParts.forEach(p=>{
+      if(vc.timer<200){
+        // Pieces just starting to move
+        p.x+=p.vx*0.3;p.y+=p.vy*0.3;
+      } else {
+        p.x+=p.vx;p.y+=p.vy;p.vy+=0.06;
+      }
+      p.rot+=p.rotV;
+      // Dissolve: pieces start fading and breaking apart after spreading
+      if(vc.timer>240){
+        p.dissolveTimer+=dt;
+        if(p.dissolveTimer>20)p.alpha=Math.max(0,p.alpha-0.015);
+      }
+    });
+  }
+  // Grayscale builds during phase 2 for defeat
+  if(vc.isDefeat&&vc.timer>270){
+    vc.grayscaleAlpha=Math.min(0.6,(vc.timer-270)/60*0.6);
+  }
   // Tournament auto-advance
   if(gameMode==='tournament'&&vc._tournAutoTimer!==undefined){
     vc._tournAutoTimer--;
@@ -2309,61 +2363,183 @@ function drawVictoryCutscene(){
   const fs=isMobile?1:1.3;
   const centerY=ARENA.y+ARENA.h/2;
 
-  // Phase 0+: Darken overlay (builds up)
-  const darkAlpha=Math.min(0.7,t/40*0.7);
-  X.fillStyle='rgba(0,0,0,'+darkAlpha+')';X.fillRect(0,0,W,H);
-
-  // Defeat: red vignette + shatter particles
-  if(vc.isDefeat){
-    const redAlpha=Math.min(0.25,t/60*0.25);
-    const vg=X.createRadialGradient(W/2,H/2,Math.min(W,H)*0.2,W/2,H/2,Math.max(W,H)*0.6);
-    vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(180,20,20,'+redAlpha+')');
-    X.fillStyle=vg;X.fillRect(0,0,W,H);
-    // Shatter fragments
-    vc.shatterParts.forEach(p=>{
-      if(p.alpha<=0)return;
-      X.save();X.translate(p.x,p.y);X.rotate(p.rot);
-      X.globalAlpha=p.alpha*0.7;
-      X.fillStyle='#cc2222';X.fillRect(-p.size/2,-p.size/2,p.size,p.size*0.6);
-      X.strokeStyle='#ff4444';X.lineWidth=1;X.strokeRect(-p.size/2,-p.size/2,p.size,p.size*0.6);
-      X.restore();
-    });
-    X.globalAlpha=1;
-  }
-
   // Cinematic letterbox bars (slide in)
   const barProgress=Math.min(1,t/30);
   const barH=(isMobile?20:32)*barProgress;
-  X.fillStyle='#000';X.fillRect(0,0,W,barH);X.fillRect(0,H-barH,W,barH);
 
-  // Winner glow (pulses)
-  if(w&&t>10){
-    const glowAlpha=0.15+Math.sin(t*0.05)*0.08;
-    const rg=X.createRadialGradient(w.x,w.y,10,w.x,w.y,150);
-    rg.addColorStop(0,(vc.isDefeat?'#cc2222':w.char.color)+Math.round(glowAlpha*255).toString(16).padStart(2,'0'));
-    rg.addColorStop(1,'transparent');
-    X.fillStyle=rg;X.fillRect(0,0,W,H);
+  // ── Phase 0 (0-120): Slow-mo zoom on final hit impact ──
+  if(vc.phase===0&&vc.lastHit){
+    const lh=vc.lastHit;
+    // Darken gradually
+    const darkAlpha=Math.min(0.5,t/60*0.5);
+    X.fillStyle='rgba(0,0,0,'+darkAlpha+')';X.fillRect(0,0,W,H);
+    // Camera zoom toward impact point
+    const zoomProgress=Math.min(1,t/80);
+    const zoomEased=1-Math.pow(1-zoomProgress,2);
+    const zoomScale=1+zoomEased*1.2; // zoom up to 2.2x
+    const zoomCX=lh.impactX;const zoomCY=lh.impactY;
+    X.save();
+    X.translate(W/2,H/2);X.scale(zoomScale,zoomScale);X.translate(-zoomCX,-zoomCY);
+    // Redraw attacker moving toward defender (simulated slow-mo)
+    const strikeProgress=Math.min(1,t/60);
+    const strikeEased=strikeProgress<0.7?strikeProgress/0.7:1;
+    const attackerCurX=lh.ax+(lh.dx-lh.ax)*strikeEased*0.6;
+    const attackerCurY=lh.ay+(lh.dy-lh.ay)*strikeEased*0.6;
+    // Attacker ball with motion blur
+    for(let mb=3;mb>=0;mb--){
+      const mbAlpha=(1-mb*0.2)*0.5;
+      const mbX=attackerCurX-(lh.dx-lh.ax)*strikeEased*0.02*mb;
+      const mbY=attackerCurY-(lh.dy-lh.ay)*strikeEased*0.02*mb;
+      X.globalAlpha=mbAlpha;
+      X.beginPath();X.arc(mbX,mbY,w.radius||25,0,Math.PI*2);
+      X.fillStyle=lh.aColor;X.fill();
+    }
+    X.globalAlpha=1;
+    // Defender ball (shaking on impact)
+    if(vc.loser){
+      const impacted=strikeProgress>0.6;
+      const shk=impacted?(Math.random()-0.5)*8*(1-Math.min(1,(t-50)/40)):0;
+      X.beginPath();X.arc(lh.dx+shk,lh.dy+shk*0.5,vc.loser.radius||25,0,Math.PI*2);
+      X.fillStyle=lh.dColor;X.fill();
+    }
+    // Impact flash at the moment of contact
+    if(t>50&&t<80){
+      const flashT=t-50;
+      const flashAlpha=Math.max(0,1-flashT/30)*0.8;
+      X.globalAlpha=flashAlpha;
+      const flashR=flashT*3;
+      const fg=X.createRadialGradient(lh.impactX,lh.impactY,0,lh.impactX,lh.impactY,flashR);
+      fg.addColorStop(0,'#ffffff');fg.addColorStop(0.3,lh.aColor);fg.addColorStop(1,'transparent');
+      X.fillStyle=fg;X.beginPath();X.arc(lh.impactX,lh.impactY,flashR,0,Math.PI*2);X.fill();
+      // Speed lines radiating from impact
+      X.strokeStyle='rgba(255,255,255,'+flashAlpha*0.6+')';X.lineWidth=2;
+      for(let i=0;i<10;i++){
+        const a=Math.PI*2*i/10+flashT*0.02;
+        X.beginPath();
+        X.moveTo(lh.impactX+Math.cos(a)*(10+flashT),lh.impactY+Math.sin(a)*(10+flashT));
+        X.lineTo(lh.impactX+Math.cos(a)*(25+flashT*2.5),lh.impactY+Math.sin(a)*(25+flashT*2.5));
+        X.stroke();
+      }
+    }
+    // "SLOW MO" label
+    if(t>10&&t<100){
+      X.globalAlpha=Math.min(0.4,(t-10)/20);
+      X.font='bold '+Math.round(10*fs)+'px Consolas,monospace';X.textAlign='center';
+      X.fillStyle='#ffcc00';X.fillText('FINAL HIT',lh.impactX,lh.impactY-60);
+    }
+    X.globalAlpha=1;
+    X.restore();
   }
 
-  // Continuous winner particles
-  if(t>20&&Math.random()<0.5){
-    const pc=vc.isDefeat?'#cc4444':w.char.color;
-    spawnBurst(w.x+rand(-30,30),w.y+rand(-30,30),pc,2,3);
-  }
-  if(t>30&&Math.random()<0.2){
-    spawnBurst(rand(ARENA.x,ARENA.x+ARENA.w),rand(ARENA.y,ARENA.y+ARENA.h),
-      vc.isDefeat?'#882222':pick(['#ffcc00','#ffffff',w.char.color]),3,3);
-  }
-
-  // Phase 1+: Text slam with elastic easing
+  // ── Phase 1 (120-270): Victory celebration / Defeat cracks+shatter ──
   if(vc.phase>=1){
-    const pt=t-40;
+    // Darken overlay
+    const darkAlpha=Math.min(0.65,(t-60)/80*0.65);
+    X.fillStyle='rgba(0,0,0,'+darkAlpha+')';X.fillRect(0,0,W,H);
+
+    if(!vc.isDefeat){
+      // ── VICTORY: Winner celebration ──
+      // Winner glow aura (pulsing)
+      if(w){
+        const glowAlpha=0.2+Math.sin(t*0.06)*0.1;
+        const rg=X.createRadialGradient(w.x,w.y,10,w.x,w.y,180);
+        rg.addColorStop(0,w.char.color+Math.round(glowAlpha*255).toString(16).padStart(2,'0'));
+        rg.addColorStop(1,'transparent');
+        X.fillStyle=rg;X.fillRect(0,0,W,H);
+        // Celebration particles
+        if(t>130&&Math.random()<0.6){
+          spawnBurst(w.x+rand(-40,40),w.y+rand(-40,40),pick([w.char.color,'#ffcc00','#ffffff']),3,3);
+        }
+        // Expanding glory rings
+        const ringT=t-120;
+        if(ringT>0&&ringT<80){
+          for(let i=0;i<3;i++){
+            const rt=(ringT+i*25)%80;
+            X.globalAlpha=Math.max(0,0.3-rt/80*0.3);
+            X.strokeStyle=w.char.color;X.lineWidth=2;
+            X.beginPath();X.arc(w.x,w.y,rt*2,0,Math.PI*2);X.stroke();
+          }
+          X.globalAlpha=1;
+        }
+      }
+    } else {
+      // ── DEFEAT: Cracks → Shatter → Dissolve ──
+      const dt2=t-120;
+      // Phase 1a (0-60): Cracks spread across loser
+      if(dt2<60&&vc.loser){
+        const crackProgress=Math.min(1,dt2/50);
+        X.strokeStyle='#ff4444';X.lineWidth=2;X.shadowColor='#ff2222';X.shadowBlur=4;
+        vc.crackLines.forEach(c=>{
+          const drawLen=c.len*crackProgress;
+          X.globalAlpha=0.8;
+          X.beginPath();
+          X.moveTo(c.cx,c.cy);
+          X.lineTo(c.cx+Math.cos(c.angle)*drawLen,c.cy+Math.sin(c.angle)*drawLen);
+          X.stroke();
+          // Sub-branches
+          c.branches.forEach(b=>{
+            if(crackProgress>b.at){
+              const bProgress=(crackProgress-b.at)/(1-b.at);
+              const bStartX=c.cx+Math.cos(c.angle)*c.len*b.at;
+              const bStartY=c.cy+Math.sin(c.angle)*c.len*b.at;
+              X.beginPath();X.moveTo(bStartX,bStartY);
+              X.lineTo(bStartX+Math.cos(b.angle)*b.len*bProgress,bStartY+Math.sin(b.angle)*b.len*bProgress);
+              X.stroke();
+            }
+          });
+        });
+        X.shadowBlur=0;X.globalAlpha=1;
+      }
+      // Phase 1b (60+): Shatter pieces fly out + dissolve
+      if(dt2>=60){
+        vc.shatterParts.forEach(p=>{
+          if(p.alpha<=0)return;
+          X.save();X.translate(p.x,p.y);X.rotate(p.rot);
+          X.globalAlpha=p.alpha*0.8;
+          X.fillStyle=p.color;
+          X.strokeStyle='#ff6666';X.lineWidth=1;
+          // Draw angular polygon piece
+          X.beginPath();
+          if(p.verts&&p.verts.length>0){
+            X.moveTo(p.verts[0].x,p.verts[0].y);
+            for(let v=1;v<p.verts.length;v++)X.lineTo(p.verts[v].x,p.verts[v].y);
+            X.closePath();
+          }
+          X.fill();X.stroke();
+          // Dissolve sparkle effect
+          if(p.dissolveTimer>10){
+            X.fillStyle='#ffffff';X.globalAlpha=p.alpha*0.3;
+            for(let s=0;s<3;s++){
+              const sx=(Math.random()-0.5)*p.size;const sy=(Math.random()-0.5)*p.size;
+              X.beginPath();X.arc(sx,sy,1.5,0,Math.PI*2);X.fill();
+            }
+          }
+          X.restore();
+        });
+        X.globalAlpha=1;
+      }
+      // Red vignette throughout
+      const redAlpha=Math.min(0.3,dt2/100*0.3);
+      const vg=X.createRadialGradient(W/2,H/2,Math.min(W,H)*0.15,W/2,H/2,Math.max(W,H)*0.6);
+      vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(180,20,20,'+redAlpha+')');
+      X.fillStyle=vg;X.fillRect(0,0,W,H);
+    }
+  }
+
+  // ── Phase 2 (270-370): Text slam + defeat grayscale ──
+  if(vc.phase>=2){
+    // Grayscale overlay for defeat
+    if(vc.isDefeat&&vc.grayscaleAlpha>0){
+      X.globalAlpha=vc.grayscaleAlpha;
+      X.fillStyle='#222';X.fillRect(0,0,W,H);
+      X.globalAlpha=1;
+    }
+    const pt=t-270;
     const titleText=vc.isDefeat?'DEFEAT':
       gameMode==='br'?w.char.name+' WINS THE ROYALE!':
       gameMode==='2v2'?(w.side===0?'TEAM 1':'TEAM 2')+' WINS!':
       w.char.name+' WINS!';
     const titleColor=vc.isDefeat?'#cc4444':w.char.color;
-    // Elastic ease for slam effect: overshoot then settle
     const rawP=Math.min(1,pt/25);
     const elastic=rawP<1?1-Math.pow(1-rawP,3)*(Math.cos(rawP*Math.PI*2.5)*0.3+0.7):1;
     const scale=0.3+elastic*0.7;
@@ -2374,15 +2550,12 @@ function drawVictoryCutscene(){
     X.font='bold '+Math.round(36*fs)+'px Consolas,Courier New,monospace';
     X.textAlign='center';X.textBaseline='middle';
     X.shadowColor=titleColor;X.shadowBlur=40;
-    // Outline
     X.strokeStyle='#000';X.lineWidth=4;X.strokeText(titleText,0,0);
     X.fillStyle=titleColor;X.fillText(titleText,0,0);
-    // Double glow pass
     X.shadowBlur=60;X.globalAlpha=textAlpha*0.5;X.fillText(titleText,0,0);
     X.restore();
     X.shadowBlur=0;X.globalAlpha=1;
-
-    // Impact lines on slam (first 20 frames)
+    // Impact lines on slam
     if(pt<20){
       const lineAlpha=(1-pt/20)*0.5;
       X.strokeStyle='rgba(255,255,255,'+lineAlpha+')';X.lineWidth=2;
@@ -2395,8 +2568,7 @@ function drawVictoryCutscene(){
         X.stroke();
       }
     }
-
-    // Sub-label (tier matchup or team info)
+    // Sub-label
     if(pt>15){
       const subAlpha=Math.min(1,(pt-15)/20);
       X.globalAlpha=subAlpha;
@@ -2419,19 +2591,17 @@ function drawVictoryCutscene(){
     }
   }
 
-  // Phase 2+: Stats recap fade-in + voiceline
-  if(vc.phase>=2){
-    const st=t-100;
+  // ── Phase 3 (370-440): Stats + voiceline ──
+  if(vc.phase>=3){
+    const st=t-370;
     const statsAlpha=Math.min(1,st/25);
     X.globalAlpha=statsAlpha;
-    // Mini stats box
     const boxW=isMobile?260:320;const boxH=isMobile?70:85;
     const boxX=W/2-boxW/2;const boxY=centerY+15*fs;
-    X.fillStyle='rgba(10,10,30,0.8)';
+    X.fillStyle='rgba(10,10,30,0.85)';
     drawRoundRect(boxX,boxY,boxW,boxH,8);X.fill();
     X.strokeStyle=(vc.isDefeat?'#cc4444':w.char.color)+'66';X.lineWidth=1;
     drawRoundRect(boxX,boxY,boxW,boxH,8);X.stroke();
-    // Stats content
     const sFont=isMobile?10:12;
     X.font=sFont+'px Consolas,monospace';X.textAlign='center';
     const cols=['Hits','Damage','Crits','Duration'];
@@ -2448,7 +2618,6 @@ function drawVictoryCutscene(){
         X.fillStyle='#ccc';X.fillText(p2Vals[i],cx2,boxY+34);
       }
     });
-    // Labels
     X.font='bold '+sFont+'px Consolas,monospace';
     const f1=fighters[0],f2=fighters[fighters.length>2?fighters.length-1:1];
     if(f1&&f2){
@@ -2456,8 +2625,6 @@ function drawVictoryCutscene(){
       X.fillStyle=f2.char.color;X.textAlign='right';X.fillText(f2.char.name,boxX+boxW-8,boxY+boxH-12);
     }
     X.textAlign='center';
-
-    // Voiceline
     if(vc.winLine&&st>15){
       const vlAlpha=Math.min(0.8,(st-15)/20);
       X.globalAlpha=vlAlpha;
@@ -2468,8 +2635,11 @@ function drawVictoryCutscene(){
     X.globalAlpha=1;
   }
 
-  // Phase 3: Continue button
-  if(vc.phase>=3){
+  // Letterbox bars on top of everything
+  X.fillStyle='#000';X.fillRect(0,0,W,barH);X.fillRect(0,H-barH,W,barH);
+
+  // ── Phase 4: Continue button ──
+  if(vc.phase>=4){
     if(gameMode==='tournament'){
       const autoSecs=Math.ceil((vc._tournAutoTimer||0)/60);
       addBtn('vcContinue',W/2-80,centerY+120*fs,160,40,'Bracket ('+autoSecs+'s)','#ffcc00',()=>{
@@ -2486,10 +2656,9 @@ function drawVictoryCutscene(){
   if(t>30){
     X.font=(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='right';
     X.fillStyle='#444';X.fillText('Tap to skip',W-15,H-barH-8);
-    // Only add skip button if continue not yet shown
     if(!vc.continueReady){
       addBtn('vcSkip',0,0,W,H,'','transparent',()=>{
-        vc.timer=160;vc.phase=3;vc.continueReady=true;
+        vc.timer=440;vc.phase=4;vc.continueReady=true;
       });
     }
   }
@@ -17143,6 +17312,7 @@ function startBattle(){
   sponsorCutsceneActive=false;sponsorCutsceneTimer=0;sponsorCutsceneData=null;
   allyComboActive=false;allyComboTimer=0;allyComboData=null;
   victoryCutscene.active=false;victoryCutscene.timer=0;victoryCutscene.phase=0;victoryCutscene.continueReady=false;
+  victoryCutscene.lastHit=null;victoryCutscene.crackLines=[];victoryCutscene.shatterParts=[];victoryCutscene.dissolveParticles=[];victoryCutscene.grayscaleAlpha=0;
   battleStats={p1Hits:0,p2Hits:0,p1Dmg:0,p2Dmg:0,p1Crits:0,p2Crits:0};
   if(gameMode==='boss'){
     // Boss is side 1 (enemy), team is side 0 (3v1)
