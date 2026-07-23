@@ -189,21 +189,21 @@ All animations are designed for **2D canvas** rendering: particle systems, color
 | Aspect | Description |
 |---|---|
 | **Victory** | The circle winds up — pulls back (shifts 10px right while slightly squashing horizontally, like coiling a fist). Then LAUNCHES forward with a devastating Black Flash: a punch impact point appears (a star-shaped burst of black and red-orange particles at the contact point, left side of screen). The canvas flashes BLACK for 2 frames (inverted from typical white flash — this is Black Flash). A distortion ripple expands from the impact point. "BLACK FLASH" text appears briefly in bold, glitching/flickering red-black. The circle bounces back to center, fists metaphorically raised. Duration: 2.5s. |
-| **Defeat** | Yuji doesn't stay down immediately — the circle gets knocked back (shifts 15px), pauses, then pushes forward again (shifts 5px back toward center), showing determination. A second hit knocks it back further. The circle trembles (micro-vibration) but remains. Cracks appear but slowly. He endures. A ghostly translucent circle (Sukuna's lingering presence, red-tinged) separates slightly from Yuji's circle, then fades. Finally, his circle dims but doesn't shatter — it merely goes still. Duration: 2s. |
+| **Defeat** | Black Flash winds up — circle pulls back, launches forward with full power. On impact: just a tiny pathetic "squeak" hit. No black flash, no distortion, no power. The punch connects but does absolutely nothing. Circle bounces back looking confused. Duration: 1.5s. |
 
 #### 22. Naoya
 
 | Aspect | Description |
 |---|---|
 | **Victory** | Speed lines appear — horizontal streaks across the canvas (thin lines with motion-blur alpha gradient). The circle compresses into a horizontal oval (projection sorcery — frame manipulation). It zips in a triangular path at high speed, leaving sharp green afterimages at each vertex. At the final vertex, it decompresses back to a circle with a burst of green wind particles spiraling outward. The circle adopts a haughty posture: tilted slightly upward (rotated -5 degrees). A small arrogant smirk line. Duration: 2.5s. |
-| **Defeat** | The circle tries to compress into projection mode but gets stuck between shapes — oscillating between circle and oval rapidly (form instability). Green afterimages appear but overlap incorrectly, creating a messy blur. The circle snaps back to normal shape with a crack. The smirk line inverts to a frustrated scowl. The circle vibrates with rage (high-frequency small oscillation) before going still. Entitled to the end. Duration: 1.5s. |
+| **Defeat** | Tries projection mode — gets stuck oscillating between circle and oval (form instability). Green afterimages overlap incorrectly (messy blur). Then FREEZES mid-shift into a rectangular frame — trapped in projection sorcery's grid. The rectangle tilts and falls over. Frozen in his own technique. Duration: 1.5s. |
 
 #### 23. Todo
 
 | Aspect | Description |
 |---|---|
 | **Victory** | The circle claps — it briefly squishes vertically (as if hands coming together), producing a bright flash at center. BOOGIE WOOGIE activates: Todo's circle and a decoy circle (faded copy at a random position) swap positions in an instant (teleport with a line connecting the two positions briefly, like a swap indicator). They swap 3 times in rapid succession, each swap leaving a brief purple flash. The circle ends center stage, and a thought bubble appears above: a small cloud shape containing a tiny heart (thinking about his ideal woman). Duration: 3s. |
-| **Defeat** | Todo attempts to clap — the squish animation starts but one "hand" is missing (the clap is asymmetric, only the left side squishes). Boogie Woogie fails — a broken swap line appears (dashed, flickering) but no teleport occurs. The circle looks at its hands (two small circles extend from sides, the character examining his palms). One hand fades (the hand he lost in the manga). A single tear-like particle falls, then he steels himself — the circle straightens. Even in defeat, he's proud. Duration: 2s. |
+| **Defeat** | Claps — but hands phase through each other (they're gone). Looks down at his empty sides. No Boogie Woogie activates. Realization hits. Stands there, hands missing, defeated. Duration: 1.5s. |
 
 #### 24. Yuki Tsukumo
 
@@ -216,15 +216,15 @@ All animations are designed for **2D canvas** rendering: particle systems, color
 
 | Aspect | Description |
 |---|---|
-| **Victory** | Shadows pool beneath the circle — a dark gradient spreads outward along the ground (a dark ellipse expanding below the circle). From the shadow, silhouettes rise: two canine shapes (Demon Dogs — simple angular shadow shapes, triangles for ears, lines for legs) flanking the main circle. Then a larger shadow rises behind — Mahoraga's silhouette (large circle with the 8-spoked wheel outline above it), towering over Megumi at 0.3 alpha. The shadows pulse with dark purple energy. Megumi's circle glows with the Ten Shadows technique sigil (a small geometric pattern on its surface). Duration: 3s. |
-| **Defeat** | The shadow pool forms but weakly — thin, flickering at the edges. One Demon Dog silhouette begins to rise but dissolves back into the shadow (it was already lost). The shadow pool is invaded by a red-black tint (Sukuna's influence). Megumi's circle fights it — alternating between its normal blue-green color and Sukuna's red-purple, flickering rapidly. The red wins. The circle's color shifts to dull red-purple, and Megumi's own consciousness fades (the circle's unique identifiers — his shadow effects — all extinguish). A trapped, hollow shell remains. Duration: 2s. |
+| **Victory** | Shadow pool spreads beneath. All Ten Shadows EXCEPT Mahoraga appear — 9 shikigami silhouettes rise from the shadow in a V-formation behind him. Each is distinct (dogs, snake, rabbit, elephant, etc. as angular shadow shapes). Purple energy pulses through all of them simultaneously. Megumi stands at center, glowing with the Ten Shadows technique sigil. Duration: 3s. |
+| **Defeat** | Shadows start to rise from the pool — but flicker, stutter, and collapse back into the darkness one by one. Each failed summon produces a small purple pop. The shadow pool shrinks and fades to nothing. Duration: 1.5s. |
 
 #### 26. Mahito
 
 | Aspect | Description |
 |---|---|
-| **Victory** | The circle's shape becomes unstable ON PURPOSE — it morphs fluidly between different forms (circle to oval to star to humanoid outline to circle again) demonstrating Idle Transfiguration mastery. Each morph is smooth (interpolated shape vertices). Soul particles (small translucent blue-white wisps) emanate from the surface during each transformation. The final form settles as a circle but with a wide, unsettling grin line (curved line on the lower half, too wide for the face). A hand shape (five radiating lines) reaches out from the circle toward the camera — the touch of transfiguration. Duration: 3s. |
-| **Defeat** | Mahito's shape-shifting goes haywire — the circle morphs rapidly and involuntarily between unstable forms (jagged, asymmetric shapes, twitching vertices). He's losing control of his own soul's shape. Each failed form is more distorted than the last. Fear appears: the grin line inverts to a terrified grimace. The circle tries to compress into a small, compact form (his caterpillar cocoon form — a small oblong shape) to evolve, but it's interrupted. The shape freezes mid-transformation, stuck as an ugly asymmetric blob, then begins to absorb inward (Geto's cursed spirit absorption reference — the shape is pulled into a single point off-center). Duration: 2s. |
+| **Victory** | Constantly shape-shifts non-stop — rapid cycling through forms (circle→oval→star→humanoid→blob→circle). Transfigured Humans explode around him in all directions (small flesh-colored bursts radiating outward in waves). Pure chaos and soul destruction everywhere. The unsettling wide grin stays constant through every single form change. Duration: 3s. |
+| **Defeat** | Shape-shifting goes haywire — rapid involuntary morphing into jagged asymmetric forms. He's losing control of his own soul's shape. Grin inverts to terrified grimace. Tries to compress into cocoon form (small oblong) to evolve — interrupted. Stuck as ugly asymmetric blob, absorbed inward to a single point off-center (Geto absorption reference). Duration: 2s. |
 
 ---
 
@@ -299,12 +299,12 @@ Several animations use full-canvas effects. These should be utility functions:
 | 18 | Nanami | 7:3 ratio grid + precise strike | Grid misaligns, clock runs out |
 | 19 | Ryu | Massive wide beam, sustained fire | Hair sizzles out, charge fizzles |
 | 20 | Higuruma | Gavel slam + GUILTY verdict seal | Gavel cracks, verdict reversed |
-| 21 | Yuji | Black Flash punch, inverted flash | Takes hits, keeps pushing forward |
-| 22 | Naoya | Frame-skip speed triangle + smirk | Form instability, stuck mid-shift |
-| 23 | Todo | Boogie Woogie triple swap + thought bubble | Clap fails, lost hand, stands proud |
+| 21 | Yuji | Black Flash punch, inverted flash | Squeak hit, no power at all |
+| 22 | Naoya | Frame-skip speed triangle + smirk | Freezes in rectangular frame |
+| 23 | Todo | Boogie Woogie triple swap + thought bubble | Clap phases through, hands gone |
 | 24 | Yuki Tsukumo | Gravity warp + star-map + shockwave | Mass collapse, silent implosion |
-| 25 | Megumi Fushiguro | Shadow summons + Mahoraga silhouette | Sukuna's red overtakes his color |
-| 26 | Mahito | Fluid shape-shifting + creepy grin | Uncontrolled morphing, absorbed |
+| 25 | Megumi Fushiguro | 9 shikigami V-formation (no Mahoraga) | Shadows flicker and collapse |
+| 26 | Mahito | Nonstop shifting + human explosions | Uncontrolled morphing, absorbed |
 
 ---
 
