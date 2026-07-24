@@ -1679,7 +1679,7 @@ function createFighter(charIdx,elemIdx,side){
     yutaRikaAngle:0, // Rika facing angle
     yutaRikaHp:ch.id==='yuta'?900:0, // Rika's own HP — twin boss partner
     yutaRikaMaxHp:ch.id==='yuta'?900:0,
-    yutaRikaAttackCD:ch.id==='yuta'?35+rand(0,15):0, // Rika attacks fast — aggressive monster
+    yutaRikaAttackCD:ch.id==='yuta'?20+rand(0,10):0, // Rika attacks fast — aggressive monster
     yutaRikaClawAnim:0, // claw visual animation
     yutaRikaLunging:false, // Rika lunging toward enemy
     yutaRikaLungePos:{x:0,y:0}, // Rika's current position during lunge
@@ -2375,9 +2375,9 @@ function updateVictoryCutscene(dt){
   // Phase 3 (560-660 ≈ 1.7s): Stats + voiceline
   // Phase 4 (660+): Continue ready
   if(vc.timer<180)vc.phase=0;
-  else if(vc.timer<420)vc.phase=1;
-  else if(vc.timer<560)vc.phase=2;
-  else if(vc.timer<660)vc.phase=3;
+  else if(vc.timer<600)vc.phase=1; // extended for longer animations (7s)
+  else if(vc.timer<740)vc.phase=2;
+  else if(vc.timer<840)vc.phase=3;
   else{vc.phase=4;vc.continueReady=true;}
   // Update shatter particles — start moving in phase 1 (after cracks, ~frame 280)
   if(vc.timer>280){
@@ -2395,8 +2395,8 @@ function updateVictoryCutscene(dt){
     });
   }
   // Grayscale builds during phase 2 for defeat
-  if(vc.isDefeat&&vc.timer>420){
-    vc.grayscaleAlpha=Math.min(0.6,(vc.timer-420)/80*0.6);
+  if(vc.isDefeat&&vc.timer>600){
+    vc.grayscaleAlpha=Math.min(0.6,(vc.timer-600)/80*0.6);
   }
   // Tournament auto-advance
   if(gameMode==='tournament'&&vc._tournAutoTimer!==undefined){
@@ -2411,8 +2411,8 @@ function updateVictoryCutscene(dt){
 const charAnimData={}; // runtime state for char-specific anims
 function drawCharVictoryAnim(charId,x,y,r,color,t,isWin){
   const dt=t-180; // relative to phase 1 start
-  if(dt<0||dt>240)return; // play for 4s (extended)
-  const p=dt/240; // 0-1 progress
+  if(dt<0||dt>420)return; // play for 7s (extended further)
+  const p=dt/420; // 0-1 progress
   const fn=isWin?CHAR_WIN_ANIMS[charId]:CHAR_LOSE_ANIMS[charId];
   if(fn)fn(x,y,r,color,dt,p);
 }
@@ -2716,12 +2716,33 @@ const CHAR_WIN_ANIMS={
     X.globalAlpha=1;
   },
   dabura(x,y,r,c,dt,p){
-    // Golden light pillars + levitate + sword + burst
-    const pillarCount=Math.min(5,Math.floor(dt/20));const lev=Math.min(15,dt/60*15);
-    for(let i=0;i<pillarCount;i++){const px=x-60+i*30;X.fillStyle='#ffcc44';X.globalAlpha=0.3+Math.sin(dt*0.1+i)*0.15;X.fillRect(px-3,y-80,6,100);if(Math.abs(dt-i*20)<5){X.globalAlpha=0.5;X.fillStyle='#fff';X.beginPath();X.arc(px,y+20,8,0,Math.PI*2);X.fill();}}
-    X.globalAlpha=0.3;X.fillStyle='#000';X.beginPath();X.ellipse(x,y+r+10,r*(1-lev/30),3,0,0,Math.PI*2);X.fill();
-    if(dt>30){X.strokeStyle='#ffdd66';X.lineWidth=3;X.globalAlpha=0.8;X.shadowColor='#ffcc00';X.shadowBlur=8;X.beginPath();X.moveTo(x+r*0.5,y-lev);X.lineTo(x+r*0.5+25,y-lev-40);X.stroke();X.shadowBlur=0;}
-    if(dt>100){const bP=(dt-100)/50;X.fillStyle='#ffdd44';X.globalAlpha=Math.max(0,0.7-bP);X.shadowColor='#ffcc00';X.shadowBlur=12;X.beginPath();X.arc(x+r*0.5+25,y-lev-40,bP*20,0,Math.PI*2);X.fill();X.shadowBlur=0;X.globalAlpha=Math.max(0,0.1-bP*0.1);X.fillStyle='#ffcc44';X.fillRect(0,0,W,H);}
+    // Golden light pillars AROUND character + levitate + sword + divine burst
+    const pillarCount=Math.min(7,Math.floor(dt/15));const lev=Math.min(25,dt/60*25);
+    // Pillars spread in arc around character (not overlapping)
+    for(let i=0;i<pillarCount;i++){
+      const a=-Math.PI*0.4+i*(Math.PI*0.8/(Math.max(1,pillarCount-1)));
+      const pd=r*2.5+i*8; // distance from center — well outside ball
+      const px=x+Math.cos(a)*pd;
+      X.fillStyle='#ffcc44';X.globalAlpha=0.35+Math.sin(dt*0.1+i)*0.15;
+      X.fillRect(px-3,y-100-i*5,6,120+i*5);
+      if(Math.abs(dt-i*15)<5){X.globalAlpha=0.6;X.fillStyle='#fff';X.beginPath();X.arc(px,y+20,10,0,Math.PI*2);X.fill();}
+    }
+    // Shadow beneath levitating ball
+    X.globalAlpha=0.3;X.fillStyle='#000';X.beginPath();X.ellipse(x,y+r+15,r*(1-lev/50),3,0,0,Math.PI*2);X.fill();
+    // Golden sword held outward
+    if(dt>30){X.strokeStyle='#ffdd66';X.lineWidth=3;X.globalAlpha=0.8;X.shadowColor='#ffcc00';X.shadowBlur=10;
+      X.beginPath();X.moveTo(x+r+10,y-lev);X.lineTo(x+r+45,y-lev-50);X.stroke();X.shadowBlur=0;
+      // Sword hilt
+      X.strokeStyle='#aa8844';X.lineWidth=2;X.beginPath();X.moveTo(x+r+5,y-lev+5);X.lineTo(x+r+15,y-lev-5);X.stroke();
+    }
+    // Divine halo ring above
+    if(dt>50){const hP=Math.min(1,(dt-50)/40);X.strokeStyle='#ffcc44';X.lineWidth=2;X.globalAlpha=hP*0.6;X.beginPath();X.ellipse(x,y-lev-r-15,r*1.2,r*0.3,0,0,Math.PI*2);X.stroke();}
+    // Burst at sword tip — expanding golden ring
+    if(dt>100){const bP=(dt-100)/80;X.fillStyle='#ffdd44';X.globalAlpha=Math.max(0,0.6-bP*0.6);X.shadowColor='#ffcc00';X.shadowBlur=15;X.beginPath();X.arc(x+r+45,y-lev-50,bP*30,0,Math.PI*2);X.fill();X.shadowBlur=0;}
+    // Screen golden flash
+    if(dt>120&&dt<150){X.globalAlpha=Math.max(0,0.12-(dt-120)/30*0.12);X.fillStyle='#ffcc44';X.fillRect(0,0,W,H);}
+    // Phase 2: dual energy aura
+    if(dt>160){X.globalAlpha=Math.min(0.3,(dt-160)/60);X.strokeStyle='#ffdd88';X.lineWidth=1.5;X.beginPath();X.arc(x,y-lev,r*2+Math.sin(dt*0.08)*8,0,Math.PI*2);X.stroke();X.strokeStyle='#442266';X.beginPath();X.arc(x,y-lev,r*2.5+Math.cos(dt*0.06)*6,0,Math.PI*2);X.stroke();}
     X.globalAlpha=1;
   },
   choso(x,y,r,c,dt,p){
@@ -3414,7 +3435,7 @@ function drawVictoryCutscene(){
       X.fillStyle='#222';X.fillRect(0,0,W,H);
       X.globalAlpha=1;
     }
-    const pt=t-420;
+    const pt=t-600;
     const titleText=vc.isDefeat?'DEFEAT':
       gameMode==='br'?w.char.name+' WINS THE ROYALE!':
       gameMode==='2v2'?(w.side===0?'TEAM 1':'TEAM 2')+' WINS!':
@@ -3473,7 +3494,7 @@ function drawVictoryCutscene(){
 
   // ── Phase 3 (560-660): Stats + voiceline ──
   if(vc.phase>=3){
-    const st=t-560;
+    const st=t-740;
     const statsAlpha=Math.min(1,st/25);
     X.globalAlpha=statsAlpha;
     const boxW=isMobile?260:320;const boxH=isMobile?70:85;
@@ -3538,7 +3559,7 @@ function drawVictoryCutscene(){
     X.fillStyle='#444';X.fillText('Tap to skip',W-15,H-barH-8);
     if(!vc.continueReady){
       addBtn('vcSkip',0,0,W,H,'','transparent',()=>{
-        vc.timer=440;vc.phase=4;vc.continueReady=true;
+        vc.timer=840;vc.phase=4;vc.continueReady=true;
       });
     }
   }
@@ -4795,14 +4816,14 @@ function attackYuta(f,enemy,chaos){
   const isToxicElem=f.elementActive&&f.elem.id==='toxic';
 
   // Katana slash
-  const slashDmg=f.atk*(1.1+chaos*0.08);
+  const slashDmg=f.atk*(1.4+chaos*0.1);
   const dmg=dealDamage(f,enemy,slashDmg,true);
   spawnBurst(enemy.x,enemy.y,'#6644cc',6,3);
 
   // Cursed Energy I/O — Output: every 3rd hit, burst extra damage
   f.yutaHitCount++;
   if(f.yutaHitCount%3===0){
-    const burstDmg=f.atk*(0.5+chaos*0.05);
+    const burstDmg=f.atk*(0.7+chaos*0.06);
     dealDamage(f,enemy,burstDmg,false);
     SFX.yutaOutput();
     spawnBurst(enemy.x,enemy.y,'#8866ee',10,5);
@@ -4813,9 +4834,9 @@ function attackYuta(f,enemy,chaos){
 
   // Copy system — chance to copy enemy technique
   if(f.yutaCopyCD<=0){
-    const copyChance=isElecElem?0.40:(f.yutaDomainActive?1.0:0.30);
+    const copyChance=isElecElem?0.55:(f.yutaDomainActive?1.0:0.45);
     if(Math.random()<copyChance){
-      f.yutaCopyCD=90;
+      f.yutaCopyCD=45;
       if(f.yutaCopiedTech&&f.yutaCopiedTech.charId===enemy.char.id){
         f.yutaCopyCount=Math.min(4,f.yutaCopyCount+1);
         f.yutaCopiedTech.potency=Math.min(0.9,0.55+f.yutaCopyCount*0.1);
@@ -8233,7 +8254,7 @@ function updateRelicYuji(f,enemy,dt){
     if(gf.target&&gf.target.alive){
       const dx=gf.target.x-gf.x,dy=gf.target.y-gf.y;
       const d=Math.sqrt(dx*dx+dy*dy);
-      const speed=Math.min(6+((30-gf.timer)/30)*8,d); // cap speed to not overshoot
+      const speed=Math.min((6+((30-gf.timer)/30)*8)*dt,d); // scale movement by dt for battle speed consistency
       if(d>1){gf.x+=dx/d*speed;gf.y+=dy/d*speed;}
       gf.angle=Math.atan2(dy,dx);
       // Hit detection — close enough to target
@@ -8474,8 +8495,8 @@ function updateRelicYuta(f,enemy,dt){
       f.yutaRikaLunging=true;
       f.yutaRikaLungePos={x:f.yutaRikaPos.x,y:f.yutaRikaPos.y};
       f.yutaRikaClawAnim=18;
-      f.yutaRikaAttackCD=isElecElem?22:35;
-      const clawDmg=f.atk*(f.yutaDomainActive?2.0:1.5);
+      f.yutaRikaAttackCD=isElecElem?15:22;
+      const clawDmg=f.atk*(f.yutaDomainActive?2.8:1.8);
       dealDamage(f,enemy,clawDmg,true);
       SFX.rikaClaw();
       spawnBurst(enemy.x,enemy.y,'#aa44ff',14,7);
@@ -17535,16 +17556,16 @@ function introAdvancePhase(){
 }
 function updateIntroCutscene(dt){
   const ic=introCutscene;
-  if(!ic.active||ic.waitingForNext)return;
+  if(!ic.active)return;
   ic.timer+=dt;
   ic.phaseLocalTimer+=dt;
   // Phase 0: P1 full-screen showcase — plays animation then waits for NEXT
   // Phase 1: P2 full-screen showcase — plays animation then waits for NEXT
   // Phase 2: Both side-by-side + VS slam — waits for NEXT
   // Phase 3: 3-second countdown then auto-start battle
-  if(ic.phase===0&&ic.phaseLocalTimer>=480){ic.waitingForNext=true;} // 8s then wait
-  else if(ic.phase===1&&ic.phaseLocalTimer>=480){ic.waitingForNext=true;}
-  else if(ic.phase===2&&ic.phaseLocalTimer>=180){ic.waitingForNext=true;} // 3s then wait
+  if(ic.phase===0&&ic.phaseLocalTimer>=300){introAdvancePhase();return;} // 5s auto-advance
+  else if(ic.phase===1&&ic.phaseLocalTimer>=300){introAdvancePhase();return;} // 5s auto-advance
+  else if(ic.phase===2&&ic.phaseLocalTimer>=180){introAdvancePhase();return;} // 3s auto-advance
   else if(ic.phase===3){
     ic.vsFlash=Math.min(1,ic.phaseLocalTimer/15);
     if(ic.phaseLocalTimer>=180){ic.active=false;screen='battle';startBattle();return;}
@@ -18394,15 +18415,7 @@ function drawIntroCutscene(){
   const centerY=H/2;
   const fs=isMobile?1:1.3;
 
-  // Gamemode name — top center, persistent throughout intro
-  const modeObj=GAME_MODES.find(m=>m.id===gameMode);
-  if(modeObj){
-    const modeAlpha=Math.min(1,t/40)*0.6;
-    X.globalAlpha=modeAlpha;
-    X.font='bold '+Math.round(12*fs)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
-    X.fillStyle=modeObj.color;X.fillText(modeObj.name,W/2,barH+18*fs);
-    X.globalAlpha=1;
-  }
+  // Gamemode name drawn AFTER character showcases (see below, after phase draws)
 
   // Phase indicator dots
   const dotY=barH+40*fs;
@@ -18551,30 +18564,35 @@ function drawIntroCutscene(){
     }
   }
 
+  // Gamemode name — top center, drawn after phase content so it's always visible
+  const modeObj=GAME_MODES.find(m=>m.id===gameMode);
+  if(modeObj){
+    const modeAlpha=Math.min(1,t/40)*0.7;
+    X.globalAlpha=modeAlpha;
+    X.font='bold '+Math.round(13*fs)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+    X.shadowColor=modeObj.color;X.shadowBlur=8;
+    X.fillStyle=modeObj.color;X.fillText(modeObj.name,W/2,barH+18*fs);
+    X.shadowBlur=0;
+    X.globalAlpha=1;
+  }
+
   // NEXT / SKIP buttons
   X.globalAlpha=1;
   const barHBtn=H*0.1;
-  if(ic.waitingForNext){
-    // NEXT button — prominent, bottom-right
-    const nbW=isMobile?100:130,nbH=isMobile?36:42;
+  if(ic.phase<3){
+    // NEXT button — always visible, allows skipping ahead
+    const nbW=isMobile?90:110,nbH=isMobile?32:38;
     const nbX=W-nbW-15,nbY=H-barHBtn-nbH-15;
     drawRoundRect(nbX,nbY,nbW,nbH,8);
-    X.fillStyle='#ffcc00';X.fill();
-    X.strokeStyle='#ffaa00';X.lineWidth=2;X.stroke();
-    X.font='bold '+(isMobile?'14':'18')+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+    X.fillStyle='#ffcc0088';X.fill();
+    X.strokeStyle='#ffaa0066';X.lineWidth=1.5;X.stroke();
+    X.font='bold '+(isMobile?'13':'16')+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
     X.fillStyle='#000';X.fillText('NEXT >',nbX+nbW/2,nbY+nbH/2);
     addBtn('introNext',nbX,nbY,nbW,nbH,'','transparent',()=>introAdvancePhase());
-    // Skip all button — small, bottom-left
+    // Skip all — small, bottom-left
     X.font=(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='left';
-    X.fillStyle='#555';X.fillText('Skip all',15,H-barHBtn-10);
+    X.fillStyle='#444';X.fillText('Skip all',15,H-barHBtn-10);
     addBtn('introSkipAll',0,H-barHBtn-30,100,30,'','transparent',()=>{
-      introCutscene.active=false;screen='battle';startBattle();
-    });
-  } else {
-    // Small skip text during animation playback
-    X.font=(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='right';
-    X.fillStyle='#444';X.fillText('Skip all',W-15,H-barHBtn-10);
-    addBtn('introSkipAll',W-100,H-barHBtn-30,100,30,'','transparent',()=>{
       introCutscene.active=false;screen='battle';startBattle();
     });
   }
