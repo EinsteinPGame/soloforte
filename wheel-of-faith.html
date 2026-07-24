@@ -17,7 +17,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// WHEEL OF FAITH v2.7.0 — OG Replica + Visual Polish + 68 Conditional Wheels
+// WHEEL OF FAITH v2.12.0 — Race power weighting + bigger text
 // 17+ spin categories, 50+ races, 100s of options, full-screen wheels,
 // conditional spins, neon glow, segment weighting, rainbow wheels
 // ============================================================
@@ -48,10 +48,25 @@ function rainbowHsl(i,n){return'hsl('+Math.round(i/n*360)+',70%,50%)';}
 function rainbowHslDark(i,n){return'hsl('+Math.round(i/n*360)+',50%,18%)';}
 function rainbowHslLit(i,n){return'hsl('+Math.round(i/n*360)+',80%,70%)';}
 
+// Race power tiers — more powerful = harder to land on (smaller slice)
+const RACE_WEIGHTS={};
+// Legendary (very rare) — weight 0.25
+['God','Primordial','Cosmic Mind','Reincarnation','Evil Reincarnation'].forEach(r=>RACE_WEIGHTS[r]=0.25);
+// Epic (rare) — weight 0.4
+['Demi-God','Devil','Dragon','Dragon Slayer','Cosmic Warrior','Voidwalker','Soulweaver','Nucleite'].forEach(r=>RACE_WEIGHTS[r]=0.4);
+// Rare — weight 0.6
+['Demon','Angel','Vampire','Hive Mind','Genies','Giant','Symbiote','Mythical Beast','Dragonborn','Elemental'].forEach(r=>RACE_WEIGHTS[r]=0.6);
+// Uncommon — weight 0.85
+['Spirit','Werebeast','Gargoyle','Golem','Siren','Fortunas','Dispensian','Cyborg','Animorph','Nightborn','Fey','Centaur','Chimekin','Merfolk'].forEach(r=>RACE_WEIGHTS[r]=0.85);
+// Common — weight 1.2 (default)
+// Darwizzies (joke) — weight 1.8 (easy to land on)
+RACE_WEIGHTS['Darwizzies']=1.8;
+
 function getItemWeights(cat){
   const items=cat.items,n=items.length;
   const tierIds=new Set(['strength','speed','durability','iq','fight','weaponMastery','powerMastery']);
   if(tierIds.has(cat.id))return items.map((_,i)=>i===0?0.4:1.5-i/(n-1));
+  if(cat.id==='race')return items.map(r=>RACE_WEIGHTS[r]||1.2);
   if(cat.id==='apexForces')return items.map(item=>item==='None'?2.5:1);
   const noItems={'weapon':'No Weapon','enchantment':'No Enchantment','extraPower':'No Extra Power','weakness':'No Weakness'};
   if(noItems[cat.id])return items.map(item=>item===noItems[cat.id]?3:1);
@@ -998,13 +1013,16 @@ function updateSpin(){
   spin.angle+=spin.speed;
   spin.speed*=0.988;
 
-  // Tick sound as segments pass
+  // Tick sound as segments pass (respects weighted segment sizes)
   const cat=getCurrentWheel();
   if(cat){
-    const sliceAngle=Math.PI*2/cat.items.length;
-    const currentSlice=Math.floor(((spin.angle%(Math.PI*2))+(Math.PI*2))%(Math.PI*2)/sliceAngle);
-    const lastSlice=Math.floor(((lastTickAngle%(Math.PI*2))+(Math.PI*2))%(Math.PI*2)/sliceAngle);
-    if(currentSlice!==lastSlice&&spin.speed>0.01)SFX.tick();
+    const cum=getCumAngles(cat);
+    const normA=(((-spin.angle-Math.PI/2)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
+    const normL=(((-lastTickAngle-Math.PI/2)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
+    let curSeg=cat.items.length-1,lastSeg=cat.items.length-1;
+    for(let i=0;i<cat.items.length;i++){if(normA<cum[i+1]){curSeg=i;break;}}
+    for(let i=0;i<cat.items.length;i++){if(normL<cum[i+1]){lastSeg=i;break;}}
+    if(curSeg!==lastSeg&&spin.speed>0.01)SFX.tick();
   }
   lastTickAngle=spin.angle;
 
@@ -1093,7 +1111,7 @@ function drawTitle(){
   }
 
   X.font='11px "Segoe UI",sans-serif';X.fillStyle='#333';X.textAlign='center';
-  X.fillText('WoF v2.3.0 // soloforte.ai',cx,VH-15);
+  X.fillText('WoF v2.12.0 // soloforte.ai',cx,VH-15);
   buttons.forEach(drawBtn);
 }
 
@@ -1234,13 +1252,13 @@ function drawSpin(){
     X.translate(Math.cos(midA)*textR,Math.sin(midA)*textR);
     X.rotate(midA+Math.PI/2);
 
-    // Font size based on number of items and arc size
-    let fontSize=Math.min(14,Math.max(6,wr*0.08));
-    if(items.length>30)fontSize=Math.min(10,Math.max(5,wr*0.05));
-    if(items.length>60)fontSize=Math.min(8,Math.max(4,wr*0.035));
-    if(items.length>100)fontSize=Math.min(6,Math.max(3,wr*0.025));
-    // Shrink text for tiny weighted segments
-    if(arcSize<Math.PI*2/items.length*0.6)fontSize=Math.max(3,fontSize*0.7);
+    // Font size based on number of items and arc size — bigger for readability
+    let fontSize=Math.min(16,Math.max(8,wr*0.1));
+    if(items.length>30)fontSize=Math.min(12,Math.max(7,wr*0.065));
+    if(items.length>60)fontSize=Math.min(10,Math.max(5,wr*0.045));
+    if(items.length>100)fontSize=Math.min(7,Math.max(4,wr*0.03));
+    // Shrink text for tiny weighted segments (rare/powerful items)
+    if(arcSize<Math.PI*2/items.length*0.6)fontSize=Math.max(4,fontSize*0.75);
 
     X.font='bold '+fontSize+'px "Segoe UI",Arial,sans-serif';
     X.textAlign='center';X.textBaseline='middle';
