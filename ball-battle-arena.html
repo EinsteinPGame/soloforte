@@ -4768,7 +4768,7 @@ function attackYuji(f,enemy,chaos){
     const ghostDmg=punchDmg*(isFireElem?1.6:1.0)*(1+chaos*0.08);
     const ba=angle(f,enemy);
     f.yujiGhostFists.push({
-      target:enemy,timer:30,dmg:ghostDmg,
+      target:enemy,timer:60,dmg:ghostDmg,
       x:f.x+Math.cos(ba)*20,y:f.y+Math.sin(ba)*20,
       angle:ba,isBF:isBF,isFireKB:isFireElem,flying:true,
     });
@@ -6927,9 +6927,9 @@ function relicYuta(f,enemy){
     f.yutaDomainSwords.push({
       x:f.x+Math.cos(sa)*spawnR,y:f.y+Math.sin(sa)*spawnR,
       vx:0,vy:0,angle:sa,
-      dmg:f.atk*(1.0+copyPotency)*(1+i*0.05),
+      dmg:f.atk*(1.3+copyPotency)*(1+i*0.05),
       color:i===0?'#ffcc00':copyColor,
-      timer:40+i*12, // staggered launch
+      timer:25+i*10, // faster staggered launch
       guaranteed:i===0, // first sword is guaranteed hit at 130%
       hit:false,freeze:isCryoElem,
     });
@@ -8269,7 +8269,7 @@ function updateRelicHiguruma(f,enemy,dt){
 
 function updateRelicYuji(f,enemy,dt){
   // Tick down divergent fist cooldown
-  if(f.yujiDivergentCD>0)f.yujiDivergentCD--;
+  if(f.yujiDivergentCD>0)f.yujiDivergentCD-=dt;
 
   // Process ghost fists (delayed blue punches — fly toward enemy)
   for(let i=f.yujiGhostFists.length-1;i>=0;i--){
@@ -8279,11 +8279,11 @@ function updateRelicYuji(f,enemy,dt){
     if(gf.target&&gf.target.alive){
       const dx=gf.target.x-gf.x,dy=gf.target.y-gf.y;
       const d=Math.sqrt(dx*dx+dy*dy);
-      const speed=Math.min((6+((30-gf.timer)/30)*8)*dt,d); // scale movement by dt for battle speed consistency
+      const speed=Math.min((8+((60-gf.timer)/60)*10)*dt,d); // scale movement by dt for battle speed consistency
       if(d>1){gf.x+=dx/d*speed;gf.y+=dy/d*speed;}
       gf.angle=Math.atan2(dy,dx);
       // Hit detection — close enough to target
-      if(d<gf.target.radius+12){
+      if(d<gf.target.radius+18){
         dealDamage(f,gf.target,gf.dmg,false);
         spawnBurst(gf.target.x,gf.target.y,'#4488ff',10,5);
         SFX.punch();
@@ -8612,9 +8612,9 @@ function updateRelicYuta(f,enemy,dt){
         // Launch phase — home toward enemy
         if(enemy&&enemy.alive){
           const da=angle(sw,enemy);
-          sw.vx+=(Math.cos(da)*1.2);sw.vy+=(Math.sin(da)*1.2);
+          sw.vx+=(Math.cos(da)*2.0*dt);sw.vy+=(Math.sin(da)*2.0*dt);
           const spd=Math.hypot(sw.vx,sw.vy);
-          const maxSpd=sw.guaranteed?12:9;
+          const maxSpd=sw.guaranteed?15:12;
           if(spd>maxSpd){sw.vx=sw.vx/spd*maxSpd;sw.vy=sw.vy/spd*maxSpd;}
           sw.x+=sw.vx*dt;sw.y+=sw.vy*dt;
           // Trail
