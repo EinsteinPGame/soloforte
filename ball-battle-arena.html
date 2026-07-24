@@ -1248,7 +1248,7 @@ let explosions=[];
 let shakeTimer=0,shakeAmt=0;
 // Intro cutscene state
 let introCutscene={active:false,timer:0,phase:0,p1Char:null,p2Char:null,p1Elem:null,p2Elem:null,
-  p1Line:'',p2Line:'',vsFlash:0,skipBtn:false};
+  p1Line:'',p2Line:'',vsFlash:0,skipBtn:false,waitingForNext:false,phaseLocalTimer:0};
 // Victory/Defeat cutscene state
 let victoryCutscene={active:false,timer:0,phase:0,winner:null,loser:null,isDefeat:false,
   winLine:'',shatterParts:[],statsShown:false,continueReady:false,
@@ -2361,44 +2361,42 @@ function startVictoryCutscene(w,lastAttacker){
   setTimeout(()=>wasDefeat?SFX.defeat():SFX.victory(),400);
   // Show voiceline on winner
   if(w)showVoiceline(w.char.id,wasDefeat?'defeat':'victory',w.side);
-  // Tournament auto-advance: skip cutscene after 5s (extended for new anim)
-  if(gameMode==='tournament'){vc._tournAutoTimer=300;}
+  // Tournament auto-advance: skip cutscene after extended anim
+  if(gameMode==='tournament'){vc._tournAutoTimer=420;}
 }
 
 function updateVictoryCutscene(dt){
   const vc=victoryCutscene;
   if(!vc.active)return;
   vc.timer+=dt;
-  // Phase 0 (0-120 = 2s): Slow-mo zoom on final hit impact
-  // Phase 1 (120-270 = 2.5s): Victory: celebration / Defeat: cracks → shatter
-  // Phase 2 (270-370 ≈ 1.7s): Text slam + defeat grayscale
-  // Phase 3 (370-440 ≈ 1.2s): Stats + voiceline
-  // Phase 4 (440+): Continue ready
-  if(vc.timer<120)vc.phase=0;
-  else if(vc.timer<270)vc.phase=1;
-  else if(vc.timer<370)vc.phase=2;
-  else if(vc.timer<440)vc.phase=3;
+  // Phase 0 (0-180 = 3s): Slow-mo zoom on final hit impact
+  // Phase 1 (180-420 = 4s): Victory: celebration / Defeat: cracks → shatter
+  // Phase 2 (420-560 ≈ 2.3s): Text slam + defeat grayscale
+  // Phase 3 (560-660 ≈ 1.7s): Stats + voiceline
+  // Phase 4 (660+): Continue ready
+  if(vc.timer<180)vc.phase=0;
+  else if(vc.timer<420)vc.phase=1;
+  else if(vc.timer<560)vc.phase=2;
+  else if(vc.timer<660)vc.phase=3;
   else{vc.phase=4;vc.continueReady=true;}
-  // Update shatter particles — start moving in phase 1 (after cracks, ~frame 180)
-  if(vc.timer>180){
+  // Update shatter particles — start moving in phase 1 (after cracks, ~frame 280)
+  if(vc.timer>280){
     vc.shatterParts.forEach(p=>{
-      if(vc.timer<200){
-        // Pieces just starting to move
+      if(vc.timer<310){
         p.x+=p.vx*0.3;p.y+=p.vy*0.3;
       } else {
         p.x+=p.vx;p.y+=p.vy;p.vy+=0.06;
       }
       p.rot+=p.rotV;
-      // Dissolve: pieces start fading and breaking apart after spreading
-      if(vc.timer>240){
+      if(vc.timer>350){
         p.dissolveTimer+=dt;
-        if(p.dissolveTimer>20)p.alpha=Math.max(0,p.alpha-0.015);
+        if(p.dissolveTimer>20)p.alpha=Math.max(0,p.alpha-0.012);
       }
     });
   }
   // Grayscale builds during phase 2 for defeat
-  if(vc.isDefeat&&vc.timer>270){
-    vc.grayscaleAlpha=Math.min(0.6,(vc.timer-270)/60*0.6);
+  if(vc.isDefeat&&vc.timer>420){
+    vc.grayscaleAlpha=Math.min(0.6,(vc.timer-420)/80*0.6);
   }
   // Tournament auto-advance
   if(gameMode==='tournament'&&vc._tournAutoTimer!==undefined){
@@ -2412,9 +2410,9 @@ function updateVictoryCutscene(dt){
 // ============================================================
 const charAnimData={}; // runtime state for char-specific anims
 function drawCharVictoryAnim(charId,x,y,r,color,t,isWin){
-  const dt=t-120; // relative to phase 1 start
-  if(dt<0||dt>150)return; // only play for 2.5s
-  const p=dt/150; // 0-1 progress
+  const dt=t-180; // relative to phase 1 start
+  if(dt<0||dt>240)return; // play for 4s (extended)
+  const p=dt/240; // 0-1 progress
   const fn=isWin?CHAR_WIN_ANIMS[charId]:CHAR_LOSE_ANIMS[charId];
   if(fn)fn(x,y,r,color,dt,p);
 }
@@ -3241,21 +3239,21 @@ function drawVictoryCutscene(){
   const barProgress=Math.min(1,t/30);
   const barH=(isMobile?20:32)*barProgress;
 
-  // ── Phase 0 (0-120): Slow-mo zoom on final hit impact ──
+  // ── Phase 0 (0-180): Slow-mo zoom on final hit impact (extended) ──
   if(vc.phase===0&&vc.lastHit){
     const lh=vc.lastHit;
     // Darken gradually
-    const darkAlpha=Math.min(0.5,t/60*0.5);
+    const darkAlpha=Math.min(0.5,t/90*0.5);
     X.fillStyle='rgba(0,0,0,'+darkAlpha+')';X.fillRect(0,0,W,H);
-    // Camera zoom toward impact point
-    const zoomProgress=Math.min(1,t/80);
+    // Camera zoom toward impact point (slower zoom)
+    const zoomProgress=Math.min(1,t/120);
     const zoomEased=1-Math.pow(1-zoomProgress,2);
-    const zoomScale=1+zoomEased*1.2; // zoom up to 2.2x
+    const zoomScale=1+zoomEased*1.2;
     const zoomCX=lh.impactX;const zoomCY=lh.impactY;
     X.save();
     X.translate(W/2,H/2);X.scale(zoomScale,zoomScale);X.translate(-zoomCX,-zoomCY);
-    // Redraw attacker moving toward defender (simulated slow-mo)
-    const strikeProgress=Math.min(1,t/60);
+    // Redraw attacker moving toward defender (slower slow-mo)
+    const strikeProgress=Math.min(1,t/90);
     const strikeEased=strikeProgress<0.7?strikeProgress/0.7:1;
     const attackerCurX=lh.ax+(lh.dx-lh.ax)*strikeEased*0.6;
     const attackerCurY=lh.ay+(lh.dy-lh.ay)*strikeEased*0.6;
@@ -3272,13 +3270,13 @@ function drawVictoryCutscene(){
     // Defender ball (shaking on impact)
     if(vc.loser){
       const impacted=strikeProgress>0.6;
-      const shk=impacted?(Math.random()-0.5)*8*(1-Math.min(1,(t-50)/40)):0;
+      const shk=impacted?(Math.random()-0.5)*8*(1-Math.min(1,(t-70)/50)):0;
       X.beginPath();X.arc(lh.dx+shk,lh.dy+shk*0.5,vc.loser.radius||25,0,Math.PI*2);
       X.fillStyle=lh.dColor;X.fill();
     }
     // Impact flash at the moment of contact
-    if(t>50&&t<80){
-      const flashT=t-50;
+    if(t>70&&t<120){
+      const flashT=t-70;
       const flashAlpha=Math.max(0,1-flashT/30)*0.8;
       X.globalAlpha=flashAlpha;
       const flashR=flashT*3;
@@ -3296,7 +3294,7 @@ function drawVictoryCutscene(){
       }
     }
     // "SLOW MO" label
-    if(t>10&&t<100){
+    if(t>10&&t<150){
       X.globalAlpha=Math.min(0.4,(t-10)/20);
       X.font='bold '+Math.round(10*fs)+'px Consolas,monospace';X.textAlign='center';
       X.fillStyle='#ffcc00';X.fillText('FINAL HIT',lh.impactX,lh.impactY-60);
@@ -3305,10 +3303,10 @@ function drawVictoryCutscene(){
     X.restore();
   }
 
-  // ── Phase 1 (120-270): Victory celebration / Defeat cracks+shatter ──
+  // ── Phase 1 (180-420): Victory celebration / Defeat cracks+shatter ──
   if(vc.phase>=1){
     // Darken overlay
-    const darkAlpha=Math.min(0.65,(t-60)/80*0.65);
+    const darkAlpha=Math.min(0.65,(t-90)/120*0.65);
     X.fillStyle='rgba(0,0,0,'+darkAlpha+')';X.fillRect(0,0,W,H);
 
     // Character-specific pre-animations (play during phase 1)
@@ -3329,12 +3327,12 @@ function drawVictoryCutscene(){
         rg.addColorStop(1,'transparent');
         X.fillStyle=rg;X.fillRect(0,0,W,H);
         // Celebration particles
-        if(t>130&&Math.random()<0.6){
+        if(t>200&&Math.random()<0.6){
           spawnBurst(w.x+rand(-40,40),w.y+rand(-40,40),pick([w.char.color,'#ffcc00','#ffffff']),3,3);
         }
         // Expanding glory rings
-        const ringT=t-120;
-        if(ringT>0&&ringT<80){
+        const ringT=t-180;
+        if(ringT>0&&ringT<120){
           for(let i=0;i<3;i++){
             const rt=(ringT+i*25)%80;
             X.globalAlpha=Math.max(0,0.3-rt/80*0.3);
@@ -3346,10 +3344,10 @@ function drawVictoryCutscene(){
       }
     } else {
       // ── DEFEAT: Cracks → Shatter → Dissolve ──
-      const dt2=t-120;
-      // Phase 1a (0-60): Cracks spread across loser
-      if(dt2<60&&vc.loser){
-        const crackProgress=Math.min(1,dt2/50);
+      const dt2=t-180;
+      // Phase 1a (0-90): Cracks spread across loser (slower)
+      if(dt2<90&&vc.loser){
+        const crackProgress=Math.min(1,dt2/75);
         X.strokeStyle='#ff4444';X.lineWidth=2;X.shadowColor='#ff2222';X.shadowBlur=4;
         vc.crackLines.forEach(c=>{
           const drawLen=c.len*crackProgress;
@@ -3372,8 +3370,8 @@ function drawVictoryCutscene(){
         });
         X.shadowBlur=0;X.globalAlpha=1;
       }
-      // Phase 1b (60+): Shatter pieces fly out + dissolve
-      if(dt2>=60){
+      // Phase 1b (90+): Shatter pieces fly out + dissolve
+      if(dt2>=90){
         vc.shatterParts.forEach(p=>{
           if(p.alpha<=0)return;
           X.save();X.translate(p.x,p.y);X.rotate(p.rot);
@@ -3408,7 +3406,7 @@ function drawVictoryCutscene(){
     }
   }
 
-  // ── Phase 2 (270-370): Text slam + defeat grayscale ──
+  // ── Phase 2 (420-560): Text slam + defeat grayscale ──
   if(vc.phase>=2){
     // Grayscale overlay for defeat
     if(vc.isDefeat&&vc.grayscaleAlpha>0){
@@ -3416,7 +3414,7 @@ function drawVictoryCutscene(){
       X.fillStyle='#222';X.fillRect(0,0,W,H);
       X.globalAlpha=1;
     }
-    const pt=t-270;
+    const pt=t-420;
     const titleText=vc.isDefeat?'DEFEAT':
       gameMode==='br'?w.char.name+' WINS THE ROYALE!':
       gameMode==='2v2'?(w.side===0?'TEAM 1':'TEAM 2')+' WINS!':
@@ -3473,9 +3471,9 @@ function drawVictoryCutscene(){
     }
   }
 
-  // ── Phase 3 (370-440): Stats + voiceline ──
+  // ── Phase 3 (560-660): Stats + voiceline ──
   if(vc.phase>=3){
-    const st=t-370;
+    const st=t-560;
     const statsAlpha=Math.min(1,st/25);
     X.globalAlpha=statsAlpha;
     const boxW=isMobile?260:320;const boxH=isMobile?70:85;
@@ -17498,7 +17496,7 @@ function drawElementPickerMobile(sx,sy,selected,prefix,cb){
 // ============================================================
 function startIntroCutscene(){
   const ic=introCutscene;
-  ic.active=true;ic.timer=0;ic.phase=0;ic.vsFlash=0;ic.skipBtn=true;
+  ic.active=true;ic.timer=0;ic.phase=0;ic.vsFlash=0;ic.skipBtn=true;ic.waitingForNext=false;ic.phaseLocalTimer=0;
   battleAccum=0;
   if(gameMode==='boss'){
     ic.p1Char=CHARS[teamChar1];ic.p2Char=CHARS[bossChar];
@@ -17528,20 +17526,29 @@ function startIntroCutscene(){
   screen='intro';
 }
 
+function introAdvancePhase(){
+  const ic=introCutscene;
+  ic.waitingForNext=false;
+  ic.phaseLocalTimer=0;
+  if(ic.phase<3)ic.phase++;
+  else{ic.active=false;screen='battle';startBattle();}
+}
 function updateIntroCutscene(dt){
   const ic=introCutscene;
-  if(!ic.active)return;
+  if(!ic.active||ic.waitingForNext)return;
   ic.timer+=dt;
-  // Phase 0: P1 full-screen showcase (0-420 frames = 7s)
-  // Phase 1: P2 full-screen showcase (420-840 frames = 7s)
-  // Phase 2: Zoom out to show both side-by-side (840-960 = 2s)
-  // Phase 3: VS slam + FIGHT flash (960-1080 = 2s)
-  // Phase 4: transition to battle (1080+)
-  if(ic.timer<420)ic.phase=0;
-  else if(ic.timer<840)ic.phase=1;
-  else if(ic.timer<960)ic.phase=2;
-  else if(ic.timer<1080){ic.phase=3;ic.vsFlash=Math.min(1,(ic.timer-960)/15);}
-  else{ic.active=false;screen='battle';startBattle();return;}
+  ic.phaseLocalTimer+=dt;
+  // Phase 0: P1 full-screen showcase — plays animation then waits for NEXT
+  // Phase 1: P2 full-screen showcase — plays animation then waits for NEXT
+  // Phase 2: Both side-by-side + VS slam — waits for NEXT
+  // Phase 3: 3-second countdown then auto-start battle
+  if(ic.phase===0&&ic.phaseLocalTimer>=480){ic.waitingForNext=true;} // 8s then wait
+  else if(ic.phase===1&&ic.phaseLocalTimer>=480){ic.waitingForNext=true;}
+  else if(ic.phase===2&&ic.phaseLocalTimer>=180){ic.waitingForNext=true;} // 3s then wait
+  else if(ic.phase===3){
+    ic.vsFlash=Math.min(1,ic.phaseLocalTimer/15);
+    if(ic.phaseLocalTimer>=180){ic.active=false;screen='battle';startBattle();return;}
+  }
 }
 
 function drawCharIntroAnim(charId,cx,cy,t,fs,color){
@@ -17919,48 +17926,65 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc4400';X.fillText('BERSERK',cx,cy+50*s);}
       break;}
     case 'choso':{
-      // Blood orbs ring → Piercing Blood beam reflects between orbs → orbs explode one by one following beam path
-      const orbCount=5;
-      const orbPositions=[];
-      for(let i=0;i<orbCount;i++){
-        const oa=Math.PI*2*i/orbCount-Math.PI/2;const orbR=30*s;
-        orbPositions.push({x:cx+Math.cos(oa)*orbR,y:cy+Math.sin(oa)*orbR});
+      // Choso fires Piercing Blood beam that bounces around the ARENA walls
+      // Choso ball on left, beam fires right and ricochets off arena boundaries
+      const chosoX=cx-50*s;const chosoY=cy;
+      // Choso indicator
+      X.globalAlpha=0.8;X.fillStyle='#cc2244';X.beginPath();X.arc(chosoX,chosoY,6*s,0,Math.PI*2);X.fill();
+      X.strokeStyle='#ff446688';X.lineWidth=1;X.beginPath();X.arc(chosoX,chosoY,9*s,0,Math.PI*2);X.stroke();
+      // Blood orbs orbiting Choso
+      for(let i=0;i<3;i++){
+        const oa=Math.PI*2*i/3+t*0.08;const od=14*s;
+        const orbAlpha=Math.min(0.6,t/(8+i*3));
+        X.globalAlpha=orbAlpha;X.fillStyle='#ff2244';
+        X.beginPath();X.arc(chosoX+Math.cos(oa)*od,chosoY+Math.sin(oa)*od,3*s,0,Math.PI*2);X.fill();
       }
-      // Phase 1 (0-20): blood orbs materialize in a ring
-      for(let i=0;i<orbCount;i++){
-        const orbAlpha=Math.min(0.7,t/(8+i*2));
-        // Orb explodes when beam reaches it
-        const explodeTime=30+i*6;
-        if(t<explodeTime){
-          X.globalAlpha=orbAlpha;X.fillStyle='#cc2244';X.beginPath();X.arc(orbPositions[i].x,orbPositions[i].y,5*s,0,Math.PI*2);X.fill();
-          X.strokeStyle='#ff446688';X.lineWidth=1;X.beginPath();X.arc(orbPositions[i].x,orbPositions[i].y,7*s,0,Math.PI*2);X.stroke();
-        } else {
-          // Explosion particles when beam hits this orb
-          const et=t-explodeTime;
-          X.globalAlpha=Math.max(0,0.8-et/12);
-          for(let d=0;d<6;d++){const da=Math.PI*2*d/6+et*0.2;
-            X.fillStyle='#ff2244';X.beginPath();X.arc(orbPositions[i].x+Math.cos(da)*et*1.5*s,orbPositions[i].y+Math.sin(da)*et*1.5*s,2.5*s,0,Math.PI*2);X.fill();}
+      // Phase 2 (15+): Piercing Blood beam fires and BOUNCES around the arena
+      if(t>15){const bt=t-15;
+        // Arena boundary for bouncing (relative to cx,cy center)
+        const arW=100*s;const arH=60*s;
+        const bouncePoints=[{x:chosoX+8*s,y:chosoY}]; // start from Choso
+        // Generate bounce path
+        let bx=chosoX+8*s,by=chosoY,bdx=4*s,bdy=-2.5*s;
+        for(let b=0;b<8;b++){
+          const nextX=bx+bdx*12;const nextY=by+bdy*12;
+          // Bounce off arena walls
+          if(nextX>cx+arW){bdx=-bdx;bx=cx+arW;by=by+bdy*12*((cx+arW-bx)/(bdx<0?-bdx*12:bdx*12||1));}
+          else if(nextX<cx-arW){bdx=-bdx;bx=cx-arW;by=by+bdy*12*((cx-arW-bx)/(bdx<0?bdx*12:-bdx*12||1));}
+          else bx=nextX;
+          if(nextY>cy+arH){bdy=-bdy;by=cy+arH;}
+          else if(nextY<cy-arH){bdy=-bdy;by=cy-arH;}
+          else by=nextY;
+          bouncePoints.push({x:bx,y:by});
         }
-      }
-      // Phase 2 (20+): Piercing Blood beam fires from center, reflects between each orb in sequence
-      if(t>20){const bt=t-20;
-        X.globalAlpha=Math.min(0.8,bt/5);X.strokeStyle='#ff2244';X.lineWidth=3*s;X.shadowColor='#ff0022';X.shadowBlur=8;
-        // Beam path: center → orb0 → orb1 → orb2 → orb3 → orb4
-        const beamLen=bt*4*s;
-        let pts=[{x:cx,y:cy}];for(let i=0;i<orbCount;i++)pts.push(orbPositions[i]);
+        // Draw beam along bounce path
+        const beamLen=bt*6*s;
+        X.globalAlpha=Math.min(0.9,bt/5);X.strokeStyle='#ff2244';X.lineWidth=3*s;X.shadowColor='#ff0022';X.shadowBlur=10;
         let drawn=0;
-        X.beginPath();X.moveTo(pts[0].x,pts[0].y);
-        for(let i=1;i<pts.length;i++){
-          const segLen=Math.hypot(pts[i].x-pts[i-1].x,pts[i].y-pts[i-1].y);
-          if(drawn+segLen<beamLen){X.lineTo(pts[i].x,pts[i].y);drawn+=segLen;
-            // Ricochet spark at each orb
-            X.stroke();X.globalAlpha=0.6;X.fillStyle='#ff6644';X.beginPath();X.arc(pts[i].x,pts[i].y,4*s,0,Math.PI*2);X.fill();
-            X.globalAlpha=Math.min(0.8,bt/5);X.beginPath();X.moveTo(pts[i].x,pts[i].y);
-          } else {const frac=(beamLen-drawn)/segLen;X.lineTo(pts[i-1].x+(pts[i].x-pts[i-1].x)*frac,pts[i-1].y+(pts[i].y-pts[i-1].y)*frac);break;}
+        X.beginPath();X.moveTo(bouncePoints[0].x,bouncePoints[0].y);
+        for(let i=1;i<bouncePoints.length;i++){
+          const segLen=Math.hypot(bouncePoints[i].x-bouncePoints[i-1].x,bouncePoints[i].y-bouncePoints[i-1].y);
+          if(drawn+segLen<beamLen){
+            X.lineTo(bouncePoints[i].x,bouncePoints[i].y);drawn+=segLen;
+            // Ricochet spark at bounce point
+            X.stroke();X.globalAlpha=0.7;X.fillStyle='#ff6644';
+            X.beginPath();X.arc(bouncePoints[i].x,bouncePoints[i].y,5*s,0,Math.PI*2);X.fill();
+            // Spark particles
+            for(let sp=0;sp<3;sp++){const sa=Math.random()*Math.PI*2;
+              X.fillStyle='#ffaa44';X.beginPath();X.arc(bouncePoints[i].x+Math.cos(sa)*8*s,bouncePoints[i].y+Math.sin(sa)*8*s,1.5*s,0,Math.PI*2);X.fill();}
+            X.globalAlpha=Math.min(0.9,bt/5);X.beginPath();X.moveTo(bouncePoints[i].x,bouncePoints[i].y);
+          } else {
+            const frac=(beamLen-drawn)/segLen;
+            X.lineTo(bouncePoints[i-1].x+(bouncePoints[i].x-bouncePoints[i-1].x)*frac,
+              bouncePoints[i-1].y+(bouncePoints[i].y-bouncePoints[i-1].y)*frac);break;
+          }
         }
         X.stroke();X.shadowBlur=0;
+        // Arena boundary hint lines
+        X.globalAlpha=0.1;X.strokeStyle='#ff2244';X.lineWidth=1;X.setLineDash([4,6]);
+        X.strokeRect(cx-arW,cy-arH,arW*2,arH*2);X.setLineDash([]);
       }
-      if(t>20&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc2244';X.fillText('PIERCING BLOOD',cx,cy+50*s);}
+      if(t>15&&t<80){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc2244';X.fillText('PIERCING BLOOD',cx,cy+55*s);}
       break;}
     case 'nanami':{
       // Slash → zoom-in 7:3 ruler → adjusts glasses
@@ -18105,43 +18129,53 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       if(t>20&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8844';X.fillText('GORILLA ARMS',cx,cy+50*s);}
       break;}
     case 'monowire':{
-      // Dashes around target → wire decapitates 4 limbs → goes for the head
-      // Target dummy in center
-      const limbsHit=t>25?Math.min(5,Math.floor((t-25)/8)):0;
+      // Monowire on LEFT, dashes toward target on RIGHT, wire whips and slices
+      const mwX=cx-45*s; // Monowire position (left)
+      const tgtX=cx+35*s; // Target position (right)
+      const tgtY=cy;
+      // Monowire character indicator (left side)
+      X.globalAlpha=0.8;X.fillStyle='#ff8800';X.beginPath();X.arc(mwX,cy,7*s,0,Math.PI*2);X.fill();
+      X.strokeStyle='#ff880066';X.lineWidth=1;X.beginPath();X.arc(mwX,cy,10*s,0,Math.PI*2);X.stroke();
+      // Target dummy on RIGHT side
+      const limbsHit=t>30?Math.min(5,Math.floor((t-30)/10)):0;
       if(limbsHit<5){
-        X.globalAlpha=0.4;X.fillStyle='#777';X.beginPath();X.arc(cx,cy-5*s,6*s,0,Math.PI*2);X.fill(); // head
-        X.strokeStyle='#777';X.lineWidth=2*s;
-        X.beginPath();X.moveTo(cx,cy+1*s);X.lineTo(cx,cy+18*s);X.stroke(); // body
-        if(limbsHit<1){X.beginPath();X.moveTo(cx-12*s,cy+6*s);X.lineTo(cx,cy+6*s);X.stroke();} // left arm
-        if(limbsHit<2){X.beginPath();X.moveTo(cx,cy+6*s);X.lineTo(cx+12*s,cy+6*s);X.stroke();} // right arm
-        if(limbsHit<3){X.beginPath();X.moveTo(cx,cy+18*s);X.lineTo(cx-8*s,cy+28*s);X.stroke();} // left leg
-        if(limbsHit<4){X.beginPath();X.moveTo(cx,cy+18*s);X.lineTo(cx+8*s,cy+28*s);X.stroke();} // right leg
+        X.globalAlpha=0.5;X.fillStyle='#888';X.beginPath();X.arc(tgtX,tgtY-8*s,6*s,0,Math.PI*2);X.fill(); // head
+        X.strokeStyle='#888';X.lineWidth=2*s;
+        X.beginPath();X.moveTo(tgtX,tgtY-2*s);X.lineTo(tgtX,tgtY+18*s);X.stroke(); // body
+        if(limbsHit<1){X.beginPath();X.moveTo(tgtX-14*s,tgtY+5*s);X.lineTo(tgtX,tgtY+5*s);X.stroke();}
+        if(limbsHit<2){X.beginPath();X.moveTo(tgtX,tgtY+5*s);X.lineTo(tgtX+14*s,tgtY+5*s);X.stroke();}
+        if(limbsHit<3){X.beginPath();X.moveTo(tgtX,tgtY+18*s);X.lineTo(tgtX-10*s,tgtY+30*s);X.stroke();}
+        if(limbsHit<4){X.beginPath();X.moveTo(tgtX,tgtY+18*s);X.lineTo(tgtX+10*s,tgtY+30*s);X.stroke();}
       }
-      // Phase 1 (0-25): dashing around target — afterimage circles
-      const dashCount=Math.min(6,Math.floor(t/4));
+      // Phase 1 (0-30): Monowire dashes forward — afterimages from left to right
+      const dashCount=Math.min(5,Math.floor(t/5));
       for(let i=0;i<dashCount;i++){
-        const da=Math.PI*2*i/6;const dr=28*s;const dt2=t-i*4;
-        const dx=cx+Math.cos(da+t*0.05)*dr;const dy=cy+8*s+Math.sin(da+t*0.05)*dr*0.6;
-        X.globalAlpha=Math.max(0,0.5-dt2*0.01);X.fillStyle='#ff8800';X.beginPath();X.arc(dx,dy,4*s,0,Math.PI*2);X.fill();
-        // Wire trail
-        X.strokeStyle='#ff880066';X.lineWidth=1*s;
-        if(i>0){const pa=Math.PI*2*(i-1)/6;
-          X.beginPath();X.moveTo(cx+Math.cos(pa+t*0.05)*dr,cy+8*s+Math.sin(pa+t*0.05)*dr*0.6);X.lineTo(dx,dy);X.stroke();}
+        const dt2=t-i*5;const progress=Math.min(1,i/5);
+        const dx=mwX+(tgtX-mwX)*progress*0.7;const dy=cy+Math.sin(i*2.3)*12*s;
+        X.globalAlpha=Math.max(0,0.5-dt2*0.015);X.fillStyle='#ff8800';X.beginPath();X.arc(dx,dy,4*s,0,Math.PI*2);X.fill();
+        // Wire trail connecting afterimages
+        if(i>0){const pdx=mwX+(tgtX-mwX)*Math.min(1,(i-1)/5)*0.7;const pdy=cy+Math.sin((i-1)*2.3)*12*s;
+          X.strokeStyle='#ff880055';X.lineWidth=1.5*s;X.beginPath();X.moveTo(pdx,pdy);X.lineTo(dx,dy);X.stroke();}
       }
-      // Phase 2 (25-65): wire slices — each limb cut with flash
-      if(t>25){
-        const limbTargets=[{x:cx-12*s,y:cy+6*s,l:'ARM'},{x:cx+12*s,y:cy+6*s,l:'ARM'},{x:cx-8*s,y:cy+28*s,l:'LEG'},{x:cx+8*s,y:cy+28*s,l:'LEG'},{x:cx,y:cy-5*s,l:'HEAD'}];
+      // Wire extending from Monowire to target area
+      if(t>10){
+        const wireLen=Math.min(1,(t-10)/20);
+        X.globalAlpha=0.6;X.strokeStyle='#ff8800';X.lineWidth=2*s;X.shadowColor='#ff8800';X.shadowBlur=6;
+        X.beginPath();X.moveTo(mwX+10*s,cy);X.lineTo(mwX+10*s+(tgtX-mwX-10*s)*wireLen,cy+Math.sin(t*0.15)*5*s);X.stroke();
+        X.shadowBlur=0;
+      }
+      // Phase 2 (30-80): wire slices — each limb cut with visible slash across target
+      if(t>30){
+        const limbTargets=[{x:tgtX-14*s,y:tgtY+5*s},{x:tgtX+14*s,y:tgtY+5*s},{x:tgtX-10*s,y:tgtY+30*s},{x:tgtX+10*s,y:tgtY+30*s},{x:tgtX,y:tgtY-8*s}];
         for(let i=0;i<limbsHit;i++){
-          const ct=t-25-i*8;
-          // Wire slash line
-          if(ct<10){X.globalAlpha=Math.max(0,0.8-ct/10);X.strokeStyle='#ff8800';X.lineWidth=2.5*s;X.shadowColor='#ff8800';X.shadowBlur=8;
-            X.beginPath();X.moveTo(limbTargets[i].x-8*s,limbTargets[i].y-5*s);X.lineTo(limbTargets[i].x+8*s,limbTargets[i].y+5*s);X.stroke();X.shadowBlur=0;}
-          // Severed piece falls
-          if(ct>3){const ft=ct-3;X.globalAlpha=Math.max(0,0.5-ft/15);X.fillStyle='#888';
-            X.beginPath();X.arc(limbTargets[i].x+(i%2?1:-1)*ft*s,limbTargets[i].y+ft*0.8*s,3*s,0,Math.PI*2);X.fill();}
+          const ct=t-30-i*10;
+          if(ct<12){X.globalAlpha=Math.max(0,0.9-ct/12);X.strokeStyle='#ff8800';X.lineWidth=3*s;X.shadowColor='#ff8800';X.shadowBlur=10;
+            X.beginPath();X.moveTo(limbTargets[i].x-10*s,limbTargets[i].y-6*s);X.lineTo(limbTargets[i].x+10*s,limbTargets[i].y+6*s);X.stroke();X.shadowBlur=0;}
+          if(ct>4){const ft=ct-4;X.globalAlpha=Math.max(0,0.5-ft/18);X.fillStyle='#999';
+            X.beginPath();X.arc(limbTargets[i].x+(i%2?1:-1)*ft*1.2*s,limbTargets[i].y+ft*s,3*s,0,Math.PI*2);X.fill();}
         }
       }
-      if(t>20&&t<75){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8800';X.fillText('MONOWIRE',cx,cy+50*s);}
+      if(t>25&&t<80){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8800';X.fillText('MONOWIRE',cx,cy+55*s);}
       break;}
     case 'pls':{
       // Projectile salvo — lines shooting outward
@@ -18370,20 +18404,28 @@ function drawIntroCutscene(){
     X.globalAlpha=1;
   }
 
-  // Phase 0: P1 full-screen showcase (0-420 = 7s)
+  // Phase indicator dots
+  const dotY=barH+40*fs;
+  for(let d=0;d<4;d++){
+    X.globalAlpha=d===ic.phase?0.9:0.3;
+    X.fillStyle=d===ic.phase?'#ffcc00':'#555';
+    X.beginPath();X.arc(W/2-22+d*15,dotY,3,0,Math.PI*2);X.fill();
+  }
+  X.globalAlpha=1;
+
+  // Phase 0: P1 full-screen showcase
   if(ic.phase===0){
-    drawCharFullScreen(ic.p1Char,ic.p1Elem,ic.p1Line,t,fs,false);
+    drawCharFullScreen(ic.p1Char,ic.p1Elem,ic.p1Line,ic.phaseLocalTimer,fs,false);
   }
 
-  // Phase 1: P2 full-screen showcase (420-840 = 7s)
+  // Phase 1: P2 full-screen showcase
   if(ic.phase===1){
-    const pt=t-420;
-    drawCharFullScreen(ic.p2Char,ic.p2Elem,ic.p2Line,pt,fs,true);
+    drawCharFullScreen(ic.p2Char,ic.p2Elem,ic.p2Line,ic.phaseLocalTimer,fs,true);
   }
 
-  // Phase 2: Zoom out to side-by-side (840-960 = 2s)
+  // Phase 2: Zoom out to side-by-side
   if(ic.phase===2){
-    const zt=t-840; // 0-120
+    const zt=ic.phaseLocalTimer;
     const zoomProgress=Math.min(1,zt/90); // 1.5s to zoom out
     const eased=1-Math.pow(1-zoomProgress,3);
     // P1 on left — zooms from full-screen center to 25%
@@ -18438,9 +18480,9 @@ function drawIntroCutscene(){
     }
   }
 
-  // Phase 3: VS slam + FIGHT (960-1080 = 2s)
+  // Phase 3: VS slam + FIGHT (3s countdown)
   if(ic.phase===3){
-    const vt=t-960;
+    const vt=ic.phaseLocalTimer;
     // Show both characters at final positions
     const p1X=W*0.25,p2X=W*0.75,ballR=30*fs;
     // P1
@@ -18509,92 +18551,118 @@ function drawIntroCutscene(){
     }
   }
 
-  // Skip button
+  // NEXT / SKIP buttons
   X.globalAlpha=1;
-  X.font=(isMobile?'11':'13')+'px Consolas,monospace';X.textAlign='right';
-  X.fillStyle='#555';X.fillText('Tap to skip',W-15,H-barH-10);
-  addBtn('introSkip',0,0,W,H,'','transparent',()=>{
-    introCutscene.active=false;screen='battle';startBattle();
-  });
+  const barHBtn=H*0.1;
+  if(ic.waitingForNext){
+    // NEXT button — prominent, bottom-right
+    const nbW=isMobile?100:130,nbH=isMobile?36:42;
+    const nbX=W-nbW-15,nbY=H-barHBtn-nbH-15;
+    drawRoundRect(nbX,nbY,nbW,nbH,8);
+    X.fillStyle='#ffcc00';X.fill();
+    X.strokeStyle='#ffaa00';X.lineWidth=2;X.stroke();
+    X.font='bold '+(isMobile?'14':'18')+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+    X.fillStyle='#000';X.fillText('NEXT >',nbX+nbW/2,nbY+nbH/2);
+    addBtn('introNext',nbX,nbY,nbW,nbH,'','transparent',()=>introAdvancePhase());
+    // Skip all button — small, bottom-left
+    X.font=(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='left';
+    X.fillStyle='#555';X.fillText('Skip all',15,H-barHBtn-10);
+    addBtn('introSkipAll',0,H-barHBtn-30,100,30,'','transparent',()=>{
+      introCutscene.active=false;screen='battle';startBattle();
+    });
+  } else {
+    // Small skip text during animation playback
+    X.font=(isMobile?'10':'12')+'px Consolas,monospace';X.textAlign='right';
+    X.fillStyle='#444';X.fillText('Skip all',W-15,H-barHBtn-10);
+    addBtn('introSkipAll',W-100,H-barHBtn-30,100,30,'','transparent',()=>{
+      introCutscene.active=false;screen='battle';startBattle();
+    });
+  }
 }
 
 function drawCharFullScreen(char,elem,voiceline,t,fs,isRight){
-  // Full-screen character showcase: big zoomed-in ball with signature animation
+  // Full-screen character showcase: small ball on left, animation plays outward in arena
   const centerY=H/2;
-  const fadeIn=Math.min(1,t/30); // 0.5s fade in
-  // Fade out near end (last 30 frames = 0.5s)
-  const fadeOut=t>390?Math.max(0,1-(t-390)/30):1;
-  const alpha=fadeIn*fadeOut;
+  const fadeIn=Math.min(1,t/30);
+  const alpha=fadeIn;
   X.globalAlpha=alpha;
 
   // Full-screen color wash background
   const bgGrad=X.createRadialGradient(W/2,centerY,0,W/2,centerY,Math.max(W,H)*0.7);
-  bgGrad.addColorStop(0,char.color+'33');bgGrad.addColorStop(0.5,char.color+'15');bgGrad.addColorStop(1,'#0a0a0e');
+  bgGrad.addColorStop(0,char.color+'22');bgGrad.addColorStop(0.5,char.color+'0d');bgGrad.addColorStop(1,'#0a0a0e');
   X.fillStyle=bgGrad;X.fillRect(0,0,W,H);
 
-  // Pulsing energy rings (background)
-  const numRings=3;
-  for(let i=0;i<numRings;i++){
+  // Subtle energy rings (background)
+  for(let i=0;i<3;i++){
     const ringT=(t+i*80)%240;
     const ringR=ringT*1.5;
-    const ringAlpha=Math.max(0,0.15-ringT/1600)*alpha;
-    X.globalAlpha=ringAlpha;
-    X.strokeStyle=char.color;X.lineWidth=2;
-    X.beginPath();X.arc(W/2,centerY-20*fs,ringR,0,Math.PI*2);X.stroke();
+    X.globalAlpha=Math.max(0,0.1-ringT/2400)*alpha;
+    X.strokeStyle=char.color;X.lineWidth=1.5;
+    X.beginPath();X.arc(W*0.25,centerY-30*fs,ringR,0,Math.PI*2);X.stroke();
   }
   X.globalAlpha=alpha;
 
-  // Large ball — zoomed in (fills ~60% of screen height)
-  const bigR=Math.min(W,H)*0.25;
-  const ballY=centerY-20*fs;
-  // Glow behind ball
-  const glow=X.createRadialGradient(W/2,ballY,bigR*0.3,W/2,ballY,bigR*2.5);
-  glow.addColorStop(0,char.color+'55');glow.addColorStop(0.5,char.color+'22');glow.addColorStop(1,char.color+'00');
-  X.fillStyle=glow;X.fillRect(0,0,W,H);
-  // Ball — semi-transparent so animation shows through
-  X.beginPath();X.arc(W/2,ballY,bigR,0,Math.PI*2);
-  const ballGrad=X.createRadialGradient(W/2,ballY,0,W/2,ballY,bigR);
-  ballGrad.addColorStop(0,char.color+'cc');ballGrad.addColorStop(0.7,char.color+'99');ballGrad.addColorStop(1,char.color+'66');
-  X.fillStyle=ballGrad;X.fill();
-  X.strokeStyle='#ffffff55';X.lineWidth=3;X.stroke();
-  // Inner highlight
-  const hlGrad=X.createRadialGradient(W/2-bigR*0.25,ballY-bigR*0.25,0,W/2,ballY,bigR);
-  hlGrad.addColorStop(0,'rgba(255,255,255,0.25)');hlGrad.addColorStop(0.5,'rgba(255,255,255,0.08)');hlGrad.addColorStop(1,'rgba(255,255,255,0)');
-  X.fillStyle=hlGrad;X.beginPath();X.arc(W/2,ballY,bigR,0,Math.PI*2);X.fill();
-  // Character initials inside ball
-  X.font='bold '+Math.round(bigR*0.5)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
-  X.fillStyle='rgba(255,255,255,0.25)';X.fillText(char.name.substring(0,3).toUpperCase(),W/2,ballY);
+  // Small character ball on the LEFT side (like in-game size)
+  const smallR=isMobile?22:30;
+  const ballX=W*0.18;const ballY=centerY-30*fs;
+  // Glow behind small ball
+  const glow=X.createRadialGradient(ballX,ballY,smallR*0.3,ballX,ballY,smallR*4);
+  glow.addColorStop(0,char.color+'44');glow.addColorStop(0.5,char.color+'15');glow.addColorStop(1,char.color+'00');
+  X.fillStyle=glow;X.fillRect(0,0,W*0.4,H);
+  // Small ball
+  X.beginPath();X.arc(ballX,ballY,smallR,0,Math.PI*2);
+  X.fillStyle=char.color;X.fill();
+  X.strokeStyle='#ffffff44';X.lineWidth=2;X.stroke();
+  // Initials inside small ball
+  X.font='bold '+Math.round(smallR*0.6)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+  X.fillStyle='rgba(255,255,255,0.35)';X.fillText(char.name.substring(0,2).toUpperCase(),ballX,ballY);
 
-  // Animated signature move — scaled up (2.5x normal scale), starts sooner
-  const animScale=fs*2.5;
-  if(t>15)drawCharIntroAnim(char.id,W/2,ballY-10*animScale,t-15,animScale,char.color);
+  // Character name + info below ball
+  X.globalAlpha=alpha;
+  const tier=getTierLetter(char.id);
+  X.font='bold '+Math.round(14*fs)+'px Consolas,monospace';X.textAlign='center';
+  X.shadowColor=char.color;X.shadowBlur=10;
+  X.fillStyle='#fff';X.fillText(char.name,ballX,ballY+smallR+18*fs);
+  X.shadowBlur=0;
+  X.font='bold '+Math.round(10*fs)+'px Consolas,monospace';
+  X.fillStyle=char.color;X.fillText('['+tier+']',ballX,ballY+smallR+32*fs);
+
+  // Animated signature move — plays in the RIGHT/CENTER area, OUTSIDE the ball
+  // Animation shows the character doing their move outward to targets in the arena
+  const animCX=W*0.55; // center of animation area (right of ball)
+  const animCY=centerY-15*fs;
+  const animScale=fs*3.0; // bigger scale for clarity
+  if(t>15)drawCharIntroAnim(char.id,animCX,animCY,t-15,animScale,char.color);
   X.globalAlpha=alpha;
 
-  // Character name — large, centered below ball
-  const nameY=ballY+bigR+35*fs;
-  // Name slides in
-  const nameSlide=Math.min(1,Math.max(0,(t-20)/40));
-  const nameEased=1-Math.pow(1-nameSlide,3);
-  const nameOffX=isRight?(1-nameEased)*80*fs:-(1-nameEased)*80*fs;
-  X.globalAlpha=alpha*nameSlide;
+  // Arrow from ball to animation area (shows direction of action)
+  if(t>15&&t<80){
+    const arrAlpha=Math.min(0.3,(t-15)/30)*alpha;
+    X.globalAlpha=arrAlpha;
+    X.strokeStyle=char.color;X.lineWidth=2;X.setLineDash([4,4]);
+    X.beginPath();X.moveTo(ballX+smallR+5,ballY);X.lineTo(animCX-60*animScale,animCY);X.stroke();
+    X.setLineDash([]);
+    // Arrowhead
+    const arX=animCX-60*animScale;
+    X.fillStyle=char.color;X.beginPath();X.moveTo(arX,animCY-5);X.lineTo(arX+10,animCY);X.lineTo(arX,animCY+5);X.closePath();X.fill();
+  }
 
-  const tier=getTierLetter(char.id);
-  X.font='bold '+Math.round(32*fs)+'px Consolas,monospace';X.textAlign='center';
+  // Character name — large, bottom center
+  const nameY=H-H*0.1-60*fs;
+  const nameSlide=Math.min(1,Math.max(0,(t-10)/30));
+  const nameEased=1-Math.pow(1-nameSlide,3);
+  const nameOffX=isRight?(1-nameEased)*60*fs:-(1-nameEased)*60*fs;
+  X.globalAlpha=alpha*nameSlide;
+  X.font='bold '+Math.round(28*fs)+'px Consolas,monospace';X.textAlign='center';
   X.shadowColor=char.color;X.shadowBlur=15;
   X.fillStyle='#fff';X.fillText(char.name,W/2+nameOffX,nameY);
   X.shadowBlur=0;
-
-  // Tier + playstyle
-  X.font='bold '+Math.round(16*fs)+'px Consolas,monospace';
-  X.fillStyle=char.color;X.fillText('['+tier+'] '+char.playstyle,W/2+nameOffX,nameY+28*fs);
-
-  // Element
+  X.font='bold '+Math.round(14*fs)+'px Consolas,monospace';
+  X.fillStyle=char.color;X.fillText('['+tier+'] '+char.playstyle,W/2+nameOffX,nameY+24*fs);
   if(elem){
-    X.font=Math.round(13*fs)+'px Consolas,monospace';
-    X.fillStyle='#999';X.fillText(elem.name+' Element',W/2+nameOffX,nameY+50*fs);
+    X.font=Math.round(11*fs)+'px Consolas,monospace';
+    X.fillStyle='#999';X.fillText(elem.name+' Element',W/2+nameOffX,nameY+42*fs);
   }
-
-  // Voiceline removed per Kyle's request
   X.globalAlpha=1;
 }
 
