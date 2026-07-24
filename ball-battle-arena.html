@@ -2723,12 +2723,27 @@ const CHAR_WIN_ANIMS={
     X.globalAlpha=1;
   },
   yuta(x,y,r,c,dt,p){
-    // Yuta + Rika dual circles, claw lines, bond ring
-    const rikaAlpha=Math.min(0.4,dt/60*0.4);const rikaR=r*(1.5+Math.min(0.5,dt/100));
-    X.fillStyle='#6622aa';X.globalAlpha=rikaAlpha;X.beginPath();X.arc(x,y+5,rikaR,0,Math.PI*2);X.fill();
-    if(dt>40){X.strokeStyle='#8833cc';X.lineWidth=2;X.globalAlpha=Math.min(0.7,(dt-40)/30);for(let s=0;s<4;s++){const ba=Math.PI*(-0.6+s*0.4);for(let j=0;j<3;j++){const ca=ba-0.15+j*0.15;X.beginPath();X.moveTo(x+Math.cos(ca)*rikaR*0.7,y+5+Math.sin(ca)*rikaR*0.7);X.quadraticCurveTo(x+Math.cos(ca)*rikaR*1.1,y+5+Math.sin(ca)*rikaR*1.1,x+Math.cos(ca+0.1)*rikaR*1.3,y+5+Math.sin(ca+0.1)*rikaR*1.3);X.stroke();}}}
+    // Yuta + Rika cursed form materializing — monstrous white/grey figure behind Yuta
+    const rikaAlpha=Math.min(0.5,dt/60*0.5);const rikaR=r*(1.5+Math.min(0.5,dt/100));
+    // Rika's dark tail curling behind
+    X.strokeStyle='#1a1a2e';X.lineWidth=rikaR*0.15;X.lineCap='round';X.globalAlpha=rikaAlpha*0.8;
+    X.beginPath();X.moveTo(x,y+rikaR*0.4);X.quadraticCurveTo(x+Math.sin(dt*0.04)*rikaR*0.4,y+rikaR*0.9,x+Math.sin(dt*0.03)*rikaR*0.5,y+rikaR*1.3);X.stroke();
+    // White/grey torso
+    const bGrad=X.createLinearGradient(x,y-rikaR*0.5,x,y+rikaR*0.4);
+    bGrad.addColorStop(0,'#e8e0e8');bGrad.addColorStop(0.6,'#c0b8c4');bGrad.addColorStop(1,'#807080');
+    X.fillStyle=bGrad;X.globalAlpha=rikaAlpha;X.beginPath();X.ellipse(x,y,rikaR*0.35,rikaR*0.6,0,0,Math.PI*2);X.fill();
+    // Long arms reaching outward
+    if(dt>30){X.strokeStyle='#d0c8d0';X.lineWidth=rikaR*0.08;X.globalAlpha=Math.min(0.6,(dt-30)/30);
+      X.beginPath();X.moveTo(x-rikaR*0.25,y-rikaR*0.1);X.quadraticCurveTo(x-rikaR*0.7,y+rikaR*0.3,x-rikaR*0.8,y+rikaR*0.7);X.stroke();
+      X.beginPath();X.moveTo(x+rikaR*0.25,y-rikaR*0.1);X.quadraticCurveTo(x+rikaR*0.7,y+rikaR*0.3,x+rikaR*0.8,y+rikaR*0.7);X.stroke();
+      // Claws
+      X.lineWidth=rikaR*0.03;for(let s=-1;s<=1;s+=2){for(let cl=0;cl<3;cl++){const cx=x+s*rikaR*0.8;X.beginPath();X.moveTo(cx,y+rikaR*0.7);X.lineTo(cx+s*rikaR*0.05*(cl-1),y+rikaR*0.9);X.stroke();}}}
+    // Gaping mouth with teeth
+    if(dt>50){X.globalAlpha=Math.min(0.8,(dt-50)/20);const mY=y-rikaR*0.25;
+      X.fillStyle='#3a0a1a';X.beginPath();X.ellipse(x,mY,rikaR*0.25,rikaR*0.15,0,0,Math.PI*2);X.fill();
+      X.fillStyle='#f0e8e8';for(let t=0;t<5;t++){const tx=x-rikaR*0.2+t*rikaR*0.1;X.beginPath();X.moveTo(tx,mY-rikaR*0.1);X.lineTo(tx+rikaR*0.03,mY);X.lineTo(tx+rikaR*0.06,mY-rikaR*0.1);X.fill();}}
+    // Bond ring — white glow connecting Yuta and Rika
     if(dt>60){const rP=(dt-60)/40;X.strokeStyle='#ffffff';X.lineWidth=2;X.globalAlpha=0.3+Math.sin(rP*Math.PI*4)*0.3;X.shadowColor='#ffffff';X.shadowBlur=10;X.beginPath();X.arc(x,y,r*1.3+Math.sin(rP*Math.PI*2)*5,0,Math.PI*2);X.stroke();X.shadowBlur=0;}
-    if(dt>80){X.strokeStyle='#aa44dd';X.lineWidth=2;X.globalAlpha=Math.min(0.8,(dt-80)/20);X.beginPath();X.arc(x,y+rikaR*0.4+5,rikaR*0.3,0.1,Math.PI-0.1);X.stroke();for(let i=0;i<5;i++){const ta=0.2+i*0.5;X.beginPath();X.moveTo(x+Math.cos(ta)*rikaR*0.3,y+rikaR*0.4+5+Math.sin(ta)*rikaR*0.3);X.lineTo(x+Math.cos(ta)*rikaR*0.2,y+rikaR*0.4+5+Math.sin(ta)*rikaR*0.2+5);X.stroke();}}
     X.globalAlpha=1;
   },
   mahoraga(x,y,r,c,dt,p){
@@ -3191,13 +3206,20 @@ const CHAR_LOSE_ANIMS={
     X.globalAlpha=1;
   },
   yuta(x,y,r,c,dt,p){
-    // Rika destabilizes, warps, dissolves into purple mist
+    // Rika cursed form destabilizes — monstrous body warps and dissolves
     const rikaR=r*1.8;const warpX=Math.sin(dt*0.15)*r*0.3;const warpY=Math.cos(dt*0.12)*r*0.2;
+    const fadeAlpha=Math.max(0,0.4-dt/150*0.4);
+    // Warping white/grey body
     X.save();X.translate(x+warpX,y+5+warpY);X.scale(1+Math.sin(dt*0.1)*0.2,1-Math.sin(dt*0.1)*0.15);
-    X.fillStyle='#6622aa';X.globalAlpha=Math.max(0,0.35-dt/150*0.35);X.beginPath();X.arc(0,0,rikaR,0,Math.PI*2);X.fill();X.restore();
-    if(dt>20){for(let i=0;i<2;i++){const a=Math.random()*Math.PI*2;const d=rikaR*0.5+Math.random()*rikaR*0.5;X.fillStyle='#8833cc';X.globalAlpha=Math.max(0,0.4-dt/150);X.beginPath();X.arc(x+warpX+Math.cos(a)*d,y+5+warpY+Math.sin(a)*d,1.5,0,Math.PI*2);X.fill();}}
-    if(dt>60){const dP=(dt-60)/90;for(let i=0;i<3;i++){const px=x+warpX+(Math.random()-0.5)*rikaR;const py=y+5+warpY-dP*40-Math.random()*20;X.fillStyle='#7733bb';X.globalAlpha=Math.max(0,0.5-dP);X.beginPath();X.arc(px,py,2+Math.random()*2,0,Math.PI*2);X.fill();}}
-    if(dt>100){X.strokeStyle='#6622aa';X.lineWidth=1;X.globalAlpha=Math.max(0,(1-(dt-100)/50)*0.3);X.beginPath();X.arc(x,y+5,rikaR,0,Math.PI*2);X.stroke();}
+    const bGrad=X.createLinearGradient(0,-rikaR*0.5,0,rikaR*0.4);
+    bGrad.addColorStop(0,'#e0d8e0');bGrad.addColorStop(0.7,'#a098a4');bGrad.addColorStop(1,'#1a1a2e');
+    X.fillStyle=bGrad;X.globalAlpha=fadeAlpha;X.beginPath();X.ellipse(0,0,rikaR*0.35,rikaR*0.6,0,0,Math.PI*2);X.fill();X.restore();
+    // Arms disintegrating — fragments flying off
+    if(dt>20){for(let i=0;i<3;i++){const a=Math.random()*Math.PI*2;const d=rikaR*0.4+Math.random()*rikaR*0.4;X.fillStyle='#c0b8c4';X.globalAlpha=Math.max(0,0.35-dt/150);X.beginPath();X.arc(x+warpX+Math.cos(a)*d,y+5+warpY+Math.sin(a)*d,1.5+Math.random(),0,Math.PI*2);X.fill();}}
+    // Teeth/bone fragments rising
+    if(dt>60){const dP=(dt-60)/90;for(let i=0;i<3;i++){const px=x+warpX+(Math.random()-0.5)*rikaR;const py=y+5+warpY-dP*40-Math.random()*20;X.fillStyle='#e8e0e0';X.globalAlpha=Math.max(0,0.5-dP);X.save();X.translate(px,py);X.rotate(dP*2+i);X.fillRect(-2,-1,4,2);X.restore();}}
+    // Fading cursed outline
+    if(dt>100){X.strokeStyle='#807080';X.lineWidth=1;X.globalAlpha=Math.max(0,(1-(dt-100)/50)*0.3);X.beginPath();X.ellipse(x,y+5,rikaR*0.35,rikaR*0.6,0,0,Math.PI*2);X.stroke();}
     X.globalAlpha=1;
   },
   mahoraga(x,y,r,c,dt,p){
@@ -12964,75 +12986,144 @@ function drawBall(f){
     X.restore();
   }
 
-  // Rika companion drawing (independent fighter with own HP)
+  // Rika companion drawing (independent fighter with own HP) — JJK cursed form
   if(f.char.id==='yuta'&&f.yutaRikaHp>0){
     X.save();
     const rikaX=f.yutaRikaLunging?f.yutaRikaLungePos.x:(f.yutaRikaPos?f.yutaRikaPos.x:(f.x+40));
     const rikaY=f.yutaRikaLunging?f.yutaRikaLungePos.y:(f.yutaRikaPos?f.yutaRikaPos.y:f.y);
-    const rikaSize=f.yutaDomainActive?50:45; // Same size as Yuta — true monstrous presence
-    // Rika body — monstrous dark purple entity
-    const rg=X.createRadialGradient(rikaX,rikaY,3,rikaX,rikaY,rikaSize);
-    rg.addColorStop(0,'#dd99ff');rg.addColorStop(0.4,'#9944dd');rg.addColorStop(0.8,'#6622aa');rg.addColorStop(1,'rgba(80,20,140,0.4)');
-    X.fillStyle=rg;X.beginPath();X.arc(rikaX,rikaY,rikaSize,0,Math.PI*2);X.fill();
-    // Monstrous features — big claws extending outward
-    X.strokeStyle='#aa55dd';X.lineWidth=2.5;
-    // 4 large claws (arms/legs)
-    for(let sp=0;sp<4;sp++){
-      const sa=sp*Math.PI/2+battleTime*0.02+Math.PI/4;
-      const clawLen=rikaSize*0.5+Math.sin(battleTime*0.1+sp)*4;
-      X.beginPath();
-      X.moveTo(rikaX+Math.cos(sa)*rikaSize*0.7,rikaY+Math.sin(sa)*rikaSize*0.7);
-      X.lineTo(rikaX+Math.cos(sa-0.15)*(rikaSize+clawLen),rikaY+Math.sin(sa-0.15)*(rikaSize+clawLen));
-      X.stroke();
-      X.beginPath();
-      X.moveTo(rikaX+Math.cos(sa)*rikaSize*0.7,rikaY+Math.sin(sa)*rikaSize*0.7);
-      X.lineTo(rikaX+Math.cos(sa+0.15)*(rikaSize+clawLen),rikaY+Math.sin(sa+0.15)*(rikaSize+clawLen));
-      X.stroke();
-    }
-    // Extra jagged spines
-    for(let sp=0;sp<8;sp++){
-      const sa=sp*Math.PI/4+battleTime*0.015;
-      X.strokeStyle='rgba(170,85,221,0.6)';X.lineWidth=1.5;
-      X.beginPath();X.moveTo(rikaX+Math.cos(sa)*rikaSize*0.9,rikaY+Math.sin(sa)*rikaSize*0.9);
-      X.lineTo(rikaX+Math.cos(sa)*(rikaSize+8+Math.sin(battleTime*0.12+sp)*4),rikaY+Math.sin(sa)*(rikaSize+8+Math.sin(battleTime*0.12+sp)*4));
-      X.stroke();
-    }
-    // Rika eyes — large glowing yellow, menacing
-    X.fillStyle='#ffee44';
-    const eyeSize=rikaSize*0.1;
-    X.beginPath();X.arc(rikaX-rikaSize*0.22,rikaY-rikaSize*0.12,eyeSize,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(rikaX+rikaSize*0.22,rikaY-rikaSize*0.12,eyeSize,0,Math.PI*2);X.fill();
-    // Eye glow
-    X.shadowColor='#ffee44';X.shadowBlur=8;
-    X.beginPath();X.arc(rikaX-rikaSize*0.22,rikaY-rikaSize*0.12,3,0,Math.PI*2);X.fill();
-    X.beginPath();X.arc(rikaX+rikaSize*0.22,rikaY-rikaSize*0.12,3,0,Math.PI*2);X.fill();
-    X.shadowBlur=0;
-    // Mouth — wide, jagged
-    X.strokeStyle='#ffcc44';X.lineWidth=1.5;
-    X.beginPath();X.moveTo(rikaX-rikaSize*0.3,rikaY+rikaSize*0.15);
-    X.lineTo(rikaX-rikaSize*0.1,rikaY+rikaSize*0.25);X.lineTo(rikaX,rikaY+rikaSize*0.15);
-    X.lineTo(rikaX+rikaSize*0.1,rikaY+rikaSize*0.25);X.lineTo(rikaX+rikaSize*0.3,rikaY+rikaSize*0.15);
+    const rS=f.yutaDomainActive?50:45; // base scale
+    const sway=Math.sin(battleTime*0.04)*2; // subtle idle sway
+    // --- Dark serpentine tail (bottom, drawn first/behind) ---
+    X.strokeStyle='#1a1a2e';X.lineWidth=rS*0.18;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(rikaX,rikaY+rS*0.5);
+    X.quadraticCurveTo(rikaX+Math.sin(battleTime*0.06)*rS*0.4,rikaY+rS*1.0,rikaX+Math.sin(battleTime*0.05)*rS*0.6,rikaY+rS*1.5);
     X.stroke();
-    // Glow outline
-    X.shadowColor='#8844cc';X.shadowBlur=12;
-    X.strokeStyle='rgba(170,68,255,0.5)';X.lineWidth=2;
-    X.beginPath();X.arc(rikaX,rikaY,rikaSize+3,0,Math.PI*2);X.stroke();
+    // Tail tip thinner
+    X.lineWidth=rS*0.08;
+    X.beginPath();
+    X.moveTo(rikaX+Math.sin(battleTime*0.05)*rS*0.6,rikaY+rS*1.5);
+    X.quadraticCurveTo(rikaX+Math.sin(battleTime*0.07)*rS*0.7,rikaY+rS*1.8,rikaX+Math.sin(battleTime*0.04)*rS*0.5,rikaY+rS*2.0);
+    X.stroke();
+    // --- Torso — tall elongated white/grey humanoid shape ---
+    const bodyGrad=X.createLinearGradient(rikaX,rikaY-rS*0.7,rikaX,rikaY+rS*0.6);
+    bodyGrad.addColorStop(0,'#e8e0e8');bodyGrad.addColorStop(0.4,'#d0c8d0');bodyGrad.addColorStop(0.8,'#b0a8b4');bodyGrad.addColorStop(1,'#605868');
+    X.fillStyle=bodyGrad;
+    X.beginPath();
+    X.ellipse(rikaX+sway,rikaY-rS*0.05,rS*0.38,rS*0.65,0,0,Math.PI*2);
+    X.fill();
+    // Slight dark shading on sides
+    X.strokeStyle='rgba(80,60,90,0.3)';X.lineWidth=1;
+    X.beginPath();X.ellipse(rikaX+sway,rikaY-rS*0.05,rS*0.38,rS*0.65,0,0,Math.PI*2);X.stroke();
+    // --- Long thin arms with clawed fingers ---
+    const armSway=Math.sin(battleTime*0.05)*0.1;
+    X.strokeStyle='#d0c8d0';X.lineWidth=rS*0.1;X.lineCap='round';
+    // Left arm — long, reaching down
+    X.beginPath();
+    X.moveTo(rikaX+sway-rS*0.3,rikaY-rS*0.2);
+    X.quadraticCurveTo(rikaX-rS*0.7,rikaY+rS*0.3+Math.sin(battleTime*0.06)*4,rikaX-rS*0.8,rikaY+rS*0.9);
+    X.stroke();
+    // Left clawed fingers (3 thin sharp claws)
+    X.strokeStyle='#c0b8c0';X.lineWidth=rS*0.04;
+    for(let cl=0;cl<3;cl++){
+      const cAngle=-0.3+cl*0.3+armSway;
+      X.beginPath();
+      X.moveTo(rikaX-rS*0.8,rikaY+rS*0.9);
+      X.lineTo(rikaX-rS*0.8+Math.cos(Math.PI*0.5+cAngle)*rS*0.3,rikaY+rS*0.9+Math.sin(Math.PI*0.5+cAngle)*rS*0.3);
+      X.stroke();
+    }
+    // Right arm
+    X.strokeStyle='#d0c8d0';X.lineWidth=rS*0.1;
+    X.beginPath();
+    X.moveTo(rikaX+sway+rS*0.3,rikaY-rS*0.2);
+    X.quadraticCurveTo(rikaX+rS*0.7,rikaY+rS*0.3+Math.cos(battleTime*0.06)*4,rikaX+rS*0.8,rikaY+rS*0.9);
+    X.stroke();
+    // Right clawed fingers
+    X.strokeStyle='#c0b8c0';X.lineWidth=rS*0.04;
+    for(let cl=0;cl<3;cl++){
+      const cAngle=-0.3+cl*0.3-armSway;
+      X.beginPath();
+      X.moveTo(rikaX+rS*0.8,rikaY+rS*0.9);
+      X.lineTo(rikaX+rS*0.8+Math.cos(Math.PI*0.5+cAngle)*rS*0.3,rikaY+rS*0.9+Math.sin(Math.PI*0.5+cAngle)*rS*0.3);
+      X.stroke();
+    }
+    // --- Head (slightly above torso) ---
+    const headY=rikaY-rS*0.6;
+    X.fillStyle='#ddd8dd';
+    X.beginPath();X.ellipse(rikaX+sway,headY,rS*0.28,rS*0.24,0,0,Math.PI*2);X.fill();
+    // --- Wild hair/tendrils sprouting from head ---
+    X.strokeStyle='#b0a4b8';X.lineWidth=rS*0.05;X.lineCap='round';
+    for(let t=0;t<7;t++){
+      const tAngle=-Math.PI*0.8+t*Math.PI*0.23;
+      const tLen=rS*0.3+Math.sin(battleTime*0.08+t*1.3)*rS*0.08;
+      const tCurve=Math.sin(battleTime*0.06+t*0.9)*rS*0.12;
+      X.beginPath();
+      X.moveTo(rikaX+sway+Math.cos(tAngle)*rS*0.2,headY+Math.sin(tAngle)*rS*0.18);
+      X.quadraticCurveTo(rikaX+sway+Math.cos(tAngle)*rS*0.35+tCurve,headY+Math.sin(tAngle)*rS*0.35-rS*0.1,rikaX+sway+Math.cos(tAngle)*(rS*0.2+tLen)+tCurve*0.5,headY+Math.sin(tAngle)*(rS*0.18+tLen));
+      X.stroke();
+    }
+    // --- Huge gaping mouth with sharp teeth ---
+    const mouthW=rS*0.38,mouthH=rS*0.2;
+    const mouthY=headY+rS*0.08;
+    // Dark mouth interior
+    X.fillStyle='#3a0a1a';
+    X.beginPath();
+    X.ellipse(rikaX+sway,mouthY,mouthW,mouthH,0,0,Math.PI*2);
+    X.fill();
+    // Red glow inside
+    const mGrad=X.createRadialGradient(rikaX+sway,mouthY,1,rikaX+sway,mouthY,mouthW*0.7);
+    mGrad.addColorStop(0,'#8b1a1a');mGrad.addColorStop(1,'#3a0a1a');
+    X.fillStyle=mGrad;
+    X.beginPath();X.ellipse(rikaX+sway,mouthY,mouthW*0.7,mouthH*0.6,0,0,Math.PI*2);X.fill();
+    // Sharp teeth — top row
+    X.fillStyle='#f0e8e8';
+    for(let t=0;t<6;t++){
+      const tx=rikaX+sway-mouthW*0.8+t*mouthW*0.32;
+      X.beginPath();
+      X.moveTo(tx,mouthY-mouthH*0.7);
+      X.lineTo(tx+mouthW*0.08,mouthY-mouthH*0.1);
+      X.lineTo(tx+mouthW*0.16,mouthY-mouthH*0.7);
+      X.fill();
+    }
+    // Bottom teeth
+    for(let t=0;t<5;t++){
+      const tx=rikaX+sway-mouthW*0.65+t*mouthW*0.32;
+      X.beginPath();
+      X.moveTo(tx,mouthY+mouthH*0.7);
+      X.lineTo(tx+mouthW*0.08,mouthY+mouthH*0.1);
+      X.lineTo(tx+mouthW*0.16,mouthY+mouthH*0.7);
+      X.fill();
+    }
+    // --- Small dark eyes above mouth ---
+    X.fillStyle='#1a0a2a';
+    X.beginPath();X.arc(rikaX+sway-rS*0.12,headY-rS*0.08,rS*0.04,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(rikaX+sway+rS*0.12,headY-rS*0.08,rS*0.04,0,Math.PI*2);X.fill();
+    // Faint eye glow
+    X.fillStyle='rgba(255,200,100,0.4)';
+    X.beginPath();X.arc(rikaX+sway-rS*0.12,headY-rS*0.08,rS*0.025,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(rikaX+sway+rS*0.12,headY-rS*0.08,rS*0.025,0,Math.PI*2);X.fill();
+    // --- Cursed energy aura (faint purple outline) ---
+    X.shadowColor='#7733bb';X.shadowBlur=10;
+    X.strokeStyle='rgba(140,60,220,0.25)';X.lineWidth=1.5;
+    X.beginPath();X.ellipse(rikaX+sway,rikaY-rS*0.05,rS*0.5,rS*0.8,0,0,Math.PI*2);X.stroke();
     X.shadowBlur=0;
-    // Claw animation — bigger, more dramatic
+    // --- Claw attack animation ---
     if(f.yutaRikaClawAnim>0){
       const clawExt=f.yutaRikaClawAnim/15;
-      for(let c=0;c<5;c++){
-        const ca=Math.PI*2*c/5+battleTime*0.12;
-        X.strokeStyle='#cc44ff';X.lineWidth=3;
+      X.strokeStyle='rgba(200,160,220,0.8)';X.lineWidth=2.5;
+      // Slash marks from both claws
+      for(let c=0;c<4;c++){
+        const slashX=rikaX+(c<2?-1:1)*rS*0.6;
+        const slashOff=((c%2)*2-1)*rS*0.15;
         X.beginPath();
-        X.moveTo(rikaX+Math.cos(ca)*rikaSize,rikaY+Math.sin(ca)*rikaSize);
-        X.lineTo(rikaX+Math.cos(ca)*(rikaSize+18*clawExt),rikaY+Math.sin(ca)*(rikaSize+18*clawExt));
+        X.moveTo(slashX-rS*0.2*clawExt,rikaY-rS*0.3+slashOff);
+        X.lineTo(slashX+rS*0.3*clawExt,rikaY+rS*0.3+slashOff);
         X.stroke();
       }
     }
     // HP bar for Rika
-    const hpW=rikaSize*2,hpH=4;
-    const hpX=rikaX-hpW/2,hpY=rikaY-rikaSize-10;
+    const hpW=rS*2,hpH=4;
+    const hpX=rikaX-hpW/2,hpY=rikaY-rS*0.9-10;
     X.fillStyle='#333';X.fillRect(hpX,hpY,hpW,hpH);
     const hpPct=Math.max(0,f.yutaRikaHp/f.yutaRikaMaxHp);
     X.fillStyle=hpPct>0.5?'#aa55dd':'#ff4444';X.fillRect(hpX,hpY,hpW*hpPct,hpH);
@@ -16590,7 +16681,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.27.6 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.27.7 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
