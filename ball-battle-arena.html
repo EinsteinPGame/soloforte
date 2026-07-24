@@ -8856,7 +8856,7 @@ function updateBattle(dt){
     // Sponsor bar — charges like special but slower (sponsorMax 150 vs specialMax 100), lore combos 2x
     if(!f.sponsorUsed&&!sponsorCutsceneActive&&f.selectedSponsor){
       const isLoreSponsor=!!findLoreCombo(f.char.id)&&findLoreCombo(f.char.id).pair.includes(f.selectedSponsor);
-      f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.045*(isLoreSponsor?2:1)*(f.char.relicChargeRate||1)*dt);
+      f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.09*(isLoreSponsor?2:1)*(f.char.relicChargeRate||1)*dt);
       if(f.sponsorBar>=f.sponsorMax&&enemy.alive&&canCallSponsor(f.char.id,enemy.char.id,f.selectedSponsor)){
         f.sponsorUsed=true;
         f.sponsorBar=0;
@@ -17407,10 +17407,11 @@ function drawSponsorPicker(cx,cy,charId,selectedSponsorIdx,prefix,onSelect,exclu
     const totalW=cols*cardW+(cols-1)*gapX;
     const startX=cx-totalW/2;
     let h=16;
-    const allItems=[...eligible,-1]; // -1 = None
+    const allItems=[...eligible,-2,-1]; // -2 = Random, -1 = None
     allItems.forEach((item,i)=>{
       const isNone=item===-1;
-      const charIdx=isNone?-1:item;
+      const isRandom=item===-2;
+      const charIdx=isNone?-1:isRandom?-2:item;
       const ch=isNone?null:CHARS[charIdx];
       const row=Math.floor(i/cols),col=i%cols;
       const cardX=startX+col*(cardW+gapX);
@@ -17422,7 +17423,10 @@ function drawSponsorPicker(cx,cy,charId,selectedSponsorIdx,prefix,onSelect,exclu
       X.strokeStyle=isSel?'#ff8800':isLore?'#ffcc0066':'#333';X.lineWidth=isSel?2.5:1;X.stroke();
       X.save();
       try{
-        if(isNone){
+        if(isRandom){
+          X.font='bold 11px Consolas,monospace';X.textAlign='center';X.fillStyle='#44cc88';
+          X.fillText('\u{1F3B2} RANDOM',cardX+cardW/2,cardY+cardH/2+4);
+        } else if(isNone){
           X.font='bold 11px Consolas,monospace';X.textAlign='center';X.fillStyle=isSel?'#ff8800':'#555';
           X.fillText('NONE',cardX+cardW/2,cardY+cardH/2+4);
         } else {
@@ -17439,7 +17443,10 @@ function drawSponsorPicker(cx,cy,charId,selectedSponsorIdx,prefix,onSelect,exclu
         if(isSel){X.font='bold 9px Consolas,monospace';X.fillStyle='#ff8800';X.textAlign='right';X.fillText('\u2714',cardX+cardW-5,cardY+14);}
       }catch(e){}
       X.restore();
-      addBtn(prefix+(isNone?'_spN':'_sp'+charIdx),cardX,cardY,cardW,cardH,'','transparent',()=>{onSelect(charIdx);});
+      addBtn(prefix+(isNone?'_spN':isRandom?'_spR':'_sp'+charIdx),cardX,cardY,cardW,cardH,'','transparent',()=>{
+        if(isRandom){onSelect(eligible[Math.floor(Math.random()*eligible.length)]);}
+        else{onSelect(charIdx);}
+      });
       h=Math.max(h,12+(row+1)*(cardH+gapY));
     });
     return h;
@@ -17449,9 +17456,9 @@ function drawSponsorPicker(cx,cy,charId,selectedSponsorIdx,prefix,onSelect,exclu
     const gap=8;
     const itemW=ballR*2+gap;
     const noneSlotW=36;
-    const availW=(maxW||300)-noneSlotW-gap;
+    const availW=(maxW||300)-noneSlotW*2-gap*2; // account for Random + None slots
     const maxItems=Math.min(eligible.length,Math.max(1,Math.floor(availW/itemW)));
-    const totalW=maxItems*itemW-gap+gap+noneSlotW;
+    const totalW=maxItems*itemW-gap+gap+noneSlotW*2+gap;
     const startX=cx-totalW/2;
     let h=16;
     eligible.slice(0,maxItems).forEach((charIdx,i)=>{
@@ -17470,8 +17477,14 @@ function drawSponsorPicker(cx,cy,charId,selectedSponsorIdx,prefix,onSelect,exclu
       addBtn(prefix+'_sp'+charIdx,bx-ballR-1,by-ballR-1,ballR*2+2,ballR*2+14,'','transparent',()=>{onSelect(charIdx);});
     });
     h=10+ballR*2+18;
-    const noneX=startX+maxItems*itemW+noneSlotW/2;
+    // Random button
+    const randX=startX+maxItems*itemW+noneSlotW/2;
     X.font='bold 9px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#44cc88';
+    X.fillText('\u{1F3B2} RNG',randX,cy+10+ballR+3);
+    addBtn(prefix+'_spR',randX-noneSlotW/2,cy+4,noneSlotW,h-4,'','transparent',()=>{onSelect(eligible[Math.floor(Math.random()*eligible.length)]);});
+    // None button
+    const noneX=randX+noneSlotW+gap;
     X.fillStyle=selectedSponsorIdx<0?'#ff8800':'#555';
     X.fillText('NONE',noneX,cy+10+ballR+3);
     addBtn(prefix+'_spN',noneX-noneSlotW/2,cy+4,noneSlotW,h-4,'','transparent',()=>{onSelect(-1);});
@@ -18594,10 +18607,14 @@ function drawIntroCutscene(){
   if(modeObj){
     const modeAlpha=Math.min(1,t/40)*0.7;
     X.globalAlpha=modeAlpha;
-    X.font='bold '+Math.round(13*fs)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
-    X.shadowColor=modeObj.color;X.shadowBlur=8;
-    X.fillStyle=modeObj.color;X.fillText(modeObj.name,W/2,barH+18*fs);
-    X.shadowBlur=0;
+    const modeFont='bold '+Math.round(13*fs)+'px Consolas,monospace';
+    X.font=modeFont;X.textAlign='center';X.textBaseline='middle';
+    const modeNameY=barH+18*fs;
+    // Glow effect via stroke (avoids shadow rendering artifacts on some devices)
+    X.strokeStyle=modeObj.color;X.lineWidth=4;X.globalAlpha=modeAlpha*0.3;
+    X.strokeText(modeObj.name,W/2,modeNameY);
+    X.globalAlpha=modeAlpha;
+    X.fillStyle=modeObj.color;X.fillText(modeObj.name,W/2,modeNameY);
     X.globalAlpha=1;
   }
 
