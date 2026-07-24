@@ -435,7 +435,7 @@ const CHARS=[
 // ELEMENT DEFINITIONS
 // ============================================================
 const ELEMENTS=[
-  {id:'none',name:'None',color:'#888888',desc:'Pure skill, no element.'},
+  {id:'none',name:'No Element',color:'#888888',desc:'Pure skill, no element.'},
   {id:'fire',name:'Fire',color:'#ff4400',desc:'Burn DoT on hits.',symbol:'F'},
   {id:'electric',name:'Electric',color:'#ffcc00',desc:'Stun chance on hit.',symbol:'E'},
   {id:'toxic',name:'Toxic',color:'#aa44cc',desc:'Reduce enemy defense.',symbol:'T'},
@@ -690,6 +690,44 @@ const LORE_COMBOS=[
     cutsceneFrames:70,
     color1:'#ff69b4', color2:'#ff8800',
   },
+  // More JJK combos
+  {
+    pair:['sukuna','mahito'], franchise:'JJK', name:'MALEVOLENT SHRINE + IDLE TRANSFIGURATION',
+    desc:'Sukuna opens Malevolent Shrine while Mahito reshapes souls inside — everything within is cut AND twisted beyond recognition',
+    dmgMult:3.2,
+    cutsceneFrames:85,
+    color1:'#8b0000', color2:'#7744aa',
+  },
+  {
+    pair:['hakari','kashimo'], franchise:'JJK', name:'JACKPOT LIGHTNING',
+    desc:'Hakari hits jackpot granting infinite cursed energy while Kashimo channels it all into one devastating lightning strike',
+    dmgMult:2.8,
+    cutsceneFrames:80,
+    color1:'#00cc88', color2:'#ffcc00',
+  },
+  // More Cyberpunk combos
+  {
+    pair:['mantis','katana'], franchise:'CYBERPUNK', name:'BLADE DANCE',
+    desc:'Mantis Blades spin as Katana deflects all counters — a whirlwind of chrome and steel that shreds everything in range',
+    dmgMult:2.4,
+    cutsceneFrames:70,
+    color1:'#ff3333', color2:'#4466cc',
+  },
+  // More Cross-franchise combos
+  {
+    pair:['choso','monowire'], franchise:'CROSSOVER', name:'BLOOD WIRE',
+    desc:'Choso infuses Monowire with Piercing Blood — the wire becomes a razor-thin blood lance that slices through any defense',
+    dmgMult:2.5,
+    cutsceneFrames:75,
+    color1:'#cc2222', color2:'#00ddff',
+  },
+  {
+    pair:['maki','gorilla'], franchise:'CROSSOVER', name:'PHYSICAL SUPREMACY',
+    desc:'Two pure physical fighters — Maki\'s heavenly restriction speed combined with Gorilla Arms\' raw power creates an unstoppable assault',
+    dmgMult:2.3,
+    cutsceneFrames:70,
+    color1:'#44aa44', color2:'#ff8800',
+  },
 ];
 // Ally Combo state (2v2 + boss fight)
 let allyComboActive=false;
@@ -741,7 +779,7 @@ function triggerAllyCombo(f1,f2,combo){
   SFX.relicActivate();
   triggerScreenFlash('#ffffff',isLore?15:10);
   shakeTimer=isLore?25:15;shakeAmt=isLore?12:8;
-  addLog((isLore?'LORE COMBO: ':'ALLY COMBO: ')+allyComboData.name+'!');
+  addLog((isLore?'ALLY COMBO: ':'ALLY COMBO: ')+allyComboData.name+'!');
 }
 
 function updateAllyCombo(dt){
@@ -866,13 +904,13 @@ function triggerSponsorCutscene(caller,enemy){
     color1:isLore?combo.color1:sponsorChar.color,
     color2:isLore?combo.color2:caller.char.color,
     dmgMult:isLore?combo.dmgMult:1.8,
-    name:isLore?'LORE COMBO!':'SPONSOR: '+sponsorChar.name,
+    name:isLore?'ALLY COMBO!':'SPONSOR: '+sponsorChar.name,
   };
   fighters.forEach(f=>{if(f)f._preSponsorVx=f.vx;f._preSponsorVy=f.vy;f.vx=0;f.vy=0;});
   SFX.relicActivate();
   triggerScreenFlash('#ffffff',isLore?12:8);
   shakeTimer=isLore?20:12;shakeAmt=isLore?10:6;
-  addLog(isLore?'LORE COMBO!':'SPONSOR ASSIST: '+sponsorCutsceneData.name+'!');
+  addLog(isLore?'ALLY COMBO!':'SPONSOR ASSIST: '+sponsorCutsceneData.name+'!');
 }
 
 function updateSponsorCutscene(dt){
@@ -915,7 +953,7 @@ function drawSponsorCutscene(){
   // Name with glow
   X.shadowColor=sd.color1;X.shadowBlur=20;
   X.fillStyle=sd.color1;
-  X.fillText(sd.isLore?(sd.combo.franchise+' LORE COMBO!'):'SPONSOR: '+sd.sponsorChar.name,W/2,H/2-40);
+  X.fillText(sd.isLore?(sd.combo.franchise+' ALLY COMBO!'):'SPONSOR: '+sd.sponsorChar.name,W/2,H/2-40);
   X.shadowBlur=0;
   // Tag
   X.font=(isMobile?10:12)+'px Consolas,monospace';
@@ -8774,7 +8812,7 @@ function updateBattle(dt){
     // Sponsor bar — charges like special but slower (sponsorMax 150 vs specialMax 100), lore combos 2x
     if(!f.sponsorUsed&&!sponsorCutsceneActive&&f.selectedSponsor){
       const isLoreSponsor=!!findLoreCombo(f.char.id)&&findLoreCombo(f.char.id).pair.includes(f.selectedSponsor);
-      f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.02*(isLoreSponsor?2:1)*(f.char.relicChargeRate||1)*dt);
+      f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.045*(isLoreSponsor?2:1)*(f.char.relicChargeRate||1)*dt);
       if(f.sponsorBar>=f.sponsorMax&&enemy.alive&&canCallSponsor(f.char.id,enemy.char.id,f.selectedSponsor)){
         f.sponsorUsed=true;
         f.sponsorBar=0;
@@ -16441,8 +16479,8 @@ function drawTitle(){
   X.restore();
   addBtn('play',W/2-playBtnW/2,playY,playBtnW,playBtnH,'','#7b68ee',()=>{screen='modeSelect';_modeIdx=0;SFX.click();});
 
-  // Lore Combos — small link below
-  addBtn('loreCombos',W/2-60,playY+80,120,32,'LORE COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
+  // Ally Combos — small link below
+  addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
   X.fillText('BBA v10.24.0 // soloforte.ai',W/2,H-20);
@@ -16532,27 +16570,38 @@ function drawModeSelect(){
     const selected=i===_modeIdx;
     const hoverPulse=selected?0.08*Math.sin(Date.now()*0.005):0;
 
-    // Card background
+    // Card background — gradient fill with visible content
     X.save();
     drawRoundRect(cx,cy,cardW,cardH,10);
     if(selected){
-      X.fillStyle=m.color+'22';X.fill();
+      const cardGrad=X.createLinearGradient(cx,cy,cx+cardW,cy+cardH);
+      cardGrad.addColorStop(0,m.color+'44');cardGrad.addColorStop(1,m.color+'18');
+      X.fillStyle=cardGrad;X.fill();
       X.strokeStyle=m.color;X.lineWidth=2.5;X.stroke();
       X.shadowColor=m.color;X.shadowBlur=15;
       drawRoundRect(cx,cy,cardW,cardH,10);
       X.strokeStyle=m.color+'88';X.lineWidth=1;X.stroke();
       X.shadowBlur=0;
     }else{
-      X.fillStyle='#111128';X.fill();
-      X.strokeStyle='#333';X.lineWidth=1;X.stroke();
+      const cardGrad2=X.createLinearGradient(cx,cy,cx+cardW,cy+cardH);
+      cardGrad2.addColorStop(0,'#161630');cardGrad2.addColorStop(1,'#111128');
+      X.fillStyle=cardGrad2;X.fill();
+      X.strokeStyle='#444';X.lineWidth=1;X.stroke();
     }
     X.restore();
 
-    // Icon
+    // Large watermark icon (background, right side)
+    X.save();X.globalAlpha=selected?0.12:0.05;
+    const wmX=cx+cardW-(isMobile?40:55);
+    const wmSz=isMobile?28:36;
+    drawModeIcon(wmX,cy+cardH/2,m.icon,wmSz,selected?m.color:'#666');
+    X.restore();
+
+    // Icon (left side)
     const iconX=cx+(isMobile?35:45);
     const iconY=cy+cardH/2;
     const iconSz=isMobile?14:18;
-    drawModeIcon(iconX,iconY,m.icon,iconSz,selected?m.color:'#555');
+    drawModeIcon(iconX,iconY,m.icon,iconSz,selected?m.color:'#666');
 
     // Mode name
     const textX=cx+(isMobile?70:90);
@@ -16608,8 +16657,9 @@ function drawModeSelect(){
 }
 
 // ============================================================
-// LORE COMBOS VIEWER
+// ALLY COMBOS VIEWER
 // ============================================================
+let expandedCombo=null; // index into allEntries, or null
 function drawLoreCombos(){
   clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
   X.strokeStyle='#1a1a3a';X.lineWidth=1;
@@ -16620,7 +16670,7 @@ function drawLoreCombos(){
   X.textAlign='center';X.textBaseline='middle';
   X.shadowColor='#aa44cc';X.shadowBlur=15;
   X.fillStyle='#aa44cc';
-  X.fillText('LORE COMBOS',W/2,isMobile?35:45);
+  X.fillText('ALLY COMBOS',W/2,isMobile?35:45);
   X.shadowBlur=0;
 
   X.font=(isMobile?'11':'13')+'px Consolas,Courier New,monospace';
@@ -16657,7 +16707,22 @@ function drawLoreCombos(){
   const br=isMobile?14:18;
   const fontSize=isMobile?11:13;
 
+  // Helper: word-wrap text into lines fitting maxW pixels
+  function wrapText(text,maxW,fontPx){
+    const words=text.split(' ');const lines=[];let line='';
+    const charW=fontPx*0.6;
+    words.forEach(w=>{
+      const test=line?line+' '+w:w;
+      if(test.length*charW>maxW&&line){lines.push(line);line=w;}
+      else{line=test;}
+    });
+    if(line)lines.push(line);
+    return lines;
+  }
+
+  let entryIdx=pageStart; // track global index for expanded state
   pageEntries.forEach(entry=>{
+    const thisIdx=entryIdx++;
     if(entry.type==='header'){
       X.font='bold '+(isMobile?'13':'15')+'px Consolas,Courier New,monospace';
       X.textAlign='left';X.fillStyle=entry.color;
@@ -16668,14 +16733,19 @@ function drawLoreCombos(){
     const c=entry.combo;
     const ch1=CHARS.find(ch=>ch.id===c.pair[0]);
     const ch2=CHARS.find(ch=>ch.id===c.pair[1]);
+    const isExpanded=(expandedCombo===thisIdx);
+    // Expanded card is taller to show full description
+    const expandedH=isMobile?130:150;
+    const thisCardH=isExpanded?expandedH:cardH;
+
     // Card background
     X.save();
-    drawRoundRect(cardX,cy,cardW,cardH-4,8);
-    X.fillStyle='#111128';X.fill();
-    X.strokeStyle=entry.groupColor+'66';X.lineWidth=1.5;X.stroke();
+    drawRoundRect(cardX,cy,cardW,thisCardH-4,8);
+    X.fillStyle=isExpanded?'#181830':'#111128';X.fill();
+    X.strokeStyle=isExpanded?(entry.groupColor+'cc'):(entry.groupColor+'66');X.lineWidth=isExpanded?2:1.5;X.stroke();
 
-    // Character balls
-    const ballY=cy+cardH/2-2;
+    // Character balls (vertically centered in top portion)
+    const ballY=cy+(isExpanded?cardH/2-2:cardH/2-2);
     const b1x=cardX+br+8;
     const b2x=cardX+br*3+12;
     if(ch1){
@@ -16684,6 +16754,8 @@ function drawLoreCombos(){
       X.beginPath();X.arc(b1x,ballY,br,0,Math.PI*2);X.fillStyle=g1;X.fill();
       X.strokeStyle=darken(ch1.color,20);X.lineWidth=1;X.stroke();
       X.beginPath();X.arc(b1x-br*0.25,ballY-br*0.25,br*0.15,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.3)';X.fill();
+      X.font='bold '+Math.floor(br*0.7)+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';X.fillStyle='#fff';X.shadowBlur=0;
+      X.fillText(ch1.name.substring(0,3).toUpperCase(),b1x,ballY);
     }
     if(ch2){
       const g2=X.createRadialGradient(b2x-br*0.2,ballY-br*0.2,br*0.1,b2x,ballY,br);
@@ -16691,6 +16763,8 @@ function drawLoreCombos(){
       X.beginPath();X.arc(b2x,ballY,br,0,Math.PI*2);X.fillStyle=g2;X.fill();
       X.strokeStyle=darken(ch2.color,20);X.lineWidth=1;X.stroke();
       X.beginPath();X.arc(b2x-br*0.25,ballY-br*0.25,br*0.15,0,Math.PI*2);X.fillStyle='rgba(255,255,255,0.3)';X.fill();
+      X.font='bold '+Math.floor(br*0.7)+'px Consolas,Courier New,monospace';X.textAlign='center';X.textBaseline='middle';X.fillStyle='#fff';X.shadowBlur=0;
+      X.fillText(ch2.name.substring(0,3).toUpperCase(),b2x,ballY);
     }
 
     // Combo name + multiplier
@@ -16708,14 +16782,34 @@ function drawLoreCombos(){
     const names=(ch1?ch1.name:'?')+' + '+(ch2?ch2.name:'?');
     X.fillText(names,textX,cy+34);
 
-    // Description
-    X.fillStyle='#777';X.font=(fontSize-2)+'px Consolas,Courier New,monospace';
-    const maxDescW=cardX+cardW-textX-10;
-    const descText=c.desc.length*6>maxDescW?c.desc.substring(0,Math.floor(maxDescW/6))+'...':c.desc;
-    X.fillText(descText,textX,cy+50);
+    if(isExpanded){
+      // Full word-wrapped description
+      const maxDescW=cardW-textX+cardX-10;
+      const descFontPx=fontSize-2;
+      const descLines=wrapText(c.desc,maxDescW,descFontPx);
+      X.fillStyle='#bbb';X.font=descFontPx+'px Consolas,Courier New,monospace';
+      descLines.forEach((ln,li)=>{X.fillText(ln,textX,cy+52+li*(descFontPx+3));});
+      // Damage multiplier prominently
+      X.font='bold '+(fontSize+2)+'px Consolas,Courier New,monospace';
+      X.fillStyle='#ffcc00';X.shadowColor='#ffcc00';X.shadowBlur=8;
+      X.fillText('x'+c.dmgMult.toFixed(1)+' DAMAGE MULTIPLIER',textX,cy+thisCardH-18);
+      X.shadowBlur=0;
+      // Collapse hint
+      X.font=(fontSize-2)+'px Consolas,Courier New,monospace';X.fillStyle='#555';X.textAlign='right';
+      X.fillText('tap to close',cardX+cardW-6,cy+thisCardH-18);
+    } else {
+      // Truncated description
+      X.fillStyle='#777';X.font=(fontSize-2)+'px Consolas,Courier New,monospace';X.textAlign='left';
+      const maxDescW=cardX+cardW-textX-10;
+      const descText=c.desc.length*6>maxDescW?c.desc.substring(0,Math.floor(maxDescW/6))+'...':c.desc;
+      X.fillText(descText,textX,cy+50);
+    }
 
     X.restore();
-    cy+=cardH;
+    // Invisible button to toggle expand on this card
+    const capturedIdx=thisIdx;const capturedCy=cy;
+    addBtn('lc_card_'+thisIdx,cardX,cy,cardW,thisCardH-4,'','transparent',()=>{expandedCombo=(expandedCombo===capturedIdx?null:capturedIdx);});
+    cy+=thisCardH;
   });
 
   // Page nav
@@ -16723,8 +16817,8 @@ function drawLoreCombos(){
   if(totalPages>1){
     X.font='bold 14px Consolas,Courier New,monospace';X.textAlign='center';X.fillStyle='#888';
     X.fillText('Page '+(selectPage+1)+'/'+totalPages,W/2,navY);
-    if(selectPage>0)addBtn('lcPrev',W/2-120,navY-14,50,28,'< PREV','#aa44cc',()=>{selectPage--;});
-    if(selectPage<totalPages-1)addBtn('lcNext',W/2+70,navY-14,50,28,'NEXT >','#aa44cc',()=>{selectPage++;});
+    if(selectPage>0)addBtn('lcPrev',W/2-120,navY-14,50,28,'< PREV','#aa44cc',()=>{selectPage--;expandedCombo=null;});
+    if(selectPage<totalPages-1)addBtn('lcNext',W/2+70,navY-14,50,28,'NEXT >','#aa44cc',()=>{selectPage++;expandedCombo=null;});
   }
 
   addBtn('lcBack',10,10,80,30,'< BACK','#888',()=>{screen='title';});
@@ -18266,6 +18360,16 @@ function drawIntroCutscene(){
   const centerY=H/2;
   const fs=isMobile?1:1.3;
 
+  // Gamemode name — top center, persistent throughout intro
+  const modeObj=GAME_MODES.find(m=>m.id===gameMode);
+  if(modeObj){
+    const modeAlpha=Math.min(1,t/40)*0.6;
+    X.globalAlpha=modeAlpha;
+    X.font='bold '+Math.round(12*fs)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+    X.fillStyle=modeObj.color;X.fillText(modeObj.name,W/2,barH+18*fs);
+    X.globalAlpha=1;
+  }
+
   // Phase 0: P1 full-screen showcase (0-420 = 7s)
   if(ic.phase===0){
     drawCharFullScreen(ic.p1Char,ic.p1Elem,ic.p1Line,t,fs,false);
@@ -18447,18 +18551,23 @@ function drawCharFullScreen(char,elem,voiceline,t,fs,isRight){
   const glow=X.createRadialGradient(W/2,ballY,bigR*0.3,W/2,ballY,bigR*2.5);
   glow.addColorStop(0,char.color+'55');glow.addColorStop(0.5,char.color+'22');glow.addColorStop(1,char.color+'00');
   X.fillStyle=glow;X.fillRect(0,0,W,H);
-  // Ball
+  // Ball — semi-transparent so animation shows through
   X.beginPath();X.arc(W/2,ballY,bigR,0,Math.PI*2);
-  X.fillStyle=char.color;X.fill();
-  X.strokeStyle='#ffffff44';X.lineWidth=3;X.stroke();
+  const ballGrad=X.createRadialGradient(W/2,ballY,0,W/2,ballY,bigR);
+  ballGrad.addColorStop(0,char.color+'cc');ballGrad.addColorStop(0.7,char.color+'99');ballGrad.addColorStop(1,char.color+'66');
+  X.fillStyle=ballGrad;X.fill();
+  X.strokeStyle='#ffffff55';X.lineWidth=3;X.stroke();
   // Inner highlight
   const hlGrad=X.createRadialGradient(W/2-bigR*0.25,ballY-bigR*0.25,0,W/2,ballY,bigR);
-  hlGrad.addColorStop(0,'rgba(255,255,255,0.2)');hlGrad.addColorStop(0.5,'rgba(255,255,255,0.05)');hlGrad.addColorStop(1,'rgba(255,255,255,0)');
+  hlGrad.addColorStop(0,'rgba(255,255,255,0.25)');hlGrad.addColorStop(0.5,'rgba(255,255,255,0.08)');hlGrad.addColorStop(1,'rgba(255,255,255,0)');
   X.fillStyle=hlGrad;X.beginPath();X.arc(W/2,ballY,bigR,0,Math.PI*2);X.fill();
+  // Character initials inside ball
+  X.font='bold '+Math.round(bigR*0.5)+'px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
+  X.fillStyle='rgba(255,255,255,0.25)';X.fillText(char.name.substring(0,3).toUpperCase(),W/2,ballY);
 
-  // Animated signature move — scaled up (2x normal scale)
-  const animScale=fs*2;
-  if(t>30)drawCharIntroAnim(char.id,W/2,ballY-10*animScale,t-30,animScale,char.color);
+  // Animated signature move — scaled up (2.5x normal scale), starts sooner
+  const animScale=fs*2.5;
+  if(t>15)drawCharIntroAnim(char.id,W/2,ballY-10*animScale,t-15,animScale,char.color);
   X.globalAlpha=alpha;
 
   // Character name — large, centered below ball
@@ -18485,16 +18594,7 @@ function drawCharFullScreen(char,elem,voiceline,t,fs,isRight){
     X.fillStyle='#999';X.fillText(elem.name+' Element',W/2+nameOffX,nameY+50*fs);
   }
 
-  // Voiceline (appears after 1.5s)
-  if(t>90){
-    const lineAlpha=Math.min(1,(t-90)/30)*alpha;
-    X.globalAlpha=lineAlpha;
-    X.font='italic '+Math.round(14*fs)+'px Consolas,monospace';
-    X.fillStyle='#ccc';
-    // Wrap long voicelines
-    const maxW=W*0.7;
-    X.fillText('"'+voiceline+'"',W/2+nameOffX,nameY+78*fs);
-  }
+  // Voiceline removed per Kyle's request
   X.globalAlpha=1;
 }
 
@@ -19651,7 +19751,7 @@ function drawBattle(){
       // Pulsing glow when full
       if(lr1>=1){const pulse=0.6+0.4*Math.sin(Date.now()*0.005);X.shadowColor=isLore1?'#ff4400':'#ffaa00';X.shadowBlur=12*pulse;X.fillStyle=isLore1?'#ff6600':'#ffcc00';X.fillRect(p1bx,lbY,barW,lbH);X.shadowBlur=0;}
       X.font='bold 10px Consolas,monospace';X.textAlign='left';
-      if(lr1>=1){X.fillStyle='#fff';X.fillText(isLore1?'\u26A1 LORE COMBO READY!':'\u2B50 SPONSOR READY!',p1bx+3,lbY+11);}
+      if(lr1>=1){X.fillStyle='#fff';X.fillText(isLore1?'\u26A1 ALLY COMBO READY!':'\u2B50 SPONSOR READY!',p1bx+3,lbY+11);}
       else if(sc1){X.fillStyle='#eecc77';X.fillText((isLore1?'\u26D3 ':'\u25C6 ')+sc1.name+' '+Math.round(lr1*100)+'%',p1bx+3,lbY+11);}
     }
     if(f2.selectedSponsor&&!f2.sponsorUsed){
@@ -19666,7 +19766,7 @@ function drawBattle(){
       X.strokeStyle=isLore2?'#ff6600':'#cc8800';X.lineWidth=1;X.strokeRect(p2bx,lbY,barW,lbH);
       if(lr2>=1){const pulse=0.6+0.4*Math.sin(Date.now()*0.005);X.shadowColor=isLore2?'#ff4400':'#ffaa00';X.shadowBlur=12*pulse;X.fillStyle=isLore2?'#ff6600':'#ffcc00';X.fillRect(p2bx,lbY,barW,lbH);X.shadowBlur=0;}
       X.font='bold 10px Consolas,monospace';X.textAlign='right';
-      if(lr2>=1){X.fillStyle='#fff';X.fillText(isLore2?'\u26A1 LORE COMBO READY!':'\u2B50 SPONSOR READY!',p2bx+barW-3,lbY+11);}
+      if(lr2>=1){X.fillStyle='#fff';X.fillText(isLore2?'\u26A1 ALLY COMBO READY!':'\u2B50 SPONSOR READY!',p2bx+barW-3,lbY+11);}
       else if(sc2){X.fillStyle='#eecc77';X.fillText((isLore2?'\u26D3 ':'\u25C6 ')+sc2.name+' '+Math.round(lr2*100)+'%',p2bx+barW-3,lbY+11);}
     }
 
