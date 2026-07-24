@@ -17,7 +17,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// WHEEL OF FAITH v2.12.1 — Race power weighting + bigger text + word wrap + color contrast
+// WHEEL OF FAITH v2.12.2 — Fix spin pointer alignment bug + Darwizzies rare
 // 17+ spin categories, 50+ races, 100s of options, full-screen wheels,
 // conditional spins, neon glow, segment weighting, rainbow wheels
 // ============================================================
@@ -59,8 +59,8 @@ const RACE_WEIGHTS={};
 // Uncommon — weight 0.85
 ['Spirit','Werebeast','Gargoyle','Golem','Siren','Fortunas','Dispensian','Cyborg','Animorph','Nightborn','Fey','Centaur','Chimekin','Merfolk'].forEach(r=>RACE_WEIGHTS[r]=0.85);
 // Common — weight 1.2 (default)
-// Darwizzies (joke) — weight 1.8 (easy to land on)
-RACE_WEIGHTS['Darwizzies']=1.8;
+// Darwizzies (joke/weakest) — weight 0.25 (rare, punishment roll)
+RACE_WEIGHTS['Darwizzies']=0.25;
 
 function getItemWeights(cat){
   const items=cat.items,n=items.length;
@@ -1017,8 +1017,8 @@ function updateSpin(){
   const cat=getCurrentWheel();
   if(cat){
     const cum=getCumAngles(cat);
-    const normA=(((-spin.angle-Math.PI/2)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
-    const normL=(((-lastTickAngle-Math.PI/2)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
+    const normA=(((-spin.angle)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
+    const normL=(((-lastTickAngle)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
     let curSeg=cat.items.length-1,lastSeg=cat.items.length-1;
     for(let i=0;i<cat.items.length;i++){if(normA<cum[i+1]){curSeg=i;break;}}
     for(let i=0;i<cat.items.length;i++){if(normL<cum[i+1]){lastSeg=i;break;}}
@@ -1031,7 +1031,7 @@ function updateSpin(){
     if(cat){
       const items=cat.items;
       const cum=getCumAngles(cat);
-      const normAngle=(((-spin.angle-Math.PI/2)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
+      const normAngle=(((-spin.angle)%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
       let idx=items.length-1;
       for(let i=0;i<items.length;i++){if(normAngle<cum[i+1]){idx=i;break;}}
       spin.landedIdx=idx;
