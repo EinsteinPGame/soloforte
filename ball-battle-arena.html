@@ -2415,6 +2415,31 @@ function drawCharVictoryAnim(charId,x,y,r,color,t,isWin){
   const p=dt/420; // 0-1 progress
   const fn=isWin?CHAR_WIN_ANIMS[charId]:CHAR_LOSE_ANIMS[charId];
   if(fn)fn(x,y,r,color,dt,p);
+  // Sustain ambient effects after main anim content (most end ~150)
+  if(dt>150){
+    const sp=(dt-150)/270; // 0-1 over sustain phase
+    if(isWin){
+      // Gentle pulsing aura + floating particles
+      const pulse=0.15+Math.sin(dt*0.04)*0.05;
+      X.strokeStyle=color;X.lineWidth=1.5;X.globalAlpha=pulse*(1-sp*0.3);
+      X.beginPath();X.arc(x,y,r*1.6+Math.sin(dt*0.06)*4,0,Math.PI*2);X.stroke();
+      // Floating sparkles
+      if(Math.random()<0.3*(1-sp)){
+        const sa=Math.random()*Math.PI*2;const sd=r*1.5+Math.random()*r*2;
+        X.fillStyle=Math.random()>0.5?color:'#ffcc00';X.globalAlpha=0.4*(1-sp);
+        X.beginPath();X.arc(x+Math.cos(sa)*sd,y+Math.sin(sa)*sd-dt*0.1,1.5+Math.random(),0,Math.PI*2);X.fill();
+      }
+    }else{
+      // Defeat: dimming + occasional flicker
+      X.fillStyle='#000';X.globalAlpha=sp*0.25;
+      X.beginPath();X.arc(x,y,r*1.3,0,Math.PI*2);X.fill();
+      if(Math.random()<0.1*(1-sp)){
+        X.fillStyle='#444';X.globalAlpha=0.3*(1-sp);
+        X.beginPath();X.arc(x+(Math.random()-0.5)*r,y+(Math.random()-0.5)*r,1,0,Math.PI*2);X.fill();
+      }
+    }
+    X.globalAlpha=1;
+  }
 }
 const CHAR_WIN_ANIMS={
   mantis(x,y,r,c,dt,p){
