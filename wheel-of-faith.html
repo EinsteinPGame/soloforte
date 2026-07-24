@@ -17,7 +17,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// WHEEL OF FAITH v2.12.0 — Race power weighting + bigger text
+// WHEEL OF FAITH v2.12.1 — Race power weighting + bigger text + word wrap + color contrast
 // 17+ spin categories, 50+ races, 100s of options, full-screen wheels,
 // conditional spins, neon glow, segment weighting, rainbow wheels
 // ============================================================
@@ -1111,7 +1111,7 @@ function drawTitle(){
   }
 
   X.font='11px "Segoe UI",sans-serif';X.fillStyle='#333';X.textAlign='center';
-  X.fillText('WoF v2.12.0 // soloforte.ai',cx,VH-15);
+  X.fillText('WoF v2.12.1 // soloforte.ai',cx,VH-15);
   buttons.forEach(drawBtn);
 }
 
@@ -1212,9 +1212,9 @@ function drawSpin(){
       segColor='#1a1a1a'; // near-black for joke tier
     }else if(items.length<=15){
       const hueShift=(i/items.length)*60-30;
-      segColor=i%2===0?lighten(baseColor,hueShift):darken(baseColor,20+hueShift);
+      segColor=i%2===0?lighten(baseColor,hueShift):darken(baseColor,30+hueShift);
     }else{
-      const shades=[baseColor,darken(baseColor,25),darken(baseColor,50),lighten(baseColor,15)];
+      const shades=[baseColor,darken(baseColor,30),darken(baseColor,55),lighten(baseColor,20),darken(baseColor,15),lighten(baseColor,5)];
       segColor=shades[i%shades.length];
     }
 
@@ -1272,12 +1272,34 @@ function drawSpin(){
       X.fillStyle='#fff';
     }
 
-    let label=items[i];
+    const label=items[i];
     const maxTextW=wr*0.55*Math.min(1,arcSize/(Math.PI*2/items.length));
-    if(X.measureText(label).width>maxTextW){
-      label=label.substring(0,Math.max(2,Math.floor(label.length*maxTextW/X.measureText(label).width)))+'..';
+    if(X.measureText(label).width<=maxTextW){
+      X.fillText(label,0,0);
+    }else{
+      // Try word-wrapping into 2 lines
+      const words=label.split(' ');
+      if(words.length>=2){
+        let line1='',line2='';
+        const mid=Math.ceil(words.length/2);
+        line1=words.slice(0,mid).join(' ');
+        line2=words.slice(mid).join(' ');
+        // Check if wrapped lines fit
+        if(X.measureText(line1).width<=maxTextW*1.1&&X.measureText(line2).width<=maxTextW*1.1){
+          X.fillText(line1,0,-fontSize*0.55);
+          X.fillText(line2,0,fontSize*0.55);
+        }else{
+          // Still too long — truncate
+          let trunc=label;
+          while(X.measureText(trunc+'..').width>maxTextW&&trunc.length>2)trunc=trunc.slice(0,-1);
+          X.fillText(trunc+'..',0,0);
+        }
+      }else{
+        let trunc=label;
+        while(X.measureText(trunc+'..').width>maxTextW&&trunc.length>2)trunc=trunc.slice(0,-1);
+        X.fillText(trunc+'..',0,0);
+      }
     }
-    X.fillText(label,0,0);
     X.restore();
   }
   X.restore();
