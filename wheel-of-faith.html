@@ -17,7 +17,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// WHEEL OF FAITH v2.12.2 — Fix spin pointer alignment bug + Darwizzies rare
+// WHEEL OF FAITH v2.13.0 — Dynamic character portrait: race-specific body, weapon, armour, enchantment glow
 // 17+ spin categories, 50+ races, 100s of options, full-screen wheels,
 // conditional spins, neon glow, segment weighting, rainbow wheels
 // ============================================================
@@ -1111,7 +1111,7 @@ function drawTitle(){
   }
 
   X.font='11px "Segoe UI",sans-serif';X.fillStyle='#333';X.textAlign='center';
-  X.fillText('WoF v2.12.1 // soloforte.ai',cx,VH-15);
+  X.fillText('WoF v2.13.0 // soloforte.ai',cx,VH-15);
   buttons.forEach(drawBtn);
 }
 
@@ -1368,6 +1368,443 @@ function drawSpin(){
 }
 
 // ============================================================
+// DRAW: CHARACTER PORTRAIT — Dynamic visual based on build
+// ============================================================
+function drawCharacterPortrait(X,cx,y,h,raceColor,cr,t){
+  const race=(cr.race||'').toLowerCase();
+  const weapon=(cr.weapon||'').toLowerCase();
+  const size=(cr.size||'6ft').replace('ft','');
+  const sizeScale=Math.max(0.7,Math.min(1.3,(parseFloat(size)||6)/6));
+
+  // Race-specific aura/armour color (overrides generic blue category color)
+  const raceAuraColors={
+    'human':'#4a90d9','elf':'#2ecc71','dwarf':'#cd853f','orc':'#556b2f',
+    'goblin':'#6b8e23','demon':'#cc3333','devil':'#aa0000','angel':'#87ceeb',
+    'fairy':'#dda0dd','dragon':'#cc6600','dragonborn':'#b8860b','skeleton':'#708090',
+    'vampire':'#8b0000','spirit':'#778899','god':'#ffd700','demi-god':'#daa520',
+    'merfolk':'#20b2aa','centaur':'#8b6914','reptile':'#228b22','slimes':'#32cd32',
+    'elemental':'#ff6347','golem':'#808080','cyborg':'#4682b4','werebeast':'#8b4513',
+    'giant':'#a0522d','birdkin':'#87ceeb','dryad':'#3cb371','nightborn':'#483d8b',
+    'voidwalker':'#4b0082','cosmic warrior':'#1e90ff','soulweaver':'#9370db',
+    'genies':'#da70d6','gargoyle':'#696969','trolls':'#556b2f','siren':'#48d1cc',
+    'mythical beast':'#ff8c00','cosmic mind':'#191970','hive mind':'#9acd32',
+    'symbiote':'#800080','artisan':'#deb887','fortunas':'#ffd700','dispensian':'#c0c0c0',
+    'nucleite':'#00ff7f','primordial':'#2f4f4f','reincarnation':'#e6e6fa',
+    'evil reincarnation':'#8b008b','dragon slayer':'#b22222','animorph':'#d2691e',
+    'fey':'#98fb98','chimekin':'#e9967a','boardborn':'#bc8f8f','darwizzies':'#dcdcdc',
+    'gnomes':'#8fbc8f',
+  };
+  raceColor=raceAuraColors[race]||raceColor;
+
+  // Scale body proportions by character size
+  const headR=h*0.10*sizeScale;
+  const bodyW=h*0.16*sizeScale;
+  const bodyH=h*0.35*sizeScale;
+  const shoulderY=y+h*0.33;
+  const bodyTop=shoulderY;
+  const bodyBot=bodyTop+bodyH;
+  const legH=h*0.18*sizeScale;
+
+  // Race-specific body/skin color
+  const raceBodyColors={
+    'demon':'#8b2252','devil':'#8b0000','angel':'#e8e0d0','fairy':'#f0d0f0',
+    'dragon':'#3a6b3a','dragonborn':'#4a7a4a','elf':'#c8b89a','dwarf':'#c8a870',
+    'orc':'#5a7a3a','goblin':'#5a8a3a','skeleton':'#d0c8b8','vampire':'#c0b0b0',
+    'slimes':'#50c878','elemental':'#7090d0','golem':'#8a8a7a','cyborg':'#708090',
+    'spirit':'#a0b8d0','god':'#ffe8b0','demi-god':'#e8d8b0','merfolk':'#60a0b0',
+    'centaur':'#c0a070','reptile':'#5a8050','werebeast':'#8a7050','giant':'#b0a080',
+  };
+  const skinColor=raceBodyColors[race]||lighten(raceColor,30);
+  const darkSkin=darken(skinColor,40);
+  const armourColor=darken(raceColor,20);
+
+  X.save();
+
+  // Aura glow behind character
+  X.shadowColor=raceColor;X.shadowBlur=Math.min(40,4+30);
+  const auraGrad=X.createRadialGradient(cx,bodyTop+bodyH*0.3,headR,cx,bodyTop+bodyH*0.3,h*0.5);
+  auraGrad.addColorStop(0,hexToRgba(raceColor,0.15));auraGrad.addColorStop(1,'transparent');
+  X.fillStyle=auraGrad;X.fillRect(cx-h*0.6,y,h*1.2,h);
+  X.shadowBlur=0;
+
+  // === RACE-SPECIFIC FEATURES (behind body) ===
+
+  // Wings (angels, fairies, demons, dragons, birdkin)
+  const hasWings=race.includes('angel')||race.includes('fairy')||race.includes('demon')||
+    race.includes('devil')||race.includes('dragon')||race==='birdkin'||race==='dragonborn';
+  if(hasWings){
+    const wingColor=race.includes('angel')?'#f0e8d8':race.includes('fairy')?'#e0b0e8':
+      race.includes('demon')||race.includes('devil')?'#5a1a2a':
+      race.includes('dragon')||race==='dragonborn'?'#3a5a3a':'#8a7a6a';
+    const wingAlpha=0.4+Math.sin(t*2)*0.1;
+    X.save();X.globalAlpha=wingAlpha;
+    // Left wing
+    X.beginPath();
+    X.moveTo(cx-bodyW*0.5,shoulderY+bodyH*0.1);
+    X.quadraticCurveTo(cx-h*0.5,shoulderY-h*0.15,cx-h*0.45,shoulderY+bodyH*0.4);
+    X.quadraticCurveTo(cx-h*0.3,shoulderY+bodyH*0.5,cx-bodyW*0.5,shoulderY+bodyH*0.3);
+    X.fillStyle=wingColor;X.fill();X.strokeStyle=lighten(wingColor,30);X.lineWidth=1;X.stroke();
+    // Right wing
+    X.beginPath();
+    X.moveTo(cx+bodyW*0.5,shoulderY+bodyH*0.1);
+    X.quadraticCurveTo(cx+h*0.5,shoulderY-h*0.15,cx+h*0.45,shoulderY+bodyH*0.4);
+    X.quadraticCurveTo(cx+h*0.3,shoulderY+bodyH*0.5,cx+bodyW*0.5,shoulderY+bodyH*0.3);
+    X.fillStyle=wingColor;X.fill();X.strokeStyle=lighten(wingColor,30);X.lineWidth=1;X.stroke();
+    X.restore();
+  }
+
+  // Tail (demons, dragons, reptiles, werebeasts)
+  const hasTail=race.includes('demon')||race.includes('devil')||race.includes('dragon')||
+    race==='dragonborn'||race==='reptile'||race==='werebeast'||race==='centaur';
+  if(hasTail){
+    X.beginPath();
+    const tailStart=bodyBot-bodyH*0.1;
+    X.moveTo(cx+bodyW*0.3,tailStart);
+    X.quadraticCurveTo(cx+h*0.35,tailStart+legH*0.5+Math.sin(t*3)*5,
+      cx+h*0.25,tailStart+legH*0.8);
+    X.strokeStyle=darkSkin;X.lineWidth=h*0.02;X.lineCap='round';X.stroke();
+  }
+
+  // === BODY ===
+
+  // Legs
+  X.fillStyle=darkSkin;
+  // Left leg
+  X.beginPath();
+  X.moveTo(cx-bodyW*0.3,bodyBot);
+  X.lineTo(cx-bodyW*0.45,bodyBot+legH);
+  X.lineTo(cx-bodyW*0.15,bodyBot+legH);
+  X.lineTo(cx-bodyW*0.05,bodyBot);
+  X.closePath();X.fill();
+  // Right leg
+  X.beginPath();
+  X.moveTo(cx+bodyW*0.05,bodyBot);
+  X.lineTo(cx+bodyW*0.15,bodyBot+legH);
+  X.lineTo(cx+bodyW*0.45,bodyBot+legH);
+  X.lineTo(cx+bodyW*0.3,bodyBot);
+  X.closePath();X.fill();
+
+  // Boots/feet
+  X.fillStyle=race==='skeleton'?'#b0a898':'#3a3a3a';
+  X.fillRect(cx-bodyW*0.5,bodyBot+legH-h*0.02,bodyW*0.35,h*0.03);
+  X.fillRect(cx+bodyW*0.15,bodyBot+legH-h*0.02,bodyW*0.35,h*0.03);
+
+  // Torso (armour-colored)
+  const torsoGrad=X.createLinearGradient(cx-bodyW,bodyTop,cx+bodyW,bodyBot);
+  torsoGrad.addColorStop(0,armourColor);torsoGrad.addColorStop(0.5,lighten(armourColor,20));
+  torsoGrad.addColorStop(1,armourColor);
+  X.fillStyle=torsoGrad;
+  X.beginPath();
+  X.moveTo(cx-bodyW,bodyTop);
+  X.lineTo(cx+bodyW,bodyTop);
+  X.lineTo(cx+bodyW*0.8,bodyBot);
+  X.lineTo(cx-bodyW*0.8,bodyBot);
+  X.closePath();X.fill();
+
+  // Armour details — chest plate highlight
+  X.strokeStyle=hexToRgba('#fff',0.2);X.lineWidth=1;
+  X.beginPath();X.moveTo(cx,bodyTop+bodyH*0.1);X.lineTo(cx-bodyW*0.3,bodyTop+bodyH*0.4);
+  X.moveTo(cx,bodyTop+bodyH*0.1);X.lineTo(cx+bodyW*0.3,bodyTop+bodyH*0.4);X.stroke();
+  // Belt
+  X.fillStyle=darken(armourColor,30);
+  X.fillRect(cx-bodyW*0.85,bodyBot-bodyH*0.08,bodyW*1.7,bodyH*0.06);
+
+  // Shoulder pads
+  X.fillStyle=lighten(armourColor,10);
+  X.beginPath();X.arc(cx-bodyW,bodyTop+bodyH*0.05,bodyW*0.3,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(cx+bodyW,bodyTop+bodyH*0.05,bodyW*0.3,0,Math.PI*2);X.fill();
+
+  // Arms (skin color, extend from shoulders)
+  X.fillStyle=skinColor;
+  const armLen=bodyH*0.7;
+  // Left arm
+  X.save();X.translate(cx-bodyW*1.1,bodyTop+bodyH*0.08);X.rotate(-0.15+Math.sin(t*1.5)*0.03);
+  X.fillRect(-h*0.025,0,h*0.05,armLen);X.restore();
+  // Right arm (angled to hold weapon)
+  X.save();X.translate(cx+bodyW*1.1,bodyTop+bodyH*0.08);X.rotate(0.3);
+  X.fillRect(-h*0.025,0,h*0.05,armLen);X.restore();
+
+  // === HEAD ===
+  // Neck
+  X.fillStyle=skinColor;
+  X.fillRect(cx-h*0.03,shoulderY-h*0.06,h*0.06,h*0.07);
+
+  // Head shape
+  X.beginPath();X.arc(cx,shoulderY-headR*0.8,headR,0,Math.PI*2);
+  X.fillStyle=skinColor;X.fill();
+
+  // Eyes (race-dependent)
+  const eyeY=shoulderY-headR*0.85;
+  const eyeSpacing=headR*0.4;
+  if(race==='skeleton'){
+    // Hollow eye sockets
+    X.fillStyle='#1a1a1a';
+    X.beginPath();X.arc(cx-eyeSpacing,eyeY,headR*0.15,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(cx+eyeSpacing,eyeY,headR*0.15,0,Math.PI*2);X.fill();
+    X.fillStyle=raceColor;
+    X.beginPath();X.arc(cx-eyeSpacing,eyeY,headR*0.06,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(cx+eyeSpacing,eyeY,headR*0.06,0,Math.PI*2);X.fill();
+  } else {
+    // Normal eyes with glow
+    X.fillStyle='#fff';
+    X.beginPath();X.ellipse(cx-eyeSpacing,eyeY,headR*0.12,headR*0.08,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(cx+eyeSpacing,eyeY,headR*0.12,headR*0.08,0,0,Math.PI*2);X.fill();
+    // Iris color based on race
+    const irisColor=race.includes('demon')||race.includes('devil')?'#ff2020':
+      race.includes('angel')?'#60a0ff':race.includes('dragon')?'#ffaa00':
+      race.includes('vampire')?'#cc0000':race==='elemental'?raceColor:'#334';
+    X.fillStyle=irisColor;
+    X.beginPath();X.arc(cx-eyeSpacing,eyeY,headR*0.06,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(cx+eyeSpacing,eyeY,headR*0.06,0,Math.PI*2);X.fill();
+  }
+
+  // Hair (race-dependent style)
+  const hairColor=race==='elf'?'#d4af37':race.includes('demon')||race.includes('devil')?'#2a0a0a':
+    race.includes('angel')?'#f0e8d0':race==='orc'?'#1a1a1a':race==='vampire'?'#1a1a2a':
+    race.includes('dragon')?darken(skinColor,20):lighten(raceColor,20);
+  X.fillStyle=hairColor;
+  const hairTop=shoulderY-headR*1.8;
+  if(race==='skeleton'){
+    // No hair
+  } else if(race==='slimes'||race==='golem'||race==='elemental'){
+    // Crown/crest instead of hair
+    X.beginPath();
+    for(let i=0;i<5;i++){
+      const a=-Math.PI/2+Math.PI*i/4-Math.PI/2;
+      const cr2=headR*(0.8+Math.sin(t*2+i)*0.1);
+      X.lineTo(cx+Math.cos(a)*cr2,hairTop+headR*0.3+Math.sin(a)*cr2*0.5);
+    }
+    X.closePath();X.fill();
+  } else {
+    // Standard hair
+    X.beginPath();
+    X.arc(cx,shoulderY-headR*0.8,headR*1.12,Math.PI,0);
+    X.lineTo(cx+headR*1.2,shoulderY-headR*0.3);
+    X.quadraticCurveTo(cx+headR*1.1,shoulderY,cx+headR*0.5,shoulderY+headR*0.2);
+    X.lineTo(cx-headR*0.5,shoulderY+headR*0.2);
+    X.quadraticCurveTo(cx-headR*1.1,shoulderY,cx-headR*1.2,shoulderY-headR*0.3);
+    X.closePath();X.fill();
+  }
+
+  // Horns (demons, devils, dragons)
+  if(race.includes('demon')||race.includes('devil')||race.includes('dragon')||race==='dragonborn'){
+    X.fillStyle=race.includes('dragon')?darken(skinColor,30):'#3a2020';
+    // Left horn
+    X.beginPath();X.moveTo(cx-headR*0.7,hairTop+headR*0.5);
+    X.quadraticCurveTo(cx-headR*1.2,hairTop-headR*0.3,cx-headR*0.9,hairTop-headR*0.1);
+    X.lineTo(cx-headR*0.6,hairTop+headR*0.6);X.closePath();X.fill();
+    // Right horn
+    X.beginPath();X.moveTo(cx+headR*0.7,hairTop+headR*0.5);
+    X.quadraticCurveTo(cx+headR*1.2,hairTop-headR*0.3,cx+headR*0.9,hairTop-headR*0.1);
+    X.lineTo(cx+headR*0.6,hairTop+headR*0.6);X.closePath();X.fill();
+  }
+
+  // Ears (elves get pointed ears)
+  if(race==='elf'||race==='fairy'){
+    X.fillStyle=skinColor;
+    X.beginPath();X.moveTo(cx-headR,eyeY);
+    X.lineTo(cx-headR*1.5,eyeY-headR*0.5);X.lineTo(cx-headR*0.9,eyeY+headR*0.1);X.fill();
+    X.beginPath();X.moveTo(cx+headR,eyeY);
+    X.lineTo(cx+headR*1.5,eyeY-headR*0.5);X.lineTo(cx+headR*0.9,eyeY+headR*0.1);X.fill();
+  }
+
+  // Crown/halo (gods, angels, demi-gods)
+  if(race==='god'||race==='demi-god'){
+    X.strokeStyle='#ffd700';X.lineWidth=2;X.shadowColor='#ffd700';X.shadowBlur=10;
+    X.beginPath();
+    for(let i=0;i<7;i++){
+      const a=-Math.PI+Math.PI*i/6;
+      const tipY=hairTop-headR*0.2+(i%2===0?-headR*0.25:0);
+      X.lineTo(cx+Math.cos(a)*headR*0.8,tipY);
+    }
+    X.strokeStyle='#ffd700';X.stroke();X.fillStyle=hexToRgba('#ffd700',0.3);X.fill();
+    X.shadowBlur=0;
+  }
+  if(race.includes('angel')){
+    X.strokeStyle='#ffe8a0';X.lineWidth=2;X.shadowColor='#ffe8a0';X.shadowBlur=15;
+    X.beginPath();X.ellipse(cx,hairTop-headR*0.1,headR*0.8,headR*0.2,0,0,Math.PI*2);X.stroke();
+    X.shadowBlur=0;
+  }
+
+  // === WEAPON (in right hand) ===
+  const weapX=cx+bodyW*1.1+Math.sin(0.3)*armLen*0.9;
+  const weapY=bodyTop+bodyH*0.08+Math.cos(0.3)*armLen*0.9;
+
+  const isSword=weapon.includes('sword')||weapon.includes('katana')||weapon.includes('rapier')||
+    weapon.includes('scimitar')||weapon.includes('claymore')||weapon.includes('falchion')||
+    weapon.includes('gladius')||weapon.includes('zweihander')||weapon.includes('dao')||
+    weapon.includes('khopesh')||weapon.includes('cutlass')||weapon.includes('saber')||
+    weapon.includes('flamberge')||weapon.includes('estoc')||weapon.includes('blade');
+  const isAxe=weapon.includes('axe')||weapon.includes('halberd')||weapon.includes('bardiche')||
+    weapon.includes('tomahawk')||weapon.includes('labrys');
+  const isHammer=weapon.includes('hammer')||weapon.includes('mace')||weapon.includes('maul')||
+    weapon.includes('morningstar')||weapon.includes('flail')||weapon.includes('club')||weapon.includes('scepter');
+  const isSpear=weapon.includes('spear')||weapon.includes('trident')||weapon.includes('pike')||
+    weapon.includes('javelin')||weapon.includes('lance')||weapon.includes('glaive')||
+    weapon.includes('naginata')||weapon.includes('guandao');
+  const isDagger=weapon.includes('dagger')||weapon.includes('kris')||weapon.includes('stiletto')||
+    weapon.includes('tanto')||weapon.includes('kukri')||weapon.includes('karambit')||weapon.includes('kunai');
+  const isBow=weapon.includes('bow')||weapon.includes('crossbow');
+  const isStaff=weapon.includes('staff')||weapon.includes('wand');
+  const isScythe=weapon.includes('scythe')||weapon.includes('sickle')||weapon.includes('kama');
+  const isGun=weapon.includes('pistol')||weapon.includes('musket')||weapon.includes('cannon')||weapon.includes('gunblade');
+  const isClaw=weapon.includes('claw')||weapon.includes('gauntlet')||weapon.includes('knuckle')||
+    weapon.includes('iron fist')||weapon.includes('bagh nakh');
+  const isShield=weapon.includes('shield')||weapon.includes('buckler')||weapon.includes('targe');
+  const isWhip=weapon.includes('whip')||weapon.includes('chain')||weapon.includes('kusarigama')||weapon.includes('rope dart');
+
+  // Enchantment glow color
+  const ench=(cr.enchantment||'').toLowerCase();
+  const enchColor=ench.includes('fire')||ench.includes('blaze')||ench.includes('inferno')?'#ff4400':
+    ench.includes('ice')||ench.includes('frost')||ench.includes('cryo')?'#44ccff':
+    ench.includes('lightning')||ench.includes('thunder')||ench.includes('storm')?'#ffee00':
+    ench.includes('poison')||ench.includes('toxic')||ench.includes('venom')?'#44ff44':
+    ench.includes('dark')||ench.includes('shadow')||ench.includes('void')||ench.includes('curse')?'#8844cc':
+    ench.includes('light')||ench.includes('holy')||ench.includes('divine')?'#ffe880':
+    ench.includes('blood')?'#cc2222':raceColor;
+
+  X.save();
+  if(ench&&weapon!=='no weapon'){X.shadowColor=enchColor;X.shadowBlur=8;}
+
+  if(weapon==='no weapon'||weapon===''){
+    // Bare fists — just show clenched hand
+  } else if(isSword){
+    const sLen=h*0.35;
+    X.save();X.translate(weapX,weapY);X.rotate(-0.8);
+    // Blade
+    X.fillStyle='#c0c8d0';
+    X.beginPath();X.moveTo(-h*0.012,0);X.lineTo(0,-sLen);X.lineTo(h*0.012,0);X.closePath();X.fill();
+    // Edge highlight
+    X.strokeStyle='#e8e8f0';X.lineWidth=1;
+    X.beginPath();X.moveTo(0,-sLen);X.lineTo(0,0);X.stroke();
+    // Guard
+    X.fillStyle='#8a7a3a';X.fillRect(-h*0.04,0,h*0.08,h*0.015);
+    // Handle
+    X.fillStyle='#4a3a2a';X.fillRect(-h*0.01,h*0.015,h*0.02,h*0.06);
+    // Pommel
+    X.fillStyle='#8a7a3a';X.beginPath();X.arc(0,h*0.08,h*0.015,0,Math.PI*2);X.fill();
+    X.restore();
+  } else if(isAxe){
+    const aLen=h*0.3;
+    X.save();X.translate(weapX,weapY);X.rotate(-0.6);
+    // Handle
+    X.fillStyle='#5a4a30';X.fillRect(-h*0.01,0,h*0.02,aLen);
+    // Axe head
+    X.fillStyle='#8a8a8a';
+    X.beginPath();X.moveTo(h*0.01,-h*0.01);
+    X.quadraticCurveTo(h*0.06,-h*0.04,h*0.05,h*0.06);
+    X.lineTo(h*0.01,h*0.04);X.closePath();X.fill();
+    X.restore();
+  } else if(isHammer){
+    const hLen=h*0.3;
+    X.save();X.translate(weapX,weapY);X.rotate(-0.5);
+    X.fillStyle='#5a4a30';X.fillRect(-h*0.01,0,h*0.02,hLen);
+    // Hammer head
+    X.fillStyle='#6a6a6a';X.fillRect(-h*0.04,-h*0.02,h*0.08,h*0.05);
+    X.restore();
+  } else if(isSpear){
+    const sLen=h*0.45;
+    X.save();X.translate(weapX,weapY);X.rotate(-0.9);
+    X.fillStyle='#5a4a30';X.fillRect(-h*0.008,0,h*0.016,sLen);
+    // Spearhead
+    X.fillStyle='#c0c0c0';
+    X.beginPath();X.moveTo(0,-h*0.04);X.lineTo(-h*0.015,0);X.lineTo(h*0.015,0);X.closePath();X.fill();
+    X.restore();
+  } else if(isDagger){
+    X.save();X.translate(weapX,weapY);X.rotate(-0.7);
+    X.fillStyle='#b0b8c0';
+    X.beginPath();X.moveTo(-h*0.008,0);X.lineTo(0,-h*0.12);X.lineTo(h*0.008,0);X.closePath();X.fill();
+    X.fillStyle='#4a3a2a';X.fillRect(-h*0.015,0,h*0.03,h*0.04);
+    X.restore();
+  } else if(isBow){
+    X.save();X.translate(weapX,weapY);X.rotate(-0.3);
+    X.strokeStyle='#6a5030';X.lineWidth=h*0.015;X.lineCap='round';
+    X.beginPath();X.arc(h*0.02,0,h*0.15,Math.PI*0.3,Math.PI*1.7);X.stroke();
+    // String
+    X.strokeStyle='#c0b890';X.lineWidth=1;
+    X.beginPath();
+    X.moveTo(h*0.02+Math.cos(Math.PI*0.3)*h*0.15,Math.sin(Math.PI*0.3)*h*0.15);
+    X.lineTo(h*0.02+Math.cos(Math.PI*1.7)*h*0.15,Math.sin(Math.PI*1.7)*h*0.15);
+    X.stroke();
+    X.restore();
+  } else if(isStaff){
+    X.save();X.translate(weapX,weapY);X.rotate(-0.8);
+    X.fillStyle='#5a4030';X.fillRect(-h*0.01,0,h*0.02,h*0.4);
+    // Orb on top
+    X.fillStyle=enchColor;X.shadowColor=enchColor;X.shadowBlur=12;
+    X.beginPath();X.arc(0,-h*0.02,h*0.025,0,Math.PI*2);X.fill();
+    X.shadowBlur=0;
+    X.restore();
+  } else if(isScythe){
+    X.save();X.translate(weapX,weapY);X.rotate(-0.7);
+    X.fillStyle='#4a3a2a';X.fillRect(-h*0.008,0,h*0.016,h*0.4);
+    // Blade
+    X.fillStyle='#9a9a9a';
+    X.beginPath();X.moveTo(0,0);
+    X.quadraticCurveTo(-h*0.12,-h*0.06,-h*0.08,-h*0.01);
+    X.lineTo(0,h*0.02);X.closePath();X.fill();
+    X.restore();
+  } else if(isGun){
+    X.save();X.translate(weapX,weapY);X.rotate(0.3);
+    X.fillStyle='#4a4a4a';
+    X.fillRect(-h*0.01,0,h*0.02,h*0.15); // barrel
+    X.fillRect(-h*0.02,h*0.1,h*0.04,h*0.06); // grip
+    X.restore();
+  } else if(isWhip){
+    X.save();X.strokeStyle='#5a3a20';X.lineWidth=h*0.01;X.lineCap='round';
+    X.beginPath();X.moveTo(weapX,weapY);
+    X.quadraticCurveTo(weapX+h*0.15,weapY+h*0.2+Math.sin(t*3)*h*0.05,
+      weapX+h*0.05,weapY+h*0.35);X.stroke();
+    X.restore();
+  } else if(isShield){
+    // Shield in left hand instead
+    const shX=cx-bodyW*1.1-armLen*0.3;
+    const shY=bodyTop+bodyH*0.4;
+    X.fillStyle=armourColor;
+    X.beginPath();
+    X.ellipse(shX,shY,h*0.06,h*0.08,0,0,Math.PI*2);X.fill();
+    X.strokeStyle=lighten(armourColor,30);X.lineWidth=2;X.stroke();
+    // Shield emblem
+    X.fillStyle=raceColor;
+    X.beginPath();X.arc(shX,shY,h*0.025,0,Math.PI*2);X.fill();
+  } else {
+    // Generic weapon — glowing orb
+    X.fillStyle=enchColor;X.shadowColor=enchColor;X.shadowBlur=10;
+    X.beginPath();X.arc(weapX,weapY+h*0.05,h*0.03,0,Math.PI*2);X.fill();
+    X.shadowBlur=0;
+  }
+  X.shadowBlur=0;
+  X.restore();
+
+  // === ENCHANTMENT PARTICLE EFFECTS ===
+  if(ench&&weapon!=='no weapon'){
+    X.save();
+    for(let i=0;i<8;i++){
+      const pa=(t*1.5+i*Math.PI/4);
+      const pr=h*0.2+Math.sin(t+i*0.8)*h*0.05;
+      const px=weapX+Math.cos(pa)*pr*0.3-h*0.1;
+      const py=weapY-h*0.1+Math.sin(pa)*pr*0.5;
+      const alpha=Math.max(0,Math.sin(t*2+i)*0.5+0.3);
+      X.fillStyle=hexToRgba(enchColor,alpha);
+      X.beginPath();X.arc(px,py,1.5+Math.sin(t+i)*0.5,0,Math.PI*2);X.fill();
+    }
+    X.restore();
+  }
+
+  // === POWER AURA (based on strength tier) ===
+  const str=(cr.strength||'').toLowerCase();
+  if(str.includes('cosmic')||str.includes('universal')||str.includes('boundless')){
+    X.save();X.globalAlpha=0.15+Math.sin(t*1.5)*0.05;
+    X.strokeStyle=raceColor;X.lineWidth=2;
+    X.beginPath();X.arc(cx,bodyTop+bodyH*0.3,h*0.4+Math.sin(t*2)*5,0,Math.PI*2);X.stroke();
+    X.beginPath();X.arc(cx,bodyTop+bodyH*0.3,h*0.48+Math.cos(t*1.5)*8,0,Math.PI*2);X.stroke();
+    X.restore();
+  }
+
+  X.restore();
+}
+
+// ============================================================
 // DRAW: CHARACTER DONE — OG-style character card
 // ============================================================
 function drawCharDone(){
@@ -1391,35 +1828,11 @@ function drawCharDone(){
     X.fillStyle=hexToRgba('#fff',Math.max(0,alpha));X.fill();
   }
 
-  // Character silhouette/avatar area
+  // Character portrait area
   const avatarY=isMobile?VH*0.08:VH*0.05;
   const avatarH=VH*0.28;
   const avatarCx=VW/2;
-
-  // Stylized character figure (silhouette with glow)
-  X.save();
-  X.shadowColor=raceColor;X.shadowBlur=40;
-
-  // Head
-  X.beginPath();X.arc(avatarCx,avatarY+avatarH*0.2,avatarH*0.12,0,Math.PI*2);
-  X.fillStyle='rgba(255,255,255,0.1)';X.fill();
-
-  // Body
-  X.beginPath();
-  X.moveTo(avatarCx-avatarH*0.15,avatarY+avatarH*0.35);
-  X.lineTo(avatarCx+avatarH*0.15,avatarY+avatarH*0.35);
-  X.lineTo(avatarCx+avatarH*0.2,avatarY+avatarH*0.9);
-  X.lineTo(avatarCx-avatarH*0.2,avatarY+avatarH*0.9);
-  X.closePath();
-  X.fillStyle='rgba(255,255,255,0.06)';X.fill();
-
-  // Aura rings
-  X.strokeStyle=hexToRgba(raceColor,0.3);X.lineWidth=2;
-  X.beginPath();X.arc(avatarCx,avatarY+avatarH*0.45,avatarH*0.35+Math.sin(t*2)*5,0,Math.PI*2);X.stroke();
-  X.strokeStyle=hexToRgba('#7B1FA2',0.2);
-  X.beginPath();X.arc(avatarCx,avatarY+avatarH*0.45,avatarH*0.45+Math.cos(t*1.5)*8,0,Math.PI*2);X.stroke();
-  X.shadowBlur=0;
-  X.restore();
+  drawCharacterPortrait(X,avatarCx,avatarY,avatarH,raceColor,charResult,t);
 
   // Character name
   const charName=charResult.title?charResult.title:'Unnamed';
