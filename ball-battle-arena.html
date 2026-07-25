@@ -3559,14 +3559,17 @@ function drawVictoryCutscene(){
         if(t>200&&Math.random()<0.6){
           spawnBurst(w.x+rand(-40,40),w.y+rand(-40,40),pick([w.char.color,'#ffcc00','#ffffff']),3,3);
         }
-        // Expanding glory rings
+        // Character aura shimmer (no expanding ball rings)
         const ringT=t-180;
-        if(ringT>0&&ringT<120){
-          for(let i=0;i<3;i++){
-            const rt=(ringT+i*25)%80;
-            X.globalAlpha=Math.max(0,0.3-rt/80*0.3);
-            X.strokeStyle=w.char.color;X.lineWidth=2;
-            X.beginPath();X.arc(w.x,w.y,rt*2,0,Math.PI*2);X.stroke();
+        if(ringT>0&&ringT<180){
+          // Radial light rays instead of expanding rings
+          X.globalAlpha=Math.max(0,0.25-ringT/180*0.2);
+          X.strokeStyle=w.char.color;X.lineWidth=1.5;
+          for(let i=0;i<8;i++){
+            const a=Math.PI*2*i/8+ringT*0.008;
+            const len=40+ringT*0.8;
+            X.beginPath();X.moveTo(w.x+Math.cos(a)*20,w.y+Math.sin(a)*20);
+            X.lineTo(w.x+Math.cos(a)*len,w.y+Math.sin(a)*len);X.stroke();
           }
           X.globalAlpha=1;
         }
@@ -3783,7 +3786,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:f.char.id==='mahoraga'?0.85:f.char.id==='dabura'?0.8:0.55;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:f.char.id==='mahoraga'?0.85:f.char.id==='dabura'?0.8:f.char.id==='yuji'?0.85:f.char.id==='yuta'?0.8:f.char.id==='choso'?0.75:f.char.id==='toji'?0.7:f.char.id==='todo'?0.8:f.char.id==='yuki'?0.75:f.char.id==='megumi'?0.8:f.char.id==='mahito'?0.8:0.7;
   return Math.abs(diff)<arc;
 }
 
@@ -10452,7 +10455,7 @@ function updateBattle(dt){
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='mahoraga'||f.char.id==='dabura'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='yuji'||f.char.id==='mahoraga'||f.char.id==='dabura'||f.char.id==='todo'||f.char.id==='yuki'||f.char.id==='megumi'||f.char.id==='mahito'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
@@ -11301,6 +11304,8 @@ function darken(hex,amt){let r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(
 // ============================================================
 function drawBall(f){
   if(!f.alive&&f.deathAnim<=0)return;
+  // Hide balls during victory cutscene — character-specific anims take over
+  if(victoryCutscene.active&&victoryCutscene.timer>60)return;
   X.save();
   let alpha=f.alive?1:Math.max(0,f.deathAnim/60);
   // Optical Camo: nearly invisible
@@ -13544,23 +13549,24 @@ function drawBall(f){
         }
       }
     }
-    // 24-frame counter + stack meter — always visible above Naoya
-    X.font='bold 8px Consolas,monospace';X.textAlign='center';
+    // 24-frame counter + stack meter — ALWAYS VISIBLE above Naoya (bigger)
+    X.font='bold 10px Consolas,monospace';X.textAlign='center';
     // Color shifts based on stack level: green→yellow→orange→red
     const stackPct=f.naoyaFrameStack/24;
     const frameColor=f.naoyaFrameBurned?'#ff2222':stackPct>0.75?'#ff4444':stackPct>0.5?'#ff8844':stackPct>0.25?'#ffcc00':naoyaP2?'#aa44cc':'#00cc88';
     X.fillStyle=frameColor;
     const frameLabel=f.naoyaFrameBurned?'BURNOUT':String(f.naoyaFrameCount+1).padStart(2,'0')+'/24';
-    X.fillText(frameLabel,hx,hy-r-18);
-    // Stack bar underneath frame counter
-    const barW=r*1.4,barH=3,barX=hx-barW/2,barY=hy-r-13;
-    X.fillStyle='#333';X.fillRect(barX,barY,barW,barH);
+    X.fillText(frameLabel,hx,hy-r-26);
+    // Stack bar underneath frame counter — bigger, always visible
+    const barW=r*2,barH=6,barX=hx-barW/2,barY=hy-r-19;
+    X.fillStyle='#222';X.fillRect(barX,barY,barW,barH);
     X.fillStyle=frameColor;X.fillRect(barX,barY,barW*stackPct,barH);
+    X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(barX,barY,barW,barH);
     // Stack speed indicator
     if(f.naoyaFrameStack>0){
-      X.font='bold 6px Consolas,monospace';
+      X.font='bold 8px Consolas,monospace';
       X.fillStyle=frameColor;
-      X.fillText('SPD x'+((1+f.naoyaFrameStack*0.06).toFixed(1)),hx,hy-r-6);
+      X.fillText('SPD x'+((1+f.naoyaFrameStack*0.06).toFixed(1)),hx,hy-r-2);
     }
     // Slow-mo aura (special active)
     if(f.naoyaSlowActive){
@@ -14502,34 +14508,44 @@ function drawBall(f){
     // Metallic sheen highlight
     X.fillStyle='rgba(100,100,160,0.25)';
     X.beginPath();X.arc(hx-r*0.08,hy-r*0.12,r*0.35,0,Math.PI*2);X.fill();
-    // --- Adaptation Wheel behind head (THE iconic feature) ---
+    // --- Adaptation Wheel behind head (THE iconic feature) — BIGGER ---
     const wheelGlow=f.mahoAdaptCount>0?Math.min(1,f.mahoAdaptCount/3):0;
     const wheelCol=wheelGlow>0.5?'rgba(0,255,200,'+(0.6+wheelGlow*0.4)+')':'rgba(0,220,160,0.7)';
-    const wheelR2=r*0.85;
+    const wheelR2=r*1.15; // bigger wheel
     X.save();X.translate(hx,hy);
     X.rotate((battleTime||0)*0.02);
-    // Wheel outer ring
-    X.strokeStyle=wheelCol;X.lineWidth=3;
+    // Wheel outer ring — thicker
+    X.strokeStyle=wheelCol;X.lineWidth=4;
     X.beginPath();X.arc(0,0,wheelR2,0,Math.PI*2);X.stroke();
     // Inner ring
-    X.lineWidth=1.5;
-    X.beginPath();X.arc(0,0,wheelR2*0.7,0,Math.PI*2);X.stroke();
-    // 8 spokes
+    X.lineWidth=2;
+    X.beginPath();X.arc(0,0,wheelR2*0.65,0,Math.PI*2);X.stroke();
+    // 8 spokes — thicker
+    X.lineWidth=2.5;
     for(let i=0;i<8;i++){
       const sa=Math.PI*2*i/8;
-      X.beginPath();X.moveTo(Math.cos(sa)*wheelR2*0.3,Math.sin(sa)*wheelR2*0.3);
+      X.beginPath();X.moveTo(Math.cos(sa)*wheelR2*0.25,Math.sin(sa)*wheelR2*0.25);
       X.lineTo(Math.cos(sa)*wheelR2,Math.sin(sa)*wheelR2);X.stroke();
     }
-    // Spoke segment markers
+    // Spoke segment markers — bigger dots
     X.fillStyle=wheelCol;
     for(let i=0;i<8;i++){
       const sa=Math.PI*2*i/8;
       const filled=i<(f.mahoAdaptCount||0);
       if(filled){
-        X.beginPath();X.arc(Math.cos(sa)*wheelR2*0.85,Math.sin(sa)*wheelR2*0.85,3,0,Math.PI*2);X.fill();
+        X.beginPath();X.arc(Math.cos(sa)*wheelR2*0.83,Math.sin(sa)*wheelR2*0.83,5,0,Math.PI*2);X.fill();
+      } else {
+        X.strokeStyle='rgba(0,180,140,0.3)';X.lineWidth=1;
+        X.beginPath();X.arc(Math.cos(sa)*wheelR2*0.83,Math.sin(sa)*wheelR2*0.83,4,0,Math.PI*2);X.stroke();
       }
     }
     X.restore();
+    // Adaptation count label below ball
+    if(f.mahoAdaptCount>0){
+      X.font='bold 9px Consolas,monospace';X.textAlign='center';
+      X.fillStyle=wheelGlow>0.5?'#00ffcc':'#00ddaa';
+      X.fillText('ADAPT '+(f.mahoAdaptCount||0)+'/8',hx,hy+r+18);
+    }
     // --- 4 Glowing eyes (2 rows of 2) ---
     const eyeGlow='#00ffaa';
     const eyeR=r*0.055;
@@ -16111,16 +16127,31 @@ function drawMegumiWeapon(r,ext,flash,f){
   }
   X.shadowBlur=0;
 
-  // Shadow meter glow — intensity scales with meter
-  if(f&&f.megumiShadowMeter>0){
+  // Shadow meter — visible bar + glow
+  if(f){
     X.save();
     X.rotate(-f.weaponAngle);
     const meterFrac=f.megumiShadowMeter/12;
-    X.globalAlpha=0.1+meterFrac*0.25+Math.sin(battleTime*0.1)*0.05;
-    X.shadowColor='#1a3a6a';X.shadowBlur=5+meterFrac*10;
-    X.beginPath();X.arc(0,0,f.radius+5+meterFrac*8,0,Math.PI*2);
-    X.fillStyle='rgba(26,58,106,0.15)';X.fill();
-    X.shadowBlur=0;X.globalAlpha=1;
+    // Glow aura
+    if(meterFrac>0){
+      X.globalAlpha=0.1+meterFrac*0.25+Math.sin(battleTime*0.1)*0.05;
+      X.shadowColor='#1a3a6a';X.shadowBlur=5+meterFrac*10;
+      X.beginPath();X.arc(0,0,f.radius+5+meterFrac*8,0,Math.PI*2);
+      X.fillStyle='rgba(26,58,106,0.15)';X.fill();
+      X.shadowBlur=0;X.globalAlpha=1;
+    }
+    // Always-visible shadow meter bar below ball
+    const smW=f.radius*2,smH=6,smX=-smW/2,smY=f.radius+8;
+    X.fillStyle='#1a1a2e';X.fillRect(smX,smY,smW,smH);
+    const smCol=meterFrac>0.8?'#4488cc':meterFrac>0.5?'#3366aa':'#1a3a6a';
+    X.fillStyle=smCol;X.fillRect(smX,smY,smW*meterFrac,smH);
+    X.strokeStyle='#556';X.lineWidth=1;X.strokeRect(smX,smY,smW,smH);
+    // Threshold markers at 3,5,7,9,11
+    X.strokeStyle='rgba(255,255,255,0.3)';X.lineWidth=0.5;
+    [3,5,7,9,11].forEach(th=>{const tx=smX+smW*(th/12);X.beginPath();X.moveTo(tx,smY);X.lineTo(tx,smY+smH);X.stroke();});
+    // Label
+    X.font='bold 8px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=smCol;X.fillText('SHADOW '+Math.floor(f.megumiShadowMeter)+'/12',0,smY+smH+10);
     X.restore();
   }
 
@@ -16234,24 +16265,23 @@ function drawYukiWeapon(r,ext,flash,f){
     X.restore();
   }
 
-  // Mass meter bar below the fighter
+  // Mass meter bar below the fighter — bigger, always visible
   if(f){
     X.save();
     X.rotate(-f.weaponAngle);
-    const meterW=30;
-    const meterH=4;
+    const meterW=f.radius*2;
+    const meterH=6;
     const mx=-meterW/2;
     const my=f.radius+8;
-    X.fillStyle='#333';X.fillRect(mx,my,meterW,meterH);
+    X.fillStyle='#1a1a1a';X.fillRect(mx,my,meterW,meterH);
     const fill=Math.min(1,(f.yukiMass||0)/(f.yukiMassMax||100));
-    const mCol=f.yukiOverloaded?'#ff2244':'#cc3366';
+    const mCol=f.yukiOverloaded?'#ff2244':fill>0.5?'#ee3366':'#cc3366';
     X.fillStyle=mCol;X.fillRect(mx,my,meterW*fill,meterH);
-    X.strokeStyle='#666';X.lineWidth=0.5;X.strokeRect(mx,my,meterW,meterH);
-    // Overload indicator
-    if(f.yukiOverloaded){
-      X.fillStyle='#ff4488';X.font='bold 7px Consolas,monospace';X.textAlign='center';
-      X.fillText('OVR',0,my+meterH+8);
-    }
+    X.strokeStyle='#555';X.lineWidth=1;X.strokeRect(mx,my,meterW,meterH);
+    // Mass label
+    X.font='bold 8px Consolas,monospace';X.textAlign='center';
+    X.fillStyle=mCol;
+    X.fillText((f.yukiOverloaded?'OVR ':'MASS ')+Math.floor(f.yukiMass||0),0,my+meterH+10);
     X.restore();
   }
 }
@@ -17502,7 +17532,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.27.7 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.29.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
