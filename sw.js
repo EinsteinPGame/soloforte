@@ -1,5 +1,5 @@
 // SoloForte Service Worker — offline support
-const CACHE_NAME = 'soloforte-v10.30.1';
+const CACHE_NAME = 'soloforte-v10.30.2';
 const PAGES = [
   '/',
   '/index.html',
