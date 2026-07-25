@@ -1488,6 +1488,17 @@ function createFighter(charIdx,elemIdx,side){
     quickhackTimer:0,quickhackType:null,quickhackProgress:0,quickhackMax:90,
     // Element
     elementActive:false,elementFlash:0,
+    // Prime Mode
+    primeActive:false,primeTimer:0,primeFlash:0,
+    primeResidueTrails:[], // mantis
+    primeSeismicChain:0, // gorilla: consecutive hit counter
+    primeHijacked:false,primeHijackTimer:0, // monowire target state
+    primeOrbiting:[], // throwing: orbiting weapons [{angle,dist,dmg}]
+    primeCutLines:[], // katana: invisible cut lines [{x1,y1,x2,y2,timer,dmg}]
+    primeFuryStored:0, // berserk: stored damage
+    primeFuryCap:0, // berserk: max storage
+    primeBloodPools:[], // choso: blood pools [{x,y,r,timer}]
+    primeShikigami:[], // megumi: active shikigami [{x,y,hp,maxHp,vx,vy,atkCD}]
     // Element combo state (v2 redesign)
     // Mantis
     mantisBleedStacks:0, // fire: count bleeds for combustion
@@ -1871,6 +1882,8 @@ function updatePhysics(f,dt){
   if(f.dabDashing)spdMult=0; // Dabura movement handled by dash logic
   if(f.slowTimer>0)spdMult*=0.55;
   if(f.captureTimer>0)spdMult=0.05; // nearly immobile when captured
+  // Prime Monowire Neural Hijack: reversed movement
+  if(f.primeHijacked){spdMult*=-1;}
 
   // Monowire stays near captured enemy
   if(f.char.id==='monowire'){
@@ -2081,6 +2094,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     shakeTimer=Math.max(shakeTimer,8);shakeAmt=Math.max(shakeAmt,5);
     defender.specialBar=Math.min(defender.specialMax,defender.specialBar+12*(defender.char.relicChargeRate||1));
     defender.katanaDeflectCount++;
+    // Prime Katana: deflect spawns 5 crescents
+    if(defender.primeActive)primeKatanaOnDeflect(defender,attacker);
     if(!defender.katanaRushing&&!defender.katanaDashing){
       defender.katanaDashing=true;
       defender.katanaDashTimer=90; // max 1.5s dash before auto-cancel
@@ -2240,6 +2255,69 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   // Yuta Corrupted Ability: enemy abilities deal less
   if(attacker._corruptedAbilityReduction>0&&attacker._corruptedAbilityTimer>0)dmg*=(1-attacker._corruptedAbilityReduction);
   // === End V2 damage modifiers ===
+
+  // === Prime Mode hooks ===
+  // Berserk Prime: absorb damage into fury storage
+  if(defender.primeActive&&defender.char.id==='berserk'&&primeBerserkStoreDamage(defender,dmg)){
+    defender.hitFlash=4;
+    spawnBurst(defender.x,defender.y,'#ff4444',5,3);
+    attacker.totalHits++;
+    attacker.specialBar=Math.min(attacker.specialMax,attacker.specialBar+(6+Math.random()*2)*(attacker.char.relicChargeRate||1));
+    return 0; // damage absorbed, not applied
+  }
+  // Sandy Prime: rewind on hit
+  if(defender.primeActive&&defender.char.id==='sandy'&&primeSandyOnHit(defender)){
+    attacker.totalHits++;
+    return 0; // damage negated by rewind
+  }
+  // Ryu Prime: early release on hit
+  if(defender.primeActive&&defender.char.id==='ryu')primeRyuOnHit(defender);
+  // Mechamaru Prime: shield absorbs damage first
+  if(defender.primeActive&&defender.char.id==='mechamaru'&&defender._primeMechShield>0){
+    defender._primeMechShield-=dmg;
+    spawnDmgNum(defender.x,defender.y-defender.radius-15,Math.round(dmg)+' (SHIELD)','#44ccff',false);
+    if(defender._primeMechShield<=0){
+      defender._primeMechShield=0;
+      defender.atk=defender.baseAtk;defender.range=defender.char.stats.range||150;
+      spawnDmgNum(defender.x,defender.y-40,'SHIELD BROKEN!','#ff4444',true);
+    }
+    defender.hitFlash=4;
+    attacker.totalHits++;
+    attacker.specialBar=Math.min(attacker.specialMax,attacker.specialBar+(6+Math.random()*2)*(attacker.char.relicChargeRate||1));
+    return 0;
+  }
+  // Smasher Prime: 60% damage reduction + stagger
+  if(defender.primeActive&&defender.char.id==='smasher'){
+    dmg*=0.4; // 60% reduction
+  }
+  if(attacker.primeActive&&attacker.char.id==='smasher'){
+    defender.stunTimer=Math.max(defender.stunTimer,15); // stagger on every hit
+  }
+  // Kashimo Prime: chain lightning on any contact
+  if(defender.primeActive&&defender.char.id==='kashimo'){
+    // Discharge hits attacker too
+    const chainDmg=defender.atk*0.3;
+    attacker.hp-=chainDmg;attacker.hitFlash=4;
+    spawnDmgNum(attacker.x,attacker.y-20,Math.round(chainDmg),'#ffcc00',false);
+    spawnBurst(attacker.x,attacker.y,'#ffcc00',6,3);
+    if(attacker.hp<=0){attacker.hp=0;attacker.alive=false;attacker.deathAnim=60;checkVictory(defender);}
+  }
+  if(attacker.primeActive&&attacker.char.id==='kashimo'){
+    // Attacker also discharges on contact
+    const chainDmg2=attacker.atk*0.2;
+    defender.hp-=chainDmg2;
+    spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+  }
+  // Prime on-hit hooks for attacker
+  if(attacker.primeActive){
+    if(attacker.char.id==='mantis')primeMantisOnHit(attacker,defender);
+    if(attacker.char.id==='gorilla')primeGorillaOnHit(attacker,defender);
+    if(attacker.char.id==='choso')primeChosoOnHit(attacker,defender);
+    if(attacker.char.id==='yuji')primeYujiOnHit(attacker,defender);
+    if(attacker.char.id==='katana')primeKatanaOnSlash(attacker,defender);
+    if(attacker.char.id==='nanami'){dmg*=1.7;} // Overtime: all hits are weak point
+  }
+  // === End Prime hooks ===
 
   defender.hp-=dmg;
   defender.hitFlash=8;
@@ -3964,6 +4042,8 @@ function attackMonowire(f,enemy,chaos){
     if(f.elementActive&&f.elem.id==='cryo'&&enemy.slowTimer>0)captureChance+=0.20;
     if(Math.random()<captureChance&&enemy.captureTimer<=0){
       applyCaptureWrap(enemy,captureDuration);
+      // Prime Monowire: Neural Hijack on wrap
+      if(f.primeActive)primeMonowireOnWrap(f,enemy);
     }
   }
   // Wire launch visual in weapon facing direction (not toward enemy)
@@ -10200,6 +10280,605 @@ function pointToSegDist(px,py,x1,y1,x2,y2){
 }
 
 // ============================================================
+// PRIME MODE ABILITIES
+// ============================================================
+function updatePrimeAbility(f,enemy,dt){
+  switch(f.char.id){
+    // === CYBERPUNK CHARACTERS ===
+    case 'mantis': updatePrimeMantis(f,enemy,dt);break;
+    case 'gorilla': updatePrimeGorilla(f,enemy,dt);break;
+    case 'monowire': updatePrimeMonowire(f,enemy,dt);break;
+    case 'pls': updatePrimePLS(f,enemy,dt);break;
+    case 'sandy': updatePrimeSandy(f,enemy,dt);break;
+    case 'throw': updatePrimeThrow(f,enemy,dt);break;
+    case 'katana': updatePrimeKatana(f,enemy,dt);break;
+    case 'berserk': updatePrimeBerserk(f,enemy,dt);break;
+    // === BOSS CHARACTERS ===
+    case 'smasher': updatePrimeSmasher(f,enemy,dt);break;
+    case 'gojo': updatePrimeGojo(f,enemy,dt);break;
+    case 'yuta': updatePrimeYuta(f,enemy,dt);break;
+    case 'mahoraga': updatePrimeMahoraga(f,enemy,dt);break;
+    case 'dabura': updatePrimeDabura(f,enemy,dt);break;
+    // === JJK CHARACTERS ===
+    case 'choso': updatePrimeChoso(f,enemy,dt);break;
+    case 'toji': updatePrimeToji(f,enemy,dt);break;
+    case 'mechamaru': updatePrimeMechamaru(f,enemy,dt);break;
+    case 'kashimo': updatePrimeKashimo(f,enemy,dt);break;
+    case 'nanami': updatePrimeNanami(f,enemy,dt);break;
+    case 'ryu': updatePrimeRyu(f,enemy,dt);break;
+    case 'higuruma': updatePrimeHiguruma(f,enemy,dt);break;
+    case 'yuji': updatePrimeYuji(f,enemy,dt);break;
+    case 'naoya': updatePrimeNaoya(f,enemy,dt);break;
+    case 'todo': updatePrimeTodo(f,enemy,dt);break;
+    case 'yuki': updatePrimeYuki(f,enemy,dt);break;
+    case 'megumi': updatePrimeMegumi(f,enemy,dt);break;
+  }
+}
+
+// --- MANTIS: Residual Edge (no guaranteed crit per Kyle) ---
+// Hits leave glowing red residue trails on ground. Walking over own residue = 1.5x speed burst.
+function updatePrimeMantis(f,enemy,dt){
+  // Decay existing trails
+  for(let i=f.primeResidueTrails.length-1;i>=0;i--){
+    f.primeResidueTrails[i].timer-=dt;
+    if(f.primeResidueTrails[i].timer<=0)f.primeResidueTrails.splice(i,1);
+  }
+  // Speed boost when walking over own residue
+  let onResidue=false;
+  for(const trail of f.primeResidueTrails){
+    if(Math.hypot(f.x-trail.x,f.y-trail.y)<35){onResidue=true;break;}
+  }
+  if(onResidue){
+    f.speed=f.baseSpeed*1.5;
+    if(battleTime%6<1)spawnParticle(f.x,f.y+f.radius,'#ff4444',0,-1,10,2);
+  }else{
+    f.speed=f.baseSpeed;
+  }
+}
+// Hook: call after mantis hits enemy to spawn residue
+function primeMantisOnHit(f,enemy){
+  if(!f.primeActive||f.char.id!=='mantis')return;
+  f.primeResidueTrails.push({x:enemy.x,y:enemy.y,timer:240}); // 4 seconds
+  spawnParticle(enemy.x,enemy.y,'#ff2222',0,0,20,4);
+}
+
+// --- GORILLA: Seismic Chain ---
+// Punches create shockwaves. Consecutive hits cascade — 3rd hit sends enemy into wall.
+function updatePrimeGorilla(f,enemy,dt){
+  // Decay chain counter if no hit for 2 seconds
+  if(!f._primeGorLastHitTime)f._primeGorLastHitTime=0;
+  if(battleTime-f._primeGorLastHitTime>120)f.primeSeismicChain=0;
+}
+function primeGorillaOnHit(f,enemy){
+  if(!f.primeActive||f.char.id!=='gorilla')return;
+  f.primeSeismicChain++;
+  f._primeGorLastHitTime=battleTime;
+  // Visible shockwave on ground
+  const ang=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+  shockwaveProjectiles.push({
+    x:f.x+Math.cos(ang)*f.radius,y:f.y+Math.sin(ang)*f.radius,
+    vx:Math.cos(ang)*5,vy:Math.sin(ang)*5,
+    owner:f,target:enemy,size:35,dmg:f.atk*0.3,
+    life:50,maxLife:50,hit:false,color:'#ffaa00'
+  });
+  // Stun duration doubles on chained hits
+  if(f.primeSeismicChain>=2)enemy.stunTimer=Math.max(enemy.stunTimer,30*f.primeSeismicChain);
+  // 3rd hit: massive knockback into wall
+  if(f.primeSeismicChain>=3){
+    const kb=15;
+    enemy.vx+=Math.cos(angle)*kb;enemy.vy+=Math.sin(angle)*kb;
+    spawnBurst(enemy.x,enemy.y,'#ffaa00',15,6);
+    spawnDmgNum(enemy.x,enemy.y-30,'SEISMIC!','#ffcc00',true);
+    // Wall ricochet chance (per Kyle)
+    if(Math.random()<0.4){
+      enemy._primeWallRicochet=true; // checked in wall bounce
+    }
+    f.primeSeismicChain=0;
+  }
+}
+
+// --- MONOWIRE: Neural Hijack ---
+// Wraps have chance to hack (reverse movement). Second wrap during confusion = freeze.
+function updatePrimeMonowire(f,enemy,dt){
+  // Hijack timer decay
+  if(enemy.primeHijacked){
+    enemy.primeHijackTimer-=dt;
+    if(enemy.primeHijackTimer<=0){enemy.primeHijacked=false;}
+  }
+}
+function primeMonowireOnWrap(f,enemy){
+  if(!f.primeActive||f.char.id!=='monowire')return;
+  if(enemy.primeHijacked){
+    // Second wrap during confusion = full freeze
+    enemy.freezeTimer=Math.max(enemy.freezeTimer,60);
+    enemy.primeHijacked=false;
+    spawnDmgNum(enemy.x,enemy.y-30,'FROZEN!','#77ddff',true);
+    spawnBurst(enemy.x,enemy.y,'#77ddff',12,5);
+  }else if(Math.random()<0.5){ // hack chance per Kyle
+    enemy.primeHijacked=true;
+    enemy.primeHijackTimer=90; // 1.5s reversed controls
+    spawnDmgNum(enemy.x,enemy.y-30,'HACKED!','#ff8800',true);
+    spawnBurst(enemy.x,enemy.y,'#ff8800',10,4);
+  }
+}
+
+// --- PLS: Cluster Munitions ---
+// Projectiles split into 3 on impact, sub-projectiles bounce once off walls.
+function updatePrimePLS(f,enemy,dt){
+  // PLS Prime is handled via projectile impact hooks (no per-frame update needed)
+}
+function primePLSOnProjectileHit(f,projX,projY,projAngle){
+  if(!f.primeActive||f.char.id!=='pls')return;
+  // Spawn 3 sub-projectiles in a spread
+  for(let i=-1;i<=1;i++){
+    const subAngle=projAngle+i*0.4;
+    const p={x:projX,y:projY,vx:Math.cos(subAngle)*4,vy:Math.sin(subAngle)*4,
+      owner:f,dmg:f.atk*0.4,r:4,timer:120,color:'#ff3366',
+      prime:true,primeBounces:1}; // bounces once off wall
+    projectiles.push(p);
+  }
+  spawnBurst(projX,projY,'#ff3366',6,3);
+}
+
+// --- SANDEVISTAN: Chrono Loop ---
+// After taking a hit, rewind 0.5s (position + HP). 2s cooldown between rewinds.
+function updatePrimeSandy(f,enemy,dt){
+  if(!f._primeSandyHistory)f._primeSandyHistory=[];
+  if(!f._primeSandyCooldown)f._primeSandyCooldown=0;
+  if(f._primeSandyCooldown>0)f._primeSandyCooldown-=dt;
+  // Record position history (30 frames = 0.5s buffer)
+  f._primeSandyHistory.push({x:f.x,y:f.y,hp:f.hp});
+  if(f._primeSandyHistory.length>30)f._primeSandyHistory.shift();
+}
+function primeSandyOnHit(f){
+  if(!f.primeActive||f.char.id!=='sandy')return false;
+  if(!f._primeSandyCooldown||f._primeSandyCooldown<=0){
+    if(f._primeSandyHistory&&f._primeSandyHistory.length>0){
+      const snap=f._primeSandyHistory[0];
+      // Spawn afterimage at current pos
+      spawnBurst(f.x,f.y,'#44ccff',10,4);
+      spawnDmgNum(f.x,f.y-30,'REWIND!','#44ccff',true);
+      // Rewind
+      f.x=snap.x;f.y=snap.y;f.hp=snap.hp;
+      f._primeSandyCooldown=120; // 2s cooldown
+      f._primeSandyHistory=[];
+      return true; // signal: damage was negated
+    }
+  }
+  return false;
+}
+
+// --- THROWING: Orbital Array ---
+// Thrown weapons orbit character. Weaker orbit + fires 3 in spread (per Kyle).
+function updatePrimeThrow(f,enemy,dt){
+  if(!f._primeOrbInitialized){
+    f._primeOrbInitialized=true;
+    // Start with 3 orbiting weapons
+    for(let i=0;i<3;i++){
+      f.primeOrbiting.push({angle:i*Math.PI*2/3,dist:f.radius+20,dmg:f.atk*0.5});
+    }
+  }
+  // Rotate orbiting weapons
+  for(const orb of f.primeOrbiting){
+    orb.angle+=0.04*dt;
+    // Check if enemy contacts an orbiting weapon
+    const ox=f.x+Math.cos(orb.angle)*orb.dist;
+    const oy=f.y+Math.sin(orb.angle)*orb.dist;
+    if(Math.hypot(ox-enemy.x,oy-enemy.y)<enemy.radius+8){
+      dealDamage(f,enemy,orb.dmg,false);
+      spawnBurst(ox,oy,'#66ffcc',5,3);
+    }
+  }
+  // Every 3 seconds, fire 3 weapons in spread at enemy
+  if(!f._primeThrowFireCD)f._primeThrowFireCD=0;
+  f._primeThrowFireCD-=dt;
+  if(f._primeThrowFireCD<=0&&f.primeOrbiting.length>0){
+    f._primeThrowFireCD=180; // 3s
+    const baseAngle=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+    for(let i=-1;i<=1;i++){
+      const a=baseAngle+i*0.3;
+      projectiles.push({x:f.x,y:f.y,vx:Math.cos(a)*5,vy:Math.sin(a)*5,
+        owner:f,dmg:f.atk*0.6,r:5,timer:120,color:'#66ffcc',prime:true,primeBounces:0});
+    }
+    spawnDmgNum(f.x,f.y-30,'SPREAD!','#66ffcc',false);
+  }
+}
+
+// --- KATANA: One Thousand Cuts ---
+// Slashes create moving crescent waves + deflects spawn 5 crescents (per Kyle).
+function updatePrimeKatana(f,enemy,dt){
+  // Decay cut lines
+  for(let i=f.primeCutLines.length-1;i>=0;i--){
+    f.primeCutLines[i].timer-=dt;
+    // Move crescents on their own (per Kyle)
+    f.primeCutLines[i].x1+=f.primeCutLines[i].vx*dt;
+    f.primeCutLines[i].y1+=f.primeCutLines[i].vy*dt;
+    f.primeCutLines[i].x2+=f.primeCutLines[i].vx*dt;
+    f.primeCutLines[i].y2+=f.primeCutLines[i].vy*dt;
+    if(f.primeCutLines[i].timer<=0)f.primeCutLines.splice(i,1);
+  }
+  // Check if enemy walks through any cut line
+  for(const cl of f.primeCutLines){
+    const mx=(cl.x1+cl.x2)/2,my=(cl.y1+cl.y2)/2;
+    if(Math.hypot(mx-enemy.x,my-enemy.y)<enemy.radius+15){
+      dealDamage(f,enemy,cl.dmg,false);
+      spawnBurst(mx,my,'#aaccff',4,2);
+      cl.timer=0; // consume the cut line
+    }
+  }
+}
+function primeKatanaOnSlash(f,enemy){
+  if(!f.primeActive||f.char.id!=='katana')return;
+  // Create moving crescent wave toward enemy
+  const angle=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+  const perpX=Math.cos(angle+Math.PI/2)*30;
+  const perpY=Math.sin(angle+Math.PI/2)*30;
+  f.primeCutLines.push({
+    x1:f.x-perpX,y1:f.y-perpY,x2:f.x+perpX,y2:f.y+perpY,
+    vx:Math.cos(angle)*2,vy:Math.sin(angle)*2,
+    timer:180,dmg:f.atk*0.35
+  });
+}
+function primeKatanaOnDeflect(f,enemy){
+  if(!f.primeActive||f.char.id!=='katana')return;
+  // Deflect spawns 5 crescents in spread (per Kyle)
+  for(let i=0;i<5;i++){
+    const angle=Math.atan2(enemy.y-f.y,enemy.x-f.x)+(i-2)*0.35;
+    const perpX=Math.cos(angle+Math.PI/2)*20;
+    const perpY=Math.sin(angle+Math.PI/2)*20;
+    f.primeCutLines.push({
+      x1:f.x-perpX,y1:f.y-perpY,x2:f.x+perpX,y2:f.y+perpY,
+      vx:Math.cos(angle)*3,vy:Math.sin(angle)*3,
+      timer:150,dmg:f.atk*0.25
+    });
+  }
+  spawnDmgNum(f.x,f.y-30,'5x CRESCENT!','#aaccff',true);
+}
+
+// --- BERSERK: Fury Overflow ---
+// Damage taken stored instead of reducing HP. Release as shotgun wave all directions (per Kyle).
+function updatePrimeBerserk(f,enemy,dt){
+  // Auto-release at cap
+  if(f.primeFuryStored>=f.primeFuryCap){
+    primeBerserkRelease(f,enemy);
+  }
+}
+function primeBerserkStoreDamage(f,dmg){
+  if(!f.primeActive||f.char.id!=='berserk')return false;
+  f.primeFuryStored=Math.min(f.primeFuryCap,f.primeFuryStored+dmg);
+  const pct=Math.round(f.primeFuryStored/f.primeFuryCap*100);
+  spawnDmgNum(f.x,f.y-20,'STORED '+pct+'%','#ff4444',false);
+  return true; // signal: damage was absorbed
+}
+function primeBerserkRelease(f,enemy){
+  if(f.primeFuryStored<=0)return;
+  // Shotgun wave in ALL directions (per Kyle)
+  const pellets=16;
+  for(let i=0;i<pellets;i++){
+    const a=Math.PI*2*i/pellets;
+    projectiles.push({x:f.x,y:f.y,vx:Math.cos(a)*6,vy:Math.sin(a)*6,
+      owner:f,dmg:f.primeFuryStored/pellets*2,r:6,timer:90,color:'#ff4444',prime:true,primeBounces:0});
+  }
+  spawnBurst(f.x,f.y,'#ff4444',25,8);
+  spawnDmgNum(f.x,f.y-40,'FURY RELEASE!','#ff4444',true);
+  f.primeFuryStored=0;
+}
+
+// === BOSS PRIME ABILITIES (stubs — implement in Phase 2) ===
+function updatePrimeSmasher(f,enemy,dt){
+  // Full Cyborg Supremacy: 60% damage reduction, slow, stagger hits
+  if(!f._primeSmasherInit){f._primeSmasherInit=true;f.def=f.baseDef*2.5;f.speed=f.baseSpeed*0.5;}
+  // Stagger on hit handled in damage hook
+}
+function updatePrimeGojo(f,enemy,dt){
+  // Unlimited Void: Residual — visible infinity barrier
+  if(!f._primeGojoInit){f._primeGojoInit=true;f.gojoInfinityCharges=99;f.gojoInfinityMax=99;} // near-infinite barrier
+}
+function updatePrimeYuta(f,enemy,dt){
+  // Rika Unleashed — Rika fights as delayed mirror (stub)
+}
+function updatePrimeMahoraga(f,enemy,dt){
+  // Perpetual Adaptation — immune to repeated attack types (stub)
+}
+function updatePrimeDabura(f,enemy,dt){
+  // Golden Judgement — pillar teleport network (stub)
+}
+
+// === JJK PRIME ABILITIES ===
+function updatePrimeChoso(f,enemy,dt){
+  // Blood Meteor: attacks leave blood pools, heal Choso, damage enemy
+  for(let i=f.primeBloodPools.length-1;i>=0;i--){
+    const bp=f.primeBloodPools[i];
+    bp.timer-=dt;
+    if(bp.timer<=0){f.primeBloodPools.splice(i,1);continue;}
+    // Heal Choso standing in pool
+    if(Math.hypot(f.x-bp.x,f.y-bp.y)<bp.r+f.radius){
+      f.hp=Math.min(f.maxHp,f.hp+0.01*f.maxHp*dt/60);
+    }
+    // Damage enemy in pool
+    if(Math.hypot(enemy.x-bp.x,enemy.y-bp.y)<bp.r+enemy.radius){
+      if(battleTime%15<1)dealDamage(f,enemy,f.atk*0.15,false);
+    }
+  }
+}
+function primeChosoOnHit(f,enemy){
+  if(!f.primeActive||f.char.id!=='choso')return;
+  f.primeBloodPools.push({x:enemy.x,y:enemy.y,r:30,timer:600}); // permanent-ish (10s)
+  spawnParticle(enemy.x,enemy.y,'#cc0000',0,0,30,5);
+}
+
+function updatePrimeToji(f,enemy,dt){
+  // Heavenly Restricted Perfection: 0 cooldown, instant attacks, directional crits
+  if(!f._primeTInit){f._primeTInit=true;f.attackTimer=0;}
+  f.attackTimer=Math.min(f.attackTimer,5); // near-zero cooldown
+  // First hit after changing direction always crits (tracked in attack hook)
+}
+
+function updatePrimeMechamaru(f,enemy,dt){
+  // Stored Energy: massive shield that decays, 2x dmg + extended range while shield holds
+  if(!f._primeMechInit){
+    f._primeMechInit=true;
+    f._primeMechShield=f.maxHp*2;
+    f._primeMechShieldMax=f.maxHp*2;
+    f.atk=f.baseAtk*2;
+    f.range=(f.char.stats.range||150)*1.5;
+  }
+  // Shield decays over 8 seconds (480 frames)
+  f._primeMechShield-=f._primeMechShieldMax/480*dt;
+  if(f._primeMechShield<=0){
+    f._primeMechShield=0;
+    f.atk=f.baseAtk;f.range=f.char.stats.range||150;
+  }
+}
+
+function updatePrimeKashimo(f,enemy,dt){
+  // Mythical Beast Amber: contact discharges chain lightning
+  // Handled in damage hooks — any hit triggers chain lightning
+}
+
+function updatePrimeNanami(f,enemy,dt){
+  // Overtime Binding Vow: all hits are 1.7x (weak point), chained targeting
+  if(!f._primeNanamiInit){f._primeNanamiInit=true;f.atk=f.baseAtk*1.7;}
+  // Weak point marker handled in hit hook
+}
+
+function updatePrimeRyu(f,enemy,dt){
+  // Maximum Output: charges one massive beam over 8s
+  if(!f._primeRyuCharge)f._primeRyuCharge=0;
+  f._primeRyuCharge+=dt;
+  // Can't move or attack while charging
+  f.speed=0;
+  // Visual: growing energy sphere
+  if(battleTime%10<1)spawnParticle(f.x,f.y-f.radius,pick(['#ff4400','#ffcc00','#ff6600']),
+    (Math.random()-0.5)*2,-1,20,3+f._primeRyuCharge/60);
+  // Auto-release at 8s (480 frames)
+  if(f._primeRyuCharge>=480){
+    primeRyuRelease(f,enemy);
+  }
+}
+function primeRyuRelease(f,enemy){
+  if(!f._primeRyuCharge)return;
+  const chargePct=Math.min(1,f._primeRyuCharge/480);
+  const dmg=f.atk*3*chargePct; // scales with charge time
+  const angle=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+  // Widest beam in the game
+  for(let i=-3;i<=3;i++){
+    const a=angle+i*0.08;
+    projectiles.push({x:f.x,y:f.y,vx:Math.cos(a)*8,vy:Math.sin(a)*8,
+      owner:f,dmg:dmg/7,r:10,timer:120,color:'#ff6600',prime:true,primeBounces:0});
+  }
+  spawnBurst(f.x,f.y,'#ff6600',30,10);
+  spawnDmgNum(f.x,f.y-40,'MAXIMUM OUTPUT!','#ff4400',true);
+  f._primeRyuCharge=0;
+  f.speed=f.baseSpeed; // can move again
+}
+function primeRyuOnHit(f){
+  // Getting hit during charge = early release
+  if(f.primeActive&&f.char.id==='ryu'&&f._primeRyuCharge>60){
+    const enemy=fighters.find(e=>e.side!==f.side&&e.alive);
+    if(enemy)primeRyuRelease(f,enemy);
+    return true;
+  }
+  return false;
+}
+
+function updatePrimeHiguruma(f,enemy,dt){
+  // Supreme Court: 3 evidence markers appear, collection race
+  if(!f._primeHigInit){
+    f._primeHigInit=true;
+    f._primeEvidence=[];
+    // Spawn 3 evidence markers at random arena positions
+    for(let i=0;i<3;i++){
+      f._primeEvidence.push({
+        x:ARENA.x+80+Math.random()*(ARENA.w-160),
+        y:ARENA.y+80+Math.random()*(ARENA.h-160),
+        collected:false,collectedBy:null
+      });
+    }
+    f._primeHigCollected=0;
+    f._primeHigEnemyCollected=0;
+  }
+  // Check collection
+  for(const ev of f._primeEvidence){
+    if(ev.collected)continue;
+    if(Math.hypot(f.x-ev.x,f.y-ev.y)<f.radius+15){
+      ev.collected=true;ev.collectedBy='self';f._primeHigCollected++;
+      spawnDmgNum(ev.x,ev.y-20,'EVIDENCE!','#ffd700',true);
+      spawnBurst(ev.x,ev.y,'#ffd700',10,4);
+    }else if(Math.hypot(enemy.x-ev.x,enemy.y-ev.y)<enemy.radius+15){
+      ev.collected=true;ev.collectedBy='enemy';f._primeHigEnemyCollected++;
+      spawnDmgNum(ev.x,ev.y-20,'STOLEN!','#cc4444',true);
+    }
+  }
+  // All 3 collected? Apply verdict
+  if(f._primeHigCollected+f._primeHigEnemyCollected>=3&&!f._primeHigVerdict){
+    f._primeHigVerdict=true;
+    if(f._primeHigCollected>=3){
+      // GUILTY: enemy loses element ability permanently
+      enemy.elementActive=false;enemy.elem=ELEMENTS[0];enemy.elemIdx=0;
+      enemy.atk=enemy.baseAtk;enemy.def=enemy.baseDef;enemy.speed=enemy.baseSpeed;
+      spawnDmgNum(enemy.x,enemy.y-40,'GUILTY!','#ff0000',true);
+      spawnBurst(enemy.x,enemy.y,'#ff0000',20,8);
+    }else{
+      // Weakened verdict: small atk debuff
+      enemy.atk=enemy.baseAtk*0.85;
+      spawnDmgNum(enemy.x,enemy.y-40,'PARTIAL VERDICT','#ffcc00',true);
+    }
+  }
+}
+
+function updatePrimeYuji(f,enemy,dt){
+  // Consecutive Black Flash: 40% → 60% → 80% → 100% chain, speed boost
+  if(!f._primeYujiChain)f._primeYujiChain=0;
+  if(!f._primeYujiChainCD)f._primeYujiChainCD=0;
+  if(f._primeYujiChainCD>0)f._primeYujiChainCD-=dt;
+  // Chain breaks if no hit for 2s
+  if(f._primeYujiChainCD<=0&&f._primeYujiChain>0){
+    f._primeYujiChain=0;
+    f.speed=f.baseSpeed;
+  }
+}
+function primeYujiOnHit(f,enemy){
+  if(!f.primeActive||f.char.id!=='yuji')return false;
+  const chance=f._primeYujiChain===0?0.4:f._primeYujiChain===1?0.6:f._primeYujiChain===2?0.8:1.0;
+  f._primeYujiChainCD=120; // 2s window
+  if(Math.random()<chance){
+    f._primeYujiChain++;
+    // Black Flash bonus damage
+    const bonus=f.atk*0.5*(1+f._primeYujiChain*0.3);
+    dealDamage(f,enemy,bonus,true);
+    f.speed=f.baseSpeed*(1+f._primeYujiChain*0.15);
+    spawnDmgNum(enemy.x,enemy.y-35,'BLACK FLASH x'+f._primeYujiChain,'#111',true);
+    spawnBurst(enemy.x,enemy.y,'#111',12,5);
+    return true;
+  }else{
+    f._primeYujiChain=0;f.speed=f.baseSpeed;
+  }
+  return false;
+}
+
+function updatePrimeNaoya(f,enemy,dt){
+  // 24 Frames: 3x speed, afterimages attack after sequence
+  if(!f._primeNaoyaInit){f._primeNaoyaInit=true;f.speed=f.baseSpeed*3;}
+  // Afterimage tracking
+  if(!f._primeNaoyaFrames)f._primeNaoyaFrames=[];
+  f._primeNaoyaFrames.push({x:f.x,y:f.y});
+  if(f._primeNaoyaFrames.length>=24){
+    // All afterimages simultaneously attack enemy position
+    let totalDmg=0;
+    for(const fr of f._primeNaoyaFrames){
+      if(Math.hypot(fr.x-enemy.x,fr.y-enemy.y)<80){totalDmg+=f.atk*0.15;}
+      spawnParticle(fr.x,fr.y,'#aaddff',0,0,10,3);
+    }
+    if(totalDmg>0){
+      dealDamage(f,enemy,totalDmg,false);
+      spawnDmgNum(enemy.x,enemy.y-30,'24 FRAMES!','#aaddff',true);
+    }
+    f._primeNaoyaFrames=[];
+  }
+}
+
+function updatePrimeTodo(f,enemy,dt){
+  // Boogie Woogie Infinite: swap with anything (0.5s CD)
+  if(!f._primeTodoSwapCD)f._primeTodoSwapCD=0;
+  if(f._primeTodoSwapCD>0)f._primeTodoSwapCD-=dt;
+  // Auto-swap when enemy projectile is near (redirect it)
+  if(f._primeTodoSwapCD<=0){
+    for(const p of projectiles){
+      if(p.owner===f)continue;
+      if(Math.hypot(p.x-f.x,p.y-f.y)<60){
+        // Swap with projectile = redirect at enemy
+        const tempX=f.x,tempY=f.y;
+        f.x=p.x;f.y=p.y;
+        p.x=tempX;p.y=tempY;
+        // Reverse projectile direction toward enemy
+        const a=Math.atan2(enemy.y-p.y,enemy.x-p.x);
+        const spd=Math.hypot(p.vx,p.vy);
+        p.vx=Math.cos(a)*spd;p.vy=Math.sin(a)*spd;
+        p.owner=f; // now belongs to Todo
+        f._primeTodoSwapCD=30; // 0.5s
+        spawnDmgNum(f.x,f.y-30,'SWAP!','#ff44ff',true);
+        spawnBurst(f.x,f.y,'#ff44ff',8,4);
+        break;
+      }
+    }
+  }
+  // Also randomly swap positions with enemy (every 4s)
+  if(!f._primeTodoTeleCD)f._primeTodoTeleCD=240;
+  f._primeTodoTeleCD-=dt;
+  if(f._primeTodoTeleCD<=0){
+    const tempX=f.x,tempY=f.y;
+    f.x=enemy.x;f.y=enemy.y;
+    enemy.x=tempX;enemy.y=tempY;
+    f._primeTodoTeleCD=240;
+    spawnBurst(f.x,f.y,'#ff44ff',12,5);
+    spawnBurst(enemy.x,enemy.y,'#ff44ff',12,5);
+    spawnDmgNum(f.x,f.y-30,'BOOGIE WOOGIE!','#ff44ff',true);
+  }
+}
+
+function updatePrimeYuki(f,enemy,dt){
+  // Star Rage Singularity: mass increases, speed decreases, damage increases, gravitational pull at max
+  if(!f._primeYukiMass)f._primeYukiMass=0;
+  f._primeYukiMass=Math.min(360,f._primeYukiMass+dt); // 6s to max (360 frames)
+  const massPct=f._primeYukiMass/360;
+  f.speed=f.baseSpeed*(1-massPct*0.5); // 0.5x at max
+  f.atk=f.baseAtk*(1+massPct*1.5); // 2.5x at max
+  // At max mass: gravitational pull
+  if(massPct>=1){
+    const angle=Math.atan2(f.y-enemy.y,f.x-enemy.x);
+    const pullForce=2;
+    enemy.vx+=Math.cos(angle)*pullForce*dt/60;
+    enemy.vy+=Math.sin(angle)*pullForce*dt/60;
+    if(battleTime%10<1)spawnParticle(enemy.x,enemy.y,'#cc44ff',(f.x-enemy.x)*0.01,(f.y-enemy.y)*0.01,15,2);
+  }
+  // Visual: growing glow
+  if(battleTime%8<1){
+    const s=3+massPct*5;
+    spawnParticle(f.x+(Math.random()-0.5)*f.radius,f.y+f.radius,'#cc44ff',0,-0.5,15,s);
+  }
+}
+
+function updatePrimeMegumi(f,enemy,dt){
+  // Ten Shadows Complete Domain: 9 mini shikigami swarm
+  if(!f._primeMegInit){
+    f._primeMegInit=true;
+    f.primeShikigami=[];
+    for(let i=0;i<9;i++){
+      const angle=Math.PI*2*i/9;
+      f.primeShikigami.push({
+        x:f.x+Math.cos(angle)*80,y:f.y+Math.sin(angle)*80,
+        hp:f.maxHp*0.3,maxHp:f.maxHp*0.3,
+        vx:0,vy:0,atkCD:0,alive:true
+      });
+    }
+  }
+  // Update shikigami
+  let anyAlive=false;
+  for(const s of f.primeShikigami){
+    if(!s.alive)continue;
+    anyAlive=true;
+    // Chase enemy
+    const angle=Math.atan2(enemy.y-s.y,enemy.x-s.x);
+    s.vx+=(Math.cos(angle)*2-s.vx)*0.05;
+    s.vy+=(Math.sin(angle)*2-s.vy)*0.05;
+    s.x+=s.vx*dt;s.y+=s.vy*dt;
+    // Keep in arena
+    s.x=Math.max(ARENA.x+10,Math.min(ARENA.x+ARENA.w-10,s.x));
+    s.y=Math.max(ARENA.y+10,Math.min(ARENA.y+ARENA.h-10,s.y));
+    // Attack enemy on contact
+    s.atkCD-=dt;
+    if(Math.hypot(s.x-enemy.x,s.y-enemy.y)<enemy.radius+12&&s.atkCD<=0){
+      dealDamage(f,enemy,f.atk*0.2,false);
+      spawnBurst(s.x,s.y,'#5566cc',4,2);
+      s.atkCD=30;
+    }
+  }
+  // If all shikigami dead, Megumi is vulnerable (remove untouchable state)
+  // Draw shikigami as small dots (handled in drawBattle extension)
+}
+
+// ============================================================
 // BATTLE UPDATE
 // ============================================================
 function updateBattle(dt){
@@ -10351,8 +11030,16 @@ function updateBattle(dt){
       if(f.mahitoShrinkTimer<=0){f.mahitoTransfiguredBy=null;f.atk=f.baseAtk;}
     }
 
-    // Element activation at 25% HP
-    if(!f.elementActive&&f.elem.id!=='none'&&f.hp<=f.maxHp*0.25){
+    // Prime flash decay
+    if(f.primeFlash>0)f.primeFlash-=dt;
+
+    // Prime ability updates
+    if(f.primeActive&&f.alive&&enemy.alive){
+      updatePrimeAbility(f,enemy,dt);
+    }
+
+    // Element activation at 25% HP (skip in Prime mode — elements are suppressed)
+    if(!f.primeActive&&!f.elementActive&&f.elem.id!=='none'&&f.hp<=f.maxHp*0.25){
       f.elementActive=true;f.elementFlash=30;
       SFX.elementActivate();
       const comboKey=f.char.id+'_'+f.elem.id;
@@ -10381,7 +11068,8 @@ function updateBattle(dt){
     }
 
     // Sponsor bar — charges like special but slower (sponsorMax 150 vs specialMax 100), lore combos 2x
-    if(!f.sponsorUsed&&!sponsorCutsceneActive&&f.selectedSponsor){
+    // Disabled in Prime mode (no sponsors)
+    if(!f.primeActive&&!f.sponsorUsed&&!sponsorCutsceneActive&&f.selectedSponsor){
       const isLoreSponsor=!!findLoreCombo(f.char.id)&&findLoreCombo(f.char.id).pair.includes(f.selectedSponsor);
       f.sponsorBar=Math.min(f.sponsorMax,f.sponsorBar+0.09*(isLoreSponsor?2:1)*(f.char.relicChargeRate||1)*dt);
       if(f.sponsorBar>=f.sponsorMax&&enemy.alive&&canCallSponsor(f.char.id,enemy.char.id,f.selectedSponsor)){
@@ -11652,6 +12340,10 @@ function updateBattle(dt){
           explosive:false,explosionRadius:0,homing:false,isShotgunPellet:false});
         spawnBurst(p.target.x,p.target.y,'#ffcc00',4,2);
       }
+      // PLS Prime: split projectiles on hit
+      if(p.owner&&p.owner.primeActive&&p.owner.char.id==='pls'&&!p.prime){
+        primePLSOnProjectileHit(p.owner,p.x,p.y,Math.atan2(p.vy,p.vx));
+      }
       projectiles.splice(i,1);continue;
     }
 
@@ -11678,6 +12370,18 @@ function updateBattle(dt){
         fireZones.push({x:ex,y:ey,radius:25,life:60,maxLife:60,owner:p.owner,dmg:p.owner.atk*0.2});
       }
       projectiles.splice(i,1);continue;
+    }
+
+    // Prime projectile wall bounce
+    if(wallHit&&p.prime&&p.primeBounces>0){
+      p.primeBounces--;
+      // Bounce off wall
+      if(p.x<ARENA.x||p.x>ARENA.x+ARENA.w)p.vx*=-1;
+      if(p.y<ARENA.y||p.y>ARENA.y+ARENA.h)p.vy*=-1;
+      p.x=clamp(p.x,ARENA.x+2,ARENA.x+ARENA.w-2);
+      p.y=clamp(p.y,ARENA.y+2,ARENA.y+ARENA.h-2);
+      spawnSparks(p.x,p.y,p.color,3);
+      wallHit=false; // don't remove
     }
 
     if(p.life<=0||wallHit){
@@ -12462,6 +13166,30 @@ function drawBall(f){
 
   // Element activation flash
   if(f.elementFlash>0){X.beginPath();X.arc(f.x,f.y,f.radius+20*(f.elementFlash/30),0,Math.PI*2);X.fillStyle=f.elem.color+(Math.floor(f.elementFlash/30*80).toString(16).padStart(2,'0'));X.fill();}
+
+  // Prime Mode aura
+  if(f.primeActive){
+    const pulse=Math.sin(battleTime*0.08)*0.3+0.7;
+    const primeR=f.radius+10+pulse*6;
+    // Outer golden glow ring
+    X.beginPath();X.arc(f.x,f.y,primeR,0,Math.PI*2);
+    const pg=X.createRadialGradient(f.x,f.y,f.radius,f.x,f.y,primeR);
+    pg.addColorStop(0,'rgba(255,215,0,0.25)');pg.addColorStop(0.6,'rgba(255,180,0,0.15)');pg.addColorStop(1,'rgba(255,215,0,0)');
+    X.fillStyle=pg;X.fill();
+    X.strokeStyle='rgba(255,215,0,'+(0.4+pulse*0.3)+')';X.lineWidth=2;X.stroke();
+    // Sparkle particles
+    if(battleTime%4<1&&Math.random()<0.6){
+      const a=Math.random()*Math.PI*2;
+      spawnParticle(f.x+Math.cos(a)*(f.radius+5),f.y+Math.sin(a)*(f.radius+5),
+        pick(['#ffd700','#fff5a0','#ffcc00']),Math.cos(a)*0.8,Math.sin(a)*0.8-0.5,18,2);
+    }
+  }
+  // Prime activation flash
+  if(f.primeFlash>0){
+    const pf=f.primeFlash/60;
+    X.beginPath();X.arc(f.x,f.y,f.radius+30*pf,0,Math.PI*2);
+    X.fillStyle='rgba(255,215,0,'+pf*0.6+')';X.fill();
+  }
 
   // Capture/wrap visual — monowire wrapped around ball like real wire
   if(f.captureTimer>0){
@@ -18648,7 +19376,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.33.1 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.34.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -18666,6 +19394,8 @@ const GAME_MODES=[
     action(){gameMode='tournament';screen='tournSetup';tournPhase='setup';tournBracket=[];tournMatches=[];tournRound=0;tournCurrentMatch=-1;tournAutoPlay=false;}},
   {id:'boss',name:'BOSS FIGHT',desc:'3v1 raid battle against an overpowered boss character.',color:'#cc4444',icon:'skull',
     action(){gameMode='boss';screen='bossSelect';teamChar1=0;teamChar2=1;teamChar3=2;teamElem1=0;teamElem2=0;teamElem3=0;bossElem=0;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;bossChar=CHARS.findIndex(c=>c.id==='smasher');_bossSelPage=1;_bossSelSlot=1;selectTierPage=0;selectPage=0;}},
+  {id:'prime',name:'PRIME MODE',desc:'Peak form. Characters start with unique Prime abilities active.',color:'#ffd700',icon:'prime',
+    action(){gameMode='prime';screen='select';p1Char=0;p2Char=1;p1Elem=0;p2Elem=0;p1Sponsor=-1;p2Sponsor=-1;p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];_1v1SelPage=1;selectPage=0;selectTab=0;selectTierPage=0;}},
 ];
 
 function drawModeIcon(cx,cy,type,sz,color){
@@ -18695,6 +19425,17 @@ function drawModeIcon(cx,cy,type,sz,color){
     X.beginPath();X.arc(cx-sz*0.18,cy-sz*0.15,sz*0.12,0,Math.PI*2);X.fill();
     X.beginPath();X.arc(cx+sz*0.18,cy-sz*0.15,sz*0.12,0,Math.PI*2);X.fill();
     X.beginPath();X.moveTo(cx,cy+sz*0.05);X.lineTo(cx,cy+sz*0.25);X.stroke();
+  }else if(type==='prime'){
+    // Star/burst icon
+    const spikes=6;
+    X.beginPath();
+    for(let i=0;i<spikes*2;i++){
+      const a=Math.PI*2*i/(spikes*2)-Math.PI/2;
+      const r=i%2===0?sz:sz*0.4;
+      if(i===0)X.moveTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);
+      else X.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);
+    }
+    X.closePath();X.fill();
   }
   X.restore();
 }
@@ -18997,8 +19738,9 @@ function drawSelect(){
   clearBtns();X.fillStyle='#0a0a1a';X.fillRect(0,0,W,H);
   if(!isMobile){
     X.font='bold 28px Consolas,Courier New,monospace';
-    X.textAlign='center';X.fillStyle='#7b68ee';
-    X.fillText('CHARACTER SELECT',W/2,30);
+    X.textAlign='center';
+    if(gameMode==='prime'){X.fillStyle='#ffd700';X.fillText('PRIME MODE — SELECT',W/2,30);}
+    else{X.fillStyle='#7b68ee';X.fillText('CHARACTER SELECT',W/2,30);}
   }
   if(isMobile)drawSelectMobile();else drawSelectDesktop();
 }
@@ -21010,6 +21752,26 @@ function startBattle(){
     });
     addLog('BATTLE ROYALE!');addLog(brChars.map(c=>CHARS[c].name).join(' vs '));
     showVoiceline(CHARS[brChars[0]].id,'intro',0);
+  } else if(gameMode==='prime'){
+    // Prime Mode: 1v1 with boosted stats and Prime abilities active from start
+    fighters=[createFighter(p1Char,0,0),createFighter(p2Char,0,1)]; // no elements in Prime
+    fighters.forEach(f=>{
+      // Boss-level stat boost
+      f.hp=Math.round(f.hp*1.8);f.maxHp=f.hp;f._baseMaxHp=f.hp;
+      f.atk=Math.round(f.atk*1.5);f.baseAtk=f.atk;
+      f.def=Math.round(f.def*1.3);f.baseDef=f.def;
+      f.speed=f.speed*1.15;f.baseSpeed=f.speed;
+      // Activate Prime
+      f.primeActive=true;f.primeFlash=60;
+      f.primeFuryCap=f.atk*1.5; // berserk fury storage cap
+      // No sponsors/elements in Prime mode
+      f.selectedSponsor=null;
+      f.elem=ELEMENTS[0]; // 'none'
+      f.elemIdx=0;
+    });
+    addLog('PRIME MODE!');
+    addLog(CHARS[p1Char].name+' vs '+CHARS[p2Char].name);
+    showVoiceline(CHARS[p1Char].id,'intro',0);
   } else {
     fighters=[createFighter(p1Char,p1Elem,0),createFighter(p2Char,p2Elem,1)];
     // Assign selected sponsors
@@ -21041,7 +21803,7 @@ function drawHPBar(bx,by,bw,bh,f,reverse){
   });
   // Current HP
   const r=Math.max(0,f.hp/f.maxHp);
-  const hpColor=r>0.6?'#44bb44':r>0.3?'#ccaa00':'#cc3333';
+  const hpColor=f.primeActive?(r>0.5?'#ffd700':r>0.25?'#daa520':'#cc8800'):(r>0.6?'#44bb44':r>0.3?'#ccaa00':'#cc3333');
   // Gradient HP bar
   const hg=X.createLinearGradient(bx,by,bx,by+bh);
   hg.addColorStop(0,lighten(hpColor,30));hg.addColorStop(0.5,hpColor);hg.addColorStop(1,darken(hpColor,20));
@@ -21841,6 +22603,130 @@ function drawBattle(){
     }
   });
 
+  // Prime Mode visuals (drawn under fighters)
+  if(gameMode==='prime'){
+    fighters.forEach(f=>{
+      if(!f.primeActive||!f.alive)return;
+      // Mantis residue trails
+      if(f.char.id==='mantis'){
+        f.primeResidueTrails.forEach(t=>{
+          const a=Math.min(1,t.timer/240);
+          X.globalAlpha=a*0.4;
+          X.beginPath();X.arc(t.x,t.y,20,0,Math.PI*2);
+          X.fillStyle='#ff222244';X.fill();
+          X.strokeStyle='#ff4444';X.lineWidth=1;X.stroke();
+          X.globalAlpha=1;
+        });
+      }
+      // Katana cut lines (semi-visible crescents)
+      if(f.char.id==='katana'){
+        f.primeCutLines.forEach(cl=>{
+          const a=Math.min(1,cl.timer/180)*0.5;
+          X.globalAlpha=a;
+          X.strokeStyle='#aaccff';X.lineWidth=2;
+          X.beginPath();X.moveTo(cl.x1,cl.y1);X.lineTo(cl.x2,cl.y2);X.stroke();
+          // Glow
+          X.strokeStyle='#aaccff44';X.lineWidth=6;
+          X.beginPath();X.moveTo(cl.x1,cl.y1);X.lineTo(cl.x2,cl.y2);X.stroke();
+          X.globalAlpha=1;
+        });
+      }
+      // Choso blood pools
+      if(f.char.id==='choso'){
+        f.primeBloodPools.forEach(bp=>{
+          const a=Math.min(1,bp.timer/600)*0.5;
+          X.globalAlpha=a;
+          X.beginPath();X.arc(bp.x,bp.y,bp.r,0,Math.PI*2);
+          X.fillStyle='#88000066';X.fill();
+          X.strokeStyle='#cc0000';X.lineWidth=1;X.stroke();
+          X.globalAlpha=1;
+        });
+      }
+      // Throwing orbiting weapons
+      if(f.char.id==='throw'){
+        f.primeOrbiting.forEach(orb=>{
+          const ox=f.x+Math.cos(orb.angle)*orb.dist;
+          const oy=f.y+Math.sin(orb.angle)*orb.dist;
+          X.beginPath();X.arc(ox,oy,6,0,Math.PI*2);
+          X.fillStyle='#66ffcc';X.fill();
+          X.strokeStyle='#33aa88';X.lineWidth=1;X.stroke();
+        });
+      }
+      // Megumi shikigami
+      if(f.char.id==='megumi'){
+        f.primeShikigami.forEach(s=>{
+          if(!s.alive)return;
+          X.beginPath();X.arc(s.x,s.y,10,0,Math.PI*2);
+          X.fillStyle='#5566cc';X.fill();
+          X.strokeStyle='#3344aa';X.lineWidth=1.5;X.stroke();
+          // Mini HP bar
+          const hpR=s.hp/s.maxHp;
+          X.fillStyle='#333';X.fillRect(s.x-8,s.y-16,16,3);
+          X.fillStyle='#44bb44';X.fillRect(s.x-8,s.y-16,16*hpR,3);
+        });
+      }
+      // Higuruma evidence markers
+      if(f.char.id==='higuruma'&&f._primeEvidence){
+        f._primeEvidence.forEach(ev=>{
+          if(ev.collected)return;
+          const pulse=Math.sin(battleTime*0.1)*0.3+0.7;
+          X.beginPath();X.arc(ev.x,ev.y,12,0,Math.PI*2);
+          X.fillStyle='rgba(255,215,0,'+(0.3+pulse*0.3)+')';X.fill();
+          X.strokeStyle='#ffd700';X.lineWidth=2;X.stroke();
+          X.font='bold 8px Consolas,monospace';X.textAlign='center';X.fillStyle='#ffd700';
+          X.fillText('?',ev.x,ev.y+3);
+        });
+      }
+      // Mechamaru shield indicator
+      if(f.char.id==='mechamaru'&&f._primeMechShield>0){
+        const shieldPct=f._primeMechShield/f._primeMechShieldMax;
+        X.globalAlpha=0.3;
+        X.beginPath();X.arc(f.x,f.y,f.radius+15,0,Math.PI*2*shieldPct);
+        X.strokeStyle='#44ccff';X.lineWidth=4;X.stroke();
+        X.globalAlpha=1;
+      }
+      // Berserk fury meter visual
+      if(f.char.id==='berserk'&&f.primeFuryStored>0){
+        const furyPct=f.primeFuryStored/f.primeFuryCap;
+        X.globalAlpha=0.6;
+        X.beginPath();X.arc(f.x,f.y,f.radius+12,-Math.PI/2,-Math.PI/2+Math.PI*2*furyPct);
+        X.strokeStyle=furyPct>=1?'#ff0000':'#ff4444';X.lineWidth=3;X.stroke();
+        X.globalAlpha=1;
+        if(furyPct>0.7){
+          const pulse=Math.sin(battleTime*0.15)*5;
+          X.globalAlpha=0.2;X.beginPath();X.arc(f.x,f.y,f.radius+pulse+15,0,Math.PI*2);
+          X.fillStyle='#ff0000';X.fill();X.globalAlpha=1;
+        }
+      }
+      // Ryu charge visual
+      if(f.char.id==='ryu'&&f._primeRyuCharge>0){
+        const chargePct=Math.min(1,f._primeRyuCharge/480);
+        const cr=10+chargePct*30;
+        X.globalAlpha=0.5+chargePct*0.3;
+        X.beginPath();X.arc(f.x,f.y-f.radius-cr,cr,0,Math.PI*2);
+        const cg=X.createRadialGradient(f.x,f.y-f.radius-cr,0,f.x,f.y-f.radius-cr,cr);
+        cg.addColorStop(0,'#ffcc00');cg.addColorStop(0.5,'#ff6600');cg.addColorStop(1,'#ff440033');
+        X.fillStyle=cg;X.fill();
+        X.globalAlpha=1;
+      }
+      // Yuki mass visual
+      if(f.char.id==='yuki'&&f._primeYukiMass>0){
+        const massPct=f._primeYukiMass/360;
+        // Growing purple rings
+        X.globalAlpha=0.2+massPct*0.3;
+        X.beginPath();X.arc(f.x,f.y,f.radius+massPct*20,0,Math.PI*2);
+        X.strokeStyle='#cc44ff';X.lineWidth=2+massPct*3;X.stroke();
+        X.globalAlpha=1;
+      }
+      // Hijacked indicator on enemy
+      const enemy=fighters.find(e=>e.side!==f.side&&e.alive);
+      if(enemy&&enemy.primeHijacked){
+        X.font='bold 9px Consolas,monospace';X.textAlign='center';X.fillStyle='#ff8800';
+        X.fillText('HACKED',enemy.x,enemy.y-enemy.radius-20);
+      }
+    });
+  }
+
   // Fighters
   fighters.forEach(f=>drawBall(f));
 
@@ -22115,6 +23001,11 @@ function drawBattle(){
         X.fillStyle=f2.char.color;X.fillText(f2.char.name+' ['+t2+']',W*0.75,H/2+50);
       }
       X.fillStyle='#555';X.fillText('VS',W/2,H/2+50);
+      // Prime Mode label
+      if(gameMode==='prime'){
+        X.font='bold '+(isMobile?'12':'16')+'px Consolas,monospace';
+        X.fillStyle='#ffd700';X.fillText('PRIME MODE',W/2,H/2+70);
+      }
     }
   }
 
@@ -22274,14 +23165,16 @@ function drawBattle(){
     X.font='bold 11px Consolas,monospace';X.textAlign='left';X.fillStyle='#fff';X.fillText(Math.ceil(f1.hp)+'/'+f1.maxHp,p1bx+4,barY+12);
     // P1 name + mini weapon icon
     X.fillStyle=f1.char.color;X.fillText(f1.char.name,p1bx,barY-3);
-    if(f1.elem.id!=='none'){X.fillStyle=f1.elementActive?f1.elem.color:f1.elem.color+'aa';X.fillText('['+f1.elem.name+']',p1bx+barW-60,barY-3);}
+    if(gameMode==='prime'){X.fillStyle='#ffd700';X.fillText('[PRIME]',p1bx+barW-60,barY-3);}
+    else if(f1.elem.id!=='none'){X.fillStyle=f1.elementActive?f1.elem.color:f1.elem.color+'aa';X.fillText('['+f1.elem.name+']',p1bx+barW-60,barY-3);}
 
     const p2bx=isMobile?W-10-barW:W-40-barW;
     // P2 HP bar with damage decay
     drawHPBar(p2bx,barY,barW,barH,f2,true);
     X.font='bold 11px Consolas,monospace';X.textAlign='right';X.fillStyle='#fff';X.fillText(Math.ceil(f2.hp)+'/'+f2.maxHp,p2bx+barW-4,barY+12);
     X.fillStyle=f2.char.color;X.fillText(f2.char.name,p2bx+barW,barY-3);
-    if(f2.elem.id!=='none'){X.fillStyle=f2.elementActive?f2.elem.color:f2.elem.color+'aa';X.textAlign='left';X.fillText('['+f2.elem.name+']',p2bx,barY-3);}
+    if(gameMode==='prime'){X.textAlign='left';X.fillStyle='#ffd700';X.fillText('[PRIME]',p2bx,barY-3);}
+    else if(f2.elem.id!=='none'){X.fillStyle=f2.elementActive?f2.elem.color:f2.elem.color+'aa';X.textAlign='left';X.fillText('['+f2.elem.name+']',p2bx,barY-3);}
 
     // Special bars top
     const spBarY=barY+barH+4,spBarH=8;
@@ -23374,7 +24267,7 @@ function drawResult(){
     roundNumber++;
     startBattle();
   });
-  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];p1Sponsor=-1;p2Sponsor=-1;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;_1v1SelPage=1;selectPage=0;selectTierPage=0;screen=gameMode==='boss'?'bossSelect':gameMode==='2v2'?'teamSelect':gameMode==='br'?'brSelect':'select';});
+  addBtn('newbattle',W/2+10,btnY,btnW,42,'New Battle','#7b68ee',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];p1Sponsor=-1;p2Sponsor=-1;teamSponsor1=-1;teamSponsor2=-1;teamSponsor3=-1;_1v1SelPage=1;selectPage=0;selectTierPage=0;screen=gameMode==='boss'?'bossSelect':gameMode==='2v2'?'teamSelect':gameMode==='br'?'brSelect':gameMode==='prime'?'select':'select';});
   addBtn('titleback',W/2-60,btnY+55,120,35,'Title','#555',()=>{p1RoundWins=0;p2RoundWins=0;roundNumber=1;p1WinBuffs=[];p2WinBuffs=[];screen='title';});
   buttons.forEach(drawBtn);
 }
