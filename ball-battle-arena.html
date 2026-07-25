@@ -443,38 +443,38 @@ const ELEMENTS=[
 ];
 
 const COMBO_EFFECTS={
-  'mantis_fire':'Burn marks boost bleed damage',
-  'mantis_electric':'Wall hits = speed boost',
-  'mantis_toxic':'Bleed reapplies on re-hit',
-  'mantis_cryo':'Ice shards slow every 2 hits',
-  'gorilla_fire':'Huge knockback + wall impact DMG',
-  'gorilla_electric':'Faster attack speed',
-  'gorilla_toxic':'Poison bubbles + wall extra DMG',
-  'gorilla_cryo':'Reduced knockback, stays close',
-  'monowire_fire':'Twirl + wall collision DMG',
-  'monowire_electric':'Short circuits: attacks miss',
-  'monowire_toxic':'Longer wrap = more damage',
-  'monowire_cryo':'Slowed = easier capture',
-  'pls_fire':'Lingering fire zones',
-  'pls_electric':'Double wall explosion',
-  'pls_toxic':'Direct hit slows enemy',
-  'pls_cryo':'Vulnerability zone on impact',
-  'sandy_fire':'Fire trail behind movement',
-  'sandy_electric':'Rotating orbs hit nearby enemies',
-  'sandy_toxic':'Wall bounce = poison orb scatter',
-  'sandy_cryo':'Faster speed = more enemy slow',
-  'throw_fire':'Faster aim & throw speed',
-  'throw_electric':'15-30% auto-return on miss',
-  'throw_toxic':'Phantom dagger from opposite side',
-  'throw_cryo':'Missed knives spin on ground as traps',
-  'katana_fire':'Deflects explode on enemy',
-  'katana_electric':'Faster relic rush speed',
-  'katana_toxic':'Slight homing pull toward deflect',
-  'katana_cryo':'Ice wall behind enemy on counter',
-  'berserk_fire':'Faster pellets + tighter spread',
-  'berserk_electric':'Pellets return after hitting',
-  'berserk_toxic':'Slight pull on enemies toward Berserk',
-  'berserk_cryo':'Slow lingering pellets persist longer',
+  'mantis_fire':'Bleed Combustion: 4+ bleeds ignite for burst + Charred burn',
+  'mantis_electric':'Static Vortex: spins build charge rings, 3 = lightning nova',
+  'mantis_toxic':'Corrosive Blades: Corrode stacks +5% dmg taken (max 3), at 3 = -20% atk',
+  'mantis_cryo':'Projectile Vortex: catch enemy projectiles while spinning, launch back',
+  'gorilla_fire':'Fissure Punch: punches crack ground in a line, erupts after 1s',
+  'gorilla_electric':'EMP Knuckles: 5 hits = EMP locks out enemy abilities for 2s',
+  'gorilla_toxic':'Bruise Protocol: permanent bruise marks, 3/5/8 = heal-/DoT/slow',
+  'gorilla_cryo':'Shockwave Surge: punches speed Gorilla up, cracks slow enemies',
+  'monowire_fire':'Wire Slingshot: wraps launch enemy as projectile on release',
+  'monowire_electric':'Charged Wrap: wraps deal 2x ticking damage',
+  'monowire_toxic':'Neuro-Hack Drain: wrapped = -30% atk speed + 15% lifesteal',
+  'monowire_cryo':'Firewall Tether: deploy wire anchor, auto-tethers + slows nearby enemies',
+  'pls_fire':'Flame Pillars: wall hits create tall fire pillars that block & damage',
+  'pls_electric':'Arc Fences: two nearby impacts create lightning arc between them',
+  'pls_toxic':'Toxic Fog: impacts create expanding poison clouds that reduce visibility',
+  'pls_cryo':'Suppression Field: deploy zone -30% speed, -20% atk, PLS regens inside',
+  'sandy_fire':'Living Projectile: max speed ignites Sandy, body collision = damage',
+  'sandy_electric':'Reverse Blink: after dodge, can teleport back to dodge origin',
+  'sandy_toxic':'Toxic Trail: movement leaves poison trail, Dizzy debuff on crossers',
+  'sandy_cryo':'Momentum Skating: ice aura zone, enemies slide uncontrollably',
+  'throw_fire':'Remote Detonation: knives persist as traps, auto-detonate near enemies',
+  'throw_electric':'Lightning Rod: stuck knives periodically zap nearby enemies',
+  'throw_toxic':'Tracker Paint: hits mark enemies, next knife auto-locks on marked target',
+  'throw_cryo':'Frost Orbit: 3 frozen knives orbit as shield, 40% deflect chance',
+  'katana_fire':'Energy Slash: deflects store energy, release as fire crescent wave',
+  'katana_electric':'Magnetic Blade: pull projectiles in, deflects chain lightning',
+  'katana_toxic':'Attrition Stance: deflects stack Weakness (-20% dmg each, max 3)',
+  'katana_cryo':'Frozen Deflect: deflected projectile freezes mid-air, auto-returns',
+  'berserk_fire':'Overheat Backfire: shots build heat, max = pellet supernova + self-dmg',
+  'berserk_electric':'Ricochet Pellets: misses bounce off walls toward enemies',
+  'berserk_toxic':'Toxin Accumulation: pellet stacks, 5=self-hurt, 10=Overdose burst',
+  'berserk_cryo':'Frostburn Rage: rage stays while hitting, power decays over time',
   'smasher_fire':'Explosions + landing leave fire zones',
   'smasher_electric':'Shorter rocket + landing delays',
   'smasher_toxic':'Rapid hits within 0.75s = 50% bonus',
@@ -6960,6 +6960,7 @@ function relicHiguruma(f,enemy){
 }
 
 function relicYuji(f,enemy){
+  f.specialTimer=360; // must set so updateRelicYuji runs
   f.yujiBlackFlashActive=true;
   f.yujiBlackFlashTimer=360; // 6 seconds (but time pauses eat into this!)
   SFX.relicActivate();
@@ -6996,6 +6997,7 @@ function relicYuta(f,enemy){
   SFX.yutaDomain();
   f.yutaDomainActive=true;
   f.yutaDomainTimer=Math.round(480*(f._rikaDurationMult||1)); // 8 seconds base, win buff extends
+  f.specialTimer=f.yutaDomainTimer; // must set so updateRelicYuta runs during domain
   f.yutaDomainSwords=[];
 
   // Spawn domain swords from copied techniques
@@ -8986,6 +8988,36 @@ function updateBattle(dt){
     // Choso beam runs always (not just during special)
     if(f.char.id==='choso'&&(f.chosoBeamActive||f.chosoBeamCooldown>0||f.chosoPiercingFreeze>0)){
       updateChosoBeam(f,enemy,dt);
+    }
+
+    // Yuji cooldown must tick always (not just during special)
+    if(f.char.id==='yuji'&&!f.specialActive){
+      if(f.yujiDivergentCD>0)f.yujiDivergentCD-=dt;
+      // Process ghost fists always (they fly independently of special state)
+      for(let gi=f.yujiGhostFists.length-1;gi>=0;gi--){
+        const gf=f.yujiGhostFists[gi];
+        gf.timer-=dt;
+        if(gf.target&&gf.target.alive){
+          const dx=gf.target.x-gf.x,dy=gf.target.y-gf.y;
+          const d=Math.sqrt(dx*dx+dy*dy);
+          const speed=Math.min((14+((60-gf.timer)/60)*16)*dt,d);
+          if(d>1){gf.x+=dx/d*speed;gf.y+=dy/d*speed;}
+          gf.angle=Math.atan2(dy,dx);
+          if(d<gf.target.radius+18){
+            dealDamage(f,gf.target,gf.dmg,false);
+            spawnBurst(gf.target.x,gf.target.y,'#4488ff',10,5);
+            SFX.punch();
+            if(gf.isBF)triggerBlackFlash(f,gf.target);
+            if(gf.isFireKB){
+              const ka=gf.angle;const kb=8;
+              gf.target.vx+=Math.cos(ka)*kb;gf.target.vy+=Math.sin(ka)*kb;
+              spawnBurst(gf.target.x,gf.target.y,'#ff4400',8,5);
+            }
+            f.yujiGhostFists.splice(gi,1);continue;
+          }
+          if(gf.timer<=0){spawnBurst(gf.x,gf.y,'#4488ff',5,3);f.yujiGhostFists.splice(gi,1);continue;}
+        } else if(gf.timer<=0){f.yujiGhostFists.splice(gi,1);continue;}
+      }
     }
 
     // Yuta+Rika per-frame: Rika companion outside special (cooldowns handled in updateRelicYuta)
@@ -19152,7 +19184,8 @@ function drawBattle(){
   } else {
     // Check for other active domains
     const yutaF=fighters.find(f=>f.char.id==='yuta'&&f.yutaDomainActive);
-    const naoyaF=null; // Phase 2 domain removed
+    const naoyaF=fighters.find(f=>f.char.id==='naoya'&&f.naoyaSlowActive);
+    const megumiF=fighters.find(f=>f.char.id==='megumi'&&f.megumiDomainActive);
     const daburaF=fighters.find(f=>f.char.id==='dabura'&&f.dabDomainActive);
     if(yutaF){
       // AUTHENTIC MUTUAL LOVE — deep purple-black void with Rika's presence
@@ -19205,6 +19238,60 @@ function drawBattle(){
       }
       X.restore();
       X.strokeStyle='#00cc88';X.lineWidth=3;X.stroke();
+    } else if(megumiF){
+      // CHIMERA SHADOW GARDEN — deep dark arena with shadow pools and shikigami silhouettes
+      X.fillStyle='#030812';X.fill();
+      X.save();
+      drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.clip();
+      const mx=megumiF.x,my=megumiF.y;
+      // Dark blue radial from Megumi
+      const mg=X.createRadialGradient(mx,my,0,mx,my,300);
+      mg.addColorStop(0,'rgba(26,58,106,0.15)');mg.addColorStop(0.4,'rgba(10,30,60,0.1)');mg.addColorStop(1,'rgba(0,0,0,0.25)');
+      X.fillStyle=mg;X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+      // Shadow pools on the ground — dark ellipses that pulse
+      for(let i=0;i<12;i++){
+        const sx=ARENA.x+40+(i*83)%Math.max(1,ARENA.w-80);
+        const sy=ARENA.y+ARENA.h*0.5+(i*47)%Math.max(1,ARENA.h*0.4);
+        const sr=15+Math.sin(battleTime*0.03+i*0.8)*5;
+        X.fillStyle='rgba(0,0,20,0.25)';
+        X.beginPath();X.ellipse(sx,sy,sr*1.5,sr*0.5,0,0,Math.PI*2);X.fill();
+      }
+      // Shadow tendrils rising from pools
+      X.strokeStyle='rgba(26,58,106,0.2)';X.lineWidth=2;
+      for(let i=0;i<10;i++){
+        const tx=ARENA.x+30+(battleTime*0.2+i*73)%Math.max(1,ARENA.w-60);
+        const ty=ARENA.y+ARENA.h*0.7;
+        X.beginPath();X.moveTo(tx,ty);
+        X.quadraticCurveTo(tx+Math.sin(battleTime*0.04+i)*15,ty-40,tx+Math.cos(battleTime*0.03+i)*10,ty-70-Math.sin(battleTime*0.05+i)*15);
+        X.stroke();
+      }
+      // Shikigami eye pairs glowing in shadows
+      for(let i=0;i<6;i++){
+        const ex=ARENA.x+50+(i*97)%Math.max(1,ARENA.w-100);
+        const ey=ARENA.y+30+(i*67)%Math.max(1,ARENA.h-60);
+        const blink=Math.sin(battleTime*0.02+i*1.3)>-0.2?1:0;
+        if(blink){
+          const eyeColors=['#4466aa','#ff4444','#44ccff','#ffcc00','#66ff66','#aa44ff'];
+          X.fillStyle=eyeColors[i%eyeColors.length];X.globalAlpha=0.15+Math.sin(battleTime*0.05+i)*0.05;
+          X.beginPath();X.arc(ex-4,ey,1.5,0,Math.PI*2);X.fill();
+          X.beginPath();X.arc(ex+4,ey,1.5,0,Math.PI*2);X.fill();
+        }
+      }
+      X.globalAlpha=1;
+      // Floating shadow particles
+      for(let i=0;i<35;i++){
+        const px=ARENA.x+(battleTime*0.3+i*43)%ARENA.w;
+        const py=ARENA.y+(battleTime*0.25+i*57)%ARENA.h;
+        const sz=0.6+Math.sin(battleTime*0.04+i)*0.4;
+        X.beginPath();X.arc(px,py,sz,0,Math.PI*2);
+        X.fillStyle=i%3===0?'rgba(68,102,170,0.3)':'rgba(10,30,60,0.2)';X.fill();
+      }
+      X.restore();
+      X.strokeStyle='#1a3a6a';X.lineWidth=3;X.stroke();
+      X.shadowColor='#1a3a6a';X.shadowBlur=12;
+      X.strokeStyle='rgba(26,58,106,0.5)';X.lineWidth=2;
+      drawRoundRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h,8);X.stroke();
+      X.shadowBlur=0;
     } else if(daburaF){
       // RADIANT DOMAIN MODULO — alternating light/dark checkerboard
       X.fillStyle='#1a1a0a';X.fill();
