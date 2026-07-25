@@ -1248,7 +1248,11 @@ let explosions=[];
 let shakeTimer=0,shakeAmt=0;
 // Intro cutscene state
 let introCutscene={active:false,timer:0,phase:0,p1Char:null,p2Char:null,p1Elem:null,p2Elem:null,
-  p1Line:'',p2Line:'',vsFlash:0,skipBtn:false,waitingForNext:false,phaseLocalTimer:0};
+  p1Line:'',p2Line:'',vsFlash:0,skipBtn:false,waitingForNext:false,phaseLocalTimer:0,
+  // 2v2 extra chars
+  p1Char2:null,p2Char2:null,p1Elem2:null,p2Elem2:null,p1Line2:'',p2Line2:'',
+  // BR extra chars
+  brChars:null,brElems:null};
 // Victory/Defeat cutscene state
 let victoryCutscene={active:false,timer:0,phase:0,winner:null,loser:null,isDefeat:false,
   winLine:'',shatterParts:[],statsShown:false,continueReady:false,
@@ -17545,7 +17549,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.30.2 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.31.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -18606,6 +18610,8 @@ function drawElementPickerMobile(sx,sy,selected,prefix,cb){
 function startIntroCutscene(){
   const ic=introCutscene;
   ic.active=true;ic.timer=0;ic.phase=0;ic.vsFlash=0;ic.skipBtn=true;ic.waitingForNext=false;ic.phaseLocalTimer=0;
+  ic.p1Char2=null;ic.p2Char2=null;ic.p1Elem2=null;ic.p2Elem2=null;ic.p1Line2='';ic.p2Line2='';
+  ic.brChars=null;ic.brElems=null;
   battleAccum=0;
   if(gameMode==='boss'){
     ic.p1Char=CHARS[teamChar1];ic.p2Char=CHARS[bossChar];
@@ -18615,10 +18621,21 @@ function startIntroCutscene(){
     ic.p1Char=CHARS[t1Char1];ic.p2Char=CHARS[t2Char1];
     ic.p1Elem=t1Elem1>=0?ELEMENTS[t1Elem1]:null;
     ic.p2Elem=t2Elem1>=0?ELEMENTS[t2Elem1]:null;
+    // Second team members
+    ic.p1Char2=CHARS[t1Char2];ic.p2Char2=CHARS[t2Char2];
+    ic.p1Elem2=t1Elem2>=0?ELEMENTS[t1Elem2]:null;
+    ic.p2Elem2=t2Elem2>=0?ELEMENTS[t2Elem2]:null;
+    const p1L2=VOICELINES[ic.p1Char2.id];
+    const p2L2=VOICELINES[ic.p2Char2.id];
+    ic.p1Line2=p1L2&&p1L2.intro?p1L2.intro[Math.floor(Math.random()*p1L2.intro.length)]:'...';
+    ic.p2Line2=p2L2&&p2L2.intro?p2L2.intro[Math.floor(Math.random()*p2L2.intro.length)]:'...';
   } else if(gameMode==='br'){
     ic.p1Char=CHARS[brChars[0]];ic.p2Char=CHARS[brChars[1]];
     ic.p1Elem=brElems[0]>=0?ELEMENTS[brElems[0]]:null;
     ic.p2Elem=brElems[1]>=0?ELEMENTS[brElems[1]]:null;
+    // Store all BR chars for 4-corner intro
+    ic.brChars=brChars.map(i=>CHARS[i]);
+    ic.brElems=brElems.map(i=>i>=0?ELEMENTS[i]:null);
   } else if(gameMode==='tournament'){
     ic.p1Char=CHARS[p1Char];ic.p2Char=CHARS[p2Char];
     ic.p1Elem=p1Elem>=0?ELEMENTS[p1Elem]:null;
@@ -19515,103 +19532,143 @@ function drawIntroCutscene(){
   }
   X.globalAlpha=1;
 
-  // Phase 0: P1 full-screen showcase
+  const is2v2=gameMode==='2v2'&&ic.p1Char2;
+  const isBR=gameMode==='br'&&ic.brChars;
+
+  // Phase 0: P1/Team1 showcase
   if(ic.phase===0){
-    drawCharFullScreen(ic.p1Char,ic.p1Elem,ic.p1Line,ic.phaseLocalTimer,fs,false);
+    if(is2v2){
+      // 2v2: show both Team 1 chars side by side
+      drawCharFullScreen(ic.p1Char,ic.p1Elem,ic.p1Line,ic.phaseLocalTimer,fs*0.85,false,W*0.3,centerY);
+      drawCharFullScreen(ic.p1Char2,ic.p1Elem2,ic.p1Line2,Math.max(0,ic.phaseLocalTimer-15),fs*0.85,false,W*0.7,centerY);
+      // Team label
+      X.globalAlpha=Math.min(1,ic.phaseLocalTimer/20);
+      X.font='bold '+Math.round(14*fs)+'px Consolas,monospace';X.textAlign='center';
+      X.fillStyle='#33cc66';X.fillText('TEAM 1',W/2,barH+60*fs);
+      X.globalAlpha=1;
+    } else if(isBR){
+      // BR: show char 1 solo, then char 2 appears
+      const brIdx=Math.min(1,Math.floor(ic.phaseLocalTimer/75));
+      const brChar=ic.brChars[brIdx];
+      const brElem=ic.brElems[brIdx];
+      const brLine=VOICELINES[brChar.id]&&VOICELINES[brChar.id].intro?VOICELINES[brChar.id].intro[0]:'...';
+      drawCharFullScreen(brChar,brElem,brLine,ic.phaseLocalTimer-brIdx*75,fs,brIdx>0);
+    } else {
+      drawCharFullScreen(ic.p1Char,ic.p1Elem,ic.p1Line,ic.phaseLocalTimer,fs,false);
+    }
   }
 
-  // Phase 1: P2 full-screen showcase
+  // Phase 1: P2/Team2 showcase
   if(ic.phase===1){
-    drawCharFullScreen(ic.p2Char,ic.p2Elem,ic.p2Line,ic.phaseLocalTimer,fs,true);
+    if(is2v2){
+      drawCharFullScreen(ic.p2Char,ic.p2Elem,ic.p2Line,ic.phaseLocalTimer,fs*0.85,true,W*0.3,centerY);
+      drawCharFullScreen(ic.p2Char2,ic.p2Elem2,ic.p2Line2,Math.max(0,ic.phaseLocalTimer-15),fs*0.85,true,W*0.7,centerY);
+      X.globalAlpha=Math.min(1,ic.phaseLocalTimer/20);
+      X.font='bold '+Math.round(14*fs)+'px Consolas,monospace';X.textAlign='center';
+      X.fillStyle='#ff4466';X.fillText('TEAM 2',W/2,barH+60*fs);
+      X.globalAlpha=1;
+    } else if(isBR){
+      const brIdx=Math.min(3,2+Math.floor(ic.phaseLocalTimer/75));
+      const brChar=ic.brChars[brIdx];
+      const brElem=ic.brElems[brIdx];
+      const brLine=VOICELINES[brChar.id]&&VOICELINES[brChar.id].intro?VOICELINES[brChar.id].intro[0]:'...';
+      drawCharFullScreen(brChar,brElem,brLine,ic.phaseLocalTimer-(brIdx-2)*75,fs,true);
+    } else {
+      drawCharFullScreen(ic.p2Char,ic.p2Elem,ic.p2Line,ic.phaseLocalTimer,fs,true);
+    }
+  }
+
+  // Helper: draw a ball+name at position for phase 2/3
+  function drawIntroCharBall(char,bx,by,br){
+    const gx=X.createRadialGradient(bx,by,0,bx,by,br*2.5);
+    gx.addColorStop(0,char.color+'44');gx.addColorStop(1,char.color+'00');
+    X.fillStyle=gx;X.beginPath();X.arc(bx,by,br*2.5,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(bx,by,br,0,Math.PI*2);
+    X.fillStyle=char.color;X.fill();
+    X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
+    const tl=getTierLetter(char.id);
+    X.font='bold '+Math.round(is2v2||isBR?13*fs:18*fs)+'px Consolas,monospace';X.textAlign='center';
+    X.fillStyle='#fff';X.fillText(char.name,bx,by+br+16*fs);
+    X.font='bold '+Math.round(9*fs)+'px Consolas,monospace';
+    X.fillStyle=char.color;X.fillText('['+tl+']',bx,by+br+28*fs);
   }
 
   // Phase 2: Zoom out to side-by-side
   if(ic.phase===2){
     const zt=ic.phaseLocalTimer;
-    const zoomProgress=Math.min(1,zt/90); // 1.5s to zoom out
+    const zoomProgress=Math.min(1,zt/90);
     const eased=1-Math.pow(1-zoomProgress,3);
-    // P1 on left — zooms from full-screen center to 25%
-    const p1X=W/2+(W*0.25-W/2)*eased;
-    const p1BallR=Math.min(W,H)*0.3*(1-eased)+30*fs*eased;
-    const p1Alpha=1;
-    X.globalAlpha=p1Alpha;
-    // P1 glow
-    const g1=X.createRadialGradient(p1X,centerY,0,p1X,centerY,p1BallR*2.5);
-    g1.addColorStop(0,ic.p1Char.color+'44');g1.addColorStop(1,ic.p1Char.color+'00');
-    X.fillStyle=g1;X.fillRect(0,0,W/2,H);
-    // P1 ball
-    X.beginPath();X.arc(p1X,centerY,p1BallR,0,Math.PI*2);
-    X.fillStyle=ic.p1Char.color;X.fill();
-    X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
-    // P1 name (fades in during zoom-out)
-    if(eased>0.5){
-      const nameAlpha=(eased-0.5)*2;
-      X.globalAlpha=nameAlpha;
-      const t1=getTierLetter(ic.p1Char.id);
-      X.font='bold '+Math.round(18*fs)+'px Consolas,monospace';X.textAlign='center';
-      X.fillStyle='#fff';X.fillText(ic.p1Char.name,p1X,centerY+p1BallR+22*fs);
-      X.font='bold '+Math.round(11*fs)+'px Consolas,monospace';
-      X.fillStyle=ic.p1Char.color;X.fillText('['+t1+']',p1X,centerY+p1BallR+38*fs);
-    }
-    // P2 on right
-    const p2X=W/2+(W*0.75-W/2)*eased;
-    const p2BallR=Math.min(W,H)*0.3*(1-eased)+30*fs*eased;
-    X.globalAlpha=1;
-    const g2=X.createRadialGradient(p2X,centerY,0,p2X,centerY,p2BallR*2.5);
-    g2.addColorStop(0,ic.p2Char.color+'44');g2.addColorStop(1,ic.p2Char.color+'00');
-    X.fillStyle=g2;X.fillRect(W/2,0,W/2,H);
-    X.beginPath();X.arc(p2X,centerY,p2BallR,0,Math.PI*2);
-    X.fillStyle=ic.p2Char.color;X.fill();
-    X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
-    if(eased>0.5){
-      const nameAlpha=(eased-0.5)*2;
-      X.globalAlpha=nameAlpha;
-      const t2=getTierLetter(ic.p2Char.id);
-      X.font='bold '+Math.round(18*fs)+'px Consolas,monospace';X.textAlign='center';
-      X.fillStyle='#fff';X.fillText(ic.p2Char.name,p2X,centerY+p2BallR+22*fs);
-      X.font='bold '+Math.round(11*fs)+'px Consolas,monospace';
-      X.fillStyle=ic.p2Char.color;X.fillText('['+t2+']',p2X,centerY+p2BallR+38*fs);
+
+    if(is2v2){
+      // 2v2: 2 balls per side — stacked vertically
+      const ballR=22*fs*eased+Math.min(W,H)*0.2*(1-eased);
+      const leftX=W/2+(W*0.25-W/2)*eased;
+      const rightX=W/2+(W*0.75-W/2)*eased;
+      const yOff=35*fs;
+      X.globalAlpha=1;
+      drawIntroCharBall(ic.p1Char,leftX,centerY-yOff,ballR);
+      drawIntroCharBall(ic.p1Char2,leftX,centerY+yOff+ballR*1.2,ballR*0.85);
+      drawIntroCharBall(ic.p2Char,rightX,centerY-yOff,ballR);
+      drawIntroCharBall(ic.p2Char2,rightX,centerY+yOff+ballR*1.2,ballR*0.85);
+    } else if(isBR){
+      // BR: 4 corners
+      const ballR=20*fs*eased+Math.min(W,H)*0.15*(1-eased);
+      const positions=[[W*0.25,centerY-60*fs],[W*0.75,centerY-60*fs],
+                        [W*0.25,centerY+60*fs],[W*0.75,centerY+60*fs]];
+      X.globalAlpha=1;
+      ic.brChars.forEach((ch,i)=>{
+        if(i<4){
+          const [bx,by]=positions[i];
+          const fx=W/2+(bx-W/2)*eased;
+          const fy=centerY+(by-centerY)*eased;
+          drawIntroCharBall(ch,fx,fy,ballR);
+        }
+      });
+    } else {
+      // Standard 1v1: P1 left, P2 right
+      const p1X=W/2+(W*0.25-W/2)*eased;
+      const p1BallR=Math.min(W,H)*0.3*(1-eased)+30*fs*eased;
+      X.globalAlpha=1;
+      drawIntroCharBall(ic.p1Char,p1X,centerY,p1BallR);
+      const p2X=W/2+(W*0.75-W/2)*eased;
+      const p2BallR=Math.min(W,H)*0.3*(1-eased)+30*fs*eased;
+      drawIntroCharBall(ic.p2Char,p2X,centerY,p2BallR);
     }
     X.globalAlpha=1;
-    // Divider line between them
+    // Divider line(s)
     if(eased>0.3){
       X.globalAlpha=(eased-0.3)*1.4;
       X.strokeStyle='#ffffff33';X.lineWidth=2;
-      X.beginPath();X.moveTo(W/2,barH);X.lineTo(W/2,H-barH);X.stroke();
+      if(isBR){
+        X.beginPath();X.moveTo(W/2,barH);X.lineTo(W/2,H-barH);X.stroke();
+        X.beginPath();X.moveTo(0,centerY);X.lineTo(W,centerY);X.stroke();
+      } else {
+        X.beginPath();X.moveTo(W/2,barH);X.lineTo(W/2,H-barH);X.stroke();
+      }
       X.globalAlpha=1;
     }
   }
 
-  // Phase 3: VS slam + FIGHT (3s countdown)
+  // Phase 3: VS slam + FIGHT
   if(ic.phase===3){
     const vt=ic.phaseLocalTimer;
-    // Show both characters at final positions
-    const p1X=W*0.25,p2X=W*0.75,ballR=30*fs;
-    // P1
-    X.globalAlpha=1;
-    const g1=X.createRadialGradient(p1X,centerY,0,p1X,centerY,80*fs);
-    g1.addColorStop(0,ic.p1Char.color+'44');g1.addColorStop(1,ic.p1Char.color+'00');
-    X.fillStyle=g1;X.fillRect(0,0,W/2,H);
-    X.beginPath();X.arc(p1X,centerY,ballR,0,Math.PI*2);
-    X.fillStyle=ic.p1Char.color;X.fill();
-    X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
-    const t1=getTierLetter(ic.p1Char.id);
-    X.font='bold '+Math.round(18*fs)+'px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#fff';X.fillText(ic.p1Char.name,p1X,centerY+ballR+22*fs);
-    X.font='bold '+Math.round(11*fs)+'px Consolas,monospace';
-    X.fillStyle=ic.p1Char.color;X.fillText('['+t1+']',p1X,centerY+ballR+38*fs);
-    // P2
-    const g2=X.createRadialGradient(p2X,centerY,0,p2X,centerY,80*fs);
-    g2.addColorStop(0,ic.p2Char.color+'44');g2.addColorStop(1,ic.p2Char.color+'00');
-    X.fillStyle=g2;X.fillRect(W/2,0,W/2,H);
-    X.beginPath();X.arc(p2X,centerY,ballR,0,Math.PI*2);
-    X.fillStyle=ic.p2Char.color;X.fill();
-    X.strokeStyle='#fff3';X.lineWidth=2;X.stroke();
-    const t2=getTierLetter(ic.p2Char.id);
-    X.font='bold '+Math.round(18*fs)+'px Consolas,monospace';X.textAlign='center';
-    X.fillStyle='#fff';X.fillText(ic.p2Char.name,p2X,centerY+ballR+22*fs);
-    X.font='bold '+Math.round(11*fs)+'px Consolas,monospace';
-    X.fillStyle=ic.p2Char.color;X.fillText('['+t2+']',p2X,centerY+ballR+38*fs);
+    const ballR=is2v2?22*fs:isBR?20*fs:30*fs;
+
+    if(is2v2){
+      const yOff=35*fs;
+      drawIntroCharBall(ic.p1Char,W*0.25,centerY-yOff,ballR);
+      drawIntroCharBall(ic.p1Char2,W*0.25,centerY+yOff+ballR*1.2,ballR*0.85);
+      drawIntroCharBall(ic.p2Char,W*0.75,centerY-yOff,ballR);
+      drawIntroCharBall(ic.p2Char2,W*0.75,centerY+yOff+ballR*1.2,ballR*0.85);
+    } else if(isBR){
+      const positions=[[W*0.25,centerY-60*fs],[W*0.75,centerY-60*fs],
+                        [W*0.25,centerY+60*fs],[W*0.75,centerY+60*fs]];
+      ic.brChars.forEach((ch,i)=>{if(i<4)drawIntroCharBall(ch,positions[i][0],positions[i][1],ballR);});
+    } else {
+      drawIntroCharBall(ic.p1Char,W*0.25,centerY,ballR);
+      drawIntroCharBall(ic.p2Char,W*0.75,centerY,ballR);
+    }
+
     // VS text — slam in with elastic easing
     const vsScale=vt<15?1+Math.max(0,1-vt/15)*3:1+Math.sin(Math.max(0,vt-15)*0.3)*0.1*Math.max(0,1-(vt-15)/60);
     const vsAlpha=Math.min(1,vt/8);
@@ -19695,35 +19752,43 @@ function drawIntroCutscene(){
   }
 }
 
-function drawCharFullScreen(char,elem,voiceline,t,fs,isRight){
+function drawCharFullScreen(char,elem,voiceline,t,fs,isRight,cx,cy){
   // Full-screen character showcase: small ball on left, animation plays outward in arena
-  const centerY=H/2;
+  // cx,cy: optional center point for 2v2 side-by-side rendering
+  const hasCXCY=cx!==undefined&&cy!==undefined;
+  const areaW=hasCXCY?W*0.48:W;
+  const areaLeft=hasCXCY?cx-areaW/2:0;
+  const midX=hasCXCY?cx:W/2;
+  const midY=hasCXCY?cy:H/2;
+  const centerY=hasCXCY?cy:H/2;
   const fadeIn=Math.min(1,t/30);
   const alpha=fadeIn;
   X.globalAlpha=alpha;
 
   // Full-screen color wash background
-  const bgGrad=X.createRadialGradient(W/2,centerY,0,W/2,centerY,Math.max(W,H)*0.7);
+  const bgGrad=X.createRadialGradient(midX,centerY,0,midX,centerY,Math.max(areaW,H)*0.7);
   bgGrad.addColorStop(0,char.color+'22');bgGrad.addColorStop(0.5,char.color+'0d');bgGrad.addColorStop(1,'#0a0a0e');
-  X.fillStyle=bgGrad;X.fillRect(0,0,W,H);
+  X.fillStyle=bgGrad;
+  if(hasCXCY){X.save();X.beginPath();X.rect(areaLeft,0,areaW,H);X.clip();X.fillRect(areaLeft,0,areaW,H);} else X.fillRect(0,0,W,H);
 
   // Subtle energy rings (background)
+  const ringCX=hasCXCY?areaLeft+areaW*0.35:W*0.25;
   for(let i=0;i<3;i++){
     const ringT=(t+i*80)%240;
     const ringR=ringT*1.5;
     X.globalAlpha=Math.max(0,0.1-ringT/2400)*alpha;
     X.strokeStyle=char.color;X.lineWidth=1.5;
-    X.beginPath();X.arc(W*0.25,centerY-30*fs,ringR,0,Math.PI*2);X.stroke();
+    X.beginPath();X.arc(ringCX,centerY-30*fs,ringR,0,Math.PI*2);X.stroke();
   }
   X.globalAlpha=alpha;
 
   // Small character ball on the LEFT side (like in-game size)
   const smallR=isMobile?22:30;
-  const ballX=W*0.18;const ballY=centerY-30*fs;
+  const ballX=hasCXCY?areaLeft+areaW*0.25:W*0.18;const ballY=centerY-30*fs;
   // Glow behind small ball
   const glow=X.createRadialGradient(ballX,ballY,smallR*0.3,ballX,ballY,smallR*4);
   glow.addColorStop(0,char.color+'44');glow.addColorStop(0.5,char.color+'15');glow.addColorStop(1,char.color+'00');
-  X.fillStyle=glow;X.fillRect(0,0,W*0.4,H);
+  X.fillStyle=glow;X.fillRect(hasCXCY?areaLeft:0,0,hasCXCY?areaW:W*0.4,H);
   // Small ball
   X.beginPath();X.arc(ballX,ballY,smallR,0,Math.PI*2);
   X.fillStyle=char.color;X.fill();
@@ -19735,18 +19800,17 @@ function drawCharFullScreen(char,elem,voiceline,t,fs,isRight){
   // Character name + info below ball
   X.globalAlpha=alpha;
   const tier=getTierLetter(char.id);
-  X.font='bold '+Math.round(14*fs)+'px Consolas,monospace';X.textAlign='center';
+  X.font='bold '+Math.round((hasCXCY?11:14)*fs)+'px Consolas,monospace';X.textAlign='center';
   X.shadowColor=char.color;X.shadowBlur=isMobile?4:10;
   X.fillStyle='#fff';X.fillText(char.name,ballX,ballY+smallR+18*fs);
   X.shadowBlur=0;
-  X.font='bold '+Math.round(10*fs)+'px Consolas,monospace';
+  X.font='bold '+Math.round((hasCXCY?8:10)*fs)+'px Consolas,monospace';
   X.fillStyle=char.color;X.fillText('['+tier+']',ballX,ballY+smallR+32*fs);
 
   // Animated signature move — plays in the RIGHT/CENTER area, OUTSIDE the ball
-  // Animation shows the character doing their move outward to targets in the arena
-  const animCX=W*0.55; // center of animation area (right of ball)
+  const animCX=hasCXCY?areaLeft+areaW*0.65:W*0.55;
   const animCY=centerY-15*fs;
-  const animScale=fs*3.0; // bigger scale for clarity
+  const animScale=hasCXCY?fs*2.0:fs*3.0;
   if(t>15)drawCharIntroAnim(char.id,animCX,animCY,t-15,animScale,char.color);
   X.globalAlpha=alpha;
 
@@ -19757,7 +19821,6 @@ function drawCharFullScreen(char,elem,voiceline,t,fs,isRight){
     X.strokeStyle=char.color;X.lineWidth=2;X.setLineDash([4,4]);
     X.beginPath();X.moveTo(ballX+smallR+5,ballY);X.lineTo(animCX-60*animScale,animCY);X.stroke();
     X.setLineDash([]);
-    // Arrowhead
     const arX=animCX-60*animScale;
     X.fillStyle=char.color;X.beginPath();X.moveTo(arX,animCY-5);X.lineTo(arX+10,animCY);X.lineTo(arX,animCY+5);X.closePath();X.fill();
   }
@@ -19768,16 +19831,17 @@ function drawCharFullScreen(char,elem,voiceline,t,fs,isRight){
   const nameEased=1-Math.pow(1-nameSlide,3);
   const nameOffX=isRight?(1-nameEased)*60*fs:-(1-nameEased)*60*fs;
   X.globalAlpha=alpha*nameSlide;
-  X.font='bold '+Math.round(28*fs)+'px Consolas,monospace';X.textAlign='center';
+  X.font='bold '+Math.round((hasCXCY?20:28)*fs)+'px Consolas,monospace';X.textAlign='center';
   X.shadowColor=char.color;X.shadowBlur=isMobile?3:12;
-  X.fillStyle='#fff';X.fillText(char.name,W/2+nameOffX,nameY);
+  X.fillStyle='#fff';X.fillText(char.name,midX+nameOffX,nameY);
   X.shadowBlur=0;
-  X.font='bold '+Math.round(14*fs)+'px Consolas,monospace';
-  X.fillStyle=char.color;X.fillText('['+tier+'] '+char.playstyle,W/2+nameOffX,nameY+24*fs);
+  X.font='bold '+Math.round((hasCXCY?10:14)*fs)+'px Consolas,monospace';
+  X.fillStyle=char.color;X.fillText('['+tier+'] '+char.playstyle,midX+nameOffX,nameY+24*fs);
   if(elem){
-    X.font=Math.round(11*fs)+'px Consolas,monospace';
-    X.fillStyle='#999';X.fillText(elem.name+' Element',W/2+nameOffX,nameY+42*fs);
+    X.font=Math.round((hasCXCY?9:11)*fs)+'px Consolas,monospace';
+    X.fillStyle='#999';X.fillText(elem.name+' Element',midX+nameOffX,nameY+42*fs);
   }
+  if(hasCXCY)X.restore();
   X.globalAlpha=1;
 }
 
