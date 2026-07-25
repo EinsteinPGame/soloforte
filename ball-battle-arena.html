@@ -2235,6 +2235,10 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker._ryuCryoDmgReduction>0&&attacker._ryuCryoCycle)dmg*=(1-attacker._ryuCryoDmgReduction);
   // Yuki Insulate: -20% ranged damage taken
   if(defender._yukiInsulate>0)dmg*=0.8;
+  // Gojo Decay Field: attacker reduced dmg
+  if(attacker._decayAtkReduction>0&&attacker._decayAtkTimer>0)dmg*=(1-attacker._decayAtkReduction);
+  // Yuta Corrupted Ability: enemy abilities deal less
+  if(attacker._corruptedAbilityReduction>0&&attacker._corruptedAbilityTimer>0)dmg*=(1-attacker._corruptedAbilityReduction);
   // === End V2 damage modifiers ===
 
   defender.hp-=dmg;
@@ -7555,6 +7559,324 @@ function applyElementEffect(attacker,defender){
       spawnBurst(defender.x,defender.y,'#77ddff',6,3);}
       break;
 
+    // === ADAM SMASHER [BOSS] (v2 redesign — Phase 3) ===
+    case 'smasher_fire':
+      // Air Denial: rockets leave persistent fire trails in the air
+      {const trailX=defender.x+(Math.random()-0.5)*40;
+      const trailY=defender.y-attacker.radius*2-(Math.random()*40);
+      fireZones.push({x:trailX,y:trailY,radius:attacker.radius*1.5,life:240,maxLife:240,
+        owner:attacker,dmg:attacker.atk*0.3/60,isAirTrail:true});
+      defender.burnTimer=90;defender.burnDmg=attacker.atk*0.03;
+      spawnBurst(defender.x,defender.y,'#ff4400',8,3);SFX.burn();}
+      break;
+    case 'smasher_electric':
+      // EMP Transitions: phase transitions add 2s to ALL player ability CDs, chain lightning
+      {fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==attacker.side){
+          e._empLockout=Math.max(e._empLockout||0,120); // 2s lockout
+          // Chain lightning between players within 2 ball widths of each other
+          fighters.forEach(e2=>{
+            if(e2&&e2.alive&&e2!==e&&e2.side!==attacker.side){
+              if(Math.hypot(e.x-e2.x,e.y-e2.y)<attacker.radius*4){
+                dealDamage(attacker,e2,attacker.atk*0.6,false);
+                spawnBurst(e2.x,e2.y,'#ffee44',6,3);
+                // Lightning arc visual
+                for(let i=0;i<4;i++){
+                  const lt=i/4;
+                  spawnParticle(e.x+(e2.x-e.x)*lt,e.y+(e2.y-e.y)*lt,'#ffee44',(Math.random()-0.5)*2,(Math.random()-0.5)*2,15,2);
+                }
+              }
+            }
+          });
+        }
+      });
+      spawnBurst(defender.x,defender.y,'#ffcc00',10,4);SFX.stun();}
+      break;
+    case 'smasher_toxic':
+      // Toxic Leakage: auto-drops toxic puddles when damaged, rockets trail exhaust
+      {fireZones.push({x:attacker.x+(Math.random()-0.5)*30,y:attacker.y+(Math.random()-0.5)*30,
+        radius:attacker.radius*2,life:300,maxLife:300,owner:attacker,dmg:attacker.atk*0.15/60,
+        isToxicPuddle:true});
+      // Rocket exhaust trail that slows projectiles
+      toxicFogs.push({x:defender.x,y:defender.y,radius:attacker.radius*2,maxRadius:attacker.radius*2.5,
+        life:180,maxLife:180,owner:attacker,dmg:0,isExhaust:true});
+      spawnBurst(defender.x,defender.y,'#aa44cc',6,3);}
+      break;
+    case 'smasher_cryo':
+      // Crystallized Armor: damage taken scatters frozen debris as obstacles
+      {if(Math.random()<0.4){
+        fireZones.push({x:defender.x+(Math.random()-0.5)*60,y:defender.y+(Math.random()-0.5)*60,
+          radius:attacker.radius*1.5,life:600,maxLife:600,owner:attacker,dmg:0,isFrozenDebris:true});
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,'ICE DEBRIS','#77ddff',false);
+      }
+      defender.slowTimer=Math.max(defender.slowTimer,90);
+      spawnBurst(defender.x,defender.y,'#77ddff',8,3);SFX.freeze();}
+      break;
+
+    // === GOJO [BOSS] (v2 redesign — Phase 3) ===
+    case 'gojo_fire':
+      // Hollow Purple Inferno: purple leaves fire vortexes in wake path
+      {fireZones.push({x:defender.x,y:defender.y,radius:attacker.radius*1.5,life:180,maxLife:180,
+        owner:attacker,dmg:attacker.atk*0.3/60,isFireVortex:true});
+      defender.burnTimer=90;defender.burnDmg=attacker.atk*0.02;
+      spawnBurst(defender.x,defender.y,'#ff4400',6,3);
+      spawnBurst(defender.x,defender.y,'#8844ff',4,2);SFX.burn();}
+      break;
+    case 'gojo_electric':
+      // Overcharge Mind Game: overcharged attacks deal 80% more damage
+      {attacker._gojoOvercharge=(attacker._gojoOvercharge||0)+1;
+      if(attacker._gojoOvercharge>=3){
+        const overDmg=attacker.atk*1.8;
+        dealDamage(attacker,defender,overDmg,false);
+        attacker._gojoOvercharge=0;
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'OVERCHARGED!','#ffee44',true);
+        spawnBurst(defender.x,defender.y,'#ffcc00',15,5);shakeTimer=8;shakeAmt=5;SFX.stun();
+      } else {
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'CHARGE '+attacker._gojoOvercharge+'/3','#ffcc00',false);
+        spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
+      }}
+      break;
+    case 'gojo_toxic':
+      // Cursed Decay Field: enemies near Gojo take passive dmg, purple leaves toxic trail
+      {const decayR=attacker.radius*4;
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-attacker.x,e.y-attacker.y)<decayR){
+          dealDamage(attacker,e,attacker.atk*0.1,false);
+          e._decayAtkReduction=Math.min(0.25,(e._decayAtkReduction||0)+0.05);
+          e._decayAtkTimer=120;
+          spawnParticle(e.x+(Math.random()-0.5)*10,e.y+(Math.random()-0.5)*10,'#aa44cc',0,-1,10,2);
+        }
+      });
+      // Toxic trail at hit point
+      toxicFogs.push({x:defender.x,y:defender.y,radius:attacker.radius*1.5,maxRadius:attacker.radius*2,
+        life:180,maxLife:180,owner:attacker,dmg:attacker.atk*0.15/60,isDecayTrail:true});
+      spawnBurst(defender.x,defender.y,'#aa44cc',6,3);}
+      break;
+    case 'gojo_cryo':
+      // Infinity Resonance: faster charge, projectile slow, frost pulse on break
+      {attacker._gojoInfinityBoost=true;
+      // Passive slow on nearby projectiles
+      projectiles.forEach(p=>{
+        if(p.owner&&p.owner.side!==attacker.side){
+          const pd=Math.hypot(p.x-attacker.x,p.y-attacker.y);
+          const slowRadius=attacker.radius*(attacker.gojoInfinityCharges>0?8:3);
+          const slowAmt=attacker.gojoInfinityCharges>0?0.6:0.85;
+          if(pd<slowRadius){p.vx*=slowAmt;p.vy*=slowAmt;}
+        }
+      });
+      // Frost pulse when infinity breaks
+      if(attacker.gojoInfinityCharges<=0&&attacker._gojoHadInfinity){
+        const pulseR=attacker.radius*3;
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-attacker.x,e.y-attacker.y)<pulseR){
+            dealDamage(attacker,e,attacker.atk*0.6,false);
+            e.slowTimer=Math.max(e.slowTimer,120);
+            spawnDmgNum(e.x,e.y-e.radius-20,'FROST PULSE','#77ddff',true);
+          }
+        });
+        spawnBurst(attacker.x,attacker.y,'#77ddff',15,5);SFX.freeze();
+        attacker._gojoHadInfinity=false;
+      }
+      if(attacker.gojoInfinityCharges>0)attacker._gojoHadInfinity=true;
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',5,2);}
+      break;
+
+    // === YUTA & RIKA [BOSS] (v2 redesign — Phase 3) ===
+    case 'yuta_fire':
+      // Overloaded Copies: copied techniques deal 50% bonus + explode on impact
+      {const fireCopyDmg=attacker.atk*1.5;
+      dealDamage(attacker,defender,fireCopyDmg*0.3,false);
+      // AoE explosion at impact
+      const copyR=attacker.radius*3;
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==attacker.side&&e!==defender&&Math.hypot(e.x-defender.x,e.y-defender.y)<copyR){
+          dealDamage(attacker,e,fireCopyDmg*0.2,false);
+        }
+      });
+      explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:copyR,color:'#ff4400',life:12,maxLife:12,dmg:0,owner:null,target:null,hit:true});
+      // Rika claw burn marks
+      fireZones.push({x:defender.x+(Math.random()-0.5)*20,y:defender.y+(Math.random()-0.5)*20,
+        radius:attacker.radius*1.5,life:180,maxLife:180,owner:attacker,dmg:attacker.atk*0.2/60,isCrawMark:true});
+      defender.burnTimer=90;defender.burnDmg=attacker.atk*0.03;
+      spawnBurst(defender.x,defender.y,'#ff4400',12,4);SFX.burn();}
+      break;
+    case 'yuta_electric':
+      // Ability Theft: interrupt enemy ability mid-cast, steal single use
+      {if(defender.specialActive||defender.attackTimer<3){
+        // Steal: deny enemy + gain single use
+        defender.specialActive=false;defender.attackTimer=60;
+        attacker._stolenAbility=defender.char.id;
+        attacker._stolenAbilityUses=1;
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'STOLEN!','#ffee44',true);
+        spawnBurst(defender.x,defender.y,'#ffcc00',15,5);shakeTimer=6;shakeAmt=4;SFX.stun();
+      } else {
+        spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
+      }}
+      break;
+    case 'yuta_toxic':
+      // Corrupted Copies: twisted versions, enemy ability deals -15% for 5s
+      {defender._corruptedAbilityTimer=300; // 5s: enemy abilities -15% dmg
+      defender._corruptedAbilityReduction=0.15;
+      // Jittery copy attack
+      const jitterDmg=attacker.atk*(0.8+Math.random()*0.6);
+      dealDamage(attacker,defender,jitterDmg,false);
+      spawnBurst(defender.x,defender.y,'#aa44cc',8,4);
+      spawnDmgNum(defender.x,defender.y-defender.radius-20,'CORRUPTED','#9944ff',true);}
+      break;
+    case 'yuta_cryo':
+      // Copy Burst: store up to 3 copied abilities, unleash all at once
+      {attacker._yutaCopyStore=(attacker._yutaCopyStore||0)+1;
+      if(attacker._yutaCopyStore>=3){
+        // Unleash all 3 copies rapidly
+        for(let i=0;i<3;i++){
+          const burstDmg=attacker.atk*1.2;
+          dealDamage(attacker,defender,burstDmg,false);
+          spawnBurst(defender.x+((Math.random()-0.5)*30),defender.y+((Math.random()-0.5)*30),'#77ddff',8,3);
+        }
+        attacker._yutaCopyStore=0;
+        spawnDmgNum(defender.x,defender.y-defender.radius-30,'COPY BURST!','#44ddff',true);
+        shakeTimer=10;shakeAmt=7;SFX.freeze();
+      } else {
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'COPY '+attacker._yutaCopyStore+'/3','#77ddff',false);
+        spawnBurst(defender.x,defender.y,'#77ddff',5,2);
+      }}
+      break;
+
+    // === MAHORAGA [BOSS] (v2 redesign — Phase 3) ===
+    case 'mahoraga_fire':
+      // Molten Arena: adaptation heats ground, creates superheated floor
+      {fireZones.push({x:attacker.x+(Math.random()-0.5)*20,y:attacker.y+(Math.random()-0.5)*20,
+        radius:attacker.radius*3,life:600,maxLife:600,owner:attacker,dmg:attacker.atk*0.3/60,isMoltenFloor:true});
+      defender.burnTimer=90;defender.burnDmg=attacker.atk*0.03;
+      spawnBurst(defender.x,defender.y,'#ff4400',8,3);
+      spawnBurst(attacker.x,attacker.y,'#ff6600',6,3);SFX.burn();}
+      break;
+    case 'mahoraga_electric':
+      // Overload Aura: wheel discharge chips nearby, adapted counters cause input lag
+      {const auraR2=attacker.radius*6;
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-attacker.x,e.y-attacker.y)<auraR2){
+          dealDamage(attacker,e,attacker.atk*0.1,false);
+          e._realityGlitch=Math.max(e._realityGlitch||0,12); // 0.2s input lag
+          spawnParticle(e.x+(Math.random()-0.5)*10,e.y+(Math.random()-0.5)*10,'#ffee44',0,-1,10,2);
+        }
+      });
+      spawnBurst(attacker.x,attacker.y,'#ffcc00',10,4);}
+      break;
+    case 'mahoraga_toxic':
+      // Poison Fog: fill screen with debuff fog
+      {const fogR=Math.max(ARENA.w,ARENA.h)*0.4;
+      toxicFogs.push({x:ARENA.x+ARENA.w/2,y:ARENA.y+ARENA.h/2,radius:fogR,maxRadius:fogR,
+        life:300,maxLife:300,owner:attacker,dmg:0,isMahoragaFog:true});
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==attacker.side){
+          e._mistrialDmgReduction=Math.max(e._mistrialDmgReduction||0,0.2); // -20% dmg
+          e._mistrialTimer=Math.max(e._mistrialTimer||0,300);
+          e.slowTimer=Math.max(e.slowTimer,300); // -15% speed
+          spawnDmgNum(e.x,e.y-e.radius-20,'POISON FOG','#44ff44',true);
+        }
+      });
+      spawnBurst(attacker.x,attacker.y,'#44ff44',20,6);}
+      break;
+    case 'mahoraga_cryo':
+      // Absolute Counter: adapted attacks reflected as frozen version for 100% dmg
+      {attacker._mahoragaCounterReady=true;
+      // If enemy just hit with adapted type, reflect it
+      if(attacker._mahoragaAdaptedType&&defender._lastAttackType===attacker._mahoragaAdaptedType){
+        const reflectDmg=attacker.atk*1.0;
+        dealDamage(attacker,defender,reflectDmg,false);
+        attacker._mahoragaCounterReady=false;
+        defender.freezeTimer=Math.max(defender.freezeTimer||0,60);
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'ABSOLUTE COUNTER!','#44ddff',true);
+        spawnBurst(defender.x,defender.y,'#77ddff',20,6);shakeTimer=10;shakeAmt=6;SFX.freeze();
+      } else {
+        defender.slowTimer=Math.max(defender.slowTimer,90);
+        spawnBurst(defender.x,defender.y,'#77ddff',6,3);
+      }}
+      break;
+
+    // === DABURA KARABA [BOSS] (v2 redesign — Phase 3) ===
+    case 'dabura_fire':
+      // Solar/Eclipse: light = Solar Gauge → sun-beam, dark = Eclipse Gauge → darkness
+      {if(attacker.dabLightMode){
+        attacker._solarGauge=(attacker._solarGauge||0)+15;
+        if(attacker._solarGauge>=100){
+          // Sun-beam: track nearest player for 2s
+          attacker._solarGauge=0;
+          const beamDmg=attacker.atk*0.8;
+          fighters.forEach(e=>{
+            if(e&&e.alive&&e.side!==attacker.side){
+              dealDamage(attacker,e,beamDmg,false);
+              e.burnTimer=120;e.burnDmg=attacker.atk*0.04;
+              spawnDmgNum(e.x,e.y-e.radius-25,'SOLAR BEAM!','#ffcc00',true);
+            }
+          });
+          explosions.push({x:attacker.x,y:attacker.y,radius:0,maxRadius:Math.max(ARENA.w,ARENA.h)*0.3,color:'#ffcc44',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+          shakeTimer=12;shakeAmt=8;SFX.burn();
+        } else {
+          spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'SOLAR '+attacker._solarGauge+'%','#ffcc00',false);
+        }
+      } else {
+        attacker._eclipseGauge=(attacker._eclipseGauge||0)+15;
+        if(attacker._eclipseGauge>=100){
+          attacker._eclipseGauge=0;
+          // Darkness sphere: reduce visibility for 3s
+          fighters.forEach(e=>{
+            if(e&&e.alive&&e.side!==attacker.side){
+              e._fogBlind=Math.max(e._fogBlind||0,180);
+              spawnDmgNum(e.x,e.y-e.radius-20,'ECLIPSE!','#332244',true);
+            }
+          });
+          spawnBurst(attacker.x,attacker.y,'#332244',20,6);
+        } else {
+          spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'ECLIPSE '+attacker._eclipseGauge+'%','#6644aa',false);
+        }
+      }
+      spawnBurst(defender.x,defender.y,'#ff4400',5,2);}
+      break;
+    case 'dabura_electric':
+      // Instant Duality: transitions instant, brief window of dual-element power
+      {attacker._dabInstantDuality=true;
+      // During transition: both light + dark damage
+      const dualDmg=attacker.atk*0.5;
+      dealDamage(attacker,defender,dualDmg,false);
+      spawnBurst(defender.x,defender.y,'#ffcc44',6,3);
+      spawnBurst(defender.x,defender.y,'#6644cc',6,3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-20,'DUALITY','#ffee44',true);}
+      break;
+    case 'dabura_toxic':
+      // Mark Corruption: light=holy marks, dark=cursed marks, both=Corruption (heals=dmg)
+      {if(attacker.dabLightMode){
+        defender._holyMark=true;defender._holyMarkTimer=300;
+      } else {
+        defender._cursedMark=true;defender._cursedMarkTimer=300;
+      }
+      if(defender._holyMark&&defender._cursedMark){
+        // Corruption: healing reversed for 4s
+        defender._corruptionTimer=240;
+        defender._holyMark=false;defender._cursedMark=false;
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'CORRUPTED!','#ff44ff',true);
+        spawnBurst(defender.x,defender.y,'#ff44ff',15,5);shakeTimer=6;shakeAmt=4;
+      }
+      spawnBurst(defender.x,defender.y,'#aa44cc',6,3);}
+      break;
+    case 'dabura_cryo':
+      // Null Zones: shadow+bright overlap = ability lockout zone
+      {const zoneX=defender.x;const zoneY=defender.y;
+      fireZones.push({x:zoneX,y:zoneY,radius:attacker.radius*3,life:360,maxLife:360,
+        owner:attacker,dmg:0,isNullZone:true});
+      // Check enemies in null zone
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-zoneX,e.y-zoneY)<attacker.radius*3){
+          e._empLockout=Math.max(e._empLockout||0,60);
+          spawnDmgNum(e.x,e.y-e.radius-15,'NULL ZONE','#888',false);
+        }
+      });
+      defender.slowTimer=Math.max(defender.slowTimer,90);
+      spawnBurst(defender.x,defender.y,'#77ddff',8,3);}
+      break;
+
     // Fallback: generic element effects
     default:
       switch(attacker.elem.id){
@@ -12047,6 +12369,20 @@ function updateBattle(dt){
     if(f.char&&f.char.id==='megumi'&&f.elementActive&&f.elem&&f.elem.id==='toxic'){
       f._megumiEvoTimer=(f._megumiEvoTimer||0)+dt/60;
     }
+    // === Phase 3 boss timers ===
+    // Gojo: overcharge reset after 3s no hits
+    if(f._gojoOvercharge>0&&f._gojoLastHitTime&&battleTime-f._gojoLastHitTime>180)f._gojoOvercharge=0;
+    // Gojo: decay field atk reduction
+    if(f._decayAtkTimer>0){f._decayAtkTimer-=dt;if(f._decayAtkTimer<=0)f._decayAtkReduction=0;}
+    // Yuta: stolen ability uses decay
+    if(f._stolenAbilityUses>0&&f._stolenAbilityTimer>0){f._stolenAbilityTimer-=dt;if(f._stolenAbilityTimer<=0){f._stolenAbilityUses=0;f._stolenAbility=null;}}
+    // Yuta: corrupted ability timer
+    if(f._corruptedAbilityTimer>0){f._corruptedAbilityTimer-=dt;if(f._corruptedAbilityTimer<=0)f._corruptedAbilityReduction=0;}
+    // Dabura: mark timers
+    if(f._holyMarkTimer>0){f._holyMarkTimer-=dt;if(f._holyMarkTimer<=0)f._holyMark=false;}
+    if(f._cursedMarkTimer>0){f._cursedMarkTimer-=dt;if(f._cursedMarkTimer<=0)f._cursedMark=false;}
+    // Dabura: corruption timer (heals = damage)
+    if(f._corruptionTimer>0)f._corruptionTimer-=dt;
   });
 
   // ======= END V2 ELEMENT persistent updates =======
@@ -18312,7 +18648,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.32.0 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.33.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
