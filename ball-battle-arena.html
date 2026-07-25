@@ -1268,6 +1268,12 @@ let fireTrails=[]; // {x,y,life,maxLife} — sandy fire trail
 let sandyAfterimages=[]; // {x,y,radius,rotation,color,life,maxLife} — speed afterimages
 let sandyOrbs=[]; // {owner,angle,dmg} — sandy+electric rotating orbs
 let iceWalls=[]; // {x,y,angle,life,maxLife,owner} — katana+ice walls behind enemy
+let fissureLines=[]; // {x,y,angle,length,life,maxLife,owner,dmg} — gorilla fire fissures
+let arcFences=[]; // {x1,y1,x2,y2,life,maxLife,owner,dmg} — PLS lightning arc fences
+let toxicFogs=[]; // {x,y,radius,maxRadius,life,maxLife,owner,dmg} — PLS toxic fog clouds
+let wireAnchors=[]; // {x,y,life,maxLife,owner,radius} — monowire ice tether anchors
+let knifeTraps=[]; // {x,y,life,maxLife,owner,dmg,radius} — throw fire knife traps
+let lightningRods=[]; // {x,y,life,maxLife,owner,dmg,zapCD} — throw lightning rod knives
 let smasherWarnings=[]; // {x,y,radius,life,maxLife} — red warning zones before slam
 let hitFreezeTimer=0; // freeze frames on big hits
 let screenFlashColor='';let screenFlashTimer=0; // full-screen flash on impacts
@@ -1421,7 +1427,7 @@ function createFighter(charIdx,elemIdx,side){
     x:startX,y:startY,
     vx:Math.cos(launchAngle)*launchSpeed,
     vy:Math.sin(launchAngle)*launchSpeed,
-    hp:s.hp,maxHp:s.hp,
+    hp:s.hp,maxHp:s.hp,_baseMaxHp:s.hp,
     atk:s.atk,speed:s.speed,range:s.range,def:s.def,crit:s.crit,
     baseAtk:s.atk,baseDef:s.def,baseSpeed:s.speed,
     radius:45,
@@ -1478,12 +1484,52 @@ function createFighter(charIdx,elemIdx,side){
     quickhackTimer:0,quickhackType:null,quickhackProgress:0,quickhackMax:90,
     // Element
     elementActive:false,elementFlash:0,
-    // Element combo state
-    mantisIceHitCount:0, // mantis+ice: count hits for shard every 2
-    mantisFireBurnBoost:false, // mantis+fire: burn active = bleed does more
-    gorillaKnockbackMult:1, // gorilla+fire/ice knockback modifier
-    monowireWrapDmgAccum:0, // monowire+toxic: accumulates while wrapped
-    missChance:0, // monowire+electric: chance attacks miss
+    // Element combo state (v2 redesign)
+    // Mantis
+    mantisBleedStacks:0, // fire: count bleeds for combustion
+    mantisCharredTimer:0, // fire: charred debuff (no new bleeds, flat burn)
+    mantisStaticRings:0, // lightning: charge rings (max 3)
+    mantisCorrodeStacks:0, // poison: corrode damage amp stacks (max 3)
+    mantisCorrodeTimer:0, // poison: corrode duration
+    mantisCapturedProjs:[], // ice: captured enemy projectiles
+    // Gorilla
+    gorillaKnockbackMult:1,
+    gorillaEmpHits:0, // lightning: consecutive hit counter for EMP
+    gorillaBruiseMarks:0, // poison: permanent bruise marks on enemy
+    gorillaIceCracks:0, // ice: speed boost stacks
+    gorillaIceCrackTimer:0, // ice: crack decay timer
+    // Monowire
+    monowireWrapDmgAccum:0, // legacy compat
+    missChance:0, // legacy compat
+    // PLS
+    plsArcPoints:[], // lightning: recent impact points for arc fences
+    // Sandy
+    sandyIgnited:false, // fire: at max speed, body collision deals damage
+    sandyIgniteTimer:0, // fire: ignite duration
+    sandyBlinkOrigin:null, // lightning: position before dodge
+    sandyBlinkTimer:0, // lightning: time to blink back
+    // Throw
+    throwTraps:[], // fire: knife traps persisting on surfaces
+    throwLightningRods:[], // lightning: stuck knives that zap
+    throwTrackerTarget:null, // poison: marked enemy for auto-lock
+    throwTrackerTimer:0, // poison: tracker paint duration
+    throwFrostOrbs:3, // ice: orbiting shield knives
+    throwFrostOrbCD:[0,0,0], // ice: respawn cooldowns for each orb
+    // Katana
+    katanaEnergyStored:0, // fire: stored deflect energy
+    katanaWeaknessStacks:0, // poison: weakness stacks on enemy from deflects
+    katanaWeaknessTimer:0, // poison: weakness duration
+    // Berserk
+    berserkOverheat:0, // fire: overheat meter (max 6 rage shots)
+    berserkToxinStacks:0, // poison: toxin stacks on enemy (max 10)
+    berserkRageExtend:0, // ice: rage extension timer from continuous hits
+    berserkRagePower:1.0, // ice: rage power decay multiplier
+    // Choso
+    chosoBloodDebt:0, // poison: blood debt counter on enemy
+    chosoBloodHits:0, // legacy compat
+    // Yuji
+    yujiBlazeGauge:0, // fire: flame gauge from Black Flashes (max 100)
+    yujiCurseErosion:0, // poison: enemy max HP reduction %
     // Visual
     hitFlash:0,deathAnim:0,alive:true,
     // PLS explosion scaling
@@ -2125,9 +2171,64 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(attacker.char.id==='dabura'&&attacker.dabDarkFlip){
     dmg*=1.25; // darkness mode = more damage overall
   }
+  // === V2 Element Redesign damage modifiers ===
+  // Mantis Corrode: +5% dmg per stack (max 3 = +15%)
+  if(defender.mantisCorrodeStacks>0&&defender.mantisCorrodeTimer>0){
+    dmg*=(1+defender.mantisCorrodeStacks*0.05);
+  }
+  // Katana Weakness: -20% dmg per stack (max 3 = -60%)
+  if(attacker.katanaWeaknessStacks>0&&attacker.katanaWeaknessTimer>0){
+    dmg*=(1-attacker.katanaWeaknessStacks*0.20);
+    dmg=Math.max(1,dmg);
+  }
+  // Corrode attack reduction: -20% on next attack
+  if(attacker._corrodeAtkTimer>0&&attacker._corrodeAtkReduction>0){
+    dmg*=(1-attacker._corrodeAtkReduction);
+    attacker._corrodeAtkReduction=0;attacker._corrodeAtkTimer=0;
+  }
+  // Berserk Overdose: +30% dmg from all sources
+  if(defender._overdoseTimer>0)dmg*=1.3;
+  // Blaze Rush AoE (Yuji+fire): every punch = AoE
+  if(attacker._blazeRushActive&&attacker.char&&attacker.char.id==='yuji'){
+    const aoeDmg=attacker.atk*0.8;
+    fighters.forEach(e=>{
+      if(e&&e.alive&&e!==defender&&e.side!==attacker.side){
+        if(Math.hypot(e.x-defender.x,e.y-defender.y)<attacker.radius*3){
+          applyDotDamage(e,aoeDmg,attacker);
+          spawnBurst(e.x,e.y,'#ff4400',5,3);
+        }
+      }
+    });
+    spawnBurst(defender.x,defender.y,'#ff6600',8,4);
+  }
+  // Berserk Rage power decay (ice): multiply damage by rage power
+  if(attacker.berserkRagePower&&attacker.berserkRagePower<1.0){
+    dmg*=attacker.berserkRagePower;
+  }
+  // Throw Frost Orbit deflect (ice): 40% chance to deflect if orbs available
+  if(defender.char&&defender.char.id==='throw'&&defender.elem&&defender.elem.id==='cryo'
+    &&defender.elementActive&&defender.throwFrostOrbs>0&&Math.random()<0.4){
+    defender.throwFrostOrbs--;
+    // Respawn after 4s
+    const orbIdx=defender.throwFrostOrbCD.findIndex(c=>c<=0);
+    if(orbIdx>=0)defender.throwFrostOrbCD[orbIdx]=240;
+    spawnDmgNum(defender.x,defender.y-defender.radius-15,'DEFLECTED!','#77ddff',true);
+    spawnBurst(defender.x,defender.y,'#77ddff',10,4);
+    SFX.freeze();
+    return 0;
+  }
+  // === End V2 damage modifiers ===
+
   defender.hp-=dmg;
   defender.hitFlash=8;
   attacker.totalHits++;
+  // Berserk Toxin self-hurt: at 5+ stacks, attacker's own hits hurt them back 5%
+  if(attacker._toxinSelfHurt&&attacker.berserkToxinStacks>=5){
+    const selfDmg=dmg*0.05;
+    attacker.hp-=selfDmg;
+    spawnDmgNum(attacker.x,attacker.y+attacker.radius+10,'-'+Math.round(selfDmg),'#aa44cc',false);
+    if(attacker.hp<=0){attacker.hp=0;attacker.alive=false;attacker.deathAnim=60;checkVictory(defender);}
+  }
   // Berserk: speed boost on taking damage
   if(defender.char.id==='berserk'&&defender.alive){
     defender.berserkSpeedBoost=Math.min(3,defender.berserkSpeedBoost+0.3);
@@ -6206,233 +6307,567 @@ function applyElementEffect(attacker,defender){
   const comboKey=wep+'_'+elem;
 
   switch(comboKey){
-    // === MANTIS BLADES ===
+    // === MANTIS BLADES (v2 redesign) ===
     case 'mantis_fire':
-      // Burn mark makes bleed do MORE damage
-      defender.burnTimer=120;defender.burnDmg=2;
-      if(defender.bleedTimer>0)defender.bleedDmg*=1.5; // boost active bleed
-      attacker.mantisFireBurnBoost=true;
-      spawnBurst(defender.x,defender.y,'#ff4400',5,2);
-      break;
-    case 'mantis_toxic':
-      // Hit again before bleed timer expires = reapply bleed
-      if(defender.bleedTimer>0){
-        defender.bleedTimer=60;defender.bleedDmg+=attacker.atk*0.15;
-        spawnDmgNum(defender.x,defender.y-defender.radius-20,'BLEED STACK','#aa44cc',false);
-        spawnBurst(defender.x,defender.y,'#aa44cc',6,3);
+      // Bleed Combustion: 4+ bleed stacks → ignite all for burst + Charred
+      attacker.mantisBleedStacks=(attacker.mantisBleedStacks||0)+1;
+      if(defender.bleedTimer>0) attacker.mantisBleedStacks++;
+      if(attacker.mantisBleedStacks>=4 && defender.mantisCharredTimer<=0){
+        // COMBUST — 250% remaining bleed as fire burst
+        const combustDmg=defender.bleedDmg*(defender.bleedTimer/60)*2.5;
+        dealDamage(attacker,defender,combustDmg,false);
+        defender.bleedTimer=0;defender.bleedDmg=0;
+        attacker.mantisBleedStacks=0;
+        // Charred: no new bleeds, flat 3% HP/s burn for 2s
+        defender.mantisCharredTimer=120;
+        defender.burnTimer=120;defender.burnDmg=defender.maxHp*0.03/60;
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'COMBUSTION!','#ff4400',true);
+        spawnBurst(defender.x,defender.y,'#ff4400',20,6);
+        spawnBurst(defender.x,defender.y,'#ffaa00',12,4);
+        SFX.burn();shakeTimer=10;shakeAmt=6;
       } else {
-        applyBleed(defender,attacker.atk*0.25,50);
-        spawnBurst(defender.x,defender.y,'#aa44cc',4,2);
+        // Stack bleeds normally
+        if(defender.mantisCharredTimer<=0) applyBleed(defender,attacker.atk*0.2,60);
+        spawnBurst(defender.x,defender.y,'#ff4400',5,2);
       }
       break;
     case 'mantis_electric':
-      // Hitting walls makes mantis move faster for a bit
-      attacker.speed=attacker.baseSpeed*1.4;
-      attacker.slowTimer=0; // clear any slow
-      // Speed boost decays via element check in updateBattle (120 frames ~2s)
-      attacker._elecSpeedBoost=120;
-      spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+      // Static Vortex: each spin generates charge ring (max 3), 3 = lightning nova
+      attacker.mantisStaticRings=Math.min(3,(attacker.mantisStaticRings||0)+1);
+      spawnBurst(attacker.x,attacker.y,'#ffcc00',4,2);
+      // Draw ring visual on attacker
+      for(let i=0;i<8;i++){
+        const a=Math.PI*2*i/8;const r=attacker.radius*(1+attacker.mantisStaticRings*0.3);
+        spawnParticle(attacker.x+Math.cos(a)*r,attacker.y+Math.sin(a)*r,'#ffee44',0,0,20,2);
+      }
+      if(attacker.mantisStaticRings>=3){
+        // Discharge lightning nova — 2.5 ball-width radius, 120% dmg
+        attacker.mantisStaticRings=0;
+        const novaR=attacker.radius*5;
+        const novaDmg=attacker.atk*1.2;
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side){
+            const d=Math.hypot(e.x-attacker.x,e.y-attacker.y);
+            if(d<novaR){
+              dealDamage(attacker,e,novaDmg,false);
+              // Magnetize — pull toward mantis for 1.5s
+              e._magnetizeTimer=90;e._magnetizeSource=attacker;
+              spawnDmgNum(e.x,e.y-e.radius-20,'MAGNETIZED','#ffcc00',false);
+            }
+          }
+        });
+        explosions.push({x:attacker.x,y:attacker.y,radius:0,maxRadius:novaR,color:'#ffee44',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
+        spawnBurst(attacker.x,attacker.y,'#ffcc00',25,8);
+        SFX.stun();shakeTimer=8;shakeAmt=5;
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-30,'STATIC NOVA!','#ffee44',true);
+      }
+      break;
+    case 'mantis_toxic':
+      // Corrosive Blades: Corrode stacks +5% dmg amp (max 3), at 3 = -20% atk
+      defender.mantisCorrodeStacks=Math.min(3,(defender.mantisCorrodeStacks||0)+1);
+      defender.mantisCorrodeTimer=180; // 3s
+      // dmg amp handled in dealDamage via mantisCorrodeStacks
+      if(defender.mantisCorrodeStacks>=3){
+        defender._corrodeAtkReduction=0.20; // next attack -20% dmg
+        defender._corrodeAtkTimer=120;
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'CORRODED!','#44ff44',true);
+        spawnBurst(defender.x,defender.y,'#44ff44',10,4);
+      } else {
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,'CORRODE x'+defender.mantisCorrodeStacks,'#aa44cc',false);
+        spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
+      }
       break;
     case 'mantis_cryo':
-      // Every 2 hits, ice shards snap onto enemy making them slower
-      attacker.mantisIceHitCount++;
-      if(attacker.mantisIceHitCount>=2){
-        attacker.mantisIceHitCount=0;
-        defender.slowTimer=Math.max(defender.slowTimer,90);
-        SFX.freeze();
-        spawnDmgNum(defender.x,defender.y-defender.radius-20,'ICE SHARD','#77ddff',false);
-        spawnBurst(defender.x,defender.y,'#77ddff',8,3);
-        // Ice shard visual
-        for(let i=0;i<6;i++){
-          const a=Math.random()*Math.PI*2;
-          spawnParticle(defender.x+Math.cos(a)*defender.radius,defender.y+Math.sin(a)*defender.radius,'#aaeeff',Math.cos(a)*-1,Math.sin(a)*-1,25,3);
-        }
+      // Projectile Vortex: while spinning, catch nearby enemy projectiles (max 3), launch back
+      // Capture logic handled in updateBattle projectile loop; here just mark spinning
+      attacker._mantisVortexActive=true;
+      attacker._mantisVortexTimer=60; // active for 1s after each hit
+      // Launch any captured projectiles
+      if(attacker.mantisCapturedProjs&&attacker.mantisCapturedProjs.length>0){
+        const projs=attacker.mantisCapturedProjs.splice(0);
+        projs.forEach(p=>{
+          const a2=angle(attacker,defender);
+          projectiles.push({x:attacker.x,y:attacker.y,vx:Math.cos(a2)*12,vy:Math.sin(a2)*12,
+            owner:attacker,target:defender,color:'#77ddff',life:60,radius:p.radius||8,
+            dmg:p.dmg||attacker.atk*0.5,explosive:false,explosionRadius:0,homing:false});
+        });
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'VORTEX LAUNCH!','#77ddff',true);
+        spawnBurst(attacker.x,attacker.y,'#77ddff',15,5);
       } else {
-        spawnBurst(defender.x,defender.y,'#77ddff',3,1);
+        spawnBurst(defender.x,defender.y,'#77ddff',4,2);
       }
       break;
 
-    // === PLS ===
-    case 'pls_fire':
-      // Explosions leave lingering fire zone matching explosion radius
-      const plsFireR=(attacker.plsExplosionRadius||35)+getChaosLevel(attacker)*10;
-      fireZones.push({x:defender.x,y:defender.y,radius:plsFireR*1.8,life:60,maxLife:60,owner:attacker,dmg:attacker.atk*0.3});
-      spawnBurst(defender.x,defender.y,'#ff4400',10,5);
-      SFX.burn();
-      break;
-    case 'pls_electric':
-      // If hits wall, explodes TWICE — handled in projectile wall collision code
-      // Here just add stun chance on direct hit
-      if(Math.random()<0.15){defender.stunTimer=25;SFX.stun();spawnBurst(defender.x,defender.y,'#ffcc00',6,3);}
-      spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
-      break;
-    case 'pls_toxic':
-      // Direct hit makes enemy move slower
-      defender.slowTimer=Math.max(defender.slowTimer,75);
-      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
-      spawnDmgNum(defender.x,defender.y-defender.radius-15,'SLOWED','#aa44cc',false);
-      break;
-    case 'pls_cryo':
-      // Vulnerability zone — enemies in area take MORE damage
-      vulnZones.push({x:defender.x,y:defender.y,radius:35+getChaosLevel(attacker)*4,life:60,maxLife:60,owner:attacker});
-      spawnBurst(defender.x,defender.y,'#77ddff',6,3);
-      SFX.freeze();
-      break;
-
-    // === GORILLA ARMS ===
+    // === GORILLA ARMS (v2 redesign) ===
     case 'gorilla_fire':
-      // Greatly increased knockback + enemies take damage if knocked into walls
-      defender.burnTimer=60;defender.burnDmg=1.5;
-      attacker.gorillaKnockbackMult=2.5;
-      spawnBurst(defender.x,defender.y,'#ff4400',6,3);
+      // Fissure Punch: crack ground in line outward, erupts after 1s
+      {const fAngle=angle(attacker,defender);
+      const fLen=(attacker._gorillaCharging?6:4)*attacker.radius; // charged = longer
+      fissureLines.push({x:attacker.x,y:attacker.y,angle:fAngle,length:fLen,
+        life:60,maxLife:60,erupted:false,owner:attacker,dmg:attacker.atk*1.5});
+      // Crack visual
+      for(let i=0;i<5;i++){
+        const px=attacker.x+Math.cos(fAngle)*(fLen*i/5);
+        const py=attacker.y+Math.sin(fAngle)*(fLen*i/5);
+        spawnParticle(px,py,'#ff6600',0,-1,30,3);
+      }
+      spawnBurst(defender.x,defender.y,'#ff4400',8,3);SFX.burn();}
       break;
     case 'gorilla_electric':
-      // Slightly increases attack speed
-      attacker.attackTimer=Math.max(0,attacker.attackTimer-8);
+      // EMP Knuckles: 5 consecutive hits = EMP lockout for 2s
+      attacker.gorillaEmpHits=(attacker.gorillaEmpHits||0)+1;
       spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+      // Visible spark buildup
+      for(let i=0;i<attacker.gorillaEmpHits;i++){
+        spawnParticle(attacker.x+(Math.random()-0.5)*20,attacker.y+(Math.random()-0.5)*20,'#ffee44',0,-1,15,2);
+      }
+      if(attacker.gorillaEmpHits>=5){
+        attacker.gorillaEmpHits=0;
+        // EMP: lock out ALL enemy abilities for 2s
+        const empR=attacker.radius*5;
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side){
+            const d=Math.hypot(e.x-attacker.x,e.y-attacker.y);
+            if(d<empR){
+              e._empLockout=120; // 2s: cooldowns frozen, can't activate
+              spawnDmgNum(e.x,e.y-e.radius-20,'EMP LOCKOUT!','#ffcc00',true);
+            }
+          }
+        });
+        explosions.push({x:attacker.x,y:attacker.y,radius:0,maxRadius:empR,color:'#ffee44',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
+        spawnBurst(attacker.x,attacker.y,'#ffcc00',20,6);
+        SFX.stun();shakeTimer=8;shakeAmt=5;
+      }
       break;
     case 'gorilla_toxic':
-      // Leaves poison bubbles on enemy — wall collisions deal extra damage
-      poisonBubbles.push({x:defender.x,y:defender.y,life:180,maxLife:180,target:defender,owner:attacker,dmg:attacker.atk*0.4});
-      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
+      // Bruise Protocol: permanent bruise marks, 3/5/8 thresholds
+      defender.gorillaBruiseMarks=(defender.gorillaBruiseMarks||0)+1;
+      const bm=defender.gorillaBruiseMarks;
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'BRUISE x'+bm,'#aa44cc',bm>=5);
+      spawnBurst(defender.x,defender.y,'#8833aa',5,2);
+      // Effects checked in updateBattle: 3=heal-50%, 5=2%HP/s, 8=-15% speed
+      if(bm===3) spawnDmgNum(defender.x,defender.y-defender.radius-30,'HEAL BLOCKED','#ff4444',true);
+      if(bm===5) spawnDmgNum(defender.x,defender.y-defender.radius-30,'DOT ACTIVE','#ff4444',true);
+      if(bm===8) spawnDmgNum(defender.x,defender.y-defender.radius-30,'CONDEMNED','#ff4444',true);
       break;
     case 'gorilla_cryo':
-      // Greatly reduces knockback so enemy stays close, easier to hit
-      attacker.gorillaKnockbackMult=0.3;
-      defender.slowTimer=Math.max(defender.slowTimer,45);
-      spawnBurst(defender.x,defender.y,'#77ddff',4,2);
+      // Shockwave Surge: punches speed Gorilla up, cracks slow enemies
+      attacker.gorillaIceCracks=Math.min(3,(attacker.gorillaIceCracks||0)+1);
+      attacker.gorillaIceCrackTimer=240; // 4s decay
+      attacker.speed=attacker.baseSpeed*(1+attacker.gorillaIceCracks*0.25);
+      attacker.slowTimer=0;
+      // Leave ice crack on ground at impact point
+      fireZones.push({x:defender.x,y:defender.y,radius:attacker.radius*2,life:240,maxLife:240,
+        owner:attacker,dmg:0,isIceCrack:true}); // dmg 0, just slow effect
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',6,3);
+      spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'SPEED x'+attacker.gorillaIceCracks,'#77ddff',false);
       break;
 
-    // === MONOWIRE ===
+    // === MONOWIRE (v2 redesign) ===
     case 'monowire_fire':
-      // Wraps twirl enemies — damage if they collide with walls
-      defender.burnTimer=90;defender.burnDmg=2;
-      // Spin the enemy — make them bounce around
-      defender.vx+=(Math.random()-0.5)*6;defender.vy+=(Math.random()-0.5)*6;
-      defender.spinSpeed=(Math.random()-0.5)*0.3;
-      spawnBurst(defender.x,defender.y,'#ff4400',5,3);
+      // Wire Slingshot: wraps launch enemy on release (handled in wrap release logic)
+      // Here mark the wrap as slingshot-enabled
+      if(defender.captureTimer>0){
+        defender._slingshotReady=true;
+        defender._slingshotOwner=attacker;
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'SLINGSHOT READY','#ff6600',false);
+      }
+      defender.burnTimer=60;defender.burnDmg=2;
+      spawnBurst(defender.x,defender.y,'#ff4400',6,3);
       break;
     case 'monowire_electric':
-      // Short circuits enemy — their attacks have a small chance to miss
-      defender.missChance=Math.min(0.35,defender.missChance+0.1);
+      // Charged Wrap: wraps deal 2x ticking damage
+      if(defender.captureTimer>0){
+        // Double damage tick — apply extra damage equal to base wrap tick
+        dealDamage(attacker,defender,attacker.atk*0.15,false);
+        spawnBurst(defender.x,defender.y,'#ffee44',4,2);
+        // Arc visual along wire
+        for(let i=0;i<4;i++){
+          const t=Math.random();
+          const wx=attacker.x+(defender.x-attacker.x)*t;
+          const wy=attacker.y+(defender.y-attacker.y)*t;
+          spawnParticle(wx,wy,'#ffee44',(Math.random()-0.5)*3,(Math.random()-0.5)*3,10,2);
+        }
+      }
       spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
-      spawnDmgNum(defender.x,defender.y-defender.radius-15,'SHORT CIRCUIT','#ffcc00',false);
       break;
     case 'monowire_toxic':
-      // Longer enemy is wrapped, more damage they take
+      // Neuro-Hack Drain: -30% atk speed + 15% lifesteal during wrap
       if(defender.captureTimer>0){
-        defender.monowireWrapDmgAccum+=attacker.atk*0.2;
-        spawnBurst(defender.x,defender.y,'#aa44cc',4,2);
+        defender._neuroSlowTimer=180; // -30% atk speed for 3s after release
+        // Lifesteal 15% of damage dealt during wrap
+        const stolen=attacker.atk*0.15*0.15;
+        attacker.hp=Math.min(attacker.maxHp,attacker.hp+stolen);
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'+'+Math.round(stolen),'#44ff44',false);
       }
-      defender.defReduction=Math.min(8,defender.defReduction+2);
-      defender.defReductionTimer=120;
-      spawnBurst(defender.x,defender.y,'#aa44cc',3,2);
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
       break;
     case 'monowire_cryo':
-      // Slowed enemies have higher chance of getting wrapped/captured
+      // Firewall Tether: deploy wire anchor, auto-tethers nearby enemies
+      if(wireAnchors.length<1||(wireAnchors.length>0&&wireAnchors[0].owner!==attacker)){
+        // Remove old anchor if switching owner
+        wireAnchors=wireAnchors.filter(w=>w.owner===attacker);
+      }
+      if(wireAnchors.filter(w=>w.owner===attacker).length<1){
+        wireAnchors.push({x:defender.x,y:defender.y,life:480,maxLife:480,
+          owner:attacker,radius:attacker.radius*4});
+        spawnDmgNum(defender.x,defender.y-20,'ANCHOR DEPLOYED','#77ddff',false);
+        spawnBurst(defender.x,defender.y,'#77ddff',10,4);
+      } else {
+        spawnBurst(defender.x,defender.y,'#77ddff',4,2);
+      }
       defender.slowTimer=Math.max(defender.slowTimer,60);
-      spawnBurst(defender.x,defender.y,'#77ddff',4,2);
-      // Capture chance boost handled in attackMonowire when enemy is slowed
       break;
 
-    // === SANDEVISTAN ===
+    // === PLS (v2 redesign) ===
+    case 'pls_fire':
+      // Flame Pillars: hits near walls create fire pillars (handled in projectile collision)
+      // Direct hits also leave fire zone at impact
+      {const plsFireR=(attacker.plsExplosionRadius||35)+getChaosLevel(attacker)*10;
+      fireZones.push({x:defender.x,y:defender.y,radius:plsFireR*1.5,life:300,maxLife:300,
+        owner:attacker,dmg:attacker.atk*0.4,isFirePillar:true});
+      if(fireZones.length>3) fireZones.shift(); // max 3 pillars
+      spawnBurst(defender.x,defender.y,'#ff4400',10,5);SFX.burn();}
+      break;
+    case 'pls_electric':
+      // Arc Fences: two nearby impacts within 1s create lightning arc between them
+      {const now=battleTime;
+      attacker.plsArcPoints=attacker.plsArcPoints||[];
+      attacker.plsArcPoints.push({x:defender.x,y:defender.y,t:now});
+      // Remove old points (>60 frames = 1s)
+      attacker.plsArcPoints=attacker.plsArcPoints.filter(p=>now-p.t<60);
+      // Check for nearby pairs
+      for(let i=0;i<attacker.plsArcPoints.length-1;i++){
+        const p1=attacker.plsArcPoints[i];const p2=attacker.plsArcPoints[attacker.plsArcPoints.length-1];
+        if(p1===p2) continue;
+        const d=Math.hypot(p1.x-p2.x,p1.y-p2.y);
+        if(d<attacker.radius*4&&d>10&&arcFences.filter(a=>a.owner===attacker).length<3){
+          arcFences.push({x1:p1.x,y1:p1.y,x2:p2.x,y2:p2.y,life:180,maxLife:180,
+            owner:attacker,dmg:attacker.atk*0.5});
+          spawnDmgNum((p1.x+p2.x)/2,(p1.y+p2.y)/2-15,'ARC FENCE!','#ffee44',false);
+          // Remove used points
+          attacker.plsArcPoints.splice(i,1);
+          break;
+        }
+      }
+      spawnBurst(defender.x,defender.y,'#ffcc00',6,3);}
+      break;
+    case 'pls_toxic':
+      // Toxic Fog: impacts create expanding poison clouds
+      if(toxicFogs.filter(t=>t.owner===attacker).length<3){
+        toxicFogs.push({x:defender.x,y:defender.y,radius:attacker.radius,
+          maxRadius:attacker.radius*4,life:300,maxLife:300,owner:attacker,
+          dmg:attacker.atk*0.15});
+        spawnDmgNum(defender.x,defender.y-20,'TOXIC FOG','#aa44cc',false);
+      }
+      spawnBurst(defender.x,defender.y,'#aa44cc',8,3);
+      break;
+    case 'pls_cryo':
+      // Suppression Field: -30% speed, -20% atk, PLS regens inside (6s, 10s CD)
+      if(!attacker._plsSuppressionCD||attacker._plsSuppressionCD<=0){
+        vulnZones.push({x:defender.x,y:defender.y,radius:attacker.radius*5,
+          life:360,maxLife:360,owner:attacker,isSuppression:true});
+        attacker._plsSuppressionCD=600; // 10s cooldown
+        spawnDmgNum(defender.x,defender.y-20,'SUPPRESSION!','#77ddff',true);
+        spawnBurst(defender.x,defender.y,'#77ddff',12,5);SFX.freeze();
+      } else {
+        spawnBurst(defender.x,defender.y,'#77ddff',4,2);
+      }
+      break;
+
+    // === SANDEVISTAN (v2 redesign) ===
     case 'sandy_fire':
-      // Fire trail — handled in updateBattle physics
-      defender.burnTimer=90;defender.burnDmg=2.5;
+      // Living Projectile: at max speed, body = fireball damage
+      // Mark sandy as ignited — collision damage handled in updateBattle
+      {const spd=Math.hypot(attacker.vx,attacker.vy);
+      if(spd>attacker.baseSpeed*1.8){
+        attacker.sandyIgnited=true;attacker.sandyIgniteTimer=120;
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'IGNITED!','#ff4400',true);
+      }}
+      defender.burnTimer=90;defender.burnDmg=2;
       spawnBurst(defender.x,defender.y,'#ff4400',8,3);
       break;
     case 'sandy_electric':
-      // Rotating orbs hit enemies — handled in updateBattle
-      if(Math.random()<0.25){defender.stunTimer=25;SFX.stun();}
+      // Reverse Blink: after dodge, can teleport back (handled in dodge/updateBattle)
+      // Save blink origin on each hit
+      attacker.sandyBlinkOrigin={x:attacker.x,y:attacker.y};
+      attacker.sandyBlinkTimer=90; // 1.5s window
       spawnBurst(defender.x,defender.y,'#ffcc00',6,3);
+      spawnParticle(attacker.x,attacker.y,'#ffee44',0,0,30,4); // mark origin
       break;
     case 'sandy_toxic':
-      // Wall bounce = poison scatter — handled in physics
-      defender.defReduction=Math.min(8,defender.defReduction+3);
-      defender.defReductionTimer=120;
+      // Toxic Trail: movement leaves poison trail (handled in updateBattle)
+      // On hit, apply Dizzy debuff
+      defender._dizzyTimer=120; // 2s: 10-degree aim jitter
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'DIZZY','#aa44cc',false);
       spawnBurst(defender.x,defender.y,'#aa44cc',6,3);
       break;
     case 'sandy_cryo':
-      // Faster speed = more slow — handled in attackSandy
+      // Momentum Skating: ice aura, entities slide
+      // Aura handled in updateBattle; on hit, apply slide
+      defender._slideTimer=90; // can't stop instantly
+      defender._slideVx=defender.vx;defender._slideVy=defender.vy;
       spawnBurst(defender.x,defender.y,'#77ddff',6,3);
       break;
 
-    // === THROWING WEAPONS ===
+    // === THROWING WEAPONS (v2 redesign) ===
     case 'throw_fire':
-      // Faster aim & throw — reduce attack timer
-      attacker.attackTimer=Math.max(0,attacker.attackTimer-15);
+      // Remote Detonation: knives persist as traps (max 4), auto-detonate near enemies
+      // On hit, plant a trap at impact point
+      if(knifeTraps.filter(k=>k.owner===attacker).length<4){
+        knifeTraps.push({x:defender.x,y:defender.y,life:600,maxLife:600,
+          owner:attacker,dmg:attacker.atk*1.4,radius:attacker.radius*3});
+        spawnDmgNum(defender.x,defender.y-20,'TRAP SET','#ff6600',false);
+      }
       spawnBurst(defender.x,defender.y,'#ff4400',5,3);
       break;
     case 'throw_electric':
-      // Auto-return handled in projectile miss logic
+      // Lightning Rod: knives stuck become lightning rods (max 4, zap every 4s)
+      if(lightningRods.filter(l=>l.owner===attacker).length<4){
+        lightningRods.push({x:defender.x,y:defender.y,life:480,maxLife:480,
+          owner:attacker,dmg:attacker.atk*0.8,zapCD:0});
+        spawnDmgNum(defender.x,defender.y-20,'ROD','#ffcc00',false);
+      }
       spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
       break;
     case 'throw_toxic':
-      // Phantom dagger from opposite side — VISIBLE with trail
-      if(Math.random()<0.35){
-        const oa=angle(attacker,defender)+Math.PI;
-        const phantomDmg=attacker.atk*attacker.throwWeapons[attacker.throwActiveIdx].dmgMult*0.08;
-        projectiles.push({
-          x:defender.x+Math.cos(oa)*150,y:defender.y+Math.sin(oa)*150,
-          vx:-Math.cos(oa)*10,vy:-Math.sin(oa)*10,
-          owner:attacker,target:defender,color:'#dd55ee',life:60,radius:10,
-          dmg:phantomDmg,explosive:false,explosionRadius:0,homing:false,isPhantom:true,
-        });
-        // Visible spawn flash
-        spawnBurst(defender.x+Math.cos(oa)*150,defender.y+Math.sin(oa)*150,'#dd55ee',8,4);
-        spawnDmgNum(defender.x+Math.cos(oa)*120,defender.y+Math.sin(oa)*120,'PHANTOM','#dd55ee',false);
-      }
+      // Tracker Paint: mark enemy (5s), next knife auto-locks
+      defender._trackerPaint=300; // 5s
+      defender._trackerOwner=attacker;
+      attacker.throwTrackerTarget=defender;
+      attacker.throwTrackerTimer=300;
+      spawnDmgNum(defender.x,defender.y-defender.radius-20,'MARKED','#dd55ee',false);
+      spawnBurst(defender.x,defender.y,'#dd55ee',8,3);
       break;
     case 'throw_cryo':
-      // Missed weapons spin on ground — handled in projectile miss logic
+      // Frost Orbit: 3 frozen knives orbit as shield (40% deflect)
+      // Orbiting handled in updateBattle; here just refresh orbs
+      attacker.throwFrostOrbs=attacker.throwFrostOrbs||3;
+      // Deflect check handled in dealDamage
       spawnBurst(defender.x,defender.y,'#77ddff',5,3);
       break;
 
-    // === KATANA ===
+    // === KATANA (v2 redesign) ===
     case 'katana_fire':
-      // Deflect explosions — handled in deflect logic (dealDamage)
-      defender.burnTimer=90;defender.burnDmg=2.5;
-      spawnBurst(defender.x,defender.y,'#ff4400',6,3);
+      // Energy Slash: deflects store energy (handled in deflect logic)
+      // On hit, check if stored energy available to release as fire crescent
+      attacker.katanaEnergyStored=(attacker.katanaEnergyStored||0)+attacker.atk*0.3;
+      if(attacker.katanaEnergyStored>=attacker.atk*1.5){
+        // Release fire crescent wave
+        const cAngle=angle(attacker,defender);
+        projectiles.push({x:attacker.x,y:attacker.y,
+          vx:Math.cos(cAngle)*10,vy:Math.sin(cAngle)*10,
+          owner:attacker,target:null,color:'#ff6600',life:40,radius:15,
+          dmg:attacker.katanaEnergyStored,explosive:false,explosionRadius:0,
+          homing:false,isCrescent:true});
+        attacker.katanaEnergyStored=0;
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'CRESCENT!','#ff6600',true);
+        spawnBurst(attacker.x,attacker.y,'#ff4400',15,5);
+        SFX.judgementCut();
+      } else {
+        spawnBurst(defender.x,defender.y,'#ff4400',5,2);
+      }
       break;
     case 'katana_electric':
-      // Faster relic rush — handled in relic update
-      if(Math.random()<0.2){defender.stunTimer=25;SFX.stun();}
+      // Magnetic Blade: pull projectiles + deflects chain lightning
+      // Pull effect handled in updateBattle; on hit, chain lightning to nearest other enemy
+      {let chainTarget=null;let chainDist=Infinity;
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e!==defender&&e.side!==attacker.side){
+          const d=Math.hypot(e.x-defender.x,e.y-defender.y);
+          if(d<chainDist){chainDist=d;chainTarget=e;}
+        }
+      });
+      if(chainTarget&&chainDist<attacker.radius*8){
+        dealDamage(attacker,chainTarget,attacker.atk*0.5,false);
+        spawnDmgNum(chainTarget.x,chainTarget.y-chainTarget.radius-15,'CHAIN!','#ffee44',false);
+        spawnBurst(chainTarget.x,chainTarget.y,'#ffcc00',6,3);
+        // Lightning visual between targets
+        for(let i=0;i<6;i++){
+          const t=i/6;
+          spawnParticle(defender.x+(chainTarget.x-defender.x)*t,
+            defender.y+(chainTarget.y-defender.y)*t,'#ffee44',0,0,15,2);
+        }
+      }}
       spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
       break;
     case 'katana_toxic':
-      // Slight homing pull toward katana on hit
-      {const pullAngle=angle(defender,attacker);
-      defender.vx+=Math.cos(pullAngle)*1.5;defender.vy+=Math.sin(pullAngle)*1.5;}
-      defender.defReduction=Math.min(6,defender.defReduction+2);
-      defender.defReductionTimer=90;
+      // Attrition Stance: deflects stack Weakness on attacker (-20% dmg, max 3)
+      defender.katanaWeaknessStacks=Math.min(3,(defender.katanaWeaknessStacks||0)+1);
+      defender.katanaWeaknessTimer=180; // 3s
+      // If no damage for 3s, blade gets poison coat (handled in updateBattle)
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,
+        'WEAKNESS x'+defender.katanaWeaknessStacks,'#aa44cc',defender.katanaWeaknessStacks>=3);
       spawnBurst(defender.x,defender.y,'#aa44cc',5,3);
       break;
     case 'katana_cryo':
-      // Ice wall — handled in deflect logic (dealDamage)
+      // Frozen Deflect: deflected projectile freezes mid-air (handled in deflect logic)
       defender.slowTimer=Math.max(defender.slowTimer,60);
       spawnBurst(defender.x,defender.y,'#77ddff',5,2);
       break;
 
-    // === BERSERK ===
+    // === BERSERK (v2 redesign) ===
     case 'berserk_fire':
-      // Faster pellets + tighter spread — handled in attackBerserk
-      defender.burnTimer=60;defender.burnDmg=1.5;
-      spawnBurst(defender.x,defender.y,'#ff4400',5,2);
+      // Overheat Backfire: each rage shot builds heat, max 6 = supernova + self-dmg
+      if(attacker.berserkRageActive||attacker.berserkInvincible){
+        attacker.berserkOverheat=(attacker.berserkOverheat||0)+1;
+      }
+      if(attacker.berserkOverheat>=6){
+        // Supernova: 360° pellet burst, 200% dmg, 3 ball-width radius
+        attacker.berserkOverheat=0;
+        const novaR=attacker.radius*6;
+        const novaDmg=attacker.atk*2.0;
+        // Self-damage 15%
+        attacker.hp-=attacker.maxHp*0.15;
+        if(attacker.hp<1)attacker.hp=1;
+        spawnDmgNum(attacker.x,attacker.y+attacker.radius+15,'-'+Math.round(attacker.maxHp*0.15),'#ff0000',false);
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side){
+            if(Math.hypot(e.x-attacker.x,e.y-attacker.y)<novaR){
+              dealDamage(attacker,e,novaDmg,false);
+            }
+          }
+        });
+        explosions.push({x:attacker.x,y:attacker.y,radius:0,maxRadius:novaR,color:'#ff4400',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-25,'SUPERNOVA!','#ff4400',true);
+        spawnBurst(attacker.x,attacker.y,'#ff4400',30,8);SFX.burn();
+        shakeTimer=12;shakeAmt=8;
+      } else {
+        spawnBurst(defender.x,defender.y,'#ff4400',5,2);
+      }
       break;
     case 'berserk_electric':
-      // Pellets return after hitting — handled in projectile hit code
-      if(Math.random()<0.15){defender.stunTimer=20;SFX.stun();}
+      // Ricochet Pellets: misses bounce off walls (handled in projectile wall collision)
+      // On direct hit, mark projectile for ricochet on next wall hit
       spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
       break;
     case 'berserk_toxic':
-      // Slight pull toward berserk
-      {const pullA=angle(defender,attacker);
-      defender.vx+=Math.cos(pullA)*1.2;defender.vy+=Math.sin(pullA)*1.2;}
-      spawnBurst(defender.x,defender.y,'#aa44cc',5,3);
+      // Toxin Accumulation: pellet stacks (max 10), 5=self-hurt, 10=Overdose burst
+      defender.berserkToxinStacks=Math.min(10,(defender.berserkToxinStacks||0)+1);
+      const ts=defender.berserkToxinStacks;
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'TOXIN x'+ts,'#aa44cc',ts>=5);
+      if(ts>=5&&ts<10){
+        // Self-hurt: enemy attacks cause 5% self-damage (handled in dealDamage)
+        defender._toxinSelfHurt=true;
+      }
+      if(ts>=10){
+        // Overdose: 30% bonus dmg from all sources for 4s, then reset
+        defender._overdoseTimer=240;
+        defender.berserkToxinStacks=0;
+        defender._toxinSelfHurt=false;
+        spawnDmgNum(defender.x,defender.y-defender.radius-30,'OVERDOSE!','#ff00ff',true);
+        spawnBurst(defender.x,defender.y,'#ff00ff',15,5);shakeTimer=6;shakeAmt=4;
+      }
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
       break;
     case 'berserk_cryo':
-      // Slow lingering — handled by making pellets last longer in attackBerserk
-      defender.slowTimer=Math.max(defender.slowTimer,75);
+      // Frostburn Rage: rage stays while hitting (+0.3s/hit), power decays over time
+      // Rage extension handled in updateBattle; on hit, extend
+      if(attacker.berserkRageActive||attacker.berserkInvincible){
+        attacker.berserkRageExtend=(attacker.berserkRageExtend||0)+18; // +0.3s = 18 frames
+        attacker._berserkLastHitFrame=battleTime;
+      }
+      spawnBurst(defender.x,defender.y,'#77ddff',5,3);
+      break;
+
+    // === CHOSO (v2 redesign) ===
+    case 'choso_fire':
+      // Mid-Air Detonation: blood projectiles can be detonated (auto in sim)
+      // On hit, create small explosion at impact
+      {const detR=attacker.radius*2;
+      explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:detR,color:'#cc0000',
+        life:12,maxLife:12,dmg:attacker.atk*0.3,owner:attacker,target:null,hit:false});
+      spawnBurst(defender.x,defender.y,'#ff4400',8,3);SFX.burn();}
+      break;
+    case 'choso_electric':
+      // Rebound Orbs: blood projectiles bounce back toward nearest enemy on hit
+      {const rebAngle=angle(defender,attacker)+Math.PI+(Math.random()-0.5)*0.5;
+      let rebTarget=null;let rebDist=Infinity;
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==attacker.side){
+          const d=Math.hypot(e.x-defender.x,e.y-defender.y);
+          if(d<rebDist){rebDist=d;rebTarget=e;}
+        }
+      });
+      if(rebTarget){
+        const ra=angle(defender,rebTarget);
+        projectiles.push({x:defender.x,y:defender.y,vx:Math.cos(ra)*8,vy:Math.sin(ra)*8,
+          owner:attacker,target:rebTarget,color:'#ffcc00',life:45,radius:8,
+          dmg:attacker.atk*0.6,explosive:false,explosionRadius:0,homing:true,
+          _isRebound:true});
+        spawnDmgNum(defender.x,defender.y-15,'REBOUND','#ffee44',false);
+      }}
+      spawnBurst(defender.x,defender.y,'#ffcc00',6,3);
+      break;
+    case 'choso_toxic':
+      // Blood Debt: 5 debts → detonate for 200% + heal 50%
+      defender.chosoBloodDebt=(defender.chosoBloodDebt||0)+1;
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'DEBT x'+defender.chosoBloodDebt,'#cc0044',false);
+      if(defender.chosoBloodDebt>=5){
+        const debtDmg=attacker.atk*0.4*5; // 40% per debt * 5 = 200%
+        dealDamage(attacker,defender,debtDmg,false);
+        const healAmt=debtDmg*0.5;
+        attacker.hp=Math.min(attacker.maxHp,attacker.hp+healAmt);
+        defender.chosoBloodDebt=0;
+        spawnDmgNum(defender.x,defender.y-defender.radius-30,'DEBT CALLED!','#ff0044',true);
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'+'+Math.round(healAmt),'#44ff44',false);
+        spawnBurst(defender.x,defender.y,'#cc0044',15,5);
+        spawnBurst(attacker.x,attacker.y,'#44ff44',8,3);
+        shakeTimer=8;shakeAmt=5;
+      }
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
+      break;
+    case 'choso_cryo':
+      // Frozen Blood Constructs: blood projectiles become slower but 200% impact
+      // Handled in attack function; on hit, embed as obstacle
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',6,3);
+      break;
+
+    // === YUJI (v2 redesign) ===
+    case 'yuji_fire':
+      // Blaze Rush Gauge: Black Flash fills gauge (20%/BF), 100% = rampage
+      // Regular hits fill 5%
+      attacker.yujiBlazeGauge=(attacker.yujiBlazeGauge||0)+5;
+      // Black Flash hits fill 20% (handled in BF detection logic)
+      if(attacker.yujiBlazeGauge>=100){
+        // BLAZE RUSH: 3s rampage — every punch = AoE + unstoppable
+        attacker.yujiBlazeGauge=0;
+        attacker._blazeRushTimer=180;
+        attacker._blazeRushActive=true;
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-30,'BLAZE RUSH!','#ff4400',true);
+        spawnBurst(attacker.x,attacker.y,'#ff4400',25,7);
+        spawnBurst(attacker.x,attacker.y,'#ffaa00',15,5);
+        shakeTimer=12;shakeAmt=8;SFX.burn();
+      }
+      spawnBurst(defender.x,defender.y,'#ff4400',5,2);
+      break;
+    case 'yuji_electric':
+      // Reality Glitch: Divergent Fist gap causes 0.15s input delay + stutter
+      defender._realityGlitch=9; // 0.15s = 9 frames of delayed response
+      defender._glitchStutter=60; // visual stutter for 1s
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'GLITCH','#ffcc00',false);
+      spawnBurst(defender.x,defender.y,'#ffcc00',6,3);
+      break;
+    case 'yuji_toxic':
+      // Curse Erosion: enemy max HP temporarily reduced 1%/hit (max 15%)
+      defender.yujiCurseErosion=Math.min(15,(defender.yujiCurseErosion||0)+1);
+      defender._curseErosionTimer=480; // resets 8s after last hit
+      // Apply max HP reduction
+      defender.maxHp=defender._baseMaxHp*(1-defender.yujiCurseErosion/100);
+      if(defender.hp>defender.maxHp)defender.hp=defender.maxHp;
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,
+        'ERODE -'+defender.yujiCurseErosion+'%','#aa44cc',defender.yujiCurseErosion>=10);
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);
+      break;
+    case 'yuji_cryo':
+      // Rubber Band Anchor: set position, snap back within 3s (auto in sim)
+      if(!attacker._yujiAnchor){
+        attacker._yujiAnchor={x:attacker.x,y:attacker.y,timer:180};
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'ANCHOR SET','#77ddff',false);
+        spawnParticle(attacker.x,attacker.y,'#77ddff',0,0,40,5);
+      }
       spawnBurst(defender.x,defender.y,'#77ddff',5,3);
       break;
 
@@ -10343,16 +10778,33 @@ function updateBattle(dt){
     if(battleTime%4<dt)spawnParticle(fz.x+rand(-fz.radius/2,fz.radius/2),fz.y+rand(-fz.radius/2,fz.radius/2),pick(['#ff4400','#ff6600','#ffaa00']),0,-1,12,2);
   }
 
-  // Update vulnerability zones (PLS+cryo)
+  // Update vulnerability zones (PLS+cryo / Suppression Fields)
   for(let i=vulnZones.length-1;i>=0;i--){
     const vz=vulnZones[i];vz.life-=dt;
     if(vz.life<=0){vulnZones.splice(i,1);continue;}
-    // Enemies in zone take more damage (reduce def)
-    fighters.forEach(f=>{
-      if(f.alive&&f.side!==(vz.owner?vz.owner.side:-1)&&dist(f,vz)<vz.radius+f.radius){
-        f.defReduction=Math.max(f.defReduction,6);f.defReductionTimer=Math.max(f.defReductionTimer,15);
-      }
-    });
+    if(vz.isSuppression){
+      // Suppression Field (v2): -30% speed, -20% atk speed for enemies; PLS regens 2%/s
+      fighters.forEach(f=>{
+        if(!f.alive)return;
+        const d=dist(f,vz);
+        if(f.side!==(vz.owner?vz.owner.side:-1)&&d<vz.radius+f.radius){
+          f.slowTimer=Math.max(f.slowTimer,15);
+          f.speed=Math.min(f.speed,f.baseSpeed*0.7);
+          f.attackTimer=Math.max(f.attackTimer,3); // slight atk delay
+        }
+        // Owner regens inside
+        if(vz.owner&&f===vz.owner&&d<vz.radius&&battleTime%30<dt){
+          f.hp=Math.min(f.maxHp,f.hp+f.maxHp*0.02/2); // 2%/s = ~1% per 30 frames
+        }
+      });
+    } else {
+      // Standard vulnerability zone: enemies take more damage
+      fighters.forEach(f=>{
+        if(f.alive&&f.side!==(vz.owner?vz.owner.side:-1)&&dist(f,vz)<vz.radius+f.radius){
+          f.defReduction=Math.max(f.defReduction,6);f.defReductionTimer=Math.max(f.defReductionTimer,15);
+        }
+      });
+    }
   }
 
   // Update poison bubbles (gorilla+toxic)
@@ -10491,6 +10943,343 @@ function updateBattle(dt){
       }
     });
   }
+
+  // ======= V2 ELEMENT REDESIGN — persistent effect updates =======
+
+  // Fissure Lines (Gorilla+fire): travel outward, erupt after 1s
+  for(let i=fissureLines.length-1;i>=0;i--){
+    const fl=fissureLines[i];fl.life-=dt;
+    if(fl.life<=0){fissureLines.splice(i,1);continue;}
+    // Erupt when life drops below 50% (1s delay = 30 of 60 frames)
+    if(!fl.erupted&&fl.life<=fl.maxLife*0.5){
+      fl.erupted=true;
+      // Damage along fissure line
+      const steps=6;
+      for(let s=0;s<steps;s++){
+        const px=fl.x+Math.cos(fl.angle)*(fl.length*s/steps);
+        const py=fl.y+Math.sin(fl.angle)*(fl.length*s/steps);
+        fighters.forEach(f=>{
+          if(f.alive&&f.side!==(fl.owner?fl.owner.side:-1)){
+            if(Math.hypot(f.x-px,f.y-py)<f.radius+15){
+              dealDamage(fl.owner,f,fl.dmg/steps*2,false);
+            }
+          }
+        });
+        spawnBurst(px,py,'#ff6600',5,3);
+        spawnParticle(px,py,'#ffaa00',0,-2,15,3);
+      }
+      SFX.burn();shakeTimer=6;shakeAmt=4;
+    }
+    // Visual: glowing crack line
+    if(battleTime%3<dt){
+      const t=Math.random();
+      const px=fl.x+Math.cos(fl.angle)*(fl.length*t);
+      const py=fl.y+Math.sin(fl.angle)*(fl.length*t);
+      spawnParticle(px,py,fl.erupted?'#ff4400':'#ff8800',0,-0.5,10,2);
+    }
+  }
+
+  // Arc Fences (PLS+lightning): persistent arcs that damage crossers
+  for(let i=arcFences.length-1;i>=0;i--){
+    const af=arcFences[i];af.life-=dt;
+    if(af.life<=0){arcFences.splice(i,1);continue;}
+    // Check enemy crossing the line segment
+    fighters.forEach(f=>{
+      if(!f.alive||f.side===(af.owner?af.owner.side:-1))return;
+      // Point-to-line-segment distance
+      const dx=af.x2-af.x1,dy=af.y2-af.y1;
+      const len2=dx*dx+dy*dy;
+      if(len2<1)return;
+      let t=((f.x-af.x1)*dx+(f.y-af.y1)*dy)/len2;
+      t=Math.max(0,Math.min(1,t));
+      const cx=af.x1+t*dx,cy=af.y1+t*dy;
+      const d=Math.hypot(f.x-cx,f.y-cy);
+      if(d<f.radius+8&&battleTime%15<dt){
+        dealDamage(af.owner,f,af.dmg,false);
+        spawnDmgNum(f.x,f.y-f.radius-10,'ARC!','#ffee44',false);
+        spawnBurst(f.x,f.y,'#ffcc00',4,2);
+      }
+    });
+    // Visual: arcing electricity
+    if(battleTime%4<dt){
+      const t=Math.random();
+      spawnParticle(af.x1+(af.x2-af.x1)*t+rand(-5,5),af.y1+(af.y2-af.y1)*t+rand(-5,5),'#ffee44',0,0,8,2);
+    }
+  }
+
+  // Toxic Fogs (PLS+poison): expanding clouds that damage + reduce visibility
+  for(let i=toxicFogs.length-1;i>=0;i--){
+    const tf=toxicFogs[i];tf.life-=dt;
+    if(tf.life<=0){toxicFogs.splice(i,1);continue;}
+    // Expand radius over first 3s (180 frames)
+    const expandPhase=Math.min(1,(tf.maxLife-tf.life)/180);
+    tf.radius=tf.radius+(tf.maxRadius-tf.radius)*expandPhase*0.02;
+    // Damage enemies inside
+    fighters.forEach(f=>{
+      if(!f.alive||f.side===(tf.owner?tf.owner.side:-1))return;
+      if(Math.hypot(f.x-tf.x,f.y-tf.y)<tf.radius+f.radius&&battleTime%10<dt){
+        applyDotDamage(f,tf.dmg,tf.owner);
+        f._fogBlind=30; // reduced visibility visual
+      }
+    });
+    if(battleTime%5<dt)spawnParticle(tf.x+rand(-tf.radius,tf.radius),tf.y+rand(-tf.radius,tf.radius),'#8833aa',0,0.3,12,3);
+  }
+
+  // Wire Anchors (Monowire+ice): auto-tether nearby enemies
+  for(let i=wireAnchors.length-1;i>=0;i--){
+    const wa=wireAnchors[i];wa.life-=dt;
+    if(wa.life<=0){wireAnchors.splice(i,1);continue;}
+    fighters.forEach(f=>{
+      if(!f.alive||f.side===(wa.owner?wa.owner.side:-1))return;
+      if(Math.hypot(f.x-wa.x,f.y-wa.y)<wa.radius+f.radius){
+        f.slowTimer=Math.max(f.slowTimer,120); // 2s slow 35%
+        f.speed=f.baseSpeed*0.65;
+        // Owner regens 3% HP/s while enemy tethered
+        if(wa.owner&&wa.owner.alive&&battleTime%60<dt){
+          wa.owner.hp=Math.min(wa.owner.maxHp,wa.owner.hp+wa.owner.maxHp*0.03);
+          spawnDmgNum(wa.owner.x,wa.owner.y-wa.owner.radius-10,'+'+Math.round(wa.owner.maxHp*0.03),'#44ff44',false);
+        }
+      }
+    });
+    if(battleTime%6<dt)spawnParticle(wa.x+rand(-8,8),wa.y+rand(-8,8),'#77ddff',0,0,15,2);
+  }
+
+  // Knife Traps (Throw+fire): auto-detonate when enemy nearby
+  for(let i=knifeTraps.length-1;i>=0;i--){
+    const kt=knifeTraps[i];kt.life-=dt;
+    if(kt.life<=0){knifeTraps.splice(i,1);continue;}
+    let detonated=false;
+    fighters.forEach(f=>{
+      if(!f.alive||f.side===(kt.owner?kt.owner.side:-1))return;
+      if(Math.hypot(f.x-kt.x,f.y-kt.y)<kt.radius+f.radius){
+        dealDamage(kt.owner,f,kt.dmg,false);
+        explosions.push({x:kt.x,y:kt.y,radius:0,maxRadius:kt.radius,color:'#ff4400',life:12,maxLife:12,dmg:0,owner:null,target:null,hit:true});
+        spawnDmgNum(kt.x,kt.y-15,'DETONATE!','#ff4400',true);
+        spawnBurst(kt.x,kt.y,'#ff4400',12,5);SFX.burn();
+        detonated=true;
+      }
+    });
+    if(detonated){knifeTraps.splice(i,1);continue;}
+    if(battleTime%8<dt)spawnParticle(kt.x+rand(-5,5),kt.y+rand(-5,5),'#ff6600',0,-0.3,10,2);
+  }
+
+  // Lightning Rods (Throw+lightning): zap nearest enemy every 4s
+  for(let i=lightningRods.length-1;i>=0;i--){
+    const lr=lightningRods[i];lr.life-=dt;
+    if(lr.life<=0){lightningRods.splice(i,1);continue;}
+    lr.zapCD=(lr.zapCD||0)-dt;
+    if(lr.zapCD<=0){
+      lr.zapCD=240; // 4s between zaps
+      let closest=null;let closestD=Infinity;
+      fighters.forEach(f=>{
+        if(!f.alive||f.side===(lr.owner?lr.owner.side:-1))return;
+        const d=Math.hypot(f.x-lr.x,f.y-lr.y);
+        if(d<closestD){closestD=d;closest=f;}
+      });
+      if(closest&&closestD<lr.owner.radius*6){
+        dealDamage(lr.owner,closest,lr.dmg,false);
+        spawnDmgNum(closest.x,closest.y-closest.radius-10,'ZAP!','#ffee44',false);
+        spawnBurst(closest.x,closest.y,'#ffcc00',8,4);
+        // Lightning visual from rod to target
+        for(let j=0;j<5;j++){
+          const t=j/5;
+          spawnParticle(lr.x+(closest.x-lr.x)*t,lr.y+(closest.y-lr.y)*t,'#ffee44',(Math.random()-0.5)*2,(Math.random()-0.5)*2,10,2);
+        }
+        SFX.stun();
+      }
+    }
+    if(battleTime%10<dt)spawnParticle(lr.x,lr.y-5,'#ffee44',0,-0.5,8,2);
+  }
+
+  // V2 per-fighter state updates
+  fighters.forEach(f=>{
+    if(!f.alive)return;
+    // Magnetize (Mantis+lightning): pull toward source
+    if(f._magnetizeTimer>0){
+      f._magnetizeTimer-=dt;
+      if(f._magnetizeSource&&f._magnetizeSource.alive){
+        const pa=angle(f,f._magnetizeSource);
+        f.vx+=Math.cos(pa)*0.3;f.vy+=Math.sin(pa)*0.3;
+      }
+    }
+    // EMP Lockout (Gorilla+lightning): freeze cooldowns
+    if(f._empLockout>0){
+      f._empLockout-=dt;
+      // Prevent ability activation by keeping attack timer high
+      f.attackTimer=Math.max(f.attackTimer,10);
+    }
+    // Bruise Marks (Gorilla+poison) — persistent effects
+    if(f.gorillaBruiseMarks>=3){
+      // Healing reduced 50% — applied in heal logic
+    }
+    if(f.gorillaBruiseMarks>=5&&battleTime%60<dt){
+      // 2% max HP passive damage per second
+      applyDotDamage(f,f.maxHp*0.02,null);
+    }
+    if(f.gorillaBruiseMarks>=8){
+      f.speed=Math.min(f.speed,f.baseSpeed*0.85);
+    }
+    // Mantis Charred timer
+    if(f.mantisCharredTimer>0)f.mantisCharredTimer-=dt;
+    // Mantis Corrode timer
+    if(f.mantisCorrodeTimer>0){f.mantisCorrodeTimer-=dt;if(f.mantisCorrodeTimer<=0)f.mantisCorrodeStacks=0;}
+    // Corrode attack reduction
+    if(f._corrodeAtkTimer>0)f._corrodeAtkTimer-=dt;
+    // Mantis Projectile Vortex: capture nearby enemy projectiles
+    if(f._mantisVortexActive&&f._mantisVortexTimer>0){
+      f._mantisVortexTimer-=dt;
+      if(f._mantisVortexTimer<=0)f._mantisVortexActive=false;
+      // Capture logic: pull nearby enemy projectiles
+      for(let pi=projectiles.length-1;pi>=0;pi--){
+        const p=projectiles[pi];
+        if(p.owner&&p.owner.side!==f.side&&!p._captured){
+          const d=Math.hypot(p.x-f.x,p.y-f.y);
+          if(d<f.radius*3&&(f.mantisCapturedProjs||[]).length<3){
+            f.mantisCapturedProjs=f.mantisCapturedProjs||[];
+            f.mantisCapturedProjs.push({dmg:p.dmg,radius:p.radius});
+            projectiles.splice(pi,1);
+            spawnDmgNum(f.x,f.y-f.radius-15,'CAUGHT!','#77ddff',false);
+            spawnBurst(f.x,f.y,'#77ddff',6,3);
+          }
+        }
+      }
+    }
+    // Gorilla Ice Crack decay
+    if(f.gorillaIceCrackTimer>0){
+      f.gorillaIceCrackTimer-=dt;
+      if(f.gorillaIceCrackTimer<=0){f.gorillaIceCracks=0;f.speed=f.baseSpeed;}
+    }
+    // Neuro-Hack slow (Monowire+toxic): -30% atk speed after release
+    if(f._neuroSlowTimer>0){
+      f._neuroSlowTimer-=dt;
+      f.attackTimer=Math.max(f.attackTimer,5); // slightly delay attacks
+    }
+    // Sandy Blink timer
+    if(f.sandyBlinkTimer>0){
+      f.sandyBlinkTimer-=dt;
+      // Auto-blink in sim: snap back after a dodge if advantageous
+      if(f.sandyBlinkTimer<=0&&f.sandyBlinkOrigin){
+        // Auto-blink back after window expires
+        f.sandyBlinkOrigin=null;
+      }
+    }
+    // Sandy Ignited decay
+    if(f.sandyIgniteTimer>0)f.sandyIgniteTimer-=dt;
+    if(f.sandyIgniteTimer<=0)f.sandyIgnited=false;
+    // Sandy Ignited: body collision damage
+    if(f.sandyIgnited&&f.alive){
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==f.side){
+          const d=Math.hypot(f.x-e.x,f.y-e.y);
+          if(d<f.radius+e.radius+5&&battleTime%10<dt){
+            const collDmg=f.atk*1.2;
+            dealDamage(f,e,collDmg,false);
+            spawnDmgNum(e.x,e.y-e.radius-15,'FIREBALL!','#ff4400',true);
+            spawnBurst(e.x,e.y,'#ff4400',10,4);
+          }
+        }
+      });
+    }
+    // Sandy Toxic Trail: leave trail during movement
+    if(f.char&&f.char.id==='sandy'&&f.elementActive&&f.elem&&f.elem.id==='toxic'&&battleTime%8<dt){
+      const spd=Math.hypot(f.vx,f.vy);
+      if(spd>1){
+        fireTrails.push({x:f.x,y:f.y,life:180,maxLife:180,radius:10,owner:f,dmg:0,isToxicTrail:true});
+      }
+    }
+    // Dizzy effect (Sandy+toxic): aim jitter — handled by adding randomness in attack targeting
+    if(f._dizzyTimer>0)f._dizzyTimer-=dt;
+    // Slide effect (Sandy+ice): momentum physics
+    if(f._slideTimer>0){
+      f._slideTimer-=dt;
+      // Prevent instant stop — maintain momentum
+      if(Math.hypot(f.vx,f.vy)<2){f.vx=f._slideVx*0.3;f.vy=f._slideVy*0.3;}
+    }
+    // Tracker Paint (Throw+poison)
+    if(f._trackerPaint>0)f._trackerPaint-=dt;
+    if(f.throwTrackerTimer>0){f.throwTrackerTimer-=dt;if(f.throwTrackerTimer<=0)f.throwTrackerTarget=null;}
+    // PLS Suppression CD
+    if(f._plsSuppressionCD>0)f._plsSuppressionCD-=dt;
+    // Katana Weakness Stacks
+    if(f.katanaWeaknessTimer>0){f.katanaWeaknessTimer-=dt;if(f.katanaWeaknessTimer<=0)f.katanaWeaknessStacks=0;}
+    // Berserk Rage Extension (ice): power decay
+    if(f.berserkRagePower<1.0)f.berserkRagePower=1.0; // init
+    if(f.berserkRageExtend>0&&(f.berserkRageActive||f.berserkInvincible)){
+      f.berserkRageExtend-=dt;
+      const elapsed=(battleTime-(f._berserkLastHitFrame||0));
+      // Rage stops if no hit for 2s
+      if(elapsed>120){f.berserkRageExtend=0;}
+      // Power decay: after 4s = 70%, after 8s = 50%
+      const rageDur=(battleTime-(f._berserkRageStart||battleTime));
+      if(rageDur>480) f.berserkRagePower=0.5;
+      else if(rageDur>240) f.berserkRagePower=0.7;
+      else f.berserkRagePower=1.0;
+    }
+    // Overdose timer (Berserk+poison)
+    if(f._overdoseTimer>0)f._overdoseTimer-=dt;
+    // Reality Glitch (Yuji+lightning): delay response
+    if(f._realityGlitch>0){f._realityGlitch-=dt;f.attackTimer=Math.max(f.attackTimer,5);}
+    if(f._glitchStutter>0)f._glitchStutter-=dt;
+    // Curse Erosion reset timer (Yuji+poison)
+    if(f._curseErosionTimer>0){
+      f._curseErosionTimer-=dt;
+      if(f._curseErosionTimer<=0&&f.yujiCurseErosion>0){
+        f.yujiCurseErosion=0;
+        f.maxHp=f._baseMaxHp||f.maxHp;
+      }
+    }
+    // Yuji Anchor auto-snap (ice)
+    if(f._yujiAnchor){
+      f._yujiAnchor.timer-=dt;
+      if(f._yujiAnchor.timer<=0){
+        // Auto-snap back
+        f.x=f._yujiAnchor.x;f.y=f._yujiAnchor.y;
+        f.vx*=1.5;f.vy*=1.5; // momentum
+        spawnDmgNum(f.x,f.y-f.radius-20,'SNAP!','#77ddff',true);
+        spawnBurst(f.x,f.y,'#77ddff',10,4);
+        f._yujiAnchor=null;
+      }
+    }
+    // Yuji Blaze Rush
+    if(f._blazeRushTimer>0){
+      f._blazeRushTimer-=dt;
+      f._blazeRushActive=f._blazeRushTimer>0;
+      if(!f._blazeRushActive){
+        // Exhaustion: 50% slower for 2s
+        f.speed=f.baseSpeed*0.5;
+        f._blazeExhaust=120;
+        spawnDmgNum(f.x,f.y-f.radius-15,'EXHAUSTED','#888888',false);
+      }
+    }
+    if(f._blazeExhaust>0){f._blazeExhaust-=dt;if(f._blazeExhaust<=0)f.speed=f.baseSpeed;}
+    // Fog blind visual
+    if(f._fogBlind>0)f._fogBlind-=dt;
+    // Slingshot release (Monowire+fire): when capture ends, launch enemy
+    if(f._slingshotReady&&f.captureTimer<=0&&f._slingshotOwner){
+      const launchDir=angle(f._slingshotOwner,f);
+      f.vx=Math.cos(launchDir)*12;f.vy=Math.sin(launchDir)*12;
+      f._slingshotReady=false;
+      spawnDmgNum(f.x,f.y-f.radius-20,'SLINGSHOT!','#ff6600',true);
+      spawnBurst(f.x,f.y,'#ff4400',10,5);
+      // Check wall collision damage in next frame
+      f._slingshotDmg=f._slingshotOwner.atk*1.0;
+      f._slingshotOwner=null;
+    }
+    // Frost Orbit respawn (Throw+ice)
+    if(f.throwFrostOrbCD){
+      for(let oi=0;oi<f.throwFrostOrbCD.length;oi++){
+        if(f.throwFrostOrbCD[oi]>0){
+          f.throwFrostOrbCD[oi]-=dt;
+          if(f.throwFrostOrbCD[oi]<=0){
+            f.throwFrostOrbs=Math.min(3,(f.throwFrostOrbs||0)+1);
+            spawnDmgNum(f.x,f.y-f.radius-15,'ORB RESTORED','#77ddff',false);
+          }
+        }
+      }
+    }
+  });
+
+  // ======= END V2 ELEMENT persistent updates =======
 
   // Particles
   for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=0.96;p.vy*=0.96;p.life-=dt;if(p.life<=0)particles.splice(i,1);}
@@ -18957,6 +19746,7 @@ function startBattle(){
   particles=[];dmgNums=[];battleLog=[];projectiles=[];explosions=[];
   shockwaveProjectiles=[];wallCracks=[];fireZones=[];vulnZones=[];poisonBubbles=[];
   fireTrails=[];sandyAfterimages=[];sandyOrbs=[];iceWalls=[];smasherWarnings=[];
+  fissureLines=[];arcFences=[];toxicFogs=[];wireAnchors=[];knifeTraps=[];lightningRods=[];
   quickhackDisplay=null;relicTextTimer=0;quickhackFlashTimer=0;
   sponsorCutsceneActive=false;sponsorCutsceneTimer=0;sponsorCutsceneData=null;
   allyComboActive=false;allyComboTimer=0;allyComboData=null;
@@ -19462,6 +20252,109 @@ function drawBattle(){
     X.fillStyle=fg;X.fill();
     X.globalAlpha=1;
   });
+
+  // ======= V2 ELEMENT REDESIGN — render persistent effects =======
+
+  // Fissure Lines (Gorilla+fire)
+  fissureLines.forEach(fl=>{
+    const a=Math.max(0.2,fl.life/fl.maxLife);
+    X.globalAlpha=a;X.strokeStyle=fl.erupted?'#ff4400':'#ff8800';X.lineWidth=fl.erupted?4:2;
+    X.beginPath();X.moveTo(fl.x,fl.y);
+    X.lineTo(fl.x+Math.cos(fl.angle)*fl.length,fl.y+Math.sin(fl.angle)*fl.length);
+    X.stroke();
+    if(fl.erupted){
+      // Glow along fissure
+      X.strokeStyle='rgba(255,100,0,0.3)';X.lineWidth=12;
+      X.beginPath();X.moveTo(fl.x,fl.y);
+      X.lineTo(fl.x+Math.cos(fl.angle)*fl.length,fl.y+Math.sin(fl.angle)*fl.length);
+      X.stroke();
+    }
+    X.globalAlpha=1;
+  });
+
+  // Arc Fences (PLS+lightning)
+  arcFences.forEach(af=>{
+    const a=Math.max(0.3,af.life/af.maxLife);
+    X.globalAlpha=a;X.strokeStyle='#ffee44';X.lineWidth=3;
+    X.beginPath();
+    // Jagged lightning line
+    const dx=af.x2-af.x1,dy=af.y2-af.y1;
+    const steps=6;
+    X.moveTo(af.x1,af.y1);
+    for(let s=1;s<steps;s++){
+      const t=s/steps;
+      X.lineTo(af.x1+dx*t+rand(-6,6),af.y1+dy*t+rand(-6,6));
+    }
+    X.lineTo(af.x2,af.y2);X.stroke();
+    // Glow
+    X.strokeStyle='rgba(255,238,68,0.2)';X.lineWidth=10;
+    X.beginPath();X.moveTo(af.x1,af.y1);X.lineTo(af.x2,af.y2);X.stroke();
+    X.globalAlpha=1;
+  });
+
+  // Toxic Fogs (PLS+poison)
+  toxicFogs.forEach(tf=>{
+    const a=Math.max(0.1,tf.life/tf.maxLife)*0.4;
+    X.globalAlpha=a;
+    const fg=X.createRadialGradient(tf.x,tf.y,0,tf.x,tf.y,tf.radius);
+    fg.addColorStop(0,'rgba(136,51,170,0.5)');fg.addColorStop(0.6,'rgba(136,51,170,0.2)');fg.addColorStop(1,'rgba(136,51,170,0)');
+    X.fillStyle=fg;X.beginPath();X.arc(tf.x,tf.y,tf.radius,0,Math.PI*2);X.fill();
+    X.globalAlpha=1;
+  });
+
+  // Wire Anchors (Monowire+ice)
+  wireAnchors.forEach(wa=>{
+    const a=Math.max(0.3,wa.life/wa.maxLife);
+    X.globalAlpha=a;X.strokeStyle='#77ddff';X.lineWidth=2;
+    X.beginPath();X.arc(wa.x,wa.y,wa.radius,0,Math.PI*2);X.stroke();
+    // Center diamond
+    X.fillStyle='#aaeeff';X.beginPath();
+    X.moveTo(wa.x,wa.y-6);X.lineTo(wa.x+4,wa.y);X.lineTo(wa.x,wa.y+6);X.lineTo(wa.x-4,wa.y);
+    X.closePath();X.fill();
+    X.globalAlpha=1;
+  });
+
+  // Knife Traps (Throw+fire)
+  knifeTraps.forEach(kt=>{
+    const a=Math.max(0.4,kt.life/kt.maxLife);
+    X.globalAlpha=a;X.fillStyle='#ff6600';
+    // Small knife icon
+    X.save();X.translate(kt.x,kt.y);X.rotate(battleTime*0.02);
+    X.fillRect(-2,-8,4,16);X.fillStyle='#ffaa00';X.fillRect(-4,-8,8,4);
+    X.restore();
+    // Danger radius hint
+    X.strokeStyle='rgba(255,100,0,0.15)';X.lineWidth=1;
+    X.beginPath();X.arc(kt.x,kt.y,kt.radius,0,Math.PI*2);X.stroke();
+    X.globalAlpha=1;
+  });
+
+  // Lightning Rods (Throw+lightning)
+  lightningRods.forEach(lr=>{
+    const a=Math.max(0.4,lr.life/lr.maxLife);
+    X.globalAlpha=a;X.fillStyle='#ffcc00';
+    // Rod icon
+    X.fillRect(lr.x-1,lr.y-10,2,20);
+    X.fillStyle='#ffee44';X.fillRect(lr.x-3,lr.y-12,6,4);
+    // Charge indicator
+    if(lr.zapCD<60){X.strokeStyle='#ffee44';X.lineWidth=1;X.beginPath();X.arc(lr.x,lr.y,10+Math.sin(battleTime*0.1)*3,0,Math.PI*2);X.stroke();}
+    X.globalAlpha=1;
+  });
+
+  // Frost Orbit knives (Throw+ice)
+  fighters.forEach(f=>{
+    if(f.alive&&f.char.id==='throw'&&f.elementActive&&f.elem&&f.elem.id==='cryo'&&f.throwFrostOrbs>0){
+      for(let oi=0;oi<f.throwFrostOrbs;oi++){
+        const oa=battleTime*0.04+oi*(Math.PI*2/3);
+        const ox=f.x+Math.cos(oa)*35,oy=f.y+Math.sin(oa)*35;
+        X.save();X.translate(ox,oy);X.rotate(oa+Math.PI/2);
+        X.fillStyle='#aaeeff';X.fillRect(-2,-6,4,12);
+        X.fillStyle='#77ddff';X.fillRect(-3,-6,6,3);
+        X.restore();
+      }
+    }
+  });
+
+  // ======= END V2 render =======
 
   // Sandy+electric rotating orbs
   fighters.forEach(f=>{
