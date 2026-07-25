@@ -2119,6 +2119,7 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   // Katana: no chaos damage scaling (early powerhouse, falls off late)
   if(attacker.char.id!=='katana')dmg*=(1+chaos*0.15);
 
+  attacker._lastHitCrit=isCrit; // track for Nanami element abilities
   if(attacker.elementActive&&attacker.elem.id!=='none')applyElementEffect(attacker,defender);
   // Choso Flowing Red Scale: 20% damage reduction (disabled by Toji Inverted Spear)
   if(defender.chosoRedScaleActive&&!defender.tojiDmgTakenDebuff)dmg*=0.8;
@@ -2221,6 +2222,19 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     SFX.freeze();
     return 0;
   }
+  // === Phase 2 damage modifiers ===
+  // Mechamaru Siege Mode: -40% damage taken
+  if(defender._mechaSiege&&defender._mechaSiegeDR>0)dmg*=(1-defender._mechaSiegeDR);
+  // Kashimo Cryo-Stasis: immune while frozen
+  if(defender._cryoStasisImmune&&defender.freezeTimer>0)return 0;
+  // Higuruma Mistrial: -25% damage output
+  if(attacker._mistrialDmgReduction>0&&attacker._mistrialTimer>0)dmg*=(1-attacker._mistrialDmgReduction);
+  // Todo Fire Boost: +20% attack
+  if(attacker._todoFireAtkBoost>1&&attacker._todoFireBoost>0)dmg*=attacker._todoFireAtkBoost;
+  // Ryu Cryo-Cycle: -30% damage on next shot
+  if(attacker._ryuCryoDmgReduction>0&&attacker._ryuCryoCycle)dmg*=(1-attacker._ryuCryoDmgReduction);
+  // Yuki Insulate: -20% ranged damage taken
+  if(defender._yukiInsulate>0)dmg*=0.8;
   // === End V2 damage modifiers ===
 
   defender.hp-=dmg;
@@ -6878,6 +6892,669 @@ function applyElementEffect(attacker,defender){
       spawnBurst(defender.x,defender.y,'#77ddff',5,3);
       break;
 
+    // === TOJI (v2 redesign — Phase 2) ===
+    case 'toji_fire':
+      // Burning Cage: staff throws create fire trails, triangle sides burn
+      {const tStaffs=attacker._tojiStaffPositions||[];
+      if(tStaffs.length>0){
+        const last=tStaffs[tStaffs.length-1];
+        // Fire trail from last staff to hit point
+        fireZones.push({x:(last.x+defender.x)/2,y:(last.y+defender.y)/2,
+          radius:Math.hypot(last.x-defender.x,last.y-defender.y)/2,
+          life:180,maxLife:180,owner:attacker,dmg:attacker.atk*0.4/60,isBurningCage:true});
+      }
+      defender.burnTimer=90;defender.burnDmg=attacker.atk*0.03;
+      spawnBurst(defender.x,defender.y,'#ff4400',8,3);SFX.burn();}
+      break;
+    case 'toji_electric':
+      // Proximity Power: stats scale with distance to placed staffs
+      {const tStaffs2=attacker._tojiStaffPositions||[];
+      let nearCount=0;
+      tStaffs2.forEach(s=>{if(Math.hypot(s.x-attacker.x,s.y-attacker.y)<attacker.radius*6)nearCount++;});
+      if(nearCount>=1){attacker._tojiProxDmg=1+nearCount*0.15;} // +15% per staff
+      if(nearCount>=2){attacker.speed=attacker.baseSpeed*1.15;}
+      spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
+      if(nearCount>0)spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'PROX x'+nearCount,'#ffee44',nearCount>=2);}
+      break;
+    case 'toji_toxic':
+      // Dead Zones: staffs corrupt area — no regen, half healing, suppress buffs
+      {const tStaffs3=attacker._tojiStaffPositions||[];
+      tStaffs3.forEach(s=>{
+        if(!s._deadZone){
+          s._deadZone=true;s._deadZoneTimer=180;
+          fireZones.push({x:s.x,y:s.y,radius:attacker.radius*4,life:300,maxLife:300,
+            owner:attacker,dmg:0,isDeadZone:true});
+        }
+      });
+      defender._healReduction=(defender._healReduction||0)+0.5;
+      defender._healReductionTimer=180;
+      spawnBurst(defender.x,defender.y,'#aa44cc',6,3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'DEAD ZONE','#aa44cc',false);}
+      break;
+    case 'toji_cryo':
+      // Sealed Zone: triangle traps enemies — no dash/teleport, only walk
+      defender.slowTimer=Math.max(defender.slowTimer,90);
+      defender._sealedTimer=90; // no movement abilities for 1.5s
+      spawnBurst(defender.x,defender.y,'#77ddff',8,3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-20,'SEALED','#77ddff',true);
+      SFX.freeze();
+      break;
+
+    // === MECHAMARU (v2 redesign — Phase 2) ===
+    case 'mechamaru_fire':
+      // Phase Overheat: each mode has heat meter, max = supercharged attack
+      {const mode=attacker._mechaMode||'rockets';
+      attacker._mechaHeat=attacker._mechaHeat||{rockets:0,drill:0,jets:0};
+      attacker._mechaHeat[mode]=Math.min(5,(attacker._mechaHeat[mode]||0)+1);
+      if(attacker._mechaHeat[mode]>=5){
+        attacker._mechaHeat[mode]=0;
+        const superDmg=attacker.atk*(mode==='rockets'?3.0:mode==='drill'?2.5:2.0);
+        dealDamage(attacker,defender,superDmg,false);
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'OVERHEAT!','#ff4400',true);
+        spawnBurst(defender.x,defender.y,'#ff6600',20,6);
+        explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:attacker.radius*4,color:'#ff4400',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
+        shakeTimer=10;shakeAmt=6;SFX.burn();
+      } else {
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'HEAT '+attacker._mechaHeat[mode]+'/5','#ff6600',false);
+        spawnBurst(defender.x,defender.y,'#ff4400',5,2);
+      }}
+      break;
+    case 'mechamaru_electric':
+      // Transition Stun: phase transitions generate EMP burst
+      {attacker._mechaTransStuns=(attacker._mechaTransStuns||0);
+      const stunDur=Math.max(6,30-attacker._mechaTransStuns*12); // diminishing: 0.5s→0.3s→0.1s
+      if(Math.random()<0.3){ // transition chance on hit
+        attacker._mechaTransStuns++;
+        const empR2=attacker.radius*3;
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-attacker.x,e.y-attacker.y)<empR2){
+            e.stunTimer=Math.max(e.stunTimer,stunDur);
+            spawnDmgNum(e.x,e.y-e.radius-20,'EMP STUN','#ffcc00',false);
+          }
+        });
+        spawnBurst(attacker.x,attacker.y,'#ffee44',12,4);SFX.stun();
+        if(attacker._mechaTransStuns>=3){attacker._mechaTransStuns=0;} // reset after 3
+      }
+      spawnBurst(defender.x,defender.y,'#ffcc00',4,2);}
+      break;
+    case 'mechamaru_toxic':
+      // Nanite Swarms: damage spawns nanite clouds that redirect projectiles
+      {if(Math.random()<0.4){
+        toxicFogs.push({x:defender.x,y:defender.y,radius:attacker.radius*1.5,maxRadius:attacker.radius*2,
+          life:240,maxLife:240,owner:attacker,dmg:0,isNaniteCloud:true});
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,'NANITES','#aa44cc',false);
+      }
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);}
+      break;
+    case 'mechamaru_cryo':
+      // Siege Mode: lock in place for +40% DR, +50% faster attacks
+      if(!attacker._mechaSiege){
+        attacker._mechaSiege=true;attacker._mechaSiegeTimer=300; // 5s
+        attacker._mechaSiegeDR=0.4;
+        attacker.atkCooldown=Math.max(5,attacker.atkCooldown*0.5);
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-25,'SIEGE MODE','#77ddff',true);
+        spawnBurst(attacker.x,attacker.y,'#77ddff',15,5);SFX.freeze();
+      }
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',4,2);
+      break;
+
+    // === KASHIMO (v2 redesign — Phase 2) ===
+    case 'kashimo_fire':
+      // Territory Burn: zap bolts set ground on fire where they land
+      fireZones.push({x:defender.x,y:defender.y,radius:attacker.radius*2,life:240,maxLife:240,
+        owner:attacker,dmg:attacker.atk*0.3/60,isKashimoFire:true});
+      defender.burnTimer=60;defender.burnDmg=attacker.atk*0.02;
+      spawnBurst(defender.x,defender.y,'#ff4400',8,3);SFX.burn();
+      break;
+    case 'kashimo_electric':
+      // Lightning Warp Fields: zap impacts leave teleport fields
+      {attacker._kashimoFields=attacker._kashimoFields||[];
+      attacker._kashimoFields.push({x:defender.x,y:defender.y,life:360,maxLife:360});
+      if(attacker._kashimoFields.length>4)attacker._kashimoFields.shift();
+      // Clean expired
+      attacker._kashimoFields=attacker._kashimoFields.filter(f=>f.life>0);
+      spawnBurst(defender.x,defender.y,'#ffee44',8,3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'WARP FIELD','#ffcc00',false);
+      // Auto-warp: if attacker near a field, teleport to most recent other field
+      if(attacker._kashimoFields.length>=2&&Math.random()<0.25){
+        const fields=attacker._kashimoFields;
+        const target=fields[fields.length-2]; // second most recent
+        attacker.x=target.x;attacker.y=target.y;
+        spawnBurst(attacker.x,attacker.y,'#ffee44',12,5);
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'WARPED!','#ffcc00',true);
+      }}
+      break;
+    case 'kashimo_toxic':
+      // Corrupted Lightning: hit puts random enemy ability on 3s cooldown
+      defender._corruptedCD=(defender._corruptedCD||0)+180; // add 3s to cooldowns
+      defender._empLockout=Math.max(defender._empLockout||0,30); // brief disruption
+      spawnBurst(defender.x,defender.y,'#9944ff',8,3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-20,'CORRUPTED','#9944ff',true);
+      break;
+    case 'kashimo_cryo':
+      // Cryo-Electric Stasis: attacks freeze instead of stun, frozen = immune but immobile
+      if(!defender._cryoStasis){
+        defender._cryoStasis=true;defender.freezeTimer=90; // 1.5s freeze
+        defender._cryoStasisImmune=true; // takes no dmg while frozen
+        spawnBurst(defender.x,defender.y,'#77ddff',12,5);
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'STASIS!','#77ddff',true);
+        SFX.freeze();
+      } else {
+        spawnBurst(defender.x,defender.y,'#77ddff',4,2);
+      }
+      break;
+
+    // === NANAMI (v2 redesign — Phase 2) ===
+    case 'nanami_fire':
+      // Ratio Trap Lines: crits create visible trap lines on arena
+      {const wasCrit=attacker._lastHitCrit||false;
+      if(wasCrit){
+        const lineAngle=Math.atan2(defender.y-attacker.y,defender.x-attacker.x)+Math.PI/2;
+        fissureLines.push({x:defender.x,y:defender.y,angle:lineAngle,
+          length:attacker.radius*6,life:300,maxLife:300,erupted:false,
+          owner:attacker,dmg:attacker.atk*0.5,isRatioLine:true});
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'RATIO LINE!','#ff4400',true);
+        spawnBurst(defender.x,defender.y,'#ff6600',10,4);
+      } else {
+        defender.burnTimer=60;defender.burnDmg=1.5;
+        spawnBurst(defender.x,defender.y,'#ff4400',5,2);
+      }}
+      break;
+    case 'nanami_electric':
+      // Vulnerability Window: bonus dmg when enemy abilities on cooldown
+      {const hasCD=defender._empLockout>0||defender.stunTimer>0||defender.specialBar<0.5;
+      if(hasCD){
+        dealDamage(attacker,defender,attacker.atk*0.3,false);
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'VULN BONUS!','#ffee44',true);
+        spawnBurst(defender.x,defender.y,'#ffcc00',8,3);
+      } else {
+        spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+      }}
+      break;
+    case 'nanami_toxic':
+      // Overtime Clause: non-crit hits build Overtime stacks, crit cashes out
+      {const wasCrit2=attacker._lastHitCrit||false;
+      if(!wasCrit2){
+        attacker._namaOvertimeStacks=Math.min(5,(attacker._namaOvertimeStacks||0)+1);
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,
+          'OVERTIME x'+attacker._namaOvertimeStacks,'#aa44cc',false);
+        spawnBurst(defender.x,defender.y,'#aa44cc',4,2);
+      } else {
+        const stacks=attacker._namaOvertimeStacks||0;
+        if(stacks>0){
+          const bonusDmg=attacker.atk*0.15*stacks;
+          dealDamage(attacker,defender,bonusDmg,false);
+          attacker._namaOvertimeStacks=0;
+          spawnDmgNum(defender.x,defender.y-defender.radius-25,'OVERTIME CASH OUT! +'+Math.round(bonusDmg),'#ff44ff',true);
+          spawnBurst(defender.x,defender.y,'#ff44ff',15,5);shakeTimer=6;shakeAmt=4;
+        }
+      }}
+      break;
+    case 'nanami_cryo':
+      // Ratio Fracture: wall hits create weak points, enemies knocked into them take 3x wall dmg
+      defender._ratioFracture=true;defender._ratioFractureTimer=480; // 8s
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',6,3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'FRACTURE','#77ddff',false);
+      break;
+
+    // === RYU (v2 redesign — Phase 2) ===
+    case 'ryu_fire':
+      // Beam Sweep Painting: surfaces hit catch fire, cannon leaves craters
+      fireZones.push({x:defender.x,y:defender.y,radius:attacker.radius*2.5,life:180,maxLife:180,
+        owner:attacker,dmg:attacker.atk*0.25/60,isRyuFire:true});
+      // Crater at impact
+      fireZones.push({x:defender.x+((Math.random()-0.5)*30),y:defender.y+((Math.random()-0.5)*30),
+        radius:attacker.radius*1.5,life:240,maxLife:240,owner:attacker,dmg:0,isCrater:true});
+      defender.burnTimer=90;defender.burnDmg=attacker.atk*0.025;
+      spawnBurst(defender.x,defender.y,'#ff4400',10,4);SFX.burn();
+      break;
+    case 'ryu_electric':
+      // Railgun Mode: sequence charge — 3 queued shots released in spread
+      {attacker._ryuChargeQueue=(attacker._ryuChargeQueue||0)+1;
+      if(attacker._ryuChargeQueue>=3){
+        // Railgun shot — piercing, instant, 250% dmg
+        attacker._ryuChargeQueue=0;
+        const rgDmg=attacker.atk*2.5;
+        const rgAngle=angle(attacker,defender);
+        // Hit all enemies in line
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side){
+            const cross=Math.abs(Math.sin(rgAngle)*(e.x-attacker.x)-Math.cos(rgAngle)*(e.y-attacker.y));
+            if(cross<e.radius*3){
+              dealDamage(attacker,e,rgDmg,false);
+              spawnDmgNum(e.x,e.y-e.radius-25,'RAILGUN!','#ffee44',true);
+            }
+          }
+        });
+        spawnBurst(attacker.x,attacker.y,'#ffee44',20,6);
+        shakeTimer=12;shakeAmt=8;SFX.stun();
+      } else {
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'CHARGE '+attacker._ryuChargeQueue+'/3','#ffcc00',false);
+        spawnBurst(defender.x,defender.y,'#ffcc00',5,2);
+      }}
+      break;
+    case 'ryu_toxic':
+      // Radiation Zone: beam path creates radiation zones, enemies lose accuracy
+      {toxicFogs.push({x:defender.x,y:defender.y,radius:attacker.radius*2,maxRadius:attacker.radius*2,
+        life:240,maxLife:240,owner:attacker,dmg:attacker.atk*0.1/60,isRadiation:true});
+      defender._accuracyDebuff=(defender._accuracyDebuff||0)+5; // degrees off-target
+      defender._accuracyDebuffTimer=240;
+      spawnBurst(defender.x,defender.y,'#44ff44',6,3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'IRRADIATED','#44ff44',false);}
+      break;
+    case 'ryu_cryo':
+      // Cryo-Cycle: after firing, 50% CD reduction but -30% dmg on next shot
+      if(!attacker._ryuCryoCycle){
+        attacker._ryuCryoCycle=true;
+        attacker._ryuCryoCycleTimer=300; // lasts 5s
+        attacker.atkCooldown=Math.max(5,attacker.atkCooldown*0.5);
+        attacker._ryuCryoDmgReduction=0.3;
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'CRYO-CYCLE','#77ddff',false);
+      }
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',5,2);
+      break;
+
+    // === HIGURUMA (v2 redesign — Phase 2) ===
+    case 'higuruma_fire':
+      // Evidence Burn: hits build charges, guilty verdict = burn intensity scales
+      {attacker._higuCharges=(attacker._higuCharges||0)+1;
+      const ch=attacker._higuCharges;
+      if(ch>=10){
+        defender.burnTimer=240;defender.burnDmg=attacker.atk*0.06;
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'INTENSE BURN!','#ff2200',true);
+        attacker._higuCharges=0;shakeTimer=8;shakeAmt=5;
+      } else if(ch>=6){
+        defender.burnTimer=180;defender.burnDmg=attacker.atk*0.04;
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'MEDIUM BURN','#ff4400',true);
+        attacker._higuCharges=0;
+      } else if(ch>=3&&Math.random()<0.3){
+        defender.burnTimer=120;defender.burnDmg=attacker.atk*0.02;
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,'LIGHT BURN','#ff6600',false);
+        attacker._higuCharges=0;
+      } else {
+        spawnDmgNum(defender.x,defender.y-defender.radius-12,'CHARGE x'+ch,'#ff6600',false);
+      }
+      spawnBurst(defender.x,defender.y,'#ff4400',5+ch,2);SFX.burn();}
+      break;
+    case 'higuruma_electric':
+      // Gavel Drones: thrown hammers hover as lightning zappers
+      {attacker._gavelDrones=attacker._gavelDrones||[];
+      if(attacker._gavelDrones.length<4){
+        attacker._gavelDrones.push({x:defender.x,y:defender.y,life:180,maxLife:180,zapCD:0});
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,'GAVEL DRONE','#ffcc00',false);
+      }
+      // Zap nearby enemies from existing drones
+      attacker._gavelDrones.forEach(dr=>{
+        if(dr.zapCD<=0){
+          fighters.forEach(e=>{
+            if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-dr.x,e.y-dr.y)<attacker.radius*3){
+              dealDamage(attacker,e,attacker.atk*0.4,false);
+              dr.zapCD=60;
+              spawnBurst(e.x,e.y,'#ffee44',6,3);
+            }
+          });
+        }
+      });
+      spawnBurst(defender.x,defender.y,'#ffcc00',6,3);}
+      break;
+    case 'higuruma_toxic':
+      // Mistrial Penalty: build charges, 10 = -25% dmg, 15 = also -50% speed
+      {attacker._higuToxicCharges=(attacker._higuToxicCharges||0)+1;
+      const tc=attacker._higuToxicCharges;
+      if(tc>=15){
+        defender._mistrialDmgReduction=0.25;defender._mistrialTimer=300;
+        defender.slowTimer=Math.max(defender.slowTimer,300);
+        attacker._higuToxicCharges=0;
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'AGGRAVATED MISTRIAL!','#ff44ff',true);
+        spawnBurst(defender.x,defender.y,'#ff44ff',20,6);shakeTimer=8;shakeAmt=5;
+      } else if(tc>=10){
+        defender._mistrialDmgReduction=0.25;defender._mistrialTimer=300;
+        attacker._higuToxicCharges=0;
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'MISTRIAL!','#aa44cc',true);
+        spawnBurst(defender.x,defender.y,'#aa44cc',15,5);
+      } else {
+        spawnDmgNum(defender.x,defender.y-defender.radius-12,'EVIDENCE x'+tc,'#aa44cc',false);
+        spawnBurst(defender.x,defender.y,'#aa44cc',4,2);
+      }}
+      break;
+    case 'higuruma_cryo':
+      // Frozen Verdict: sentencing freezes enemy, guilty = ice shatter dmg
+      defender.freezeTimer=Math.max(defender.freezeTimer||0,90); // 1.5s
+      attacker._higuIceCharges=(attacker._higuIceCharges||0)+1;
+      if(attacker._higuIceCharges>=5){
+        // Shatter: damage proportional to freeze buildup
+        const shatterDmg=attacker.atk*attacker._higuIceCharges*0.2;
+        dealDamage(attacker,defender,shatterDmg,false);
+        attacker._higuIceCharges=0;
+        spawnDmgNum(defender.x,defender.y-defender.radius-25,'ICE SHATTER!','#44ddff',true);
+        spawnBurst(defender.x,defender.y,'#77ddff',20,6);shakeTimer=8;shakeAmt=5;SFX.freeze();
+      } else {
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,'FROZEN VERDICT','#77ddff',false);
+        spawnBurst(defender.x,defender.y,'#77ddff',6,3);SFX.freeze();
+      }
+      break;
+
+    // === NAOYA (v2 redesign — Phase 2) ===
+    case 'naoya_fire':
+      // Geometric Fire Drawing: projection paths catch fire, closed shapes fill
+      {attacker._naoyaFireTrails=attacker._naoyaFireTrails||[];
+      attacker._naoyaFireTrails.push({x:defender.x,y:defender.y});
+      if(attacker._naoyaFireTrails.length>4)attacker._naoyaFireTrails.shift();
+      // Create fire trail at hit point
+      fireZones.push({x:defender.x,y:defender.y,radius:attacker.radius*2,life:180,maxLife:180,
+        owner:attacker,dmg:attacker.atk*0.3/60,isNaoyaFire:true});
+      // Check for closed shape (3+ points close together)
+      const trail=attacker._naoyaFireTrails;
+      if(trail.length>=3){
+        const first=trail[0],last=trail[trail.length-1];
+        if(Math.hypot(first.x-last.x,first.y-last.y)<attacker.radius*5){
+          // Closed shape — fire fill
+          const cx2=trail.reduce((s,p)=>s+p.x,0)/trail.length;
+          const cy2=trail.reduce((s,p)=>s+p.y,0)/trail.length;
+          const fillDmg=attacker.atk*0.5*trail.length;
+          fighters.forEach(e=>{
+            if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-cx2,e.y-cy2)<attacker.radius*4){
+              dealDamage(attacker,e,fillDmg,false);
+              spawnDmgNum(e.x,e.y-e.radius-25,'FIRE GEOMETRY!','#ff4400',true);
+            }
+          });
+          explosions.push({x:cx2,y:cy2,radius:0,maxRadius:attacker.radius*5,color:'#ff4400',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+          attacker._naoyaFireTrails=[];shakeTimer=8;shakeAmt=5;
+        }
+      }
+      spawnBurst(defender.x,defender.y,'#ff4400',6,3);SFX.burn();}
+      break;
+    case 'naoya_electric':
+      // Quantum Position: during dash, exists at BOTH start and end for 0.5s
+      {attacker._naoyaQuantum=true;attacker._naoyaQuantumTimer=30; // 0.5s
+      attacker._naoyaQuantumOrigin={x:attacker.x,y:attacker.y};
+      // Attack from both positions
+      if(attacker._naoyaQuantumOrigin){
+        const qo=attacker._naoyaQuantumOrigin;
+        const qDist=Math.hypot(defender.x-qo.x,defender.y-qo.y);
+        if(qDist<attacker.radius*5){
+          dealDamage(attacker,defender,attacker.atk*0.5,false);
+          spawnDmgNum(qo.x,qo.y-20,'QUANTUM HIT','#ffee44',true);
+          spawnBurst(qo.x,qo.y,'#ffee44',8,3);
+        }
+      }
+      spawnBurst(defender.x,defender.y,'#ffcc00',6,3);}
+      break;
+    case 'naoya_toxic':
+      // Frame Skip Anchors: dash endpoints become anchors, enemies between get "Frame Skipped"
+      {attacker._naoyaAnchors=attacker._naoyaAnchors||[];
+      attacker._naoyaAnchors.push({x:defender.x,y:defender.y,life:240});
+      if(attacker._naoyaAnchors.length>3)attacker._naoyaAnchors.shift();
+      // Check if enemy between any two anchors
+      const anchors=attacker._naoyaAnchors;
+      for(let i=0;i<anchors.length-1;i++){
+        for(let j=i+1;j<anchors.length;j++){
+          const mx=(anchors[i].x+anchors[j].x)/2,my=(anchors[i].y+anchors[j].y)/2;
+          const d3=Math.hypot(defender.x-mx,defender.y-my);
+          if(d3<attacker.radius*4){
+            defender.stunTimer=Math.max(defender.stunTimer,18); // 0.3s stun = "frame skip"
+            spawnDmgNum(defender.x,defender.y-defender.radius-20,'FRAME SKIP!','#aa44cc',true);
+            spawnBurst(defender.x,defender.y,'#9944ff',10,4);
+            break;
+          }
+        }
+      }
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);}
+      break;
+    case 'naoya_cryo':
+      // Movement Rewind: snap back along path in reverse, enemies in path take damage
+      {if(!attacker._naoyaRewindPath)attacker._naoyaRewindPath=[];
+      attacker._naoyaRewindPath.push({x:attacker.x,y:attacker.y});
+      if(attacker._naoyaRewindPath.length>12)attacker._naoyaRewindPath.shift();
+      if(attacker._naoyaRewindPath.length>=6&&Math.random()<0.2){
+        // Trigger rewind
+        const path=attacker._naoyaRewindPath.splice(0);
+        const origin=path[0];
+        // Damage enemies along path
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side){
+            for(const p of path){
+              if(Math.hypot(e.x-p.x,e.y-p.y)<attacker.radius*3){
+                dealDamage(attacker,e,attacker.atk*0.8,false);
+                spawnDmgNum(e.x,e.y-e.radius-20,'REWIND!','#77ddff',true);
+                break;
+              }
+            }
+          }
+        });
+        attacker.x=origin.x;attacker.y=origin.y;
+        spawnBurst(origin.x,origin.y,'#77ddff',15,5);
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-25,'REWIND!','#44ddff',true);
+      }
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',4,2);}
+      break;
+
+    // === TODO (v2 redesign — Phase 2) ===
+    case 'todo_fire':
+      // Reckless Swap: swap deals fire dmg, 50/50 random target, self-hit = stat boost
+      {const swapTargets=fighters.filter(e=>e&&e.alive&&e.side!==attacker.side);
+      if(swapTargets.length>0){
+        const target2=swapTargets[Math.floor(Math.random()*swapTargets.length)];
+        const fireDmg=attacker.atk*1.2;
+        dealDamage(attacker,target2,fireDmg,false);
+        spawnBurst(target2.x,target2.y,'#ff4400',12,4);
+        // 50/50 chance hits attacker too (self-damage → stat boost)
+        if(Math.random()<0.5){
+          attacker.hp-=attacker.maxHp*0.15;
+          attacker._todoFireBoost=300; // 5s
+          attacker._todoFireAtkBoost=1.2;attacker._todoFireSpdBoost=1.15;
+          spawnDmgNum(attacker.x,attacker.y-attacker.radius-25,'SELF-IGNITE! +ATK','#ff6600',true);
+          spawnBurst(attacker.x,attacker.y,'#ff6600',10,4);
+        }
+      }
+      spawnBurst(defender.x,defender.y,'#ff4400',6,3);SFX.burn();}
+      break;
+    case 'todo_electric':
+      // Damage Link: after swap, Todo and target linked — damage split 50/50
+      {defender._dmgLink=attacker;defender._dmgLinkTimer=120; // 2s link
+      attacker._dmgLinkTarget=defender;attacker._dmgLinkTimer=120;
+      spawnDmgNum(defender.x,defender.y-defender.radius-20,'LINKED!','#ffcc00',true);
+      // Visual link line
+      for(let i=0;i<6;i++){
+        const lt=i/6;
+        spawnParticle(attacker.x+(defender.x-attacker.x)*lt,
+          attacker.y+(defender.y-attacker.y)*lt,'#ffee44',0,0,20,2);
+      }
+      spawnBurst(defender.x,defender.y,'#ffcc00',6,3);}
+      break;
+    case 'todo_toxic':
+      // Confusion Seeds: swap creates ground seeds, enemies step on them = scrambled controls
+      {fireZones.push({x:defender.x,y:defender.y,radius:attacker.radius*2,life:180,maxLife:180,
+        owner:attacker,dmg:0,isConfusionSeed:true});
+      // Apply confusion directly too
+      defender._confusionTimer=Math.max(defender._confusionTimer||0,90); // 1.5s
+      spawnBurst(defender.x,defender.y,'#aa44cc',8,3);
+      spawnDmgNum(defender.x,defender.y-defender.radius-15,'CONFUSED!','#9944ff',true);}
+      break;
+    case 'todo_cryo':
+      // Temporal Swap: swap position in TIME — revert state from 3s ago
+      {if(attacker._todoTimeStates&&attacker._todoTimeStates.length>0&&!(attacker._todoTemporalCD>0)){
+        const pastState=attacker._todoTimeStates[0];
+        attacker.hp=Math.min(attacker.maxHp,Math.max(attacker.hp,pastState.hp));
+        attacker.x=pastState.x;attacker.y=pastState.y;
+        attacker._todoTemporalCD=900; // 15s cooldown
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-25,'TEMPORAL SWAP!','#44ddff',true);
+        spawnBurst(attacker.x,attacker.y,'#77ddff',20,6);shakeTimer=8;shakeAmt=5;SFX.freeze();
+      } else {
+        // Store current state for future rewind
+        attacker._todoTimeStates=attacker._todoTimeStates||[];
+        attacker._todoTimeStates.push({hp:attacker.hp,x:attacker.x,y:attacker.y});
+        if(attacker._todoTimeStates.length>3)attacker._todoTimeStates.shift();
+      }
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',5,2);}
+      break;
+
+    // === YUKI TSUKUMO (v2 redesign — Phase 2) ===
+    case 'yuki_fire':
+      // Gravity Star: high mass = projectiles curve toward her, 100% = Garuda meteor
+      {const mass=attacker._yukiMass||50;
+      if(mass>=75){
+        // Gravitational pull on nearby enemy projectiles
+        projectiles.forEach(p=>{
+          if(p.owner&&p.owner.side!==attacker.side){
+            const pd=Math.hypot(p.x-attacker.x,p.y-attacker.y);
+            if(pd<attacker.radius*8){
+              const pullStr=0.3;
+              p.vx+=(attacker.x-p.x)/pd*pullStr;
+              p.vy+=(attacker.y-p.y)/pd*pullStr;
+            }
+          }
+        });
+      }
+      if(mass>=100){
+        // Garuda Meteor — massive impact
+        const meteorDmg=attacker.atk*3.0;
+        const meteorR=attacker.radius*6;
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-defender.x,e.y-defender.y)<meteorR){
+            dealDamage(attacker,e,meteorDmg,false);
+          }
+        });
+        explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:meteorR,color:'#ff6600',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});
+        fireZones.push({x:defender.x,y:defender.y,radius:meteorR,life:300,maxLife:300,owner:attacker,dmg:attacker.atk*0.5/60,isMeteorCrater:true});
+        spawnDmgNum(defender.x,defender.y-defender.radius-30,'METEOR!','#ff4400',true);
+        shakeTimer=15;shakeAmt=10;SFX.burn();
+        attacker._yukiMass=50; // reset mass
+      } else {
+        attacker._yukiMass=Math.min(100,(mass||50)+5);
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'MASS '+attacker._yukiMass+'%','#ff6600',false);
+      }
+      spawnBurst(defender.x,defender.y,'#ff4400',8,3);}
+      break;
+    case 'yuki_electric':
+      // Conductivity Scaling: low mass = insulating (-20% ranged dmg), high mass = +30% melee bonus
+      {const mass2=attacker._yukiMass||50;
+      if(mass2>=60){
+        // High mass: conductive — melee bonus
+        dealDamage(attacker,defender,attacker.atk*0.3,false);
+        spawnDmgNum(defender.x,defender.y-defender.radius-20,'CONDUCT!','#ffee44',true);
+        spawnBurst(defender.x,defender.y,'#ffcc00',8,3);
+      } else {
+        // Low mass: insulating — defensive
+        attacker._yukiInsulate=120; // 2s reduced ranged dmg
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'INSULATED','#ffcc00',false);
+        spawnBurst(defender.x,defender.y,'#ffcc00',4,2);
+      }}
+      break;
+    case 'yuki_toxic':
+      // Cursed Energy Density: high mass drains enemy CDs, low mass = own CDs faster
+      {const mass3=attacker._yukiMass||50;
+      if(mass3>=60){
+        defender._empLockout=Math.max(defender._empLockout||0,30); // add 0.5s to CDs
+        spawnDmgNum(defender.x,defender.y-defender.radius-15,'CD DRAIN','#aa44cc',false);
+      } else {
+        attacker._yukiCDReduction=0.3; // 30% faster own CDs
+        attacker._yukiCDReductionTimer=180;
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-15,'CD BOOST','#44ff44',false);
+      }
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);}
+      break;
+    case 'yuki_cryo':
+      // Mass Lock: freeze mass at current level — no decay
+      {attacker._yukiMassLocked=true;attacker._yukiMassLockTimer=600; // 10s
+      spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'MASS LOCKED','#77ddff',false);
+      defender.slowTimer=Math.max(defender.slowTimer,90);
+      spawnBurst(defender.x,defender.y,'#77ddff',6,3);SFX.freeze();}
+      break;
+
+    // === MEGUMI (v2 redesign — Phase 2) ===
+    case 'megumi_fire':
+      // Phoenix Shikigami: fire shikigami auto-spawn, attack + self-destruct with explosion
+      {attacker._megumiFireShiki=attacker._megumiFireShiki||[];
+      if(attacker._megumiFireShiki.length<3){
+        attacker._megumiFireShiki.push({x:attacker.x+(Math.random()-0.5)*40,
+          y:attacker.y+(Math.random()-0.5)*40,life:300,maxLife:300,hp:attacker.atk*0.5});
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'FIRE SHIKI!','#ff4400',false);
+      }
+      // Existing shiki attack
+      attacker._megumiFireShiki.forEach(s=>{
+        const sd=Math.hypot(s.x-defender.x,s.y-defender.y);
+        if(sd<attacker.radius*5){
+          dealDamage(attacker,defender,attacker.atk*0.3,false);
+          s.life-=30; // use up life faster when attacking
+          spawnBurst(s.x,s.y,'#ff6600',4,2);
+        }
+        // Self-destruct when life low
+        if(s.life<=30){
+          const explR=attacker.radius*4;
+          fighters.forEach(e=>{
+            if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-s.x,e.y-s.y)<explR){
+              dealDamage(attacker,e,attacker.atk*1.5,false);
+              spawnDmgNum(e.x,e.y-e.radius-20,'PHOENIX BURST!','#ff4400',true);
+            }
+          });
+          explosions.push({x:s.x,y:s.y,radius:0,maxRadius:explR,color:'#ff4400',life:15,maxLife:15,dmg:0,owner:null,target:null,hit:true});
+          s.life=0;
+        }
+      });
+      attacker._megumiFireShiki=attacker._megumiFireShiki.filter(s=>s.life>0);
+      spawnBurst(defender.x,defender.y,'#ff4400',6,3);SFX.burn();}
+      break;
+    case 'megumi_electric':
+      // Living Shadows: shadow electrified — enemies standing in it take damage
+      {const shadowR=attacker.radius*4+(attacker._megumiFireShiki?attacker._megumiFireShiki.length*attacker.radius:0);
+      fighters.forEach(e=>{
+        if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-attacker.x,e.y-attacker.y)<shadowR){
+          dealDamage(attacker,e,attacker.atk*0.15,false);
+          spawnParticle(e.x+(Math.random()-0.5)*10,e.y+e.radius,'#ffee44',0,-1,10,2);
+        }
+      });
+      spawnBurst(defender.x,defender.y,'#ffcc00',6,3);
+      spawnDmgNum(attacker.x,attacker.y+attacker.radius+10,'SHADOW ZAP','#ffee44',false);}
+      break;
+    case 'megumi_toxic':
+      // Shikigami Evolution: shikigami surviving 10s evolve — +30% dmg, toxic aura
+      {attacker._megumiEvoTimer=(attacker._megumiEvoTimer||0)+1;
+      if(attacker._megumiEvoTimer>=10){
+        // Evolved: toxic aura
+        const auraR=attacker.radius*4;
+        fighters.forEach(e=>{
+          if(e&&e.alive&&e.side!==attacker.side&&Math.hypot(e.x-attacker.x,e.y-attacker.y)<auraR){
+            dealDamage(attacker,e,attacker.atk*0.12,false);
+            spawnParticle(e.x+(Math.random()-0.5)*10,e.y+(Math.random()-0.5)*10,'#aa44cc',0,-1,8,2);
+          }
+        });
+        if(attacker._megumiEvoTimer===10){
+          spawnDmgNum(attacker.x,attacker.y-attacker.radius-25,'EVOLVED!','#44ff44',true);
+          spawnBurst(attacker.x,attacker.y,'#44ff44',15,5);
+        }
+      }
+      defender.defReduction=4;defender.defReductionTimer=180;
+      spawnBurst(defender.x,defender.y,'#aa44cc',5,2);}
+      break;
+    case 'megumi_cryo':
+      // Chimera Fusion: merge two shikigami into one powerful chimera
+      {if(!attacker._megumiChimera&&(attacker._megumiFireShiki&&attacker._megumiFireShiki.length>=2||Math.random()<0.15)){
+        attacker._megumiChimera={life:480,maxLife:480, // 8s
+          x:attacker.x,y:attacker.y,dmgMult:1.5};
+        spawnDmgNum(attacker.x,attacker.y-attacker.radius-25,'CHIMERA FUSION!','#77ddff',true);
+        spawnBurst(attacker.x,attacker.y,'#77ddff',20,6);shakeTimer=8;shakeAmt=5;SFX.freeze();
+        if(attacker._megumiFireShiki)attacker._megumiFireShiki=attacker._megumiFireShiki.slice(0,Math.max(0,attacker._megumiFireShiki.length-2));
+      }
+      // Chimera attacks
+      if(attacker._megumiChimera&&attacker._megumiChimera.life>0){
+        const ch2=attacker._megumiChimera;
+        dealDamage(attacker,defender,attacker.atk*ch2.dmgMult*0.4,false);
+        ch2.life--;
+        if(ch2.life<=0){
+          attacker._megumiChimera=null;
+          spawnDmgNum(attacker.x,attacker.y-attacker.radius-20,'CHIMERA SPLIT','#77ddff',false);
+        }
+      }
+      defender.slowTimer=Math.max(defender.slowTimer,60);
+      spawnBurst(defender.x,defender.y,'#77ddff',6,3);}
+      break;
+
     // Fallback: generic element effects
     default:
       switch(attacker.elem.id){
@@ -11283,6 +11960,92 @@ function updateBattle(dt){
           }
         }
       }
+    }
+    // === Phase 2 element timers ===
+    // Toji: proximity power reset
+    if(f._tojiProxDmg&&f._tojiProxDmg>1&&battleTime%120<dt)f._tojiProxDmg=1;
+    // Toji: sealed timer
+    if(f._sealedTimer>0){f._sealedTimer-=dt;f.speed=Math.min(f.speed,f.baseSpeed*0.5);}
+    // Toji: heal reduction timer
+    if(f._healReductionTimer>0){f._healReductionTimer-=dt;if(f._healReductionTimer<=0)f._healReduction=0;}
+    // Mechamaru: siege mode timer
+    if(f._mechaSiege&&f._mechaSiegeTimer>0){
+      f._mechaSiegeTimer-=dt;f.speed=0; // immobile
+      if(f._mechaSiegeTimer<=0){f._mechaSiege=false;f._mechaSiegeDR=0;f.speed=f.baseSpeed;
+        f.atkCooldown=f._baseAtkCooldown||f.atkCooldown;
+        spawnDmgNum(f.x,f.y-f.radius-15,'SIEGE OFF','#888',false);}
+    }
+    // Kashimo: warp fields decay
+    if(f._kashimoFields){f._kashimoFields.forEach(fld=>fld.life-=dt);f._kashimoFields=f._kashimoFields.filter(fld=>fld.life>0);}
+    // Kashimo: cryo-stasis immunity end
+    if(f._cryoStasis&&f.freezeTimer<=0){f._cryoStasis=false;f._cryoStasisImmune=false;}
+    // Kashimo: corrupted CD
+    if(f._corruptedCD>0){f._corruptedCD-=dt;f.attackTimer=Math.max(f.attackTimer,5);}
+    // Nanami: ratio fracture timer
+    if(f._ratioFractureTimer>0){f._ratioFractureTimer-=dt;if(f._ratioFractureTimer<=0)f._ratioFracture=false;}
+    // Ryu: charge queue reset after 3s no hits
+    if(f._ryuChargeQueue>0&&f._ryuLastHitTime&&battleTime-f._ryuLastHitTime>180)f._ryuChargeQueue=0;
+    // Ryu: cryo cycle timer
+    if(f._ryuCryoCycle&&f._ryuCryoCycleTimer>0){
+      f._ryuCryoCycleTimer-=dt;if(f._ryuCryoCycleTimer<=0){f._ryuCryoCycle=false;f._ryuCryoDmgReduction=0;}
+    }
+    // Ryu: accuracy debuff timer
+    if(f._accuracyDebuffTimer>0){f._accuracyDebuffTimer-=dt;if(f._accuracyDebuffTimer<=0)f._accuracyDebuff=0;}
+    // Higuruma: gavel drone decay + zap cooldown
+    if(f._gavelDrones){
+      f._gavelDrones.forEach(dr=>{dr.life-=dt;if(dr.zapCD>0)dr.zapCD-=dt;});
+      f._gavelDrones=f._gavelDrones.filter(dr=>dr.life>0);
+    }
+    // Higuruma: mistrial timer
+    if(f._mistrialTimer>0){f._mistrialTimer-=dt;if(f._mistrialTimer<=0)f._mistrialDmgReduction=0;}
+    // Higuruma: frozen verdict ice charges (no auto-decay — build by hitting)
+    // Naoya: quantum position timer
+    if(f._naoyaQuantumTimer>0){f._naoyaQuantumTimer-=dt;if(f._naoyaQuantumTimer<=0){f._naoyaQuantum=false;f._naoyaQuantumOrigin=null;}}
+    // Naoya: frame skip anchors decay
+    if(f._naoyaAnchors){f._naoyaAnchors.forEach(a=>a.life-=dt);f._naoyaAnchors=f._naoyaAnchors.filter(a=>a.life>0);}
+    // Naoya: rewind path — store position every 10 frames
+    if(f.char&&f.char.id==='naoya'&&f.elementActive&&f.elem&&f.elem.id==='cryo'&&battleTime%10<dt){
+      f._naoyaRewindPath=f._naoyaRewindPath||[];
+      f._naoyaRewindPath.push({x:f.x,y:f.y});
+      if(f._naoyaRewindPath.length>12)f._naoyaRewindPath.shift();
+    }
+    // Todo: fire boost timer
+    if(f._todoFireBoost>0){f._todoFireBoost-=dt;if(f._todoFireBoost<=0){f._todoFireAtkBoost=1;f._todoFireSpdBoost=1;}}
+    // Todo: damage link timer
+    if(f._dmgLinkTimer>0){f._dmgLinkTimer-=dt;if(f._dmgLinkTimer<=0){f._dmgLink=null;f._dmgLinkTarget=null;}}
+    // Todo: confusion timer
+    if(f._confusionTimer>0)f._confusionTimer-=dt;
+    // Todo: temporal swap cooldown
+    if(f._todoTemporalCD>0)f._todoTemporalCD-=dt;
+    // Todo: store time states for cryo
+    if(f.char&&f.char.id==='todo'&&f.elementActive&&f.elem&&f.elem.id==='cryo'&&battleTime%180<dt){
+      f._todoTimeStates=f._todoTimeStates||[];
+      f._todoTimeStates.push({hp:f.hp,x:f.x,y:f.y});
+      if(f._todoTimeStates.length>3)f._todoTimeStates.shift();
+    }
+    // Yuki: mass decay (unless locked)
+    if(f.char&&f.char.id==='yuki'&&f.elementActive&&!f._yukiMassLocked&&battleTime%120<dt){
+      f._yukiMass=Math.max(0,(f._yukiMass||50)-2);
+    }
+    // Yuki: mass lock timer
+    if(f._yukiMassLockTimer>0){f._yukiMassLockTimer-=dt;if(f._yukiMassLockTimer<=0)f._yukiMassLocked=false;}
+    // Yuki: insulate timer
+    if(f._yukiInsulate>0)f._yukiInsulate-=dt;
+    // Yuki: CD reduction timer
+    if(f._yukiCDReductionTimer>0)f._yukiCDReductionTimer-=dt;
+    // Megumi: fire shikigami decay
+    if(f._megumiFireShiki){
+      f._megumiFireShiki.forEach(s=>{s.life-=dt;});
+      f._megumiFireShiki=f._megumiFireShiki.filter(s=>s.life>0);
+    }
+    // Megumi: chimera decay
+    if(f._megumiChimera&&f._megumiChimera.life>0){
+      f._megumiChimera.life-=dt;
+      if(f._megumiChimera.life<=0){f._megumiChimera=null;}
+    }
+    // Megumi: evo timer (count frames with element active)
+    if(f.char&&f.char.id==='megumi'&&f.elementActive&&f.elem&&f.elem.id==='toxic'){
+      f._megumiEvoTimer=(f._megumiEvoTimer||0)+dt/60;
     }
   });
 
@@ -17549,7 +18312,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.31.0 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.32.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
