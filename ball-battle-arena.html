@@ -20658,6 +20658,57 @@ function drawBattle(){
   // Fighters
   fighters.forEach(f=>drawBall(f));
 
+  // Ally combo indicator in 2v2 — show when teammate recently used special
+  if((gameMode==='2v2'||gameMode==='boss')&&!allyComboActive&&!sponsorCutsceneActive){
+    fighters.forEach(f=>{
+      if(!f.alive||!f._lastSpecialFrame)return;
+      const gap=battleTime-f._lastSpecialFrame;
+      if(gap>0&&gap<=120){
+        // This fighter recently used special — show indicator on their ALLIES
+        const allies=fighters.filter(a=>a&&a!==f&&a.side===f.side&&a.alive);
+        allies.forEach(ally=>{
+          const pulse=Math.sin(battleTime*0.15)*0.3+0.7;
+          const hasLoreCombo=!!findAllyCombo(f.char.id,ally.char.id);
+          const col=hasLoreCombo?'#ffcc00':'#44ccff';
+          // Flashing ring around ally
+          X.save();
+          X.strokeStyle=col;X.lineWidth=3;X.globalAlpha=pulse*0.7;
+          X.beginPath();X.arc(ally.x,ally.y,ally.radius+12,0,Math.PI*2);X.stroke();
+          // "COMBO!" text
+          X.font='bold 10px Consolas,monospace';X.textAlign='center';
+          X.fillStyle=col;X.globalAlpha=pulse;
+          X.fillText(hasLoreCombo?'LORE COMBO!':'ALLY COMBO!',ally.x,ally.y-ally.radius-32);
+          // Timer bar showing remaining window
+          const remaining=1-gap/120;
+          const bw=ally.radius*2,bh=3;
+          X.globalAlpha=0.6;X.fillStyle='#333';X.fillRect(ally.x-bw/2,ally.y-ally.radius-24,bw,bh);
+          X.fillStyle=col;X.fillRect(ally.x-bw/2,ally.y-ally.radius-24,bw*remaining,bh);
+          X.restore();
+        });
+      }
+    });
+  }
+
+  // Sponsor ready indicator on ball — flashing when sponsor bar >80%
+  fighters.forEach(f=>{
+    if(!f.alive||f.sponsorUsed||!f.selectedSponsor)return;
+    const fill=f.sponsorBar/f.sponsorMax;
+    if(fill>=0.8){
+      const pulse=Math.sin(battleTime*0.12)*0.4+0.6;
+      const isLore=!!findLoreCombo(f.char.id)&&findLoreCombo(f.char.id).pair.includes(f.selectedSponsor);
+      const col=isLore?'#ff6600':'#ffaa00';
+      X.save();X.globalAlpha=pulse*0.8;
+      X.strokeStyle=col;X.lineWidth=2.5;
+      X.beginPath();X.arc(f.x,f.y,f.radius+8+Math.sin(battleTime*0.08)*3,0,Math.PI*2);X.stroke();
+      if(fill>=1){
+        X.font='bold 9px Consolas,monospace';X.textAlign='center';
+        X.fillStyle=col;X.globalAlpha=pulse;
+        X.fillText(isLore?'\u26A1 ALLY!':'\u2B50 SPONSOR!',f.x,f.y+f.radius+22);
+      }
+      X.restore();
+    }
+  });
+
   // Quickhack progress display
   if(quickhackDisplay&&quickhackDisplay.target.alive){
     const qd=quickhackDisplay;
