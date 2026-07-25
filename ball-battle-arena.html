@@ -2316,6 +2316,9 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
     if(attacker.char.id==='yuji')primeYujiOnHit(attacker,defender);
     if(attacker.char.id==='katana')primeKatanaOnSlash(attacker,defender);
     if(attacker.char.id==='nanami'){dmg*=1.7;} // Overtime: all hits are weak point
+    if(attacker.char.id==='yuta')primeYutaOnHit(attacker,defender,dmg);
+    if(attacker.char.id==='mahoraga')primeMahoragaOnHit(attacker,defender);
+    if(attacker.char.id==='dabura')primeDaburaOnHit(attacker,defender);
   }
   // === End Prime hooks ===
 
@@ -10575,13 +10578,286 @@ function updatePrimeGojo(f,enemy,dt){
   if(!f._primeGojoInit){f._primeGojoInit=true;f.gojoInfinityCharges=99;f.gojoInfinityMax=99;} // near-infinite barrier
 }
 function updatePrimeYuta(f,enemy,dt){
-  // Rika Unleashed — Rika fights as delayed mirror (stub)
+  // Rika Unleashed — Rika is fully unleashed as permanent aggressive companion
+  if(!f._primeYutaInit){
+    f._primeYutaInit=true;
+    f.yutaRikaHp=f.maxHp*0.8; // Rika gets 80% of Yuta's boosted HP
+    f.yutaRikaMaxHp=f.yutaRikaHp;
+    f.yutaCopyCD=0;
+    f._primeRikaRage=0; // rage meter — Rika gets angrier over time
+    f._primeRikaMirrorQueue=[]; // delayed mirror attacks
+    f._primeRikaCE=100; // cursed energy pool for Rika
+    f._primeRikaCEMax=100;
+    spawnDmgNum(f.x,f.y-f.radius-40,'RIKA UNLEASHED!','#6644cc',true);
+  }
+  // Rika rage builds over time — increases her damage
+  f._primeRikaRage=Math.min(100,f._primeRikaRage+dt*0.015);
+  const rageMult=1+f._primeRikaRage*0.01; // up to 2x at max rage
+
+  // Rika CE regeneration
+  f._primeRikaCE=Math.min(f._primeRikaCEMax,f._primeRikaCE+dt*0.08);
+
+  // Copy rate maxed — every hit copies
+  f.yutaCopyCD=0;
+
+  // Rika independent aggressive attacks (faster than normal)
+  if(f.yutaRikaHp>0){
+    f.yutaRikaAttackCD-=dt;
+    if(f.yutaRikaAttackCD<=0&&f._primeRikaCE>=15){
+      f.yutaRikaAttackCD=18; // very fast attacks
+      f._primeRikaCE-=15;
+      // Rika fires homing claw projectile
+      const rikaPos=f.yutaRikaPos;
+      const ba=Math.atan2(enemy.y-rikaPos.y,enemy.x-rikaPos.x);
+      const clawDmg=f.atk*0.6*rageMult;
+      projectiles.push({
+        x:rikaPos.x,y:rikaPos.y,
+        vx:Math.cos(ba)*6,vy:Math.sin(ba)*6,
+        owner:f,target:enemy,color:'#aa66ff',
+        life:80,maxLife:80,radius:8,
+        dmg:clawDmg,explosive:false,homing:true,homingStrength:0.15,
+      });
+      f.yutaRikaClawAnim=12;
+      if(battleTime%3<1)SFX.rikaClaw();
+    }
+    // Mirror queue: replay Yuta's attacks with 0.5s delay
+    for(let i=f._primeRikaMirrorQueue.length-1;i>=0;i--){
+      f._primeRikaMirrorQueue[i].delay-=dt;
+      if(f._primeRikaMirrorQueue[i].delay<=0){
+        const m=f._primeRikaMirrorQueue.splice(i,1)[0];
+        const rikaPos=f.yutaRikaPos;
+        const ba=Math.atan2(enemy.y-rikaPos.y,enemy.x-rikaPos.x);
+        projectiles.push({
+          x:rikaPos.x,y:rikaPos.y,
+          vx:Math.cos(ba)*5.5,vy:Math.sin(ba)*5.5,
+          owner:f,target:enemy,color:'#8844dd',
+          life:70,maxLife:70,radius:6,
+          dmg:m.dmg*0.7*rageMult,explosive:false,homing:true,homingStrength:0.1,
+        });
+        spawnParticle(rikaPos.x,rikaPos.y,'#aa66ff',0,0,15,3);
+      }
+    }
+    // Rika heals Yuta slowly (CE output)
+    if(battleTime%30<1){
+      const heal=f.maxHp*0.005;
+      f.hp=Math.min(f.maxHp,f.hp+heal);
+    }
+  }
+  // Visual: rage aura on Rika
+  if(f._primeRikaRage>50&&f.yutaRikaHp>0&&battleTime%4<1){
+    const rp=f.yutaRikaPos;
+    spawnParticle(rp.x+rand(-15,15),rp.y+rand(-15,15),f._primeRikaRage>80?'#ff44ff':'#aa66ff',0,-1,12,2);
+  }
+}
+// Hook: queue mirror attack when Yuta hits
+function primeYutaOnHit(f,enemy,dmg){
+  if(!f.primeActive||f.char.id!=='yuta')return;
+  if(!f._primeRikaMirrorQueue)return;
+  f._primeRikaMirrorQueue.push({dmg:dmg,delay:30}); // 0.5s delay mirror
 }
 function updatePrimeMahoraga(f,enemy,dt){
-  // Perpetual Adaptation — immune to repeated attack types (stub)
+  // Perpetual Adaptation — adaptation is always active, starts pre-stacked, 3x rate
+  if(!f._primeMahoInit){
+    f._primeMahoInit=true;
+    // Pre-stack adaptations against enemy (starts with 4 stacks = 32% DR)
+    f.mahoAdapt[enemy.char.id]=4;
+    f.mahoAdaptPerStack=0.08*3; // 3x adaptation rate (24% per stack!)
+    f.mahoAdaptMax=0.85; // higher cap in Prime (85% vs 70%)
+    f._primeMahoAutoAdaptCD=0;
+    f._primeMahoSwordCharge=0; // charged sword attacks
+    f._primeMahoShinjukuThreshold=0.40; // enters Shinjuku at 40% HP instead of death
+    spawnDmgNum(f.x,f.y-f.radius-40,'PERPETUAL ADAPTATION','#00ffaa',true);
+  }
+  // Auto-adaptation: passively builds stacks against current enemy even without taking hits
+  f._primeMahoAutoAdaptCD-=dt;
+  if(f._primeMahoAutoAdaptCD<=0){
+    f._primeMahoAutoAdaptCD=90; // every 1.5 seconds
+    const atkType=enemy.char.id;
+    if(!f.mahoAdapt[atkType])f.mahoAdapt[atkType]=0;
+    f.mahoAdapt[atkType]++;
+    f.mahoWheelAnim=20;
+    f.mahoLastAdaptType=atkType;
+    f.mahoAdaptPulse=10;
+    // Visual feedback
+    spawnParticle(f.x+rand(-20,20),f.y-f.radius-10,'#00ffaa',0,-1.5,15,2);
+  }
+  // Charged sword: builds charge while moving toward enemy, releases on attack
+  const dToEnemy=Math.hypot(f.x-enemy.x,f.y-enemy.y);
+  if(dToEnemy>150){
+    f._primeMahoSwordCharge=Math.min(100,f._primeMahoSwordCharge+dt*0.5);
+    if(f._primeMahoSwordCharge>50&&battleTime%8<1){
+      spawnParticle(f.x+rand(-10,10),f.y+rand(-10,10),'#ff2244',0,-1,10,2);
+    }
+  }
+  // Early Shinjuku trigger at 40% HP (instead of waiting for death)
+  if(!f.mahoShinjuku&&f.hp<=f.maxHp*f._primeMahoShinjukuThreshold&&f.hp>0){
+    f.mahoShinjuku=true;
+    f.mahoShinjukuAnim=90;
+    f.mahoAdapt={}; // reset — fresh start with even faster re-adaptation
+    f.mahoAdaptPerStack=0.08*4; // 4x rate in Shinjuku Prime
+    f.stunTimer=0;f.freezeTimer=0;f.projectionFrozenTimer=0;f.captureTimer=0;
+    f.speed=f.baseSpeed*1.7;
+    f.atk=Math.round(f.baseAtk*1.8);
+    f.def=Math.round(f.baseDef*0.5);
+    SFX.relicActivate();
+    showRelicText('SHINJUKU — PRIME','#ff2244');
+    spawnBurst(f.x,f.y,'#ff2244',60,15);
+    spawnBurst(f.x,f.y,'#1a1a2e',35,10);
+    for(let r=0;r<4;r++){explosions.push({x:f.x,y:f.y,radius:0,maxRadius:90+r*35,color:'#ff2244',life:25,maxLife:25,dmg:f.atk*0.4,owner:f,target:null,hit:false});}
+    shakeTimer=35;shakeAmt=20;triggerScreenFlash('#ff2244',25);
+    addLog('MAHORAGA — PRIME SHINJUKU!');
+    spawnDmgNum(f.x,f.y-f.radius-50,'PRIME SHINJUKU!','#ff2244',true);
+  }
+  // Adaptation aura visual — pulsing green rings
+  if(battleTime%20<1){
+    const adaptLevel=Object.values(f.mahoAdapt).reduce((a,b)=>a+b,0);
+    if(adaptLevel>3){
+      spawnParticle(f.x,f.y,'#00ffaa',0,0,f.radius+10+adaptLevel*2,4);
+    }
+  }
+}
+// Hook: charged sword bonus on Mahoraga Prime hit
+function primeMahoragaOnHit(f,enemy){
+  if(!f.primeActive||f.char.id!=='mahoraga')return;
+  if(f._primeMahoSwordCharge>=50){
+    // Release charged sword blast
+    const chargeDmg=f.atk*(f._primeMahoSwordCharge/100)*1.5;
+    dealDamage(f,enemy,chargeDmg,false);
+    spawnBurst(enemy.x,enemy.y,'#ff2244',15,7);
+    spawnDmgNum(enemy.x,enemy.y-enemy.radius-30,'CHARGED SLASH!','#ff2244',false);
+    const ka=Math.atan2(enemy.y-f.y,enemy.x-f.x);
+    enemy.vx+=Math.cos(ka)*10;enemy.vy+=Math.sin(ka)*10;
+    f._primeMahoSwordCharge=0;
+  }
 }
 function updatePrimeDabura(f,enemy,dt){
-  // Golden Judgement — pillar teleport network (stub)
+  // Golden Judgement — permanent light pillars, teleport network, alternating sword trails
+  if(!f._primeDabInit){
+    f._primeDabInit=true;
+    f._primeDabPillars=[]; // permanent golden pillars [{x,y,charge,linked}]
+    f._primeDabTeleCD=0;
+    f._primeDabTrails=[]; // sword trail zones [{x,y,timer,isLight}]
+    f._primeDabFlipCD=0; // light/dark flip cooldown
+    f._primeDabJudgementCD=0; // golden judgement beam CD
+    f.dabLightMode=true;
+    // Spawn 4 golden pillars in cardinal positions
+    const positions=[{x:W*0.2,y:H*0.3},{x:W*0.8,y:H*0.3},{x:W*0.2,y:H*0.7},{x:W*0.8,y:H*0.7}];
+    for(const p of positions){
+      f._primeDabPillars.push({x:p.x,y:p.y,charge:0,linked:false});
+    }
+    spawnDmgNum(f.x,f.y-f.radius-40,'GOLDEN JUDGEMENT!','#ffcc44',true);
+  }
+
+  // Pillar charge — pillars near enemy charge up, charged pillars deal DoT
+  for(const p of f._primeDabPillars){
+    const dToEnemy=Math.hypot(enemy.x-p.x,enemy.y-p.y);
+    if(dToEnemy<80){
+      p.charge=Math.min(100,p.charge+dt*0.8);
+      // DoT to enemy near charged pillar
+      if(p.charge>30&&battleTime%10<1){
+        dealDamage(f,enemy,f.atk*0.12,false);
+        spawnParticle(enemy.x,enemy.y,'#ffcc44',rand(-2,2),rand(-2,2),8,2);
+      }
+    } else {
+      p.charge=Math.max(0,p.charge-dt*0.2);
+    }
+    // Visual: pillar glow
+    if(battleTime%6<1){
+      const alpha=0.3+p.charge*0.007;
+      spawnParticle(p.x+rand(-5,5),p.y-20,'#ffcc44',0,-1.5,6+p.charge*0.06,3);
+    }
+  }
+
+  // Teleport to nearest pillar when enemy is far and CD ready
+  f._primeDabTeleCD-=dt;
+  const dToEnemy=Math.hypot(f.x-enemy.x,f.y-enemy.y);
+  if(f._primeDabTeleCD<=0&&dToEnemy>200){
+    // Find pillar closest to enemy
+    let bestPillar=null,bestDist=Infinity;
+    for(const p of f._primeDabPillars){
+      const d=Math.hypot(enemy.x-p.x,enemy.y-p.y);
+      if(d<bestDist&&d<250){bestDist=d;bestPillar=p;}
+    }
+    if(bestPillar){
+      // Teleport with golden flash
+      spawnBurst(f.x,f.y,'#ffcc44',15,6);
+      f.x=bestPillar.x;f.y=bestPillar.y;
+      spawnBurst(f.x,f.y,'#ffcc44',20,8);
+      spawnDmgNum(f.x,f.y-f.radius-20,'WARP','#ffcc44',false);
+      f._primeDabTeleCD=180; // 3 second CD
+      // Shockwave on arrival
+      explosions.push({x:f.x,y:f.y,radius:0,maxRadius:60,color:'#ffcc44',life:15,maxLife:15,dmg:f.atk*0.3,owner:f,target:null,hit:false});
+    }
+  }
+
+  // Auto light/dark flip every 4 seconds
+  f._primeDabFlipCD-=dt;
+  if(f._primeDabFlipCD<=0){
+    f._primeDabFlipCD=240; // 4 seconds
+    f.dabDarkFlip=!f.dabDarkFlip;
+    f.dabLightMode=!f.dabDarkFlip;
+    const mode=f.dabDarkFlip?'DARKNESS':'LIGHT';
+    const col=f.dabDarkFlip?'#6622aa':'#ffcc44';
+    spawnBurst(f.x,f.y,col,12,5);
+    spawnDmgNum(f.x,f.y-f.radius-25,mode,col,false);
+  }
+
+  // Sword trail zones — leave damage zones where Dabura attacks
+  for(let i=f._primeDabTrails.length-1;i>=0;i--){
+    const t=f._primeDabTrails[i];
+    t.timer-=dt;
+    if(t.timer<=0){f._primeDabTrails.splice(i,1);continue;}
+    // Damage enemy in trail zone
+    if(Math.hypot(enemy.x-t.x,enemy.y-t.y)<30){
+      if(battleTime%12<1){
+        const trailDmg=f.atk*(t.isLight?0.08:0.12);
+        dealDamage(f,enemy,trailDmg,false);
+        spawnParticle(enemy.x,enemy.y,t.isLight?'#ffee88':'#6622aa',0,-1,8,2);
+      }
+    }
+    // Trail visual
+    if(battleTime%8<1){
+      spawnParticle(t.x+rand(-8,8),t.y+rand(-8,8),t.isLight?'#ffcc44':'#aa44cc',0,-0.5,5,2);
+    }
+  }
+
+  // Golden Judgement beam — fires between 2 charged pillars periodically
+  f._primeDabJudgementCD-=dt;
+  if(f._primeDabJudgementCD<=0){
+    f._primeDabJudgementCD=300; // 5 seconds
+    // Find two pillars with most charge
+    const sorted=[...f._primeDabPillars].sort((a,b)=>b.charge-a.charge);
+    if(sorted.length>=2&&sorted[0].charge>20){
+      const p1=sorted[0],p2=sorted[1];
+      // Fire beam between pillars — damages enemy if crossing the line
+      const beamAngle=Math.atan2(p2.y-p1.y,p2.x-p1.x);
+      const beamLen=Math.hypot(p2.x-p1.x,p2.y-p1.y);
+      // Check if enemy is near the beam line
+      const ex=enemy.x-p1.x,ey=enemy.y-p1.y;
+      const proj=ex*Math.cos(beamAngle)+ey*Math.sin(beamAngle);
+      const perp=Math.abs(-ex*Math.sin(beamAngle)+ey*Math.cos(beamAngle));
+      if(proj>0&&proj<beamLen&&perp<40){
+        dealDamage(f,enemy,f.atk*0.8,false);
+        spawnDmgNum(enemy.x,enemy.y-enemy.radius-25,'JUDGEMENT!','#ffcc44',false);
+        enemy.stunTimer=Math.max(enemy.stunTimer,25);
+      }
+      // Visual: beam between pillars
+      for(let s=0;s<beamLen;s+=15){
+        spawnParticle(p1.x+Math.cos(beamAngle)*s,p1.y+Math.sin(beamAngle)*s,'#ffcc44',0,0,8,5);
+      }
+      spawnBurst(p1.x,p1.y,'#ffcc44',10,4);
+      spawnBurst(p2.x,p2.y,'#ffcc44',10,4);
+      p1.charge=0;p2.charge=0;
+    }
+  }
+}
+// Hook: Dabura Prime sword trail on attack
+function primeDaburaOnHit(f,enemy){
+  if(!f.primeActive||f.char.id!=='dabura')return;
+  if(!f._primeDabTrails)return;
+  // Leave trail zone at hit location
+  f._primeDabTrails.push({x:enemy.x,y:enemy.y,timer:300,isLight:!f.dabDarkFlip}); // 5 sec trail
+  if(f._primeDabTrails.length>8)f._primeDabTrails.shift(); // cap at 8 trails
 }
 
 // === JJK PRIME ABILITIES ===
@@ -19376,7 +19652,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.34.1 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.34.2 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
