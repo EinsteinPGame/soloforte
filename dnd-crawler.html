@@ -122,6 +122,12 @@ const RACES = {
   Halfling: { name: 'Halfling', bonuses: { DEX:2 }, trait: 'Lucky (reroll natural 1s)', traitKey: 'lucky', color: '#e0c080', desc: 'Small and lucky. DEX bonus, reroll natural 1s.' },
   Orc:      { name: 'Orc',      bonuses: { STR:2, CON:1 }, trait: 'Relentless Endurance (survive at 1HP once/rest)', traitKey: 'relentless', color: '#80a060', desc: 'Fierce and powerful. STR bonus, relentless endurance.' },
   Tiefling: { name: 'Tiefling', bonuses: { CHA:2, INT:1 }, trait: 'Fire Resistance, Hellish Rebuke', traitKey: 'fire_resist', color: '#c06080', desc: 'Demon-blooded outcast. CHA bonus, fire resistance.' },
+  Gnome:      { name: 'Gnome',      bonuses: { INT:2 }, trait: 'Gnome Cunning (adv. on INT/WIS/CHA saves vs magic)', traitKey: 'gnome_cunning', color: '#d09070', desc: 'Inventive and curious. INT bonus, magic resistance.' },
+  Dragonborn: { name: 'Dragonborn', bonuses: { STR:2, CHA:1 }, trait: 'Breath Weapon (2d6 elemental, 1/rest)', traitKey: 'breath_weapon', color: '#c04040', desc: 'Draconic heritage. STR bonus, elemental breath attack.' },
+  'Half-Elf': { name: 'Half-Elf', bonuses: { CHA:2, DEX:1 }, trait: 'Fey Ancestry, 2 bonus skill profs', traitKey: 'fey_ancestry', color: '#90b090', desc: 'Diplomatic and versatile. CHA bonus, charm resistance.' },
+  Goliath:    { name: 'Goliath',    bonuses: { STR:2, CON:1 }, trait: "Stone's Endurance (reduce damage 1/rest)", traitKey: 'stones_endurance', color: '#808898', desc: 'Mountain-born giant. STR bonus, damage reduction.' },
+  Aasimar:    { name: 'Aasimar',    bonuses: { CHA:2, WIS:1 }, trait: 'Healing Hands (heal = level, 1/rest)', traitKey: 'healing_hands', color: '#e0d0a0', desc: 'Celestial-touched. CHA bonus, divine healing.' },
+  Tabaxi:     { name: 'Tabaxi',     bonuses: { DEX:2, CHA:1 }, trait: 'Feline Agility (double speed 1/rest)', traitKey: 'feline_agility', color: '#c09050', desc: 'Cat-like wanderer. DEX bonus, burst speed.' },
 };
 
 // -- Classes --
@@ -148,6 +154,28 @@ const CLASSES = {
     features: { 1: 'Bardic Inspiration (d6 bonus to ally, CHA mod/rest)', 2: 'Jack of All Trades (+half prof to unproficient checks)', 5: 'Font of Inspiration' },
     spells: ['Healing Word','Vicious Mockery'],
     startEquip: ['Dagger','Leather Armor','Health Potion','Health Potion','Antidote'], color: '#d070d0' },
+  Paladin: { name: 'Paladin', hitDie: 10, primary: 'STR', savingThrows: ['WIS','CHA'], skills: ['Athletics','Religion','Persuasion'], isCaster: true,
+    features: { 1: 'Divine Sense (detect undead/fiend)', 2: 'Divine Smite (+2d8 radiant on hit, uses spell slot)', 5: 'Extra Attack' },
+    spells: ['Cure Wounds','Divine Smite'],
+    startEquip: ['Longsword','Chain Mail','Shield','Health Potion','Health Potion'], color: '#f0d060' },
+  Warlock: { name: 'Warlock', hitDie: 8, primary: 'CHA', savingThrows: ['WIS','CHA'], skills: ['Arcana','Deception','Intimidation'], isCaster: true,
+    features: { 1: 'Eldritch Blast (d10 force, cantrip)', 2: 'Agonizing Blast (+CHA to Eldritch Blast)', 5: 'Pact Boon' },
+    spells: ['Eldritch Blast','Hex'],
+    startEquip: ['Dagger','Leather Armor','Health Potion','Health Potion'], color: '#7040a0' },
+  Barbarian: { name: 'Barbarian', hitDie: 12, primary: 'STR', savingThrows: ['STR','CON'], skills: ['Athletics','Intimidation','Survival'], isCaster: false,
+    features: { 1: 'Rage (+2 damage, resist physical, 2/rest)', 2: 'Reckless Attack (advantage but enemies get advantage)', 5: 'Extra Attack' },
+    startEquip: ['Greataxe','Leather Armor','Health Potion','Health Potion','Health Potion'], color: '#a04020' },
+  Monk:    { name: 'Monk', hitDie: 8, primary: 'DEX', savingThrows: ['STR','DEX'], skills: ['Acrobatics','Athletics','Stealth','Perception'], isCaster: false,
+    features: { 1: 'Martial Arts (d6 unarmed, DEX for attacks)', 2: 'Flurry of Blows (2 bonus unarmed strikes)', 5: 'Stunning Strike (CON save or stunned)' },
+    startEquip: ['Staff','Health Potion','Health Potion','Antidote'], color: '#50a0c0' },
+  Druid:   { name: 'Druid', hitDie: 8, primary: 'WIS', savingThrows: ['INT','WIS'], skills: ['Nature','Perception','Survival','Medicine'], isCaster: true,
+    features: { 1: 'Druidic (secret language)', 2: 'Wild Shape (transform, 2/rest)', 5: 'Improved Wild Shape' },
+    spells: ['Cure Wounds','Produce Flame'],
+    startEquip: ['Staff','Leather Armor','Health Potion','Health Potion'], color: '#408040' },
+  Sorcerer: { name: 'Sorcerer', hitDie: 6, primary: 'CHA', savingThrows: ['CON','CHA'], skills: ['Arcana','Deception','Persuasion'], isCaster: true,
+    features: { 1: 'Sorcery Points (metamagic fuel)', 2: 'Metamagic (Twin Spell, Quicken)', 5: 'Empowered Spell' },
+    spells: ['Fire Bolt','Chaos Bolt'],
+    startEquip: ['Dagger','Leather Armor','Health Potion','Health Potion'], color: '#d04080' },
 };
 
 const STAT_NAMES = ['STR','DEX','CON','INT','WIS','CHA'];
@@ -218,6 +246,11 @@ const SPELLS = {
   "Hunter's Mark": { name: "Hunter's Mark", level: 1, type: 'buff', bonusDamage: [1,6], duration: 10, desc: '+d6 damage to marked target', class: ['Ranger'] },
   'Healing Word':  { name: 'Healing Word', level: 1, type: 'heal', healDice: [1,4], healStat: 'CHA', desc: 'd4 + CHA mod healing (bonus action)', bonusAction: true, class: ['Bard'] },
   'Vicious Mockery': { name: 'Vicious Mockery', level: 0, type: 'damage', savingThrow: 'WIS', damage: [1,4], damageBonus: 0, effect: 'disadvantage', desc: 'd4 psychic, target has disadvantage (cantrip)', class: ['Bard'] },
+  'Divine Smite':    { name: 'Divine Smite', level: 1, type: 'damage', meleeOnly: true, damage: [2,8], damageBonus: 0, desc: '2d8 radiant on melee hit (+d8 vs undead)', class: ['Paladin'] },
+  'Eldritch Blast':  { name: 'Eldritch Blast', level: 0, type: 'damage', attackRoll: true, damage: [1,10], damageBonus: 0, range: 'ranged', desc: 'd10 force damage (cantrip)', class: ['Warlock'] },
+  'Hex':             { name: 'Hex', level: 1, type: 'buff', bonusDamage: [1,6], duration: 10, desc: '+d6 necrotic to target, disadv. on ability checks', class: ['Warlock'] },
+  'Produce Flame':   { name: 'Produce Flame', level: 0, type: 'damage', attackRoll: true, damage: [1,8], damageBonus: 0, range: 'ranged', desc: 'd8 fire damage (cantrip)', class: ['Druid'] },
+  'Chaos Bolt':      { name: 'Chaos Bolt', level: 1, type: 'damage', attackRoll: true, damage: [2,8], damageBonus: 0, range: 'ranged', desc: '2d8+d6 random element damage', class: ['Sorcerer'] },
 };
 
 // -- Monsters --
@@ -310,6 +343,23 @@ C.addEventListener('touchmove', e => {
   const p = getEventPos(e);
   mouseX = p.x; mouseY = p.y;
 }, { passive: false });
+
+// Scroll support for selection screens
+C.addEventListener('wheel', e => {
+  if (gameState === STATE.CHAR_CREATE && (charCreate.step === 0 || charCreate.step === 1)) {
+    charCreate.scrollY = (charCreate.scrollY||0) - e.deltaY * 0.5;
+    e.preventDefault();
+  }
+}, { passive: false });
+let touchStartY = 0;
+C.addEventListener('touchstart', e2 => { touchStartY = e2.touches[0].clientY; }, { passive: true });
+C.addEventListener('touchmove', e2 => {
+  if (gameState === STATE.CHAR_CREATE && (charCreate.step === 0 || charCreate.step === 1)) {
+    const dy = e2.touches[0].clientY - touchStartY;
+    charCreate.scrollY = (charCreate.scrollY||0) + dy * 0.8;
+    touchStartY = e2.touches[0].clientY;
+  }
+}, { passive: true });
 
 function isInRect(x, y, rx, ry, rw, rh) {
   return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
@@ -519,11 +569,18 @@ function drawRaceSelection() {
   const cx = canvasW / 2;
   const races = Object.values(RACES);
   const cardW = isMobile ? canvasW * 0.85 : 340;
-  const cardH = isMobile ? 74 : 84;
+  const cardH = isMobile ? 60 : 70;
+  const gap = 6;
   const startY = 80 + TOP_PAD;
+  const totalH = races.length * (cardH + gap);
+  const maxScroll = 0;
+  const minScroll = Math.min(0, -(totalH - (canvasH - startY - 20)));
+  charCreate.scrollY = clamp(charCreate.scrollY||0, minScroll, maxScroll);
+  const scrollOff = charCreate.scrollY||0;
 
   races.forEach((race, i) => {
-    const y = startY + i * (cardH + 8);
+    const y = startY + i * (cardH + gap) + scrollOff;
+    if (y + cardH < startY - 10 || y > canvasH + 10) return;
     const hov = isInRect(mouseX, mouseY, cx - cardW/2, y, cardW, cardH);
 
     X.fillStyle = hov ? '#2a2a3a' : '#1a1a2a';
@@ -539,23 +596,26 @@ function drawRaceSelection() {
     X.fill();
 
     X.fillStyle = '#fff';
-    X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+    X.font = `bold ${isMobile ? 13 : 15}px Consolas, monospace`;
     X.textAlign = 'left';
-    X.fillText(race.name, cx - cardW/2 + 45, y + 18);
+    const lx = cx - cardW/2 + 45;
+    X.fillText(race.name, lx, y + 15);
 
     X.fillStyle = '#aaa';
-    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    X.font = `${isMobile ? 9 : 11}px Consolas, monospace`;
     const bonusStr = Object.entries(race.bonuses).map(([k,v]) => `+${v} ${k}`).join(', ');
-    X.fillText(bonusStr, cx - cardW/2 + 45, y + 34);
+    X.fillText(bonusStr, lx, y + 30);
     X.fillStyle = '#888';
-    X.fillText(race.trait, cx - cardW/2 + 45, y + 48);
-    X.fillStyle = '#666';
-    X.font = `italic ${isMobile ? 9 : 11}px Consolas, monospace`;
-    X.fillText(race.desc, cx - cardW/2 + 45, y + 62);
+    X.font = `${isMobile ? 8 : 10}px Consolas, monospace`;
+    X.fillText(race.trait, lx, y + 43);
+    if(cardH>=70){X.fillStyle = '#666';
+    X.font = `italic ${isMobile ? 8 : 10}px Consolas, monospace`;
+    X.fillText(race.desc, lx, y + 56);}
 
     if (clickedInRect(cx - cardW/2, y, cardW, cardH)) {
       SFX.click();
       charCreate.selectedRace = race.name;
+      charCreate.scrollY = 0;
       charCreate.step = 1;
     }
   });
@@ -565,11 +625,18 @@ function drawClassSelection() {
   const cx = canvasW / 2;
   const classes = Object.values(CLASSES);
   const cardW = isMobile ? canvasW * 0.85 : 340;
-  const cardH = isMobile ? 60 : 70;
+  const cardH = isMobile ? 55 : 65;
+  const gap = 5;
   const startY = 80 + TOP_PAD;
+  const totalH = classes.length * (cardH + gap);
+  const maxScroll = 0;
+  const minScroll = Math.min(0, -(totalH - (canvasH - startY - 20)));
+  charCreate.scrollY = clamp(charCreate.scrollY||0, minScroll, maxScroll);
+  const scrollOff = charCreate.scrollY||0;
 
   classes.forEach((cls, i) => {
-    const y = startY + i * (cardH + 8);
+    const y = startY + i * (cardH + gap) + scrollOff;
+    if (y + cardH < startY - 10 || y > canvasH + 10) return;
     const hov = isInRect(mouseX, mouseY, cx - cardW/2, y, cardW, cardH);
 
     X.fillStyle = hov ? '#2a2a3a' : '#1a1a2a';
@@ -588,22 +655,25 @@ function drawClassSelection() {
     X.fillText(cls.name[0], cx - cardW/2 + 25, y + cardH/2);
 
     X.fillStyle = '#fff';
-    X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+    X.font = `bold ${isMobile ? 13 : 15}px Consolas, monospace`;
     X.textAlign = 'left';
-    X.fillText(cls.name, cx - cardW/2 + 45, y + 20);
+    const clx = cx - cardW/2 + 45;
+    X.fillText(cls.name, clx, y + 15);
 
     X.fillStyle = '#aaa';
-    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
-    X.fillText(`Hit Die: d${cls.hitDie} | Primary: ${cls.primary}${cls.isCaster ? ' | Caster' : ''}`, cx - cardW/2 + 45, y + 36);
+    X.font = `${isMobile ? 9 : 11}px Consolas, monospace`;
+    X.fillText(`d${cls.hitDie} | ${cls.primary}${cls.isCaster ? ' | Caster' : ''}`, clx, y + 30);
 
     X.fillStyle = '#888';
+    X.font = `${isMobile ? 8 : 10}px Consolas, monospace`;
     const feat = cls.features[1] || '';
-    const truncFeat = feat.length > 45 ? feat.substr(0, 42) + '...' : feat;
-    X.fillText(truncFeat, cx - cardW/2 + 45, y + 52);
+    const truncFeat = feat.length > 40 ? feat.substr(0, 37) + '...' : feat;
+    X.fillText(truncFeat, clx, y + 43);
 
     if (clickedInRect(cx - cardW/2, y, cardW, cardH)) {
       SFX.click();
       charCreate.selectedClass = cls.name;
+      charCreate.scrollY = 0;
       charCreate.step = 2;
     }
   });
@@ -1059,6 +1129,18 @@ function createCharacter() {
     secondWindUsed: false,
     actionSurgeUsed: false,
     relentlessUsed: false,
+    stonesEnduranceUsed: false,
+    healingHandsUsed: false,
+    breathWeaponUsed: false,
+    felineAgilityUsed: false,
+    rageActive: false,
+    rageCount: 0,
+    maxRages: 2,
+    kiPoints: 0,
+    maxKiPoints: 0,
+    wildShapeUsed: 0,
+    sorceryPoints: 0,
+    maxSorceryPoints: 0,
     huntersMark: false,
     blessActive: false,
     blessTurns: 0,
@@ -1074,6 +1156,11 @@ function createCharacter() {
   for (let lv = 1; lv <= player.level; lv++) {
     if (cls.features[lv]) player.features[lv] = cls.features[lv];
   }
+
+  // Class-specific resource setup
+  if (cls.name === 'Monk') { player.maxKiPoints = Math.max(0, player.level - 1); player.kiPoints = player.maxKiPoints; }
+  if (cls.name === 'Sorcerer') { player.maxSorceryPoints = player.level; player.sorceryPoints = player.maxSorceryPoints; }
+  if (cls.name === 'Barbarian') { player.maxRages = player.level >= 3 ? 3 : 2; }
 
   // Add starting equipment
   cls.startEquip.forEach(itemName => {
@@ -1650,6 +1737,14 @@ function handleInteract(floor, room) {
       player.secondWindUsed = false;
       player.actionSurgeUsed = false;
       player.relentlessUsed = false;
+      player.stonesEnduranceUsed = false;
+      player.healingHandsUsed = false;
+      player.breathWeaponUsed = false;
+      player.felineAgilityUsed = false;
+      player.rageCount = 0;
+      player.kiPoints = player.maxKiPoints;
+      player.wildShapeUsed = 0;
+      player.sorceryPoints = player.maxSorceryPoints;
       player.conditions = [];
       dungeonMessage = 'Rested at shrine. HP and spells restored!';
       dungeonMessageTimer = 2.5;
@@ -1742,6 +1837,25 @@ function checkPlayerDeath() {
       dungeonMessage = 'Relentless Endurance! You survive with 1 HP!';
       dungeonMessageTimer = 2;
       addFloatingText(canvasW/2, canvasH/2 - 30, 'RELENTLESS!', '#ff8800');
+      return;
+    }
+    // Goliath Stone's Endurance — reduce damage by d12+CON, once/rest
+    if (player.race === 'Goliath' && !player.stonesEnduranceUsed) {
+      const reduction = rollDice(1,12) + mod(player.stats.CON);
+      player.hp = Math.max(1, player.hp + reduction);
+      player.stonesEnduranceUsed = true;
+      dungeonMessage = `Stone's Endurance! Reduced ${reduction} damage!`;
+      dungeonMessageTimer = 2;
+      addFloatingText(canvasW/2, canvasH/2 - 30, 'STONE\'S ENDURANCE!', '#808898');
+      return;
+    }
+    // Aasimar Healing Hands — heal = level once when near death
+    if (player.race === 'Aasimar' && !player.healingHandsUsed) {
+      player.hp = Math.max(1, player.level);
+      player.healingHandsUsed = true;
+      dungeonMessage = `Healing Hands! Divine light restores ${player.level} HP!`;
+      dungeonMessageTimer = 2;
+      addFloatingText(canvasW/2, canvasH/2 - 30, 'DIVINE HEAL!', '#e0d0a0');
       return;
     }
     player.hp = 0;
