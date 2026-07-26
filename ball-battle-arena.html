@@ -429,6 +429,14 @@ const CHARS=[
     specialName:'RADIANT DOMAIN — MODULO',
     isBoss:true,
   },
+  {
+    id:'nobara',name:'Nobara',color:'#e85d75',
+    desc:'Straw Doll Technique: nail projectiles with voodoo resonance. Nails deal self-damage for extra power.',
+    playstyle:'Nails & Voodoo',
+    stats:{hp:490,atk:24,speed:3.6,range:140,def:7,crit:16},
+    baseAtkInterval:42,relicChargeRate:0.85,
+    specialName:'HAIRPIN!',
+  },
 ];
 
 // ============================================================
@@ -531,6 +539,10 @@ const COMBO_EFFECTS={
   'dabura_electric':'Faster phase transitions + dashes, -15% damage',
   'dabura_toxic':'Darkness attacks +30% damage, light attacks -20%',
   'dabura_cryo':'RCT heals 50% faster (cap 25HP total remains)',
+  'nobara_fire':'Nails travel faster + deal 30% more damage',
+  'nobara_electric':'Voodoo doll pulses lightning AoE around itself',
+  'nobara_toxic':'Both Nobara and doll attack the doll (doll self-damages). Slower fire but doll takes more hits',
+  'nobara_cryo':'Nails freeze enemies briefly on hit + slow',
   'yuki_fire':'Mass meter fills faster + Garuda leaves fire trail',
   'yuki_electric':'Garuda chains lightning to nearby enemies on hit',
   'yuki_toxic':'Mass decays 50% slower between combos',
@@ -552,7 +564,7 @@ const TIER_MAP={
   sandy:3, // B- (cyberware implant, not a full fighter)
   mechamaru:6, // A-
   yuji:5, todo:5, // B+
-  ryu:4, berserk:4, // B
+  ryu:4, berserk:4, nobara:4, // B
   throw:3, // B-
   katana:2, mantis:2, // C+
   pls:1, gorilla:1, monowire:1, // C
@@ -624,6 +636,13 @@ const LORE_COMBOS=[
     dmgMult:2.2,
     cutsceneFrames:65,
     color1:'#ffcc00', color2:'#ccaa44',
+  },
+  {
+    pair:['nobara','yuji'], franchise:'JJK', name:'STRAW DOLL TECHNIQUE',
+    desc:'Nobara pins the enemy with Hairpin while Yuji delivers a crushing Black Flash to the voodoo doll',
+    dmgMult:2.3,
+    cutsceneFrames:70,
+    color1:'#e85d75', color2:'#ff69b4',
   },
   {
     pair:['yuta','toji'], franchise:'JJK', name:'COPY + NULLIFY',
@@ -1052,6 +1071,7 @@ const PERSONALIZED_WIN_BUFFS={
   yuki:{name:'Gravitational Density',desc:'Mass meter max +15',apply(f){f.yukiMassMax=(f.yukiMassMax||100)+15;}},
   megumi:{name:'Shadow Resonance',desc:'Shadow meter gains +25%',apply(f){f._megumiMeterGainMult=(f._megumiMeterGainMult||1)*1.25;}},
   mahito:{name:'Soul Sculptor',desc:'Charge decay +1s slower',apply(f){f._mahitoDecayBonus=(f._mahitoDecayBonus||0)+60;}},
+  nobara:{name:'Resonance Amplifier',desc:'Voodoo doll duration +20%',apply(f){f._nobaraDollDurationMult=(f._nobaraDollDurationMult||1)*1.2;}},
 };
 
 // ============================================================
@@ -1218,6 +1238,12 @@ const VOICELINES={
     special:['RADIANT DOMAIN — MODULO!'],
     victory:['The light has judged you.','Darkness falls on the unworthy.'],
     defeat:['The light... dims...']
+  },
+  nobara:{
+    intro:['You think I care about getting hurt?','Straw Doll Technique... ready.'],
+    special:['HAIRPIN! Resonance!!'],
+    victory:['Don\'t underestimate a girl from the countryside.','That\'s what you get for looking down on me.'],
+    defeat:['I won\'t... lose to someone like you...']
   },
 };
 
@@ -1860,6 +1886,12 @@ function createFighter(charIdx,elemIdx,side){
     dabDomainSwapTimer:0, // timer between zone swaps
     dabDomainZones:[], // [{x,y,size,isLight}] checkerboard cells
     dabAuraAngle:0, // rotating aura visual
+    // Nobara state — Straw Doll Technique
+    nobaraSelfDmgNext:false, // next nail hit also damages Nobara
+    nobaraNailCD:0, // nail fire cooldown
+    nobaraVoodooDoll:null, // {x,y,hp,maxHp,targetRef,timer,maxTimer} — active voodoo doll
+    nobaraVoodooFireRate:1.0, // fire rate multiplier during voodoo (slower)
+    nobaraVoodooAoeDmg:0, // stored AoE damage for doll explosion (prime mode)
   };
 }
 
@@ -3889,7 +3921,7 @@ function isWeaponFacingEnemy(f,enemy){
   while(diff>Math.PI)diff-=Math.PI*2;
   while(diff<-Math.PI)diff+=Math.PI*2;
   // Arc depends on weapon type — wider arcs so attacks connect more often
-  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:f.char.id==='mahoraga'?0.85:f.char.id==='dabura'?0.8:f.char.id==='yuji'?0.85:f.char.id==='yuta'?0.8:f.char.id==='choso'?0.75:f.char.id==='toji'?0.7:f.char.id==='todo'?0.8:f.char.id==='yuki'?0.75:f.char.id==='megumi'?0.8:f.char.id==='mahito'?0.8:0.7;
+  const arc=f.char.id==='pls'?0.7:f.char.id==='gorilla'?0.65:f.char.id==='monowire'?0.6:f.char.id==='sandy'?0.9:f.char.id==='katana'?0.7:f.char.id==='berserk'?0.8:f.char.id==='smasher'?0.9:f.char.id==='gojo'?0.95:f.char.id==='mechamaru'?0.8:f.char.id==='kashimo'?0.7:f.char.id==='nanami'?0.65:f.char.id==='ryu'?0.9:f.char.id==='higuruma'?0.75:f.char.id==='mahoraga'?0.85:f.char.id==='dabura'?0.8:f.char.id==='yuji'?0.85:f.char.id==='yuta'?0.8:f.char.id==='choso'?0.75:f.char.id==='toji'?0.7:f.char.id==='todo'?0.8:f.char.id==='yuki'?0.75:f.char.id==='megumi'?0.8:f.char.id==='mahito'?0.8:f.char.id==='nobara'?0.75:0.7;
   return Math.abs(diff)<arc;
 }
 
@@ -3941,6 +3973,7 @@ function performWeaponAttack(f,enemy){
     case 'yuki':attackYuki(f,enemy,chaos);break;
     case 'megumi':attackMegumi(f,enemy,chaos);break;
     case 'mahito':attackMahito(f,enemy,chaos);break;
+    case 'nobara':attackNobara(f,enemy,chaos);break;
   }
 }
 
@@ -6044,6 +6077,221 @@ function updateMahitoProjectiles(f,dt){
   }
 }
 
+// ============================================================
+// NOBARA — Straw Doll Technique: Nail Shots + Voodoo Doll
+// ============================================================
+function attackNobara(f,enemy,chaos){
+  const d=dist(f,enemy);
+  const ba=f.weaponAngle;
+  if(f.nobaraNailCD>0)return;
+
+  // Element modifiers
+  let dmgMult=1,spdMult=1,fireRateMult=1;
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  if(isFireElem){dmgMult=1.3;spdMult=1.4;}
+  if(isToxicElem){fireRateMult=0.7;}
+
+  // Slower fire rate during voodoo doll active
+  const voodoeMult=f.nobaraVoodooDoll?1.4:1.0;
+  f.nobaraNailCD=Math.round(f.baseAtkInterval*voodoeMult/fireRateMult);
+  f.weaponExtend=1;f.weaponFlash=8;
+  SFX.punch();
+
+  // Determine target: if voodoo doll active, auto-aim on doll
+  let target=enemy;
+  let targetX=enemy.x,targetY=enemy.y;
+  if(f.nobaraVoodooDoll){
+    targetX=f.nobaraVoodooDoll.x;targetY=f.nobaraVoodooDoll.y;
+  }
+
+  const aimAngle=Math.atan2(targetY-f.y,targetX-f.x);
+  const nailSpeed=(8+chaos*0.3)*spdMult;
+  const nailDmg=f.atk*(0.9+chaos*0.08)*dmgMult;
+
+  projectiles.push({
+    x:f.x+Math.cos(aimAngle)*f.radius,y:f.y+Math.sin(aimAngle)*f.radius,
+    vx:Math.cos(aimAngle)*nailSpeed,vy:Math.sin(aimAngle)*nailSpeed,
+    owner:f,target:target&&target.alive?target:null,color:'#e85d75',
+    life:50,radius:5,dmg:nailDmg,
+    explosive:false,homing:true,homingStrength:0.03,isNobaraNail:true,
+    nobaraSelfDmg:f.nobaraSelfDmgNext,
+    nobaraCryo:isCryoElem,
+  });
+
+  // Muzzle flash
+  spawnBurst(f.x+Math.cos(aimAngle)*f.radius,f.y+Math.sin(aimAngle)*f.radius,'#e85d75',6,3);
+
+  // Self-damage mechanic: if last nail hit, this nail also hurts Nobara
+  if(f.nobaraSelfDmgNext){
+    const chaos2=getChaosLevel(f);
+    // Self-damage decreases with level, starts ~35% of nail damage
+    const selfDmgPct=Math.max(0.15,0.35-chaos2*0.02);
+    const selfDmg=nailDmg*selfDmgPct;
+    f.hp-=selfDmg;
+    spawnDmgNum(f.x,f.y-f.radius-10,'-'+Math.round(selfDmg),'#ff8888',false);
+    spawnParticle(f.x,f.y,'#ff4444',0,-1,15,3);
+    f.nobaraSelfDmgNext=false;
+  }
+}
+
+function relicNobara(f,enemy){
+  // HAIRPIN! — Voodoo Doll Resonance
+  SFX.relicActivate();
+
+  const isPrime=f.primeActive;
+  const dollHp=isPrime?4:2; // prime: 4 hits to destroy
+  const durMult=f._nobaraDollDurationMult||1;
+  const duration=Math.round(300*durMult); // 5 seconds base
+
+  f.nobaraVoodooDoll={
+    x:enemy.x,y:enemy.y,
+    hp:dollHp,maxHp:dollHp,
+    targetRef:enemy,
+    timer:duration,
+    maxTimer:duration,
+  };
+  f.specialTimer=duration;
+
+  spawnBurst(enemy.x,enemy.y,'#e85d75',25,8);
+  spawnBurst(enemy.x,enemy.y,'#ffcc44',15,5);
+  triggerScreenFlash('#e85d75',12);
+  shakeTimer=10;shakeAmt=6;
+  spawnDmgNum(f.x,f.y-f.radius-30,'HAIRPIN!','#e85d75',false);
+  addLog((f.side===0?'P1':'P2')+' HAIRPIN!');
+}
+
+function updateRelicNobara(f,enemy,dt){
+  if(f.nobaraNailCD>0)f.nobaraNailCD-=dt;
+  const doll=f.nobaraVoodooDoll;
+  if(!doll)return;
+
+  doll.timer-=dt;
+  const isPrime=f.primeActive;
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+
+  // Toxic element: doll self-damages (slower decay)
+  if(isToxicElem&&battleTime%90===0){
+    doll.hp-=0.5;
+    const resonanceDmg=f.atk*0.4;
+    if(doll.targetRef&&doll.targetRef.alive){
+      dealDamage(f,doll.targetRef,resonanceDmg,false);
+      spawnDmgNum(doll.targetRef.x,doll.targetRef.y-20,'RESONANCE','#aa44cc',false);
+      spawnBurst(doll.x,doll.y,'#aa44cc',6,3);
+    }
+  }
+
+  // Electric element: lightning AoE pulse from doll
+  if(isElecElem&&battleTime%45===0){
+    const pulseR=80;
+    fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
+      if(Math.hypot(e.x-doll.x,e.y-doll.y)<pulseR){
+        dealDamage(f,e,f.atk*0.2,false);
+        spawnParticle(e.x,e.y,'#ffcc00',rand(-2,2),rand(-2,2),10,2);
+      }
+    });
+    spawnBurst(doll.x,doll.y,'#ffcc00',8,4);
+  }
+
+  // Voodoo doll visual particles
+  if(battleTime%6<1){
+    spawnParticle(doll.x+rand(-10,10),doll.y+rand(-10,10),'#e85d75',0,-0.5,20,2);
+  }
+
+  // Check projectile hits on doll (intercept damage aimed at Nobara)
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];
+    if(p.owner===f)continue; // own nails don't hit doll
+    if(p.isNobaraNail)continue;
+    if(Math.hypot(p.x-doll.x,p.y-doll.y)<25){
+      // Redirect: doll takes the hit instead
+      doll.hp-=1;
+      // Damage dealt to doll also damages the target enemy (resonance)
+      if(doll.targetRef&&doll.targetRef.alive){
+        const resDmg=p.dmg||f.atk*0.5;
+        dealDamage(f,doll.targetRef,resDmg,false);
+        spawnDmgNum(doll.targetRef.x,doll.targetRef.y-15,'RESONANCE','#e85d75',false);
+        spawnBurst(doll.targetRef.x,doll.targetRef.y,'#e85d75',6,3);
+      }
+      spawnBurst(doll.x,doll.y,'#ffcc44',8,4);
+      spawnDmgNum(doll.x,doll.y-15,'DOLL HIT','#ffcc44',false);
+      projectiles.splice(i,1);
+      continue;
+    }
+  }
+
+  // Handle nail hits on enemy/doll — set self-damage flag
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];
+    if(!p.isNobaraNail||p.owner!==f)continue;
+    // Check if nail hits voodoo doll
+    if(Math.hypot(p.x-doll.x,p.y-doll.y)<25){
+      doll.hp-=1;
+      if(doll.targetRef&&doll.targetRef.alive){
+        dealDamage(f,doll.targetRef,p.dmg,true);
+        spawnDmgNum(doll.targetRef.x,doll.targetRef.y-20,'NAIL RESONANCE','#e85d75',true);
+        spawnBurst(doll.targetRef.x,doll.targetRef.y,'#e85d75',10,5);
+      }
+      f.nobaraSelfDmgNext=true;
+      projectiles.splice(i,1);
+      spawnBurst(doll.x,doll.y,'#ffcc44',10,5);
+      continue;
+    }
+    // Check if nail hits any enemy
+    fighters.forEach(e=>{
+      if(e.side===f.side||e.dead)return;
+      if(Math.hypot(p.x-e.x,p.y-e.y)<e.radius+p.radius&&p.life>0){
+        f.nobaraSelfDmgNext=true; // next nail also hurts Nobara
+        // Cryo: freeze on hit
+        if(p.nobaraCryo){
+          e.freezeTimer=Math.max(e.freezeTimer||0,30);
+          e.slowTimer=Math.max(e.slowTimer||0,60);
+        }
+      }
+    });
+  }
+
+  // Doll destroyed or timed out
+  if(doll.hp<=0||doll.timer<=0){
+    // Prime mode: doll explodes on death dealing AoE
+    if(isPrime&&doll.hp<=0){
+      const aoeDmg=f.atk*1.5;
+      const aoeR=100;
+      fighters.filter(e=>e.side!==f.side&&e.alive).forEach(e=>{
+        if(Math.hypot(e.x-doll.x,e.y-doll.y)<aoeR){
+          dealDamage(f,e,aoeDmg,false);
+        }
+      });
+      spawnBurst(doll.x,doll.y,'#e85d75',30,12);
+      spawnBurst(doll.x,doll.y,'#ff4444',20,8);
+      triggerScreenFlash('#e85d75',8);
+      shakeTimer=8;shakeAmt=5;
+      spawnDmgNum(doll.x,doll.y-30,'DOLL EXPLOSION!','#ff4444',true);
+    } else {
+      spawnBurst(doll.x,doll.y,'#e85d75',10,5);
+    }
+    f.nobaraVoodooDoll=null;
+    f.nobaraSelfDmgNext=false;
+  }
+}
+
+function updatePrimeNobara(f,enemy,dt){
+  // Nail gun: halved attack interval + voodoo doll HP doubled
+  // The halved interval is applied by checking prime in attack timing
+  if(!f._primeNobaraInit){
+    f._primeNobaraInit=true;
+    // Halve the base attack interval during prime
+    f._primeNobaraOrigInterval=f.baseAtkInterval;
+    f.baseAtkInterval=Math.round(f.baseAtkInterval*0.5);
+  }
+  // Visual: faster nail glow
+  if(battleTime%8<1){
+    spawnParticle(f.x+rand(-15,15),f.y+rand(-15,15),'#e85d75',rand(-1,1),rand(-2,-1),12,2);
+  }
+}
+
 function relicYuki(f,enemy){
   // STAR RAGE — BLACK HOLE
   SFX.relicActivate();
@@ -8011,6 +8259,7 @@ function useSpecial(f,enemy){
     case 'yuki':relicYuki(f,enemy);break;
     case 'megumi':relicMegumi(f,enemy);break;
     case 'mahito':relicMahito(f,enemy);break;
+    case 'nobara':relicNobara(f,enemy);break;
   }
 }
 
@@ -10315,6 +10564,7 @@ function updatePrimeAbility(f,enemy,dt){
     case 'todo': updatePrimeTodo(f,enemy,dt);break;
     case 'yuki': updatePrimeYuki(f,enemy,dt);break;
     case 'megumi': updatePrimeMegumi(f,enemy,dt);break;
+    case 'nobara': updatePrimeNobara(f,enemy,dt);break;
   }
 }
 
@@ -11382,6 +11632,7 @@ function updateBattle(dt){
         case 'yuki':updateRelicYuki(f,enemy,dt);break;
         case 'megumi':updateRelicMegumi(f,enemy,dt);break;
         case 'mahito':updateRelicMahito(f,enemy,dt);break;
+        case 'nobara':updateRelicNobara(f,enemy,dt);break;
       }
     }
 
@@ -12422,7 +12673,7 @@ function updateBattle(dt){
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='yuji'||f.char.id==='mahoraga'||f.char.id==='dabura'||f.char.id==='todo'||f.char.id==='yuki'||f.char.id==='megumi'||f.char.id==='mahito'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='yuji'||f.char.id==='mahoraga'||f.char.id==='dabura'||f.char.id==='todo'||f.char.id==='yuki'||f.char.id==='megumi'||f.char.id==='mahito'||f.char.id==='nobara'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
@@ -16599,6 +16850,83 @@ function drawBall(f){
     X.restore();
   }
 
+  // Nobara character visual
+  if(f.char.id==='nobara'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    // --- Skin tone ---
+    X.fillStyle='#f0d4b8';
+    X.beginPath();X.arc(hx,hy,r*0.52,0,Math.PI*2);X.fill();
+    // --- Auburn/brown short bob hair with bangs ---
+    const nobHairBase='#8b4513';
+    const nobHairLight='#a0522d';
+    // Hair volume top
+    X.fillStyle=nobHairBase;
+    X.beginPath();
+    X.ellipse(hx,hy-r*0.42,r*0.62,r*0.28,0,Math.PI,0);
+    X.fill();
+    // Left side bob (short, chin-length)
+    X.beginPath();
+    X.moveTo(hx-r*0.56,hy-r*0.32);
+    X.quadraticCurveTo(hx-r*0.68,hy+r*0.0,hx-r*0.60,hy+r*0.25);
+    X.quadraticCurveTo(hx-r*0.52,hy+r*0.35,hx-r*0.42,hy+r*0.30);
+    X.lineTo(hx-r*0.38,hy+r*0.10);
+    X.lineTo(hx-r*0.42,hy-r*0.25);X.closePath();X.fill();
+    // Right side bob
+    X.beginPath();
+    X.moveTo(hx+r*0.56,hy-r*0.32);
+    X.quadraticCurveTo(hx+r*0.68,hy+r*0.0,hx+r*0.60,hy+r*0.25);
+    X.quadraticCurveTo(hx+r*0.52,hy+r*0.35,hx+r*0.42,hy+r*0.30);
+    X.lineTo(hx+r*0.38,hy+r*0.10);
+    X.lineTo(hx+r*0.42,hy-r*0.25);X.closePath();X.fill();
+    // Bangs (front fringe — Nobara's signature straight bangs)
+    X.fillStyle=nobHairBase;
+    X.beginPath();
+    X.moveTo(hx-r*0.45,hy-r*0.48);
+    X.quadraticCurveTo(hx-r*0.30,hy-r*0.18,hx-r*0.12,hy-r*0.15);
+    X.lineTo(hx+r*0.12,hy-r*0.15);
+    X.quadraticCurveTo(hx+r*0.30,hy-r*0.18,hx+r*0.45,hy-r*0.48);
+    X.lineTo(hx+r*0.50,hy-r*0.50);
+    X.quadraticCurveTo(hx,hy-r*0.65,hx-r*0.50,hy-r*0.50);
+    X.closePath();X.fill();
+    // Hair highlight
+    X.strokeStyle=nobHairLight;X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.08,hy-r*0.55);
+    X.quadraticCurveTo(hx+r*0.02,hy-r*0.42,hx+r*0.10,hy-r*0.35);X.stroke();
+    // --- Eyes — confident, slightly fierce ---
+    X.fillStyle='#fff';
+    X.beginPath();X.ellipse(hx-r*0.17,hy-r*0.04,r*0.10,r*0.08,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.17,hy-r*0.04,r*0.10,r*0.08,0,0,Math.PI*2);X.fill();
+    // Irises — warm brown
+    X.fillStyle='#6b3a1a';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.03,r*0.055,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.03,r*0.055,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#1a0a0a';
+    X.beginPath();X.arc(hx-r*0.16,hy-r*0.03,r*0.028,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.18,hy-r*0.03,r*0.028,0,Math.PI*2);X.fill();
+    // Eye highlights
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx-r*0.14,hy-r*0.05,r*0.015,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.20,hy-r*0.05,r*0.015,0,Math.PI*2);X.fill();
+    // Eyebrows — sharp, confident
+    X.strokeStyle='#5a2a0a';X.lineWidth=2;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.27,hy-r*0.12);
+    X.quadraticCurveTo(hx-r*0.17,hy-r*0.19,hx-r*0.06,hy-r*0.14);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.27,hy-r*0.12);
+    X.quadraticCurveTo(hx+r*0.17,hy-r*0.19,hx+r*0.06,hy-r*0.14);X.stroke();
+    // --- Confident smirk ---
+    X.strokeStyle='#8b4040';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.12,hy+r*0.15);
+    X.quadraticCurveTo(hx,hy+r*0.20,hx+r*0.14,hy+r*0.13);
+    X.stroke();
+    // Nose hint
+    X.strokeStyle='rgba(160,140,130,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy+r*0.0);X.lineTo(hx-r*0.03,hy+r*0.06);X.stroke();
+    X.restore();
+  }
+
   // Todo cursed energy papers
   if(f.char.id==='todo'&&f.todoPapers){
     f.todoPapers.forEach(p=>{
@@ -17520,6 +17848,11 @@ function drawBall(f){
       const chg=eChg?(eChg.mahitoChargeCount||0):0;
       X.fillText(dom+passive+'Charges:'+chg+'/7',f.x,statY);
       break;}
+    case 'nobara':{
+      const doll=f.nobaraVoodooDoll?'DOLL:'+f.nobaraVoodooDoll.hp:'---';
+      const self=f.nobaraSelfDmgNext?' SELF':'';
+      X.fillText(doll+self+' NAIL',f.x,statY);
+      break;}
   }
 
   // Mahito charge soul marks on this fighter
@@ -17618,6 +17951,7 @@ function drawWeapon(f){
     case 'yuki':drawYukiWeapon(r,ext,flash,f);break;
     case 'megumi':drawMegumiWeapon(r,ext,flash,f);break;
     case 'mahito':drawMahitoWeapon(r,ext,flash,f);break;
+    case 'nobara':drawNobaraWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -18343,6 +18677,50 @@ function drawMahitoWeapon(r,ext,flash,f){
     X.beginPath();X.arc(0,0,f.radius+10,0,Math.PI*2);
     X.fillStyle='rgba(90,138,138,0.2)';X.fill();
     X.shadowBlur=0;X.globalAlpha=1;
+    X.restore();
+  }
+}
+
+function drawNobaraWeapon(r,ext,flash,f){
+  // Hammer + nail — Nobara's Straw Doll Technique
+  const extend=ext*6;
+  const col=flash?'#ffffff':'#e85d75';
+  const darkCol=flash?'#ffaacc':'#b34560';
+
+  // Hammer handle
+  X.fillStyle='#8b6914';X.fillRect(r-2,-2,14+extend,4);
+  // Hammer head
+  X.fillStyle='#666';X.fillRect(r+12+extend,-5,8,10);
+  X.strokeStyle='#444';X.lineWidth=0.8;X.strokeRect(r+12+extend,-5,8,10);
+  // Nail held in other hand
+  X.strokeStyle=col;X.lineWidth=2;
+  X.beginPath();X.moveTo(r-4,-8);X.lineTo(r+8+extend,-8);X.stroke();
+  // Nail head
+  X.fillStyle=darkCol;X.fillRect(r-6,-10,4,4);
+  // Nail tip glow
+  if(flash){
+    X.shadowColor='#e85d75';X.shadowBlur=8;
+    X.beginPath();X.arc(r+8+extend,-8,3,0,Math.PI*2);X.fillStyle=col;X.fill();
+    X.shadowBlur=0;
+  }
+  // Voodoo doll visual
+  if(f&&f.nobaraVoodooDoll){
+    X.save();
+    X.rotate(-f.weaponAngle);
+    const doll=f.nobaraVoodooDoll;
+    const dx=doll.x-f.x,dy=doll.y-f.y;
+    X.globalAlpha=0.7;X.fillStyle='#e85d75';
+    X.beginPath();X.arc(dx,dy,12,0,Math.PI*2);X.fill();
+    X.strokeStyle='#ffcc44';X.lineWidth=1.5;X.beginPath();X.arc(dx,dy,12,0,Math.PI*2);X.stroke();
+    // Straw body marks on doll
+    X.strokeStyle='#8b6914';X.lineWidth=1;
+    X.beginPath();X.moveTo(dx-4,dy-3);X.lineTo(dx+4,dy+3);X.stroke();
+    X.beginPath();X.moveTo(dx+4,dy-3);X.lineTo(dx-4,dy+3);X.stroke();
+    // HP indicator
+    const hpPct=doll.hp/doll.maxHp;
+    X.fillStyle='#44ff44';X.fillRect(dx-10,dy+14,20*hpPct,3);
+    X.strokeStyle='#333';X.lineWidth=0.5;X.strokeRect(dx-10,dy+14,20,3);
+    X.globalAlpha=1;
     X.restore();
   }
 }
@@ -19587,6 +19965,15 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.shadowColor='#4466cc';X.shadowBlur=4;
       X.beginPath();X.arc(0,0,4,0,Math.PI*2);X.fillStyle='#6688cc';X.fill();
       X.shadowBlur=0;
+      break;
+    case 'nobara':
+      // Hammer + nail
+      X.fillStyle='#8b6914';X.fillRect(-4,-1.5,14,3); // handle
+      X.fillStyle='#666';X.fillRect(10,-4,6,8); // hammer head
+      // Nail
+      X.strokeStyle='#e85d75';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(-6,-6);X.lineTo(8,-6);X.stroke();
+      X.fillStyle='#b34560';X.fillRect(-8,-8,3,4); // nail head
       break;
   }
   X.restore();
@@ -21571,6 +21958,30 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
         }
       }
       if(t>15&&t<65){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#8888cc';X.fillText('IDLE TRANSFIGURATION',cx,cy+50*s);}
+      break;}
+    case 'nobara':{
+      // Nails flying outward + voodoo doll at center
+      // Phase 1 (0-30): nails shoot outward from center
+      const numNails=Math.min(6,Math.floor(t/4));
+      for(let i=0;i<numNails;i++){
+        const na=Math.PI*2*i/6;const nt=t-i*4;const nd=nt*2*s;
+        X.globalAlpha=Math.min(0.7,nt/5);X.strokeStyle='#e85d75';X.lineWidth=2*s;
+        X.beginPath();X.moveTo(cx+Math.cos(na)*8*s,cy+Math.sin(na)*8*s);
+        X.lineTo(cx+Math.cos(na)*nd,cy+Math.sin(na)*nd);X.stroke();
+        // Nail tip
+        X.fillStyle='#ffcc44';X.beginPath();
+        X.arc(cx+Math.cos(na)*nd,cy+Math.sin(na)*nd,2*s,0,Math.PI*2);X.fill();
+      }
+      // Phase 2 (20+): voodoo doll appears at center
+      if(t>20){const dt2=t-20;X.globalAlpha=Math.min(0.6,dt2/10);
+        X.fillStyle='#e85d75';X.beginPath();X.arc(cx,cy,10*s,0,Math.PI*2);X.fill();
+        X.strokeStyle='#ffcc44';X.lineWidth=1.5*s;X.beginPath();X.arc(cx,cy,10*s,0,Math.PI*2);X.stroke();
+        // Straw marks
+        X.strokeStyle='#8b6914';X.lineWidth=1*s;
+        X.beginPath();X.moveTo(cx-4*s,cy-3*s);X.lineTo(cx+4*s,cy+3*s);X.stroke();
+        X.beginPath();X.moveTo(cx+4*s,cy-3*s);X.lineTo(cx-4*s,cy+3*s);X.stroke();
+      }
+      if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#e85d75';X.fillText('STRAW DOLL',cx,cy+50*s);}
       break;}
     case 'yuki':{
       // Star Rage — expanding mass ring
@@ -23625,6 +24036,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'yuki':{const bh=f.yukiBHActive?'BH ':'';const ovr=f.yukiOverloaded?'OVR ':'';statLine=bh+ovr+'Mass:'+Math.round(f.yukiMass||0);break;}
     case 'megumi':{const dom=f.megumiDomainActive?'DOMAIN ':'';const shiki=f.megumiActiveShikigami?(f.megumiActiveShikigami.toUpperCase()+' '):'';const dogs=f.megumiTotality?'TOT':(f.megumiDog1.alive&&f.megumiDog2.alive?'DD':(f.megumiDog1.alive||f.megumiDog2.alive?'D1':'--'));statLine=dom+shiki+dogs+' M:'+Math.floor(f.megumiShadowMeter);break;}
     case 'mahito':{const dom=f.mahitoDomainActive?'DOMAIN ':'';const eChg=fighters.find(t=>t.side!==f.side&&!t.dead);const chg=eChg?(eChg.mahitoChargeCount||0):0;statLine=dom+'Charges:'+chg+'/7';break;}
+    case 'nobara':{const doll=f.nobaraVoodooDoll?'DOLL:'+f.nobaraVoodooDoll.hp+'/'+f.nobaraVoodooDoll.maxHp+' ':'';const self=f.nobaraSelfDmgNext?'SELF ':'';statLine=doll+self+'NAIL';break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
