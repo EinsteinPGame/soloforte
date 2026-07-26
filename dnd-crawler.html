@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// DUNGEONS OF FATE v1.0 — D&D Dungeon Crawler Phase 1
+// DUNGEONS OF FATE v2.0 — D&D Dungeon Crawler Phase 2
 // ============================================================
 
 const C = document.getElementById('g'), X = C.getContext('2d');
@@ -97,7 +97,7 @@ const SFX = {
 // ============================================================
 // GAME STATE
 // ============================================================
-const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9 };
+const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10 };
 let gameState = STATE.TITLE;
 let player = null;
 let dungeon = null;
@@ -109,6 +109,8 @@ let combatLog = [];
 let gameTime = 0;
 let lastTime = 0;
 let helpOpen = false;
+let shopRoom = null;
+let shopScrollY = 0;
 
 // ============================================================
 // DATA DEFINITIONS
@@ -273,14 +275,63 @@ const MONSTERS = {
   'Troll':       { name: 'Troll', hp: 84, ac: 15, attacks: [{name:'Claw',bonus:7,damage:[2,6],damageBonus:4},{name:'Bite',bonus:7,damage:[1,6],damageBonus:4}], xp: 1800, cr: 5, str:18,dex:13,con:20,int:7,wis:9,cha:7, color:'#2e6b2e', symbol:'T', size: 1.3 },
   'Basilisk':    { name: 'Basilisk', hp: 52, ac: 15, attacks: [{name:'Bite',bonus:5,damage:[2,6],damageBonus:3}], xp: 700, cr: 3, str:16,dex:8,con:15,int:2,wis:8,cha:7, color:'#4a6b40', symbol:'B', size: 1.0 },
   'Manticore':   { name: 'Manticore', hp: 68, ac: 14, attacks: [{name:'Claw',bonus:5,damage:[1,8],damageBonus:3},{name:'Tail Spike',bonus:5,damage:[1,8],damageBonus:3}], xp: 700, cr: 3, str:17,dex:16,con:17,int:7,wis:12,cha:8, color:'#a0522d', symbol:'M', size: 1.2 },
+  // Floor 3-4 monsters
+  'Wight':       { name: 'Wight', hp: 45, ac: 14, attacks: [{name:'Life Drain',bonus:4,damage:[1,6],damageBonus:2},{name:'Longsword',bonus:4,damage:[1,8],damageBonus:2}], xp: 700, cr: 3, str:15,dex:14,con:16,int:10,wis:13,cha:15, color:'#4a4a5a', symbol:'W', size: 0.9, undead: true },
+  'Hell Hound':  { name: 'Hell Hound', hp: 45, ac: 15, attacks: [{name:'Bite',bonus:5,damage:[1,8],damageBonus:3},{name:'Fire Breath',bonus:5,damage:[2,6],damageBonus:0}], xp: 700, cr: 3, str:17,dex:12,con:14,int:6,wis:13,cha:6, color:'#c04020', symbol:'H', size: 1.0 },
+  'Ettin':       { name: 'Ettin', hp: 85, ac: 12, attacks: [{name:'Battleaxe',bonus:7,damage:[2,8],damageBonus:5},{name:'Morningstar',bonus:7,damage:[2,8],damageBonus:5}], xp: 1100, cr: 4, str:21,dex:8,con:17,int:6,wis:10,cha:8, color:'#8b7765', symbol:'E', size: 1.5 },
+  'Vampire Spawn':{ name: 'Vampire Spawn', hp: 82, ac: 15, attacks: [{name:'Bite',bonus:6,damage:[1,6],damageBonus:3},{name:'Claw',bonus:6,damage:[2,4],damageBonus:3}], xp: 1800, cr: 5, str:16,dex:16,con:16,int:11,wis:10,cha:12, color:'#600020', symbol:'V', size: 1.0, undead: true },
+  'Fire Elemental':{ name: 'Fire Elemental', hp: 102, ac: 13, attacks: [{name:'Touch',bonus:6,damage:[2,6],damageBonus:3},{name:'Fire Slam',bonus:6,damage:[2,8],damageBonus:0}], xp: 1800, cr: 5, str:10,dex:17,con:16,int:6,wis:10,cha:7, color:'#ff6020', symbol:'F', size: 1.1 },
+  'Mind Flayer':  { name: 'Mind Flayer', hp: 71, ac: 15, attacks: [{name:'Mind Blast',bonus:7,damage:[3,8],damageBonus:0},{name:'Tentacles',bonus:7,damage:[2,10],damageBonus:0}], xp: 2900, cr: 7, str:11,dex:12,con:12,int:19,wis:17,cha:17, color:'#6030a0', symbol:'M', size: 1.0 },
+  'Young Dragon': { name: 'Young Dragon', hp: 110, ac: 17, attacks: [{name:'Bite',bonus:8,damage:[2,10],damageBonus:4},{name:'Claw',bonus:8,damage:[2,6],damageBonus:4}], xp: 3900, cr: 8, str:19,dex:10,con:17,int:12,wis:11,cha:15, color:'#c04040', symbol:'D', size: 1.4 },
+  'Beholder Zombie':{ name: 'Beholder Zombie', hp: 93, ac: 15, attacks: [{name:'Eye Ray',bonus:7,damage:[3,10],damageBonus:0},{name:'Bite',bonus:5,damage:[2,8],damageBonus:2}], xp: 2900, cr: 5, str:10,dex:8,con:16,int:6,wis:6,cha:3, color:'#4a2a4a', symbol:'B', size: 1.3, undead: true },
+  // BOSS MONSTERS
+  'Skeleton King':   { name: 'Skeleton King', hp: 80, ac: 16, attacks: [{name:'Cursed Greatsword',bonus:7,damage:[2,8],damageBonus:4},{name:'Necrotic Blast',bonus:6,damage:[2,6],damageBonus:3}], xp: 1100, cr: 4, str:18,dex:14,con:16,int:13,wis:11,cha:16, color:'#d0d0a0', symbol:'K', size: 1.2, undead: true, boss: true },
+  'Orc Warlord':     { name: 'Orc Warlord', hp: 130, ac: 17, attacks: [{name:'Greataxe Cleave',bonus:9,damage:[2,12],damageBonus:5},{name:'Shield Slam',bonus:7,damage:[1,8],damageBonus:4}], xp: 2300, cr: 6, str:20,dex:12,con:18,int:11,wis:12,cha:14, color:'#4a6a1e', symbol:'W', size: 1.3, boss: true },
+  'Shadow Dragon':   { name: 'Shadow Dragon', hp: 180, ac: 18, attacks: [{name:'Shadow Bite',bonus:10,damage:[2,10],damageBonus:6},{name:'Shadow Breath',bonus:9,damage:[4,8],damageBonus:0},{name:'Tail Lash',bonus:8,damage:[2,6],damageBonus:4}], xp: 5000, cr: 9, str:21,dex:14,con:19,int:14,wis:13,cha:17, color:'#1a0030', symbol:'D', size: 1.6, boss: true },
+  'Lich Lord':       { name: 'Lich Lord', hp: 200, ac: 19, attacks: [{name:'Disintegrate',bonus:11,damage:[4,10],damageBonus:0},{name:'Paralyzing Touch',bonus:9,damage:[3,6],damageBonus:5},{name:'Eldritch Barrage',bonus:10,damage:[3,8],damageBonus:0}], xp: 7500, cr: 11, str:11,dex:16,con:16,int:20,wis:14,cha:16, color:'#30c040', symbol:'L', size: 1.1, undead: true, boss: true },
+  'Ancient Wyrm':    { name: 'Ancient Wyrm', hp: 250, ac: 20, attacks: [{name:'Flame Bite',bonus:13,damage:[3,10],damageBonus:7},{name:'Dragon Breath',bonus:0,damage:[6,8],damageBonus:0,autoHit:true},{name:'Wing Buffet',bonus:10,damage:[2,8],damageBonus:5}], xp: 10000, cr: 13, str:23,dex:10,con:21,int:16,wis:15,cha:19, color:'#ff4020', symbol:'W', size: 1.8, boss: true },
 };
 
 // Monsters by floor difficulty
 const FLOOR_MONSTERS = [
   ['Giant Rat','Goblin','Skeleton','Slime','Kobold','Zombie'],
   ['Goblin','Skeleton','Slime','Orc Warrior','Dire Wolf','Spider','Bugbear','Zombie'],
-  ['Orc Warrior','Dire Wolf','Ogre','Dark Knight','Shadow Demon','Mimic','Basilisk','Manticore'],
+  ['Orc Warrior','Dire Wolf','Ogre','Dark Knight','Mimic','Basilisk','Manticore'],
+  ['Dark Knight','Shadow Demon','Wraith','Troll','Wight','Hell Hound','Ettin','Vampire Spawn'],
+  ['Shadow Demon','Mind Flayer','Fire Elemental','Young Dragon','Beholder Zombie','Vampire Spawn'],
 ];
+
+// Boss per floor (guardian before stairs)
+const FLOOR_BOSSES = ['Skeleton King', 'Orc Warlord', 'Shadow Dragon', 'Lich Lord', 'Ancient Wyrm'];
+
+// Shop inventory by floor tier
+const SHOP_ITEMS = {
+  potions: [
+    { name: 'Health Potion', cost: 25, item: 'Health Potion' },
+    { name: 'Greater Health Potion', cost: 75, item: 'Greater Health Potion' },
+    { name: 'Antidote', cost: 15, item: 'Antidote' },
+  ],
+  weapons: [
+    [
+      { name: 'Keen Longsword', cost: 80, rarity: 'uncommon', idx: 0 },
+      { name: 'Venomous Dagger', cost: 60, rarity: 'uncommon', idx: 1 },
+    ],
+    [
+      { name: 'Elven Bow', cost: 100, rarity: 'uncommon', idx: 2 },
+      { name: 'Holy Mace', cost: 90, rarity: 'uncommon', idx: 3 },
+      { name: 'Arcane Staff', cost: 90, rarity: 'uncommon', idx: 4 },
+    ],
+    [
+      { name: 'Flamebrand', cost: 250, rarity: 'rare', idx: 0 },
+      { name: 'Stormbow', cost: 250, rarity: 'rare', idx: 2 },
+    ],
+  ],
+  armor: [
+    { name: 'Chain Mail', cost: 75, item: 'Chain Mail' },
+    { name: 'Plate Armor', cost: 300, item: 'Plate Armor' },
+    { name: 'Shield', cost: 40, item: 'Shield' },
+  ],
+};
 
 // XP thresholds for leveling
 const XP_THRESHOLDS = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000];
@@ -357,6 +408,9 @@ C.addEventListener('touchmove', e => {
 C.addEventListener('wheel', e => {
   if (gameState === STATE.CHAR_CREATE && (charCreate.step === 0 || charCreate.step === 1)) {
     charCreate.scrollY = (charCreate.scrollY||0) - e.deltaY * 0.5;
+    e.preventDefault();
+  } else if (gameState === STATE.SHOP) {
+    shopScrollY = (shopScrollY||0) - e.deltaY * 0.5;
     e.preventDefault();
   }
 }, { passive: false });
@@ -503,7 +557,7 @@ function updateTitle() {
   // Version
   X.fillStyle = '#333';
   X.font = '11px Consolas, monospace';
-  X.fillText('v1.0 | Phase 1', cx, canvasH - 12);
+  X.fillText('v2.0 | Phase 2', cx, canvasH - 12);
 }
 
 // ============================================================
@@ -1259,13 +1313,13 @@ function getPassivePerception() {
 // DUNGEON GENERATION
 // ============================================================
 const TILE = { VOID: 0, WALL: 1, FLOOR: 2, DOOR: 3, STAIRS_DOWN: 4, STAIRS_UP: 5, CORRIDOR: 6 };
-const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start' };
+const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start', BOSS: 'boss', SHOP: 'shop' };
 const MAP_W = 48, MAP_H = 48;
 const TILE_SIZE = 24;
 
 function generateDungeon() {
-  dungeon = { floors: [] };
-  for (let f = 0; f < 3; f++) {
+  dungeon = { floors: [], totalFloors: 5 };
+  for (let f = 0; f < 5; f++) {
     dungeon.floors.push(generateFloor(f));
   }
   currentFloor = 0;
@@ -1327,6 +1381,17 @@ function generateFloor(floorNum) {
 
   rooms[rooms.length - 1].type = ROOM_TYPE.STAIRS;
 
+  // Boss room: second-to-last room guards the stairs
+  if (rooms.length >= 3) {
+    rooms[rooms.length - 2].type = ROOM_TYPE.BOSS;
+  }
+
+  // Shop room: one per floor (pick a middle room)
+  const midIdx = Math.floor(rooms.length / 2);
+  if (rooms.length >= 5 && !rooms[midIdx].type) {
+    rooms[midIdx].type = ROOM_TYPE.SHOP;
+  }
+
   // Assign remaining rooms
   const typeWeights = [
     { type: ROOM_TYPE.COMBAT, weight: 40 },
@@ -1380,7 +1445,7 @@ function generateFloor(floorNum) {
   // Place stairs tile
   const stairRoom = rooms.find(r => r.type === ROOM_TYPE.STAIRS);
   if (stairRoom) {
-    tiles[stairRoom.cy][stairRoom.cx] = floorNum < 2 ? TILE.STAIRS_DOWN : TILE.STAIRS_DOWN;
+    tiles[stairRoom.cy][stairRoom.cx] = TILE.STAIRS_DOWN;
   }
 
   // If not floor 0, place stairs up at start
@@ -1415,10 +1480,38 @@ function generateFloor(floorNum) {
       // Gold
       room.gold = rand(5 + floorNum * 10, 20 + floorNum * 15);
     } else if (room.type === ROOM_TYPE.TRAP) {
-      room.trapType = pick(['pit', 'poison_dart']);
+      room.trapType = pick(['pit', 'poison_dart', 'fire_glyph', 'spike_floor', 'gas_cloud']);
       room.trapDC = 12 + floorNum;
     } else if (room.type === ROOM_TYPE.SHRINE) {
       room.shrineUsed = false;
+    } else if (room.type === ROOM_TYPE.BOSS) {
+      const bossName = FLOOR_BOSSES[floorNum] || 'Shadow Demon';
+      const bossTemplate = MONSTERS[bossName];
+      const boss = {
+        ...deepClone(bossTemplate),
+        maxHp: bossTemplate.hp + rand(0, Math.floor(bossTemplate.hp * 0.2)),
+        id: Math.random().toString(36).substr(2, 9),
+        conditions: [],
+        px: room.x + Math.floor(room.w / 2),
+        py: room.y + Math.floor(room.h / 2),
+      };
+      boss.hp = boss.maxHp;
+      room.enemies = [boss];
+    } else if (room.type === ROOM_TYPE.SHOP) {
+      room.shopStock = [];
+      // Always stock potions
+      for (const p of SHOP_ITEMS.potions) {
+        room.shopStock.push({ ...p, qty: rand(2, 5) });
+      }
+      // Stock some armor
+      for (const a of SHOP_ITEMS.armor) {
+        if (Math.random() < 0.6) room.shopStock.push({ ...a, qty: 1 });
+      }
+      // Stock tier-appropriate weapons
+      const weaponTier = Math.min(floorNum, SHOP_ITEMS.weapons.length - 1);
+      for (const w of SHOP_ITEMS.weapons[weaponTier]) {
+        if (Math.random() < 0.7) room.shopStock.push({ ...w, qty: 1 });
+      }
     }
   }
 
@@ -1699,9 +1792,28 @@ function enterRoom(room) {
       dungeonMessageTimer = 1.5;
       break;
     case ROOM_TYPE.STAIRS:
-      dungeonMessage = currentFloor < 2 ? 'Stairs leading deeper into the dungeon.' : 'The final stairway descends into darkness...';
+      dungeonMessage = currentFloor < 4 ? 'Stairs leading deeper into the dungeon.' : 'The final stairway descends into darkness...';
       dungeonMessageTimer = 2;
       SFX.stairs();
+      break;
+    case ROOM_TYPE.BOSS:
+      if (room.enemies.length > 0 && !room.cleared) {
+        const bossName = room.enemies[0].name;
+        dungeonMessage = `BOSS: ${bossName} blocks the way!`;
+        dungeonMessageTimer = 2;
+        setTimeout(() => {
+          if (room.enemies.length > 0 && !room.cleared) {
+            startCombat(room);
+          }
+        }, 500);
+      }
+      break;
+    case ROOM_TYPE.SHOP:
+      if (!room.visited) {
+        dungeonMessage = 'A merchant has set up shop here.';
+        dungeonMessageTimer = 2;
+        SFX.click();
+      }
       break;
   }
 }
@@ -1709,7 +1821,19 @@ function enterRoom(room) {
 function handleInteract(floor, room) {
   const tile = floor.tiles[player.y]?.[player.x];
 
-  if (tile === TILE.STAIRS_DOWN && currentFloor < 2) {
+  // Check if boss is defeated before allowing stairs
+  if (tile === TILE.STAIRS_DOWN) {
+    const bossRoom = floor.rooms.find(r => r.type === ROOM_TYPE.BOSS);
+    if (bossRoom && !bossRoom.cleared) {
+      dungeonMessage = 'A powerful guardian blocks the way. Defeat the boss first!';
+      dungeonMessageTimer = 2.5;
+      SFX.trap();
+      mouseClicked = false;
+      return;
+    }
+  }
+
+  if (tile === TILE.STAIRS_DOWN && currentFloor < 4) {
     currentFloor++;
     player.floor = currentFloor;
     const startRoom = dungeon.floors[currentFloor].rooms[0];
@@ -1720,7 +1844,7 @@ function handleInteract(floor, room) {
     dungeonMessageTimer = 2;
     SFX.stairs();
     saveGame();
-  } else if (tile === TILE.STAIRS_DOWN && currentFloor === 2) {
+  } else if (tile === TILE.STAIRS_DOWN && currentFloor === 4) {
     // Victory!
     gameState = STATE.VICTORY;
     SFX.levelUp();
@@ -1776,6 +1900,13 @@ function handleInteract(floor, room) {
       room.cleared = true;
       SFX.chest();
     }
+
+    if (room.type === ROOM_TYPE.SHOP && room.shopStock && room.shopStock.length > 0) {
+      shopRoom = room;
+      shopScrollY = 0;
+      gameState = STATE.SHOP;
+      SFX.click();
+    }
   }
 }
 
@@ -1817,7 +1948,6 @@ function handleTrap(room) {
     let saveRoll = d20();
     if (player.race === 'Halfling' && saveRoll === 1) saveRoll = d20();
     const save = saveRoll + mod(player.stats.CON) + (player.savingThrows.includes('CON') ? PROF_BONUS[player.level] : 0);
-    // Dwarf poison resistance
     const hasPoisonResist = player.race === 'Dwarf';
     if (save >= 13) {
       dungeonMessage = 'Poison darts! You dodged them (CON save success)';
@@ -1832,6 +1962,57 @@ function handleTrap(room) {
       dungeonMessage = `Poison darts! ${dmg} damage${!hasPoisonResist ? ' + poisoned!' : ' (resisted poison)'}`;
       dungeonMessageTimer = 2.5;
       addFloatingText(canvasW/2, canvasH/2, `-${dmg}`, '#44ff44');
+      checkPlayerDeath();
+    }
+  } else if (room.trapType === 'fire_glyph') {
+    let saveRoll = d20();
+    if (player.race === 'Halfling' && saveRoll === 1) saveRoll = d20();
+    const save = saveRoll + mod(player.stats.DEX) + (player.savingThrows.includes('DEX') ? PROF_BONUS[player.level] : 0);
+    const hasFireResist = player.race === 'Tiefling';
+    if (save >= room.trapDC) {
+      dungeonMessage = 'Fire glyph! You leapt clear (DEX save success)';
+      dungeonMessageTimer = 2;
+    } else {
+      let dmg = rollDice(2, 6);
+      if (hasFireResist) dmg = Math.floor(dmg / 2);
+      player.hp = Math.max(0, player.hp - dmg);
+      dungeonMessage = `Fire glyph erupts! ${dmg} fire damage${hasFireResist ? ' (resisted)' : ''}!`;
+      dungeonMessageTimer = 2;
+      addFloatingText(canvasW/2, canvasH/2, `-${dmg}`, '#ff6600');
+      spawnParticles(canvasW/2, canvasH/2, '#ff4400', 15);
+      checkPlayerDeath();
+    }
+  } else if (room.trapType === 'spike_floor') {
+    let saveRoll = d20();
+    if (player.race === 'Halfling' && saveRoll === 1) saveRoll = d20();
+    const save = saveRoll + mod(player.stats.DEX) + (player.savingThrows.includes('DEX') ? PROF_BONUS[player.level] : 0);
+    if (save >= room.trapDC) {
+      dungeonMessage = 'Spike floor! You jumped across (DEX save success)';
+      dungeonMessageTimer = 2;
+    } else {
+      const dmg = rollDice(2, 4);
+      player.hp = Math.max(0, player.hp - dmg);
+      dungeonMessage = `Spikes shoot up! ${dmg} piercing damage!`;
+      dungeonMessageTimer = 2;
+      addFloatingText(canvasW/2, canvasH/2, `-${dmg}`, '#cccccc');
+      checkPlayerDeath();
+    }
+  } else if (room.trapType === 'gas_cloud') {
+    let saveRoll = d20();
+    if (player.race === 'Halfling' && saveRoll === 1) saveRoll = d20();
+    const save = saveRoll + mod(player.stats.CON) + (player.savingThrows.includes('CON') ? PROF_BONUS[player.level] : 0);
+    const hasPoisonResist = player.race === 'Dwarf';
+    if (save >= room.trapDC) {
+      dungeonMessage = 'Noxious gas! You held your breath (CON save success)';
+      dungeonMessageTimer = 2;
+    } else {
+      let dmg = rollDice(1, 8);
+      if (hasPoisonResist) dmg = Math.floor(dmg / 2);
+      player.hp = Math.max(0, player.hp - dmg);
+      player.conditions.push({ type: 'poisoned', turns: 5 });
+      dungeonMessage = `Gas cloud! ${dmg} damage + poisoned for 5 turns!`;
+      dungeonMessageTimer = 2.5;
+      addFloatingText(canvasW/2, canvasH/2, `-${dmg}`, '#80ff80');
       checkPlayerDeath();
     }
   }
@@ -1980,6 +2161,18 @@ function renderDungeon(floor) {
       X.font = '12px Consolas, monospace';
       X.textAlign = 'center';
       X.fillText('$ Treasure $', rx, ry);
+    }
+    if (room.type === ROOM_TYPE.BOSS && !room.cleared && isVisible(room.cx, room.cy)) {
+      X.fillStyle = '#ff4444';
+      X.font = 'bold 12px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('!! BOSS !!', rx, ry);
+    }
+    if (room.type === ROOM_TYPE.SHOP && isVisible(room.cx, room.cy)) {
+      X.fillStyle = '#44ff88';
+      X.font = '12px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('$ Shop $', rx, ry);
     }
   }
 
@@ -2626,6 +2819,35 @@ function enemyTurn(enemy) {
 
   // Pick an attack
   const attack = pick(enemy.attacks);
+
+  // Auto-hit attacks (like Dragon Breath) bypass AC
+  if (attack.autoHit) {
+    let dmg = rollDice(attack.damage[0], attack.damage[1]) + attack.damageBonus;
+    // DEX save for half damage
+    let saveRoll = d20();
+    if (player.race === 'Halfling' && saveRoll === 1) saveRoll = d20();
+    const save = saveRoll + mod(player.stats.DEX) + (player.savingThrows.includes('DEX') ? PROF_BONUS[player.level] : 0);
+    if (save >= 15) {
+      dmg = Math.floor(dmg / 2);
+      addCombatLog(`${enemy.name} uses ${attack.name}: DEX save SUCCESS! Half damage: ${dmg}!`);
+    } else {
+      addCombatLog(`${enemy.name} uses ${attack.name}: DEX save FAILED! ${dmg} damage!`);
+    }
+    if (player.race === 'Tiefling' && attack.name.toLowerCase().includes('fire')) dmg = Math.floor(dmg / 2);
+    player.hp = Math.max(0, player.hp - dmg);
+    addFloatingText(canvasW/2, canvasH * 0.65, `-${dmg}`, '#ff6600');
+    SFX.trap();
+    spawnParticles(canvasW/2, canvasH * 0.65, '#ff6600', 15);
+    if (player.hp <= 0) {
+      if (player.race === 'Orc' && !player.relentlessUsed) {
+        player.hp = 1; player.relentlessUsed = true;
+        addCombatLog('Relentless Endurance! Survived at 1 HP!');
+      } else { combatState.phase = 'defeat'; SFX.death(); }
+    }
+    nextTurn();
+    return;
+  }
+
   let roll = d20();
   let totalRoll = roll + attack.bonus;
 
@@ -2783,6 +3005,20 @@ function updateCombat(dt) {
     const ey = sceneY + sceneH * 0.35;
     const size = 25 * (enemy.size || 1);
 
+    // Boss aura
+    if (enemy.boss) {
+      const t = gameTime * 3;
+      const auraSize = size * 1.6 + Math.sin(t) * 4;
+      const grad = X.createRadialGradient(ex, ey, size * 0.5, ex, ey, auraSize);
+      grad.addColorStop(0, 'rgba(255,50,20,0.3)');
+      grad.addColorStop(0.6, 'rgba(255,100,0,0.15)');
+      grad.addColorStop(1, 'rgba(255,50,0,0)');
+      X.fillStyle = grad;
+      X.beginPath();
+      X.arc(ex, ey, auraSize, 0, Math.PI * 2);
+      X.fill();
+    }
+
     // Shadow
     X.fillStyle = 'rgba(0,0,0,0.3)';
     X.beginPath();
@@ -2823,10 +3059,12 @@ function updateCombat(dt) {
     X.fillRect(ex - hpW/2, ey - size - 12, hpW * hpPct, 6);
 
     // Name & HP
+    X.fillStyle = enemy.boss ? '#ff4444' : '#ccc';
+    X.font = enemy.boss ? 'bold 11px Consolas, monospace' : '10px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText(`${enemy.boss ? '★ ' : ''}${enemy.name}${enemy.boss ? ' ★' : ''}`, ex, ey - size - 16);
     X.fillStyle = '#ccc';
     X.font = '10px Consolas, monospace';
-    X.textAlign = 'center';
-    X.fillText(`${enemy.name}`, ex, ey - size - 16);
     X.fillText(`${enemy.hp}/${enemy.maxHp}`, ex, ey - size - 2);
 
     // Status effects
@@ -3109,16 +3347,28 @@ function renderCombatVictory(btnAreaY) {
     combatState.room.cleared = true;
     combatState.room.enemies = combatState.room.enemies.filter(e => e.hp > 0);
 
+    // Check if it was a boss fight
+    const wasBoss = deadEnemies.some(c => c.entity.boss);
+
     // Drop random item from combat
-    if (Math.random() < 0.3) {
+    const dropChance = wasBoss ? 1.0 : 0.3;
+    if (Math.random() < dropChance) {
       const item = generateTreasureItem(currentFloor);
+      if (wasBoss && item.rarity === RARITY.COMMON) item.rarity = RARITY.UNCOMMON;
       player.inventory.push(item);
       dungeonMessage = `Found: ${item.name}!`;
       dungeonMessageTimer = 2;
     }
+    // Boss always drops a second item
+    if (wasBoss) {
+      const bonusItem = generateTreasureItem(currentFloor);
+      bonusItem.rarity = Math.random() < 0.4 ? RARITY.RARE : RARITY.UNCOMMON;
+      player.inventory.push(bonusItem);
+      addFloatingText(canvasW/2, canvasH/2, `+${bonusItem.name}!`, RARITY_COLORS[bonusItem.rarity]);
+    }
 
     // Drop gold
-    const goldDrop = rand(2 + currentFloor * 3, 10 + currentFloor * 8);
+    const goldDrop = wasBoss ? rand(30 + currentFloor * 15, 60 + currentFloor * 25) : rand(2 + currentFloor * 3, 10 + currentFloor * 8);
     player.gold += goldDrop;
 
     // Reset combat buffs
@@ -3585,7 +3835,9 @@ function updateHelp() {
     { key: '', action: 'Equip better gear from the inventory.' },
     { key: '', action: 'Use potions outside combat with the Use button.' },
     { key: '', action: 'Save at shrines or with the Save button.' },
-    { key: '', action: 'Descend 3 floors to complete the dungeon!' },
+    { key: '', action: 'Defeat the floor boss before descending!' },
+    { key: '', action: 'Visit shops to buy gear and potions.' },
+    { key: '', action: 'Descend 5 floors to complete the dungeon!' },
   ];
 
   X.font = '13px Consolas, monospace';
@@ -3694,7 +3946,7 @@ function updateVictory() {
 
   X.fillStyle = '#ffd700';
   X.font = '14px Consolas, monospace';
-  X.fillText('The depths have yielded their secrets to you.', cx, canvasH * 0.65);
+  X.fillText('Five floors conquered. The abyss bows before you.', cx, canvasH * 0.65);
   X.fillText('Your legend will echo through the ages.', cx, canvasH * 0.7);
 
   const btnW = 180, btnH = 45;
@@ -3769,6 +4021,145 @@ function updateParticles(dt) {
 }
 
 // ============================================================
+// SHOP SCREEN
+// ============================================================
+function updateShop() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+  const panelW = isMobile ? canvasW * 0.92 : 420;
+  const panelX = cx - panelW / 2;
+
+  // Title
+  X.fillStyle = '#44ff88';
+  X.font = `bold ${isMobile ? 20 : 24}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText("MERCHANT'S WARES", cx, 35);
+
+  // Gold display
+  X.fillStyle = '#ffd700';
+  X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
+  X.fillText(`Gold: ${player.gold}`, cx, 58);
+
+  // Back button
+  const bbw = 70, bbh = 30;
+  drawButton(10, 10, bbw, bbh, '< Back', false, '#333');
+  if (clickedInRect(10, 10, bbw, bbh)) {
+    SFX.click();
+    gameState = STATE.DUNGEON;
+    return;
+  }
+
+  // ESC to close
+  if (keys['escape']) {
+    gameState = STATE.DUNGEON;
+    keys['escape'] = false;
+    return;
+  }
+
+  if (!shopRoom || !shopRoom.shopStock) { gameState = STATE.DUNGEON; return; }
+
+  const itemH = isMobile ? 52 : 48;
+  const gap = 4;
+  const startY = 75;
+  const stock = shopRoom.shopStock;
+  const totalH = stock.length * (itemH + gap);
+  const visH = canvasH - startY - 20;
+  const maxScroll = 0;
+  const minScroll = Math.min(0, -(totalH - visH));
+  shopScrollY = clamp(shopScrollY, minScroll, maxScroll);
+
+  stock.forEach((item, i) => {
+    const y = startY + i * (itemH + gap) + shopScrollY;
+    if (y + itemH < startY - 5 || y > canvasH + 5) return;
+
+    const canBuy = player.gold >= item.cost && item.qty > 0;
+    const isHov = isInRect(mouseX, mouseY, panelX, y, panelW, itemH);
+
+    // Card background
+    X.fillStyle = isHov ? '#2a2a3a' : '#1a1a2a';
+    X.fillRect(panelX, y, panelW, itemH);
+    X.strokeStyle = canBuy ? '#44ff88' : '#444';
+    X.lineWidth = isHov ? 2 : 1;
+    X.strokeRect(panelX, y, panelW, itemH);
+
+    // Item name
+    X.fillStyle = canBuy ? '#fff' : '#666';
+    X.font = `bold ${isMobile ? 12 : 14}px Consolas, monospace`;
+    X.textAlign = 'left';
+    X.fillText(item.name, panelX + 10, y + 18);
+
+    // Cost and qty
+    X.fillStyle = canBuy ? '#ffd700' : '#555';
+    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    X.fillText(`${item.cost}g | Qty: ${item.qty}`, panelX + 10, y + 35);
+
+    // Buy button
+    if (canBuy) {
+      const buyW = 60, buyH = 28;
+      const buyX = panelX + panelW - buyW - 8;
+      const buyY = y + (itemH - buyH) / 2;
+      drawButton(buyX, buyY, buyW, buyH, 'BUY', false, '#2a5a2a');
+      if (clickedInRect(buyX, buyY, buyW, buyH)) {
+        SFX.chest();
+        player.gold -= item.cost;
+        item.qty--;
+
+        // Create and add item to inventory
+        if (item.item) {
+          // It's a direct item template reference (potions, armor)
+          const template = ITEM_TEMPLATES[item.item];
+          if (template) {
+            player.inventory.push(makeItem(template));
+          }
+        } else if (item.rarity === 'uncommon') {
+          // Enhanced weapon
+          const wpnList = UNCOMMON_WEAPONS;
+          const wpn = wpnList[item.idx];
+          if (wpn) {
+            const base = ITEM_TEMPLATES[wpn.base];
+            const enhanced = makeItem(base, RARITY.UNCOMMON);
+            enhanced.name = wpn.name;
+            enhanced.bonusDamage = wpn.bonusDamage;
+            enhanced.desc = wpn.desc;
+            player.inventory.push(enhanced);
+          }
+        } else if (item.rarity === 'rare') {
+          const wpn = RARE_WEAPONS[item.idx];
+          if (wpn) {
+            const base = ITEM_TEMPLATES[wpn.base];
+            const enhanced = makeItem(base, RARITY.RARE);
+            enhanced.name = wpn.name;
+            enhanced.bonusDamage = wpn.bonusDamage;
+            enhanced.desc = wpn.desc;
+            player.inventory.push(enhanced);
+          }
+        }
+
+        addFloatingText(cx, canvasH / 2, `Bought ${item.name}!`, '#44ff88');
+        if (item.qty <= 0) {
+          shopRoom.shopStock = shopRoom.shopStock.filter(s => s.qty > 0);
+        }
+      }
+    } else if (item.qty <= 0) {
+      X.fillStyle = '#444';
+      X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+      X.textAlign = 'right';
+      X.fillText('SOLD OUT', panelX + panelW - 12, y + itemH / 2 + 4);
+    }
+  });
+
+  // Sell section hint
+  X.fillStyle = '#555';
+  X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('Press I to open inventory and sell items', cx, canvasH - 8);
+
+  updateFloatingTexts(0.016);
+}
+
+// ============================================================
 // SAVE / LOAD
 // ============================================================
 function saveGame() {
@@ -3777,7 +4168,7 @@ function saveGame() {
     dungeon: deepClone(dungeon),
     currentFloor: currentFloor,
     timestamp: Date.now(),
-    version: '1.0',
+    version: '2.0',
   };
   try {
     localStorage.setItem('dof_save', JSON.stringify(saveData));
@@ -3827,6 +4218,7 @@ function gameLoop(timestamp) {
     case STATE.VICTORY:      updateVictory(); break;
     case STATE.HELP:         updateHelp(); break;
     case STATE.LEVEL_UP:     updateLevelUp(); break;
+    case STATE.SHOP:         updateShop(); break;
   }
 
   updateParticles(dt);
