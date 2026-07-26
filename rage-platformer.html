@@ -840,11 +840,12 @@ function buildLevel5() {
     { x: AW - 120, y: GY - 60, w: 90, h: 14, type: 'normal', color: '#446655' },
   ]);
 
-  // Arena 2 (col2,row0): two platforms with gap in middle
+  // Arena 2 (col2,row0): two platforms with spiked gap in middle
   const a2plats = arenaPlats(2, 0, [
     { x: 0, y: GY, w: 80, h: GH, type: 'normal', color: '#4a3a3a' },
     { x: AW - 80, y: GY, w: 80, h: GH, type: 'normal', color: '#4a3a3a' },
-    // gap in center = death pit (fall off)
+    // spikes in the gap to ensure death on fall
+    { x: 85, y: GY - SPIKE_H, w: AW - 170, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
     { x: 10, y: GY - 50, w: 60, h: 14, type: 'normal', color: '#664444' },
     { x: AW - 70, y: GY - 80, w: 60, h: 14, type: 'normal', color: '#664444' },
   ]);
@@ -887,6 +888,8 @@ function buildLevel5() {
     { x: 0, y: GY, w: AW, h: GH, type: 'normal', color: '#4a3a3a' },
     // Spike pit at bottom-left to punish missed jumps
     { x: 0, y: GY - SPIKE_H, w: 50, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
+    // Spike at right edge too — punish walking off right side
+    { x: AW - 45, y: GY - SPIKE_H, w: 45, h: SPIKE_H, type: 'spike_zone', isSpike: true, color: '#cc3333' },
   ]);
 
   // Arena 7 (col3,row1): single platform with spikes both sides (tiny safe zone)
@@ -939,6 +942,8 @@ function buildLevel5() {
     illusionTransitioning: false,
     illusionTransitionTimer: 0,
     illusionPhase2Inited: false,
+    illusionStalemateTimer: 0,     // failsafe: tracks time with <=1 illusion remaining
+    illusionStalemateSpikes: [],   // moving spikes spawned by failsafe
     // Phase 2 state
     shards: [],                 // { x, y, collected, arenaIdx }
     shardsCollected: 0,
@@ -1363,6 +1368,8 @@ function initLevel(n) {
     level.illusionTransitioning = false;
     level.illusionTransitionTimer = 0;
     level.illusionPhase2Inited = false;
+    level.illusionStalemateTimer = 0;
+    level.illusionStalemateSpikes = [];
     level.shards = [];
     level.shardsCollected = 0;
     level.phase2GateSpawned = false;
@@ -2121,6 +2128,43 @@ function updateIllusion(dt) {
       level.illusionTransitioning = true;
       level.illusionTransitionTimer = 1500;
       shakeTimer = 600; shakeIntensity = 6;
+    }
+
+    // Failsafe: if only 1 illusion remains for 10+ seconds, spawn moving spikes in its arena
+    if (aliveIllusions === 1 && !level.illusionTransitioning) {
+      level.illusionStalemateTimer += dt;
+      if (level.illusionStalemateTimer > 10000 && level.illusionStalemateSpikes.length === 0) {
+        // Find the surviving illusion's arena
+        for (let i = 0; i < 8; i++) {
+          if (i !== level.illusionRealIdx && !level.illusionDead[i]) {
+            const bounds = level.arenaBounds[i];
+            // Spawn 2 moving spikes that sweep across its arena
+            level.illusionStalemateSpikes.push(
+              { x: bounds.x + 5, y: bounds.y + bounds.h - 50, w: 14, h: 14, vx: 1.8, minX: bounds.x + 5, maxX: bounds.x + bounds.w - 19, arenaIdx: i },
+              { x: bounds.x + bounds.w - 19, y: bounds.y + bounds.h - 80, w: 14, h: 14, vx: -1.5, minX: bounds.x + 5, maxX: bounds.x + bounds.w - 19, arenaIdx: i }
+            );
+            break;
+          }
+        }
+      }
+      // Update failsafe spikes
+      for (const ms of level.illusionStalemateSpikes) {
+        ms.x += ms.vx;
+        if (ms.x <= ms.minX || ms.x + ms.w >= ms.maxX) ms.vx *= -1;
+        // Check collision with the illusion player in this arena
+        for (let i = 0; i < 8; i++) {
+          if (i === level.illusionRealIdx || level.illusionDead[i]) continue;
+          const ip = level.illusionPlayers[i];
+          if (!ip.alive || ip.arenaIdx !== ms.arenaIdx) continue;
+          if (rectOverlap(ip.x + 2, ip.y + 2, ip.w - 4, ip.h - 4, ms.x, ms.y, ms.w, ms.h)) {
+            ip.alive = false;
+            spawnDeathParticles(ip.x, ip.y);
+          }
+        }
+      }
+    } else if (aliveIllusions > 1) {
+      level.illusionStalemateTimer = 0;
+      level.illusionStalemateSpikes = [];
     }
   } else if (level.illusionPhase === 2) {
     // Standard single-player physics on the phase-2 map
@@ -3194,6 +3238,20 @@ function drawIllusion() {
       if (!ip.alive) continue;
       const [body, head, limb] = colors[i];
       drawPlayerGeneric(ip, body, head, limb, null);
+    }
+
+    // Draw failsafe moving spikes (if stalemate timer triggered)
+    for (const ms of (level.illusionStalemateSpikes || [])) {
+      ctx.fillStyle = '#ff3333';
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(ms.x + ms.w / 2, ms.y);
+      ctx.lineTo(ms.x + ms.w, ms.y + ms.h);
+      ctx.lineTo(ms.x, ms.y + ms.h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
     }
 
     // Phase 1 HUD: illusions eliminated counter
