@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// DUNGEONS OF FATE v2.1 — D&D Dungeon Crawler Phase 2: Evolution + Reputation
+// DUNGEONS OF FATE v2.2 — D&D Dungeon Crawler Phase 3: Squad + Town + Loyalty + Romance
 // ============================================================
 
 const C = document.getElementById('g'), X = C.getContext('2d');
@@ -97,7 +97,7 @@ const SFX = {
 // ============================================================
 // GAME STATE
 // ============================================================
-const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10, NPC_TALK: 11, EVOLUTION: 12 };
+const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10, NPC_TALK: 11, EVOLUTION: 12, PARTY_MGMT: 13, TOWN: 14, CAMPFIRE: 15 };
 let gameState = STATE.TITLE;
 let player = null;
 let dungeon = null;
@@ -113,6 +113,10 @@ let shopRoom = null;
 let shopScrollY = 0;
 let npcRoom = null;
 let evolutionRoom = null; // current evolution quest room
+let townData = null; // town state between floors
+let campfireCompanion = null; // companion for campfire scene
+let campfireScene = null; // { stage, choices, choiceIdx }
+let partyMgmtScroll = 0;
 
 // ============================================================
 // DATA DEFINITIONS
@@ -339,22 +343,122 @@ const SHOP_ITEMS = {
 const COMPANION_POOL = [
   { name: 'Elara the Swift', class: 'Rogue', hp: 22, maxHp: 22, ac: 14, attacks: [{name:'Twin Daggers',bonus:5,damage:[1,4],damageBonus:3}],
     color: '#808080', symbol: 'E', personality: 'A quick-witted rogue who escaped the dungeon once before.',
-    greeting: '"Need a blade at your back? I know these tunnels."', loyalty: 50 },
+    greeting: '"Need a blade at your back? I know these tunnels."', loyalty: 50,
+    romanceable: true,
+    opinions: {
+      approves: ['sparing enemies','taking risks','exploring hidden paths','stealing treasure'],
+      disapproves: ['following orders blindly','retreating','killing innocents'],
+      bossComment: '"Finally something worth fighting!"',
+      treasureComment: '"Take it. No one else is using it."',
+      likes: ['Grimjaw','Lyra'], dislikes: ['Aldric'],
+    },
+    backstory: '"I escaped this dungeon three years ago. Left someone behind. I came back to find them... or what\'s left."',
+    specialAbility: 'Shadow Strike: Twin Daggers deal +2d4 bonus damage once per combat.',
+    romanceScene: ['elara_r1','elara_r2','elara_r3'],
+  },
   { name: 'Brother Aldric', class: 'Cleric', hp: 28, maxHp: 28, ac: 16, attacks: [{name:'Mace',bonus:4,damage:[1,6],damageBonus:2}],
     color: '#e0c040', symbol: 'A', personality: 'A stoic cleric seeking to purify the dungeon depths.',
-    greeting: '"The light guides my steps. Shall it guide yours?"', loyalty: 50, canHeal: true },
+    greeting: '"The light guides my steps. Shall it guide yours?"', loyalty: 50, canHeal: true,
+    romanceable: false,
+    opinions: {
+      approves: ['healing allies','helping NPCs','protecting innocents','praying at shrines'],
+      disapproves: ['stealing','killing innocents','using dark magic','fleeing combat'],
+      bossComment: '"Steel yourselves. We face this together, by the light."',
+      treasureComment: '"Take only what we need. Greed corrupts."',
+      likes: ['Seraphina'], dislikes: ['Elara'],
+    },
+    backstory: '"I was sent to seal the evil below. My order thinks I failed. I simply... have not finished."',
+    specialAbility: 'Divine Intervention: Once per combat, heals all party members for 1d8+3.',
+  },
   { name: 'Grimjaw', class: 'Barbarian', hp: 35, maxHp: 35, ac: 12, attacks: [{name:'Greataxe',bonus:6,damage:[1,12],damageBonus:4}],
     color: '#a04020', symbol: 'G', personality: 'A scarred half-orc with a thirst for battle.',
-    greeting: '"GRIMJAW SMASH! ...ahem. I mean, need a strong arm?"', loyalty: 50 },
+    greeting: '"GRIMJAW SMASH! ...ahem. I mean, need a strong arm?"', loyalty: 50,
+    romanceable: false,
+    opinions: {
+      approves: ['fighting tough enemies','never retreating','charging bosses','rage'],
+      disapproves: ['fleeing','diplomacy over combat','caution','healing when could attack'],
+      bossComment: '"FINALLY! A worthy foe! GRIMJAW FIGHTS!"',
+      treasureComment: '"Gold is nice. But glory is better."',
+      likes: ['Seraphina'], dislikes: ['Lyra'],
+    },
+    backstory: '"Grimjaw was exile. Clan say Grimjaw too violent. Grimjaw say clan too weak. Now Grimjaw prove worth in dungeon."',
+    specialAbility: 'Berserker Fury: Deals double damage on kills when below 50% HP.',
+  },
   { name: 'Lyra Starweave', class: 'Wizard', hp: 18, maxHp: 18, ac: 12, attacks: [{name:'Arcane Bolt',bonus:6,damage:[1,10],damageBonus:3}],
     color: '#6060d0', symbol: 'L', personality: 'A young wizard researching ancient magic in the depths.',
-    greeting: '"Fascinating... these ruins hold secrets beyond measure."', loyalty: 50 },
+    greeting: '"Fascinating... these ruins hold secrets beyond measure."', loyalty: 50,
+    romanceable: true,
+    opinions: {
+      approves: ['exploring ruins','examining artifacts','finding lore','using magic'],
+      disapproves: ['destroying magical items','ignoring ancient texts','reckless combat','necromancy'],
+      bossComment: '"Interesting specimen. Let me analyze its attack patterns..."',
+      treasureComment: '"Wait — is that an enchantment on that item? Let me study it."',
+      likes: ['Elara','Theron'], dislikes: ['Grimjaw'],
+    },
+    backstory: '"The academy laughed when I said the dungeon held pre-cataclysm records. I will prove them wrong — if I survive."',
+    specialAbility: 'Arcane Surge: Casts a free Magic Missile (3d4+3) once per combat when an ally falls.',
+    romanceScene: ['lyra_r1','lyra_r2','lyra_r3'],
+  },
   { name: 'Theron Shadowstep', class: 'Ranger', hp: 25, maxHp: 25, ac: 14, attacks: [{name:'Longbow',bonus:5,damage:[1,8],damageBonus:3}],
     color: '#40a040', symbol: 'T', personality: 'A silent ranger tracking a beast through the dungeon.',
-    greeting: '"Stay quiet. I\'ve been tracking something... large."', loyalty: 50 },
+    greeting: '"Stay quiet. I\'ve been tracking something... large."', loyalty: 50,
+    romanceable: false,
+    opinions: {
+      approves: ['careful exploration','hunting monsters','tracking','nature magic'],
+      disapproves: ['using undead','necromancy','dark magic','burning the environment'],
+      bossComment: '"Mark it. Three weak points — flanks and the spine."',
+      treasureComment: '"Leave the cursed ones. Take only what serves us."',
+      likes: ['Lyra'], dislikes: ['Aldric'],
+    },
+    backstory: '"The beast I track has a name. I will not speak it until it is dead. Some debts are paid only in blood."',
+    specialAbility: "Hunter's Volley: Fires twice per turn when enemies are at 50%+ HP.",
+  },
   { name: 'Seraphina', class: 'Paladin', hp: 30, maxHp: 30, ac: 17, attacks: [{name:'Holy Blade',bonus:5,damage:[1,8],damageBonus:3}],
     color: '#f0d060', symbol: 'S', personality: 'A paladin on a sacred quest to cleanse the dungeon.',
-    greeting: '"By my oath, I shall not let evil stand. Join me?"', loyalty: 50, canHeal: true },
+    greeting: '"By my oath, I shall not let evil stand. Join me?"', loyalty: 50, canHeal: true,
+    romanceable: true,
+    opinions: {
+      approves: ['protecting innocents','smiting undead','justice','healing allies','honor'],
+      disapproves: ['theft','cruelty','fleeing','dark magic','cowardice'],
+      bossComment: '"Evil shall not pass! By my oath — CHARGE!"',
+      treasureComment: '"Leave the stolen goods. We take only what evil left behind."',
+      likes: ['Aldric','Grimjaw'], dislikes: ['Elara'],
+    },
+    backstory: '"I was the youngest knight ever ordained. They thought it an honor. I know it was a test. I have not failed yet."',
+    specialAbility: 'Divine Shield: When any ally would fall below 1 HP, Seraphina intercepts for 1d8 damage.',
+    romanceScene: ['sera_r1','sera_r2','sera_r3'],
+  },
+];
+
+// Companion opinion comments on decisions
+const COMPANION_OPINIONS = {
+  spare_enemy: { Elara: +5, Aldric: +3, Grimjaw: -5, Lyra: +2, Theron: 0, Seraphina: +3 },
+  kill_enemy: { Elara: 0, Aldric: -2, Grimjaw: +3, Lyra: -1, Theron: +2, Seraphina: 0 },
+  flee_combat: { Elara: +2, Aldric: -5, Grimjaw: -5, Lyra: +1, Theron: -2, Seraphina: -5 },
+  use_shrine: { Elara: 0, Aldric: +3, Grimjaw: -2, Lyra: +1, Theron: +1, Seraphina: +3 },
+  loot_treasure: { Elara: +3, Aldric: -2, Grimjaw: +2, Lyra: +2, Theron: +1, Seraphina: -1 },
+  boss_victory: { Elara: +2, Aldric: +2, Grimjaw: +3, Lyra: +2, Theron: +2, Seraphina: +2 },
+  companion_falls: { Elara: -3, Aldric: -3, Grimjaw: -2, Lyra: -3, Theron: -3, Seraphina: -3 },
+};
+
+// Town NPC dialogue
+const TOWN_NPCS = [
+  { name: 'Innkeeper Marta', desc: 'A stout woman with a warm smile and a sharp eye.', color: '#c8a060',
+    lines: ['"Welcome, adventurers! Rooms are five gold, but your group looks like you need it."',
+            '"Heard screams from the dungeon last night. You lot are brave — or foolish."',
+            '"The last party that went down never came back. But I\'m sure you\'ll do fine."'] },
+  { name: 'Guard Captain Rolo', desc: 'A scarred veteran leaning on a halberd.', color: '#a0a0b0',
+    lines: ['"Keep the violence inside the dungeon. We clear?"',
+            '"High rep means free entry and a drink on the guard. Low rep means I watch you like a hawk."',
+            '"Heard you cleared the last floor. My boys won\'t go down there. Respect."'] },
+  { name: 'Sage Verendis', desc: 'An ancient elf scribbling notes on a scroll.', color: '#70c870',
+    lines: ['"The dungeon predates the kingdom by a thousand years. Whatever is at the bottom — ancient and angry."',
+            '"Each floor seals a different evil. The ones who built this... knew what they were doing."',
+            '"Bring me any inscriptions you find. Knowledge is worth more than gold."'] },
+  { name: 'Bounty Broker Sal', desc: 'A wiry figure with too many pockets.', color: '#d09050',
+    lines: ['"Got contracts if you want extra coin. Clear a floor without losing a companion — hundred gold."',
+            '"Don\'t ask where the bounties come from. Ask if the gold is real. It is."',
+            '"Kill every enemy on the next floor? Two hundred gold and a rare item. Deal?"'] },
 ];
 
 // -- Class Evolution Paths --
@@ -753,7 +857,7 @@ function updateTitle() {
   // Version
   X.fillStyle = '#333';
   X.font = '11px Consolas, monospace';
-  X.fillText('v2.0 | Phase 2', cx, canvasH - 12);
+  X.fillText('v2.2 | Phase 3: Squad + Town', cx, canvasH - 12);
 }
 
 // ============================================================
@@ -1435,8 +1539,10 @@ function createCharacter() {
 
   // Init explored tiles for 5 floors
   player.exploredTiles = [[], [], [], [], []];
-  player.companion = null; // recruited companion NPC
+  player.squad = []; // up to 4 companions
   player.companionsSeen = []; // track which NPCs have been encountered
+  player.romanced = null; // name of romanced companion
+  player.belovedShield = false; // romance AC bonus active
   player.evolution = null; // evolved subclass name (e.g., 'Champion', 'Assassin')
   player.evolutionData = null; // full evolution path data (abilities, bonuses)
   player.reputation = 0; // -100 (Despised) to +100 (Legendary)
@@ -1966,6 +2072,7 @@ function updateDungeon(dt) {
   // Toggle keys
   if (keys['i'] || keys['I']) { keys['i'] = false; keys['I'] = false; gameState = STATE.INVENTORY; }
   if (keys['c'] || keys['C']) { keys['c'] = false; keys['C'] = false; gameState = STATE.CHAR_SHEET; }
+  if (keys['p'] || keys['P']) { keys['p'] = false; keys['P'] = false; gameState = STATE.PARTY_MGMT; }
   if (keys['?'] || keys['/']) { keys['?'] = false; keys['/'] = false; helpOpen = !helpOpen; if (helpOpen) gameState = STATE.HELP; }
 
   // Message timer
@@ -2086,10 +2193,24 @@ function enterRoom(room) {
       }
       break;
     case ROOM_TYPE.NPC:
-      if (room.npc && !room.npcRecruited && !room.npcDismissed) {
+      if (room.npc && !room.npcDismissed && !(player.squad||[]).some(c => c.name === room.npc?.name)) {
         dungeonMessage = `${room.npc.name} stands here. ${room.npc.greeting}`;
         dungeonMessageTimer = 3;
         SFX.click();
+        // Show companion opinions
+        if (player.squad && player.squad.length > 0) {
+          const commenter = pick(player.squad);
+          const npcPool = COMPANION_POOL.find(c => c.name === room.npc.name);
+          if (npcPool) {
+            const shortNew = room.npc.name.split(' ')[0];
+            const commShort = getCompShortName(commenter.name);
+            if (npcPool.opinions?.likes?.includes(commShort)) {
+              setTimeout(() => addFloatingText(canvasW/2, canvasH/2 - 50, `${commenter.name}: "I know ${shortNew}. Good fighter."`, commenter.color), 500);
+            } else if (npcPool.opinions?.dislikes?.includes(commShort)) {
+              setTimeout(() => addFloatingText(canvasW/2, canvasH/2 - 50, `${commenter.name}: "I don't trust ${shortNew}..."`, commenter.color), 500);
+            }
+          }
+        }
       }
       break;
     case ROOM_TYPE.EVOLUTION_QUEST:
@@ -2121,17 +2242,18 @@ function handleInteract(floor, room) {
   }
 
   if (tile === TILE.STAIRS_DOWN && currentFloor < 4) {
-    currentFloor++;
-    player.floor = currentFloor;
-    const startRoom = dungeon.floors[currentFloor].rooms[0];
-    player.x = startRoom.cx;
-    player.y = startRoom.cy;
-    revealArea(player.x, player.y, player.torchRadius);
-    dungeonMessage = `Descended to Floor ${currentFloor + 1}`;
-    dungeonMessageTimer = 2;
+    // Enter town between floors
     SFX.stairs();
     changeRep(5, 'Floor Cleared');
+    townData = {
+      floorCleared: currentFloor,
+      nextFloor: currentFloor + 1,
+      healUsed: false,
+      recruitChecked: false,
+    };
+    gameState = STATE.TOWN;
     saveGame();
+    return;
   } else if (tile === TILE.STAIRS_DOWN && currentFloor === 4) {
     // Victory!
     gameState = STATE.VICTORY;
@@ -2167,7 +2289,9 @@ function handleInteract(floor, room) {
       player.wildShapeUsed = 0;
       player.sorceryPoints = player.maxSorceryPoints;
       player.conditions = [];
-      if (player.companion) { player.companion.hp = player.companion.maxHp; }
+      if (player.squad) { player.squad.forEach(c => { c.hp = c.maxHp; }); }
+      // Loyalty bonus for using shrine
+      applyLoyaltyEvent('use_shrine');
       dungeonMessage = 'Rested at shrine. HP and spells restored!';
       dungeonMessageTimer = 2.5;
       SFX.heal();
@@ -2198,7 +2322,8 @@ function handleInteract(floor, room) {
       SFX.click();
     }
 
-    if (room.type === ROOM_TYPE.NPC && room.npc && !room.npcRecruited && !room.npcDismissed) {
+    const alreadyRecruited = room.npc && (player.squad||[]).some(c => c.name === room.npc.name);
+    if (room.type === ROOM_TYPE.NPC && room.npc && !room.npcDismissed && !alreadyRecruited) {
       npcRoom = room;
       gameState = STATE.NPC_TALK;
       SFX.click();
@@ -2476,7 +2601,8 @@ function renderDungeon(floor) {
       X.textAlign = 'center';
       X.fillText('$ Shop $', rx, ry);
     }
-    if (room.type === ROOM_TYPE.NPC && !room.npcRecruited && !room.npcDismissed && isVisible(room.cx, room.cy)) {
+    const npcInSquad = room.npc && (player.squad||[]).some(c => c.name === room.npc.name);
+    if (room.type === ROOM_TYPE.NPC && !room.npcDismissed && !npcInSquad && isVisible(room.cx, room.cy)) {
       X.fillStyle = '#ffaa44';
       X.font = '12px Consolas, monospace';
       X.textAlign = 'center';
@@ -2635,25 +2761,32 @@ function renderUI() {
     });
   }
 
-  // Companion display
-  if (player.companion) {
-    const comp = player.companion;
-    const compY = infoY + 54 + (player.conditions.length > 0 ? player.conditions.length * 14 + 4 : 0);
-    X.fillStyle = 'rgba(0,0,0,0.7)';
-    X.fillRect(barX - 2, compY, barW + 4, 36);
-    X.fillStyle = comp.color;
-    X.font = 'bold 10px Consolas, monospace';
-    X.textAlign = 'left';
-    X.fillText(`[${comp.symbol}] ${comp.name}`, barX + 4, compY + 12);
-    // Companion HP bar
-    const compHpPct = comp.hp / comp.maxHp;
-    X.fillStyle = '#300';
-    X.fillRect(barX + 4, compY + 18, barW - 8, 6);
-    X.fillStyle = compHpPct > 0.5 ? '#0a8' : compHpPct > 0.25 ? '#aa0' : '#a00';
-    X.fillRect(barX + 4, compY + 18, (barW - 8) * compHpPct, 6);
-    X.fillStyle = '#aaa';
-    X.font = '9px Consolas, monospace';
-    X.fillText(`${comp.hp}/${comp.maxHp}`, barX + 4, compY + 32);
+  // Squad display
+  if (player.squad && player.squad.length > 0) {
+    let squadY = infoY + 54 + (player.conditions.length > 0 ? player.conditions.length * 14 + 4 : 0);
+    player.squad.forEach(comp => {
+      X.fillStyle = 'rgba(0,0,0,0.7)';
+      X.fillRect(barX - 2, squadY, barW + 4, 34);
+      X.fillStyle = comp.color;
+      X.font = 'bold 9px Consolas, monospace';
+      X.textAlign = 'left';
+      const loyaltyStr = comp.loyalty >= 90 ? '♥' : comp.loyalty >= 80 ? '★' : '';
+      X.fillText(`[${comp.symbol}] ${comp.name} ${loyaltyStr}`, barX + 4, squadY + 10);
+      const compHpPct = comp.hp / comp.maxHp;
+      X.fillStyle = '#300';
+      X.fillRect(barX + 4, squadY + 14, barW - 8, 5);
+      X.fillStyle = compHpPct > 0.5 ? '#0a8' : compHpPct > 0.25 ? '#aa0' : '#a00';
+      X.fillRect(barX + 4, squadY + 14, (barW - 8) * compHpPct, 5);
+      // Loyalty bar
+      X.fillStyle = '#220';
+      X.fillRect(barX + 4, squadY + 21, barW - 8, 4);
+      X.fillStyle = comp.loyalty >= 80 ? '#ffd700' : comp.loyalty >= 50 ? '#44aaff' : comp.loyalty >= 20 ? '#ff8800' : '#ff2222';
+      X.fillRect(barX + 4, squadY + 21, (barW - 8) * (comp.loyalty / 100), 4);
+      X.fillStyle = '#888';
+      X.font = '8px Consolas, monospace';
+      X.fillText(`${comp.hp}/${comp.maxHp} | Loy:${comp.loyalty}`, barX + 4, squadY + 31);
+      squadY += 36;
+    });
   }
 
   // Bottom buttons (non-mobile)
@@ -2663,6 +2796,7 @@ function renderUI() {
     const btns = [
       { label: '[I]nv', key: 'i', state: STATE.INVENTORY },
       { label: '[C]har', key: 'c', state: STATE.CHAR_SHEET },
+      { label: '[P]arty', key: 'p', state: STATE.PARTY_MGMT },
       { label: '[?]Help', key: '?', state: STATE.HELP },
       { label: 'Save', key: null, action: 'save' },
     ];
@@ -2781,8 +2915,18 @@ function startCombat(room) {
   const combatants = [];
   combatants.push({ type: 'player', initiative: playerInit, entity: player });
 
+  // Add squad members
+  if (player.squad) {
+    player.squad.forEach(comp => {
+      if (comp.hp > 0) {
+        const compInit = d20() + 2;
+        combatants.push({ type: 'companion', initiative: compInit, entity: comp });
+      }
+    });
+  }
+
   enemies.forEach(e => {
-    const init = d20() + mod(e.dex);
+    const init = d20() + mod(e.dex || 10);
     combatants.push({ type: 'enemy', initiative: init, entity: e });
   });
 
@@ -2857,6 +3001,11 @@ function advanceTurn() {
         player.blessTurns--;
         if (player.blessTurns <= 0) { player.blessActive = false; }
       }
+    } else if (current.type === 'companion' && current.entity.hp > 0) {
+      combatState.playerTurn = false;
+      combatState.phase = 'companion_auto';
+      combatState.turnDelay = 0.5;
+      found = true;
     } else if (current.type === 'enemy' && current.entity.hp > 0) {
       combatState.playerTurn = false;
       combatState.phase = 'enemy_turn';
@@ -2874,14 +3023,6 @@ function advanceTurn() {
 }
 
 function nextTurn() {
-  // Companion acts after player's turn (if player just acted)
-  if (combatState.playerTurn && player.companion && player.companion.hp > 0) {
-    companionTurn();
-    // Check if companion killed all enemies
-    const alive = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
-    if (alive.length === 0) { combatState.phase = 'victory'; return; }
-  }
-
   combatState.turnIndex = (combatState.turnIndex + 1) % combatState.combatants.length;
   if (combatState.turnIndex === 0) {
     combatState.combatRound++;
@@ -3183,21 +3324,37 @@ function enemyTurn(enemy) {
     });
   }
 
-  // 30% chance to target companion instead of player
-  if (player.companion && player.companion.hp > 0 && Math.random() < 0.3) {
+  // Spread targeting across player + living squad members
+  const aliveSquad = (player.squad || []).filter(c => c.hp > 0);
+  if (aliveSquad.length > 0 && Math.random() < 0.35) {
+    const compTarget = pick(aliveSquad);
     const attack = pick(enemy.attacks);
     const roll = d20();
     const totalRoll = roll + attack.bonus;
-    if (roll === 20 || (roll !== 1 && totalRoll >= player.companion.ac)) {
+    if (roll === 20 || (roll !== 1 && totalRoll >= compTarget.ac)) {
       const dmg = roll === 20 ? rollDice(attack.damage[0]*2,attack.damage[1])+attack.damageBonus : rollDice(attack.damage[0],attack.damage[1])+attack.damageBonus;
-      player.companion.hp = Math.max(0, player.companion.hp - dmg);
-      addCombatLog(`${enemy.name} attacks ${player.companion.name}: ${roll===20?'CRIT! ':''}HIT for ${dmg}!`);
-      if (player.companion.hp <= 0) {
-        addCombatLog(`${player.companion.name} has fallen!`);
-        addFloatingText(canvasW/2, canvasH*0.5, `${player.companion.name} DOWN!`, '#ff4444');
+      // Seraphina divine shield intercept
+      const seraphina = aliveSquad.find(c => c.name === 'Seraphina' && c !== compTarget && c.specialAbilityUsed !== true);
+      if (seraphina && compTarget.hp - dmg <= 0 && Math.random() < 0.5) {
+        const interceptDmg = rollDice(1,8);
+        seraphina.hp = Math.max(1, seraphina.hp - interceptDmg);
+        addCombatLog(`Seraphina intercepts! Takes ${interceptDmg} to protect ${compTarget.name}!`);
+        addFloatingText(canvasW/2, canvasH*0.5, 'DIVINE SHIELD!', '#f0d060');
+        nextTurn(); return;
+      }
+      compTarget.hp = Math.max(0, compTarget.hp - dmg);
+      addCombatLog(`${enemy.name} attacks ${compTarget.name}: ${roll===20?'CRIT! ':''}HIT for ${dmg}!`);
+      if (compTarget.hp <= 0) {
+        addCombatLog(`${compTarget.name} has fallen!`);
+        addFloatingText(canvasW/2, canvasH*0.5, `${compTarget.name} DOWN!`, '#ff4444');
+        // Loyalty hit for allies watching companion fall
+        applyLoyaltyEvent('companion_falls');
+        // Remove from squad after combat (permadeath)
+        combatState._fallenCompanions = combatState._fallenCompanions || [];
+        combatState._fallenCompanions.push(compTarget.name);
       }
     } else {
-      addCombatLog(`${enemy.name} attacks ${player.companion.name}: MISS!`);
+      addCombatLog(`${enemy.name} attacks ${compTarget.name}: MISS!`);
     }
     nextTurn();
     return;
@@ -3542,6 +3699,20 @@ function updateCombat(dt) {
     renderPlayerActions(btnAreaY);
   } else if (combatState.phase === 'death_saves') {
     renderDeathSaves(btnAreaY);
+  } else if (combatState.phase === 'companion_auto') {
+    combatState.turnDelay -= dt;
+    if (combatState.turnDelay <= 0) {
+      const current = combatState.combatants[combatState.turnIndex];
+      companionTurn(current.entity);
+      const alive = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
+      if (alive.length === 0) { combatState.phase = 'victory'; }
+      else nextTurn();
+    }
+    X.fillStyle = '#88aaff';
+    X.font = '14px Consolas, monospace';
+    X.textAlign = 'center';
+    const compActor = combatState.combatants[combatState.turnIndex]?.entity;
+    X.fillText(`${compActor ? compActor.name : 'Ally'}'s turn...`, canvasW/2, btnAreaY + 20);
   } else if (combatState.phase === 'enemy_turn') {
     combatState.turnDelay -= dt;
     if (combatState.turnDelay <= 0) {
@@ -3796,6 +3967,20 @@ function renderCombatVictory(btnAreaY) {
     // Reset combat buffs
     player.huntersMark = false;
     player.conditions = player.conditions.filter(c => c.type !== 'dodging');
+
+    // Remove fallen companions (permadeath)
+    if (combatState._fallenCompanions && combatState._fallenCompanions.length > 0) {
+      combatState._fallenCompanions.forEach(name => {
+        const idx = player.squad.findIndex(c => c.name === name && c.hp <= 0);
+        if (idx !== -1) {
+          addFloatingText(canvasW/2, canvasH/2 - 40, `${name} has fallen forever.`, '#ff4444');
+          player.squad.splice(idx, 1);
+        }
+      });
+    }
+
+    // Loyalty boost for winning battles together
+    applyLoyaltyEvent('boss_victory');
 
     // Check if this was an evolution trial combat
     const wasEvolutionTrial = combatState.isEvolutionTrial;
@@ -4305,8 +4490,13 @@ function applyEvolution(path) {
   if (b.initiative) {
     // Stored in evolutionData for combat use
   }
-  if (b.beastCompanion && !player.companion) {
-    player.companion = deepClone(b.beastCompanion);
+  if (b.beastCompanion) {
+    player.squad = player.squad || [];
+    if (player.squad.length < 4 && !player.squad.some(c => c.name === b.beastCompanion.name)) {
+      const beast = deepClone(b.beastCompanion);
+      beast.loyalty = 70; beast.backstoryUnlocked = false;
+      player.squad.push(beast);
+    }
   }
 
   // Mark the room complete
@@ -5085,11 +5275,39 @@ function updateNpcTalk() {
     X.fillText(line, cx, portraitY + 165 + i * 18);
   });
 
-  // Current companion info
-  if (player.companion) {
+  // Current squad info
+  const squadFull = (player.squad || []).length >= 4;
+  const alreadyIn = (player.squad || []).some(c => c.name === npc.name);
+  if (squadFull) {
     X.fillStyle = '#666';
     X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
-    X.fillText(`Current companion: ${player.companion.name} (will be dismissed)`, cx, canvasH * 0.65);
+    X.fillText(`Party full (${player.squad.length}/4). Dismiss someone first.`, cx, canvasH * 0.65);
+  } else if (alreadyIn) {
+    X.fillStyle = '#44ff88';
+    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    X.fillText(`${npc.name} is already in your party!`, cx, canvasH * 0.65);
+  } else {
+    X.fillStyle = '#888';
+    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    X.fillText(`Party: ${(player.squad||[]).length}/4 companions`, cx, canvasH * 0.65);
+  }
+
+  // Companion inter-opinion hints
+  if (!alreadyIn && player.squad && player.squad.length > 0) {
+    const npcPool = COMPANION_POOL.find(c => c.name === npc.name);
+    if (npcPool) {
+      const opinions = [];
+      player.squad.forEach(c => {
+        const shortC = getCompShortName(c.name);
+        if (npcPool.opinions?.likes?.includes(shortC)) opinions.push(`${npc.name} likes ${c.name}`);
+        if (npcPool.opinions?.dislikes?.includes(shortC)) opinions.push(`${npc.name} dislikes ${c.name}`);
+      });
+      if (opinions.length > 0) {
+        X.fillStyle = '#aaa';
+        X.font = `${isMobile ? 9 : 11}px Consolas, monospace`;
+        X.fillText(opinions[0], cx, canvasH * 0.68);
+      }
+    }
   }
 
   // Buttons
@@ -5099,16 +5317,28 @@ function updateNpcTalk() {
   const btnY1 = canvasH * 0.72;
   const btnY2 = btnY1 + btnH + 12;
 
-  drawButton(btnX, btnY1, btnW, btnH, 'RECRUIT', false, '#2a5a2a');
-  if (clickedInRect(btnX, btnY1, btnW, btnH)) {
-    SFX.click();
-    player.companion = deepClone(npc);
-    npcRoom.npcRecruited = true;
-    dungeonMessage = `${npc.name} joins your party!`;
-    dungeonMessageTimer = 2.5;
-    addFloatingText(canvasW / 2, canvasH / 2, `+${npc.name}`, npc.color);
-    gameState = STATE.DUNGEON;
-    saveGame();
+  if (!alreadyIn) {
+    const canRecruit = !squadFull;
+    drawButton(btnX, btnY1, btnW, btnH, canRecruit ? 'RECRUIT' : 'PARTY FULL', false, canRecruit ? '#2a5a2a' : '#333');
+    if (canRecruit && clickedInRect(btnX, btnY1, btnW, btnH)) {
+      SFX.click();
+      const newComp = deepClone(npc);
+      newComp.backstoryUnlocked = false;
+      newComp.specialAbilityUsed = false;
+      player.squad = player.squad || [];
+      player.squad.push(newComp);
+      npcRoom.npcRecruited = true;
+      dungeonMessage = `${npc.name} joins your squad! (${player.squad.length}/4)`;
+      dungeonMessageTimer = 2.5;
+      addFloatingText(canvasW / 2, canvasH / 2, `+${npc.name}`, npc.color);
+      gameState = STATE.DUNGEON;
+      saveGame();
+    }
+  } else {
+    X.fillStyle = '#44ff88';
+    X.font = 'bold 14px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('Already in party!', cx, btnY1 + btnH/2);
   }
 
   drawButton(btnX, btnY2, btnW, btnH, 'DECLINE', false, '#4a2a2a');
@@ -5130,24 +5360,66 @@ function updateNpcTalk() {
 // ============================================================
 // COMPANION COMBAT AI
 // ============================================================
-function companionTurn() {
-  if (!player.companion || player.companion.hp <= 0) return;
-  const comp = player.companion;
+function companionTurn(comp) {
+  if (!comp || comp.hp <= 0) return;
   const aliveEnemies = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
   if (aliveEnemies.length === 0) return;
 
-  // Healer companions heal player if low HP
-  if (comp.canHeal && player.hp < player.maxHp * 0.4 && Math.random() < 0.6) {
-    const healAmt = rollDice(1, 8) + 2;
-    player.hp = Math.min(player.maxHp, player.hp + healAmt);
-    addCombatLog(`${comp.name} heals you for ${healAmt} HP!`);
-    addFloatingText(canvasW / 2, canvasH * 0.65, `+${healAmt}`, '#44ff44');
-    SFX.heal();
+  // Lyra special: arcane surge when ally just fell
+  if (comp.name === 'Lyra Starweave' && combatState._fallenCompanions && combatState._fallenCompanions.length > 0 && !combatState._lyraSurgeUsed) {
+    combatState._lyraSurgeUsed = true;
+    const target = pick(aliveEnemies);
+    const dmg = rollDice(3,4) + 3;
+    target.entity.hp = Math.max(0, target.entity.hp - dmg);
+    addCombatLog(`Lyra's Arcane Surge! Magic Missile for ${dmg} force damage!`);
+    addFloatingText(canvasW/2, canvasH*0.3, `SURGE -${dmg}`, '#8888ff');
+    SFX.spell();
     return;
   }
 
-  // Attack a random enemy
-  const target = pick(aliveEnemies);
+  // Healer companions heal lowest-HP party member if critical
+  if (comp.canHeal) {
+    // Find most injured ally
+    const allies = [player, ...(player.squad || []).filter(c => c !== comp && c.hp > 0)];
+    const injured = allies.find(a => a.hp < a.maxHp * 0.35);
+    if (injured && Math.random() < 0.65) {
+      const healAmt = rollDice(1, 8) + 2;
+      injured.hp = Math.min(injured.maxHp, injured.hp + healAmt);
+      const healTarget = injured === player ? 'you' : injured.name;
+      addCombatLog(`${comp.name} heals ${healTarget} for ${healAmt} HP!`);
+      addFloatingText(canvasW / 2, canvasH * 0.65, `+${healAmt}`, '#44ff44');
+      SFX.heal();
+      // Loyalty: healed player
+      if (injured === player) comp.loyalty = Math.min(100, comp.loyalty + 1);
+      return;
+    }
+  }
+
+  // Attack a random enemy (Theron: target lowest HP if special ability not yet used)
+  let target;
+  if (comp.name === 'Theron Shadowstep' && !combatState._theronVolleyUsed) {
+    combatState._theronVolleyUsed = true;
+    const sorted = [...aliveEnemies].sort((a,b) => b.entity.hp - a.entity.hp);
+    target = sorted[0];
+    // Fires twice
+    for (let shot = 0; shot < 2; shot++) {
+      const attack = comp.attacks[0];
+      const roll = d20();
+      const totalRoll = roll + attack.bonus;
+      if (roll >= 20 || (roll !== 1 && totalRoll >= target.entity.ac)) {
+        const dmg = rollDice(attack.damage[0], attack.damage[1]) + attack.damageBonus;
+        target.entity.hp = Math.max(0, target.entity.hp - dmg);
+        addCombatLog(`Theron's Hunter's Volley (${shot+1}/2): HIT for ${dmg}!`);
+        SFX.hit();
+      } else {
+        addCombatLog(`Theron's Hunter's Volley (${shot+1}/2): MISS`);
+      }
+      if (target.entity.hp <= 0) { addCombatLog(`${target.entity.name} defeated!`); break; }
+    }
+    return;
+  }
+
+  target = pick(aliveEnemies);
   const attack = comp.attacks[0];
   const roll = d20();
   const totalRoll = roll + attack.bonus;
@@ -5160,13 +5432,69 @@ function companionTurn() {
   } else if (roll === 1) {
     addCombatLog(`${comp.name} uses ${attack.name}: NAT 1! Miss!`);
   } else if (totalRoll >= target.entity.ac) {
-    const dmg = rollDice(attack.damage[0], attack.damage[1]) + attack.damageBonus;
+    let dmg = rollDice(attack.damage[0], attack.damage[1]) + attack.damageBonus;
+    // Grimjaw berserker fury: double dmg on kills when below 50%
+    if (comp.name === 'Grimjaw' && comp.hp < comp.maxHp * 0.5 && target.entity.hp <= dmg) {
+      dmg *= 2;
+      addCombatLog(`GRIMJAW FURY! Double damage: ${dmg}!`);
+    }
+    // Elara shadow strike: bonus once per combat
+    if (comp.name === 'Elara the Swift' && !combatState._elaraShadowUsed) {
+      combatState._elaraShadowUsed = true;
+      const bonus = rollDice(2,4);
+      dmg += bonus;
+      addCombatLog(`Elara's Shadow Strike! +${bonus} bonus damage!`);
+    }
     target.entity.hp = Math.max(0, target.entity.hp - dmg);
     addCombatLog(`${comp.name} uses ${attack.name} on ${target.entity.name}: HIT for ${dmg}!`);
     SFX.hit();
   } else {
     addCombatLog(`${comp.name} uses ${attack.name}: MISS! (${totalRoll} vs AC ${target.entity.ac})`);
   }
+  if (target.entity.hp <= 0) addCombatLog(`${target.entity.name} defeated!`);
+}
+
+// ============================================================
+// LOYALTY SYSTEM
+// ============================================================
+function applyLoyaltyEvent(event) {
+  if (!player || !player.squad) return;
+  const changes = COMPANION_OPINIONS[event];
+  if (!changes) return;
+  player.squad.forEach(comp => {
+    const shortName = getCompShortName(comp.name);
+    const delta = changes[shortName] || 0;
+    if (delta === 0) return;
+    const old = comp.loyalty;
+    comp.loyalty = Math.max(0, Math.min(100, comp.loyalty + delta));
+    if (comp.loyalty !== old && Math.abs(delta) >= 3) {
+      const sign = delta > 0 ? '+' : '';
+      addFloatingText(canvasW/2 + rand(-60,60), canvasH/2 - 80, `${comp.name}: ${sign}${delta} Loy`, delta > 0 ? '#44ff88' : '#ff6644');
+    }
+    // Loyalty-based events
+    if (comp.loyalty <= 10 && old > 10) {
+      dungeonMessage = `${comp.name} leaves the party in anger!`;
+      dungeonMessageTimer = 3;
+      setTimeout(() => { player.squad = player.squad.filter(c => c !== comp); }, 100);
+    } else if (comp.loyalty <= 20 && old > 20) {
+      dungeonMessage = `${comp.name} is thinking of leaving...`;
+      dungeonMessageTimer = 2.5;
+    } else if (comp.loyalty >= 80 && old < 80 && !comp.backstoryUnlocked) {
+      comp.backstoryUnlocked = true;
+      dungeonMessage = `${comp.name} opens up to you. Check the campfire for their story.`;
+      dungeonMessageTimer = 3;
+    }
+  });
+}
+
+function getCompShortName(fullName) {
+  if (fullName.startsWith('Elara')) return 'Elara';
+  if (fullName.startsWith('Brother Aldric')) return 'Aldric';
+  if (fullName === 'Grimjaw') return 'Grimjaw';
+  if (fullName.startsWith('Lyra')) return 'Lyra';
+  if (fullName.startsWith('Theron')) return 'Theron';
+  if (fullName === 'Seraphina') return 'Seraphina';
+  return fullName;
 }
 
 // ============================================================
@@ -5178,7 +5506,7 @@ function saveGame() {
     dungeon: deepClone(dungeon),
     currentFloor: currentFloor,
     timestamp: Date.now(),
-    version: '2.0',
+    version: '2.2',
   };
   try {
     localStorage.setItem('dof_save', JSON.stringify(saveData));
@@ -5199,6 +5527,16 @@ function loadGame() {
     if (player.reputation === undefined) player.reputation = 0;
     if (player.evolution === undefined) player.evolution = null;
     if (player.evolutionData === undefined) player.evolutionData = null;
+    // v2.2 backward compat: migrate old companion to squad
+    if (player.companion !== undefined && !player.squad) {
+      player.squad = player.companion ? [player.companion] : [];
+      delete player.companion;
+    }
+    if (!player.squad) player.squad = [];
+    if (player.romanced === undefined) player.romanced = null;
+    if (player.belovedShield === undefined) player.belovedShield = false;
+    // Ensure squad members have loyalty
+    player.squad.forEach(c => { if (c.loyalty === undefined) c.loyalty = 50; });
     dungeon = data.dungeon;
     currentFloor = data.currentFloor;
     gameState = STATE.DUNGEON;
@@ -5210,6 +5548,656 @@ function loadGame() {
     dungeonMessage = 'Failed to load!';
     dungeonMessageTimer = 2;
   }
+}
+
+// ============================================================
+// PARTY MANAGEMENT SCREEN
+// ============================================================
+function updatePartyMgmt() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 18 : 22}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('PARTY MANAGEMENT', cx, 30);
+
+  X.fillStyle = '#aaa';
+  X.font = '13px Consolas, monospace';
+  X.fillText(`Squad: ${(player.squad||[]).length}/4`, cx, 52);
+
+  const panelW = Math.min(canvasW - 20, 460);
+  const panelX = cx - panelW / 2;
+
+  if (!player.squad || player.squad.length === 0) {
+    X.fillStyle = '#555';
+    X.font = '14px Consolas, monospace';
+    X.fillText('No companions in your squad.', cx, canvasH / 2);
+    X.fillText('Recruit companions from NPC rooms in the dungeon.', cx, canvasH / 2 + 22);
+  } else {
+    const cardH = isMobile ? 110 : 120;
+    const gap = 10;
+    const startY = 70;
+    player.squad.forEach((comp, idx) => {
+      const cy2 = startY + idx * (cardH + gap) + (partyMgmtScroll || 0);
+      if (cy2 + cardH < 60 || cy2 > canvasH - 50) return;
+
+      const loyPct = comp.loyalty / 100;
+      const loyColor = comp.loyalty >= 90 ? '#ff88aa' : comp.loyalty >= 80 ? '#ffd700' : comp.loyalty >= 50 ? '#44aaff' : comp.loyalty >= 20 ? '#ff8800' : '#ff2222';
+
+      X.fillStyle = '#1a1a2a';
+      X.fillRect(panelX, cy2, panelW, cardH);
+      X.strokeStyle = comp.color;
+      X.lineWidth = 2;
+      X.strokeRect(panelX, cy2, panelW, cardH);
+
+      // Companion symbol
+      X.fillStyle = comp.color;
+      X.beginPath(); X.arc(panelX + 28, cy2 + 28, 20, 0, Math.PI * 2); X.fill();
+      X.fillStyle = '#fff';
+      X.font = 'bold 14px Consolas, monospace';
+      X.textAlign = 'center'; X.textBaseline = 'middle';
+      X.fillText(comp.symbol, panelX + 28, cy2 + 29);
+
+      // Name & class
+      X.textAlign = 'left'; X.textBaseline = 'alphabetic';
+      X.fillStyle = '#fff';
+      X.font = `bold ${isMobile ? 13 : 15}px Consolas, monospace`;
+      const romanceTag = player.romanced === comp.name ? ' ♥' : '';
+      X.fillText(`${comp.name}${romanceTag}`, panelX + 56, cy2 + 18);
+      X.fillStyle = '#aaa';
+      X.font = '11px Consolas, monospace';
+      X.fillText(comp.class, panelX + 56, cy2 + 32);
+
+      // HP bar
+      X.fillStyle = '#300';
+      X.fillRect(panelX + 56, cy2 + 38, panelW - 130, 8);
+      const hpPct = comp.hp / comp.maxHp;
+      X.fillStyle = hpPct > 0.5 ? '#0c0' : hpPct > 0.25 ? '#cc0' : '#c00';
+      X.fillRect(panelX + 56, cy2 + 38, (panelW - 130) * hpPct, 8);
+      X.fillStyle = '#888';
+      X.font = '10px Consolas, monospace';
+      X.fillText(`HP: ${comp.hp}/${comp.maxHp}`, panelX + 56, cy2 + 58);
+
+      // Loyalty bar
+      X.fillStyle = '#220';
+      X.fillRect(panelX + 56, cy2 + 62, panelW - 130, 6);
+      X.fillStyle = loyColor;
+      X.fillRect(panelX + 56, cy2 + 62, (panelW - 130) * loyPct, 6);
+
+      const loyLabel = comp.loyalty >= 90 ? 'Romance available!' : comp.loyalty >= 80 ? 'Backstory unlocked!' : comp.loyalty >= 20 ? `Loyalty: ${comp.loyalty}` : 'May leave soon!';
+      X.fillStyle = loyColor;
+      X.font = '10px Consolas, monospace';
+      X.fillText(loyLabel, panelX + 56, cy2 + 80);
+
+      // Personality
+      X.fillStyle = '#666';
+      X.font = `italic ${isMobile ? 9 : 10}px Consolas, monospace`;
+      const shortPersonality = comp.personality.length > 55 ? comp.personality.substr(0, 52) + '...' : comp.personality;
+      X.fillText(shortPersonality, panelX + 10, cy2 + cardH - 10);
+
+      // Dismiss button
+      const dismissW = 65, dismissH = 26;
+      const dismissX = panelX + panelW - dismissW - 8;
+      const dismissY = cy2 + (cardH - dismissH) / 2;
+      drawButton(dismissX, dismissY, dismissW, dismissH, 'Dismiss', false, '#4a1a1a');
+      if (clickedInRect(dismissX, dismissY, dismissW, dismissH)) {
+        SFX.click();
+        // Loyalty penalty for companions who liked dismissed one
+        player.squad.forEach(other => {
+          const compPool = COMPANION_POOL.find(c => c.name === other.name);
+          if (compPool?.opinions?.likes?.some(n => comp.name.includes(n) || comp.name.startsWith(n))) {
+            other.loyalty = Math.max(0, other.loyalty - 3);
+          }
+        });
+        player.squad.splice(idx, 1);
+        dungeonMessage = `${comp.name} has been dismissed.`;
+        dungeonMessageTimer = 2;
+      }
+    });
+  }
+
+  // Romance section hint
+  const romanceables = (player.squad || []).filter(c => c.romanceable && c.loyalty >= 90 && player.romanced !== c.name);
+  if (romanceables.length > 0 && !player.romanced) {
+    X.fillStyle = '#ff88aa';
+    X.font = 'bold 12px Consolas, monospace';
+    X.textAlign = 'center';
+    const ry = canvasH - 90;
+    X.fillText(`♥ Romance available with: ${romanceables.map(c=>c.name.split(' ')[0]).join(', ')}`, cx, ry);
+    X.fillStyle = '#aaa';
+    X.font = '11px Consolas, monospace';
+    X.fillText('Visit the campfire at the next town to pursue romance.', cx, ry + 16);
+  }
+  if (player.romanced) {
+    X.fillStyle = '#ff88aa';
+    X.font = '11px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText(`♥ Romanced: ${player.romanced} — Beloved's Shield active (+1 AC)`, cx, canvasH - 76);
+  }
+
+  // Close button
+  const closeBtnW = 100, closeBtnH = 35;
+  drawButton(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH, 'Close [P]', false, '#333');
+  if (clickedInRect(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH) || keys['p'] || keys['P'] || keys['Escape']) {
+    keys['p'] = false; keys['P'] = false; keys['Escape'] = false;
+    SFX.click();
+    gameState = STATE.DUNGEON;
+  }
+}
+
+// ============================================================
+// TOWN SYSTEM
+// ============================================================
+let townNpcIdx = 0;
+let townScrollY2 = 0;
+
+function updateTown() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  if (!townData) { gameState = STATE.DUNGEON; return; }
+
+  const cx = canvasW / 2;
+
+  // Town header
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 20 : 26}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('TOWN OF HEARTHREST', cx, 35);
+
+  X.fillStyle = '#888';
+  X.font = '13px Consolas, monospace';
+  X.fillText(`Between Floor ${townData.floorCleared + 1} and Floor ${townData.nextFloor + 1}`, cx, 55);
+
+  // Draw simple town layout (building icons row)
+  const bldW = isMobile ? 55 : 70, bldH = isMobile ? 45 : 55;
+  const bldY = 70;
+  const bldGap = isMobile ? 8 : 14;
+  const buildings = [
+    { name: 'Tavern', color: '#a06030', icon: 'T', desc: 'Rest & rumors' },
+    { name: 'Barracks', color: '#606080', icon: 'B', desc: 'Recruit allies' },
+    { name: 'Bounty', color: '#c08020', icon: '$', desc: 'Contracts' },
+    { name: 'Campfire', color: '#c04010', icon: '🔥', desc: 'Party talk' },
+  ];
+  const totalBW = buildings.length * (bldW + bldGap) - bldGap;
+  const bldStartX = cx - totalBW / 2;
+
+  buildings.forEach((bld, i) => {
+    const bx = bldStartX + i * (bldW + bldGap);
+    const hov = isInRect(mouseX, mouseY, bx, bldY, bldW, bldH);
+    X.fillStyle = hov ? bld.color : darkenColor(bld.color, 0.6);
+    X.fillRect(bx, bldY, bldW, bldH);
+    X.strokeStyle = hov ? '#fff' : '#666';
+    X.lineWidth = hov ? 2 : 1;
+    X.strokeRect(bx, bldY, bldW, bldH);
+    X.fillStyle = '#fff';
+    X.font = `bold ${isMobile ? 13 : 16}px Consolas, monospace`;
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(bld.icon, bx + bldW/2, bldY + bldH/2 - 6);
+    X.font = `${isMobile ? 8 : 10}px Consolas, monospace`;
+    X.fillText(bld.name, bx + bldW/2, bldY + bldH/2 + 10);
+    X.fillStyle = '#aaa';
+    X.font = `${isMobile ? 7 : 9}px Consolas, monospace`;
+    X.fillText(bld.desc, bx + bldW/2, bldY + bldH/2 + 22);
+  });
+
+  const contentY = bldY + bldH + 18;
+  const panelW = Math.min(canvasW - 20, 460);
+  const panelX = cx - panelW / 2;
+
+  // Tavern
+  const tavX = bldStartX;
+  if (clickedInRect(tavX, bldY, bldW, bldH)) {
+    SFX.click(); townData.activeSection = 'tavern';
+  }
+  // Barracks
+  const barX = bldStartX + (bldW + bldGap);
+  if (clickedInRect(barX, bldY, bldW, bldH)) {
+    SFX.click(); townData.activeSection = 'barracks';
+  }
+  // Bounty
+  const bntX = bldStartX + 2 * (bldW + bldGap);
+  if (clickedInRect(bntX, bldY, bldW, bldH)) {
+    SFX.click(); townData.activeSection = 'bounty';
+  }
+  // Campfire
+  const cfX = bldStartX + 3 * (bldW + bldGap);
+  if (clickedInRect(cfX, bldY, bldW, bldH)) {
+    SFX.click(); townData.activeSection = 'campfire';
+  }
+
+  const section = townData.activeSection || 'tavern';
+
+  // Draw section content
+  X.fillStyle = '#1a1a2a';
+  X.fillRect(panelX, contentY, panelW, canvasH - contentY - 55);
+  X.strokeStyle = '#444';
+  X.lineWidth = 1;
+  X.strokeRect(panelX, contentY, panelW, canvasH - contentY - 55);
+
+  if (section === 'tavern') {
+    drawTownTavern(panelX, contentY, panelW, cx);
+  } else if (section === 'barracks') {
+    drawTownBarracks(panelX, contentY, panelW, cx);
+  } else if (section === 'bounty') {
+    drawTownBounty(panelX, contentY, panelW, cx);
+  } else if (section === 'campfire') {
+    drawTownCampfire(panelX, contentY, panelW, cx);
+  }
+
+  // Descend button
+  const descW = isMobile ? 160 : 200, descH = 40;
+  drawButton(cx - descW/2, canvasH - 48, descW, descH, `Descend to Floor ${townData.nextFloor + 1}`, false, '#2a2a4a');
+  if (clickedInRect(cx - descW/2, canvasH - 48, descW, descH)) {
+    SFX.stairs();
+    currentFloor = townData.nextFloor;
+    player.floor = currentFloor;
+    const startRoom = dungeon.floors[currentFloor].rooms[0];
+    player.x = startRoom.cx;
+    player.y = startRoom.cy;
+    revealArea(player.x, player.y, player.torchRadius);
+    dungeonMessage = `Descended to Floor ${currentFloor + 1}`;
+    dungeonMessageTimer = 2;
+    townData = null;
+    gameState = STATE.DUNGEON;
+    saveGame();
+  }
+
+  updateFloatingTexts(0.016);
+}
+
+function drawTownTavern(px, py, pw, cx) {
+  X.fillStyle = '#ffd700';
+  X.font = 'bold 14px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('THE RUSTY FLAGON TAVERN', cx, py + 18);
+
+  const repTier = getRepTier(player.reputation);
+  const canHealFree = player.reputation >= 50;
+  const healCost = canHealFree ? 0 : 20;
+
+  // NPC dialogue
+  const npc = TOWN_NPCS[0];
+  X.fillStyle = npc.color;
+  X.font = 'bold 12px Consolas, monospace';
+  X.textAlign = 'left';
+  X.fillText(`${npc.name} says:`, px + 10, py + 38);
+  X.fillStyle = '#ccc';
+  X.font = 'italic 11px Consolas, monospace';
+  const npcLine = npc.lines[townData.floorCleared % npc.lines.length];
+  const npcLines = wrapText(npcLine, pw - 20, 11);
+  npcLines.forEach((line, i) => X.fillText(line, px + 10, py + 52 + i * 14));
+
+  const actY = py + 52 + npcLines.length * 14 + 10;
+
+  // Rest/heal option
+  const hLabel = canHealFree ? 'REST (Free - High Rep)' : `REST (${healCost} gold)`;
+  const canAfford = player.gold >= healCost;
+  drawButton(cx - 120, actY, 240, 36, hLabel, false, (canAfford || canHealFree) ? '#2a4a2a' : '#333');
+  if (clickedInRect(cx - 120, actY, 240, 36) && (canAfford || canHealFree) && !townData.healUsed) {
+    SFX.heal();
+    player.gold -= healCost;
+    player.hp = player.maxHp;
+    player.spellSlots = player.maxSpellSlots;
+    player.secondWindUsed = false; player.actionSurgeUsed = false;
+    player.rageCount = 0; player.kiPoints = player.maxKiPoints;
+    player.sorceryPoints = player.maxSorceryPoints;
+    if (player.squad) player.squad.forEach(c => { c.hp = c.maxHp; });
+    townData.healUsed = true;
+    addFloatingText(canvasW/2, canvasH/2, 'FULLY RESTED!', '#44ff44');
+  }
+  if (townData.healUsed) {
+    X.fillStyle = '#44ff44'; X.font = '12px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('Party fully rested!', cx, actY + 50);
+  }
+
+  // Rumors (random flavor)
+  const rumors = [
+    '"Heard the next floor has traps that make the last look like puddles..."',
+    '"A wizard came through last month. We haven\'t seen him since."',
+    '"Strange lights below. Could be treasure. Could be something worse."',
+    '"The boss on the next floor... I won\'t say the name. Bad luck."',
+    '"Three adventurers went down yesterday. Two came back. One doesn\'t talk anymore."',
+  ];
+  const rumor = rumors[(townData.nextFloor + Math.floor(gameTime * 0.1)) % rumors.length];
+  X.fillStyle = '#666'; X.font = 'italic 10px Consolas, monospace'; X.textAlign = 'center';
+  const rumorLines = wrapText(`Rumor: ${rumor}`, pw - 20, 10);
+  rumorLines.forEach((line, i) => X.fillText(line, cx, actY + 65 + i * 13));
+
+  // Reputation indicator
+  X.fillStyle = repTier.color; X.font = '11px Consolas, monospace'; X.textAlign = 'center';
+  X.fillText(`Reputation: ${repTier.name} — ${repTier.desc}`, cx, actY + 65 + rumorLines.length * 13 + 14);
+}
+
+function drawTownBarracks(px, py, pw, cx) {
+  X.fillStyle = '#a0a0d0';
+  X.font = 'bold 14px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('BARRACKS — RECRUIT COMPANIONS', cx, py + 18);
+
+  const guardNpc = TOWN_NPCS[1];
+  X.fillStyle = guardNpc.color;
+  X.font = 'bold 12px Consolas, monospace';
+  X.textAlign = 'left';
+  X.fillText(`${guardNpc.name} says:`, px + 10, py + 38);
+  X.fillStyle = '#ccc'; X.font = 'italic 11px Consolas, monospace';
+  const gl = guardNpc.lines[townData.floorCleared % guardNpc.lines.length];
+  const gLines = wrapText(gl, pw - 20, 11);
+  gLines.forEach((line, i) => X.fillText(line, px + 10, py + 52 + i * 14));
+
+  const cardY = py + 52 + gLines.length * 14 + 10;
+  const squadFull = (player.squad || []).length >= 4;
+
+  // Show available companions not already in squad
+  const available = COMPANION_POOL.filter(c => !(player.squad || []).some(s => s.name === c.name));
+  if (available.length === 0) {
+    X.fillStyle = '#888'; X.font = '12px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('All available companions are already in your party!', cx, cardY + 20);
+  } else if (squadFull) {
+    X.fillStyle = '#ff8800'; X.font = '12px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('Party is full (4/4). Dismiss a member first.', cx, cardY + 20);
+  } else {
+    available.slice(0, 3).forEach((npc, i) => {
+      const cy = cardY + i * 54;
+      X.fillStyle = '#222233';
+      X.fillRect(px + 5, cy, pw - 10, 50);
+      X.strokeStyle = npc.color; X.lineWidth = 1;
+      X.strokeRect(px + 5, cy, pw - 10, 50);
+      X.fillStyle = npc.color; X.beginPath(); X.arc(px + 22, cy + 25, 14, 0, Math.PI * 2); X.fill();
+      X.fillStyle = '#fff'; X.font = 'bold 10px Consolas, monospace'; X.textAlign = 'center'; X.textBaseline = 'middle';
+      X.fillText(npc.symbol, px + 22, cy + 26);
+      X.textAlign = 'left'; X.textBaseline = 'alphabetic';
+      X.fillStyle = '#fff'; X.font = 'bold 11px Consolas, monospace';
+      X.fillText(`${npc.name} (${npc.class})`, px + 40, cy + 17);
+      X.fillStyle = '#888'; X.font = '9px Consolas, monospace';
+      const short = npc.personality.length > 55 ? npc.personality.substr(0,52)+'...' : npc.personality;
+      X.fillText(short, px + 40, cy + 30);
+      X.fillStyle = '#aaa'; X.font = '9px Consolas, monospace';
+      X.fillText(`HP:${npc.hp} AC:${npc.ac} | ${npc.attacks[0].name}`, px + 40, cy + 43);
+
+      drawButton(px + pw - 70, cy + 12, 60, 26, 'Recruit', false, '#2a4a2a');
+      if (clickedInRect(px + pw - 70, cy + 12, 60, 26) && !squadFull) {
+        SFX.click();
+        const newComp = deepClone(npc);
+        newComp.backstoryUnlocked = false; newComp.specialAbilityUsed = false;
+        player.squad = player.squad || [];
+        player.squad.push(newComp);
+        dungeonMessage = `${npc.name} joins your squad!`;
+        dungeonMessageTimer = 2;
+        addFloatingText(canvasW/2, canvasH/2, `+${npc.name}`, npc.color);
+      }
+    });
+  }
+
+  X.fillStyle = '#888'; X.font = '10px Consolas, monospace'; X.textAlign = 'center';
+  X.fillText(`Squad: ${(player.squad||[]).length}/4`, cx, py + (canvasH - py - 60));
+}
+
+function drawTownBounty(px, py, pw, cx) {
+  X.fillStyle = '#c08020';
+  X.font = 'bold 14px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('BOUNTY BOARD', cx, py + 18);
+
+  const salNpc = TOWN_NPCS[3];
+  X.fillStyle = salNpc.color; X.font = 'bold 12px Consolas, monospace'; X.textAlign = 'left';
+  X.fillText(`${salNpc.name} says:`, px + 10, py + 38);
+  X.fillStyle = '#ccc'; X.font = 'italic 11px Consolas, monospace';
+  const sl = salNpc.lines[townData.floorCleared % salNpc.lines.length];
+  const sLines = wrapText(sl, pw - 20, 11);
+  sLines.forEach((line, i) => X.fillText(line, px + 10, py + 52 + i * 14));
+
+  const bounties = [
+    { desc: `Clear Floor ${townData.nextFloor + 1} without losing a companion`, reward: 100, id: 'no_loss' },
+    { desc: `Defeat the boss on Floor ${townData.nextFloor + 1}`, reward: 150, id: 'boss_kill' },
+    { desc: 'Have a full squad of 4 companions', reward: 50, id: 'full_squad' },
+  ];
+
+  const bY = py + 52 + sLines.length * 14 + 12;
+  X.fillStyle = '#aaa'; X.font = 'bold 12px Consolas, monospace'; X.textAlign = 'center';
+  X.fillText('Active Contracts:', cx, bY);
+
+  bounties.forEach((b, i) => {
+    const by2 = bY + 18 + i * 38;
+    X.fillStyle = '#1a1a2a';
+    X.fillRect(px + 5, by2, pw - 10, 34);
+    X.strokeStyle = '#555'; X.lineWidth = 1; X.strokeRect(px + 5, by2, pw - 10, 34);
+    X.fillStyle = '#ccc'; X.font = '11px Consolas, monospace'; X.textAlign = 'left';
+    const bLines = wrapText(b.desc, pw - 100, 11);
+    X.fillText(bLines[0], px + 10, by2 + 14);
+    X.fillStyle = '#ffd700'; X.textAlign = 'right';
+    X.fillText(`${b.reward}g`, px + pw - 12, by2 + 14);
+    X.fillStyle = '#666'; X.font = '9px Consolas, monospace'; X.textAlign = 'left';
+    X.fillText('Reward on completion', px + 10, by2 + 27);
+  });
+
+  X.fillStyle = '#555'; X.font = '10px Consolas, monospace'; X.textAlign = 'center';
+  X.fillText('Bounty rewards auto-collected when conditions are met in the dungeon.', cx, bY + 18 + bounties.length * 38 + 10);
+}
+
+function drawTownCampfire(px, py, pw, cx) {
+  X.fillStyle = '#ff8833';
+  X.font = 'bold 14px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('CAMPFIRE — PARTY CONVERSATIONS', cx, py + 18);
+
+  // Animated fire particles
+  if (Math.random() < 0.4) {
+    spawnParticles(cx, py + 60, '#ff6600', 2);
+    spawnParticles(cx, py + 60, '#ffaa00', 1);
+  }
+
+  const sage = TOWN_NPCS[2];
+  X.fillStyle = sage.color; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+  X.fillText(`${sage.name} ponders nearby:`, px + 10, py + 38);
+  X.fillStyle = '#ccc'; X.font = 'italic 10px Consolas, monospace';
+  const sageLine = sage.lines[townData.floorCleared % sage.lines.length];
+  const sageLines = wrapText(sageLine, pw - 20, 10);
+  sageLines.forEach((line, i) => X.fillText(line, px + 10, py + 51 + i * 13));
+
+  const actY = py + 51 + sageLines.length * 13 + 14;
+
+  if (!player.squad || player.squad.length === 0) {
+    X.fillStyle = '#555'; X.font = '12px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('No companions to talk to.', cx, actY + 20);
+    return;
+  }
+
+  // Show companion conversations/backstories
+  X.fillStyle = '#ffd700'; X.font = 'bold 12px Consolas, monospace'; X.textAlign = 'center';
+  X.fillText('Companion conversations:', cx, actY);
+
+  const compBtnW = isMobile ? 160 : 200, compBtnH = 32;
+  player.squad.forEach((comp, i) => {
+    const by2 = actY + 14 + i * (compBtnH + 6);
+    const hasBackstory = comp.backstoryUnlocked || comp.loyalty >= 80;
+    const canRomance = comp.romanceable && comp.loyalty >= 90 && player.romanced !== comp.name && !player.romanced;
+    const label = canRomance ? `♥ ${comp.name.split(' ')[0]}` : hasBackstory ? `★ ${comp.name.split(' ')[0]}` : comp.name.split(' ')[0];
+    const color = canRomance ? '#4a1a2a' : hasBackstory ? '#2a3a1a' : '#1a1a2a';
+    drawButton(cx - compBtnW/2, by2, compBtnW, compBtnH, label, false, color, canRomance ? '#ff88aa' : hasBackstory ? '#aaffaa' : '#aaa');
+    if (clickedInRect(cx - compBtnW/2, by2, compBtnW, compBtnH)) {
+      SFX.click();
+      campfireCompanion = comp;
+      campfireScene = { stage: canRomance ? 'romance_intro' : hasBackstory ? 'backstory' : 'chat', choiceIdx: 0, romanceChosen: false };
+      gameState = STATE.CAMPFIRE;
+    }
+  });
+}
+
+// ============================================================
+// CAMPFIRE SCENE SCREEN
+// ============================================================
+function updateCampfire() {
+  X.fillStyle = '#0a0608';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  if (!campfireCompanion || !campfireScene) { gameState = STATE.TOWN; return; }
+
+  const comp = campfireCompanion;
+  const cx = canvasW / 2;
+
+  // Firelight glow
+  const t = gameTime * 2;
+  const grad = X.createRadialGradient(cx, canvasH * 0.5, 10, cx, canvasH * 0.5, 200);
+  grad.addColorStop(0, `rgba(255,120,20,${0.15 + Math.sin(t) * 0.05})`);
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  X.fillStyle = grad; X.fillRect(0, 0, canvasW, canvasH);
+
+  // Fire particles
+  if (Math.random() < 0.3) spawnParticles(cx, canvasH * 0.5 + 30, '#ff6600', 2);
+
+  // Companion portrait
+  X.fillStyle = comp.color + '30';
+  X.beginPath(); X.arc(cx, canvasH * 0.2, 55, 0, Math.PI * 2); X.fill();
+  X.fillStyle = comp.color;
+  X.beginPath(); X.arc(cx, canvasH * 0.2, 42, 0, Math.PI * 2); X.fill();
+  X.fillStyle = '#fff'; X.font = 'bold 26px Consolas, monospace';
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(comp.symbol, cx, canvasH * 0.2 + 1);
+
+  X.textBaseline = 'alphabetic';
+  X.fillStyle = '#ffd700'; X.font = `bold ${isMobile ? 16 : 20}px Consolas, monospace`;
+  X.fillText(comp.name, cx, canvasH * 0.2 + 65);
+
+  // Loyalty display
+  const loyColor = comp.loyalty >= 90 ? '#ff88aa' : comp.loyalty >= 80 ? '#ffd700' : '#44aaff';
+  X.fillStyle = loyColor; X.font = '12px Consolas, monospace';
+  X.fillText(`Loyalty: ${comp.loyalty}/100`, cx, canvasH * 0.2 + 82);
+
+  // Scene content based on stage
+  const panelW = Math.min(canvasW - 30, 440);
+  const panelX = cx - panelW / 2;
+  const textY = canvasH * 0.37;
+
+  X.fillStyle = 'rgba(0,0,0,0.7)';
+  X.fillRect(panelX, textY - 10, panelW, canvasH * 0.45);
+  X.strokeStyle = comp.color + '88'; X.lineWidth = 1;
+  X.strokeRect(panelX, textY - 10, panelW, canvasH * 0.45);
+
+  if (campfireScene.stage === 'chat') {
+    // Generic chat based on loyalty
+    const chatLines = getChatLines(comp);
+    X.fillStyle = '#ccc'; X.font = `italic ${isMobile ? 12 : 13}px Consolas, monospace`;
+    X.textAlign = 'center';
+    chatLines.forEach((line, i) => {
+      const lns = wrapText(line, panelW - 20, isMobile ? 12 : 13);
+      lns.forEach((l, j) => X.fillText(l, cx, textY + 10 + (campfireScene._lineOffset || 0) + (i * 50 + j) * 16));
+    });
+
+    drawButton(cx - 60, canvasH - 70, 120, 36, 'Done', false, '#333');
+    if (clickedInRect(cx - 60, canvasH - 70, 120, 36)) {
+      SFX.click(); comp.loyalty = Math.min(100, comp.loyalty + 1);
+      campfireCompanion = null; campfireScene = null; gameState = STATE.TOWN;
+    }
+
+  } else if (campfireScene.stage === 'backstory') {
+    X.fillStyle = comp.color; X.font = 'bold 13px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('PERSONAL STORY', cx, textY + 8);
+    X.fillStyle = '#ddd'; X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
+    const bLines = wrapText(comp.backstory || '"I have nothing more to say."', panelW - 20, isMobile ? 11 : 13);
+    bLines.forEach((line, i) => X.fillText(line, cx, textY + 30 + i * 17));
+
+    X.fillStyle = '#aaa'; X.font = '11px Consolas, monospace';
+    X.fillText(`(Loyalty increases from hearing this)`, cx, textY + 30 + bLines.length * 17 + 14);
+
+    drawButton(cx - 60, canvasH - 70, 120, 36, 'Thank them', false, '#2a3a2a');
+    if (clickedInRect(cx - 60, canvasH - 70, 120, 36)) {
+      SFX.click(); comp.loyalty = Math.min(100, comp.loyalty + 3);
+      campfireCompanion = null; campfireScene = null; gameState = STATE.TOWN;
+    }
+
+  } else if (campfireScene.stage === 'romance_intro') {
+    X.fillStyle = '#ff88aa'; X.font = 'bold 13px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('A PRIVATE MOMENT', cx, textY + 8);
+
+    const romanceIntros = {
+      'Elara the Swift': '"You know... I don\'t usually trust people. Especially people who drag me into cursed dungeons. But here we are. And I\'m not... unhappy about it."',
+      'Lyra Starweave': '"I\'ve been cataloguing everything on this expedition. The ruins, the monsters, the spells. But I keep finding myself adding notes about... you. Strange. Very unscientific."',
+      'Seraphina': '"My oath says nothing about this. My heart, however, has been rather loud lately. I have tried to ignore it. I find I cannot."',
+    };
+
+    const intro = romanceIntros[comp.name] || '"There is something I have been meaning to say..."';
+    X.fillStyle = '#ddd'; X.font = `italic ${isMobile ? 12 : 13}px Consolas, monospace`;
+    const rLines = wrapText(intro, panelW - 20, isMobile ? 12 : 13);
+    rLines.forEach((line, i) => X.fillText(line, cx, textY + 30 + i * 17));
+
+    const choiceY = textY + 30 + rLines.length * 17 + 20;
+    const btnW2 = 160, btnH2 = 34;
+    drawButton(cx - btnW2 - 6, choiceY, btnW2, btnH2, 'I feel the same.', false, '#2a1a3a', '#ff88aa');
+    drawButton(cx + 6, choiceY, btnW2, btnH2, 'We should focus.', false, '#333');
+
+    if (clickedInRect(cx - btnW2 - 6, choiceY, btnW2, btnH2)) {
+      SFX.heal();
+      campfireScene.stage = 'romance_accepted';
+    }
+    if (clickedInRect(cx + 6, choiceY, btnW2, btnH2)) {
+      SFX.click();
+      comp.loyalty = Math.max(0, comp.loyalty - 2);
+      campfireCompanion = null; campfireScene = null; gameState = STATE.TOWN;
+    }
+
+  } else if (campfireScene.stage === 'romance_accepted') {
+    X.fillStyle = '#ff88aa'; X.font = 'bold 13px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('♥ ROMANCE KINDLED ♥', cx, textY + 8);
+
+    const romanceAccepts = {
+      'Elara the Swift': '"Well. Don\'t make it weird. But... good. That\'s good. I have your back. Always have."',
+      'Lyra Starweave': '"Oh! That is — I will need to update my notes significantly. This is wonderful. You are wonderful."',
+      'Seraphina': '"Then by my oath and my heart both — I will not let harm come to you. Not while I stand."',
+    };
+
+    const acc = romanceAccepts[comp.name] || '"I am glad."';
+    X.fillStyle = '#ddd'; X.font = `italic ${isMobile ? 12 : 13}px Consolas, monospace`;
+    const aLines = wrapText(acc, panelW - 20, isMobile ? 12 : 13);
+    aLines.forEach((line, i) => X.fillText(line, cx, textY + 30 + i * 17));
+
+    X.fillStyle = '#ffaacc'; X.font = '12px Consolas, monospace';
+    X.fillText("Beloved's Shield: +1 AC while they are in your party.", cx, textY + 30 + aLines.length * 17 + 18);
+
+    drawButton(cx - 70, canvasH - 70, 140, 36, 'Continue', false, '#2a1a3a');
+    if (clickedInRect(cx - 70, canvasH - 70, 140, 36)) {
+      SFX.levelUp();
+      player.romanced = comp.name;
+      player.belovedShield = true;
+      comp.loyalty = Math.min(100, comp.loyalty + 5);
+      addFloatingText(canvasW/2, canvasH/2, '♥ ROMANCED ♥', '#ff88aa');
+      campfireCompanion = null; campfireScene = null; gameState = STATE.TOWN;
+    }
+  }
+
+  renderParticles();
+}
+
+function getChatLines(comp) {
+  if (comp.loyalty >= 80) {
+    return [comp.opinions?.bossComment || '"Ready for whatever comes next."',
+            '"I trust you. Don\'t make me regret it."'];
+  } else if (comp.loyalty >= 50) {
+    return [`"${comp.name.split(' ')[0]}... this dungeon is something else."`,
+            '"Staying alive. That\'s the plan."'];
+  } else if (comp.loyalty <= 30) {
+    return ['"I\'m not sure about this anymore."',
+            '"We should talk about whether I\'m staying."'];
+  }
+  return ['"Another floor down. Onward."',
+          comp.opinions?.treasureComment || '"We press on."'];
+}
+
+// ============================================================
+// AC BONUS FOR ROMANCE
+// ============================================================
+// Patch calcAC to include beloved's shield
+const _origCalcAC = calcAC;
+function calcAC() {
+  let ac = _origCalcAC();
+  if (player && player.belovedShield && player.romanced) {
+    const belovedInParty = (player.squad || []).some(c => c.name === player.romanced && c.hp > 0);
+    if (belovedInParty) ac += 1;
+  }
+  return ac;
 }
 
 // ============================================================
@@ -5234,6 +6222,9 @@ function gameLoop(timestamp) {
     case STATE.SHOP:         updateShop(); break;
     case STATE.NPC_TALK:     updateNpcTalk(); break;
     case STATE.EVOLUTION:    updateEvolution(); break;
+    case STATE.PARTY_MGMT:   updatePartyMgmt(); break;
+    case STATE.TOWN:         updateTown(); break;
+    case STATE.CAMPFIRE:     updateCampfire(); break;
   }
 
   updateParticles(dt);
