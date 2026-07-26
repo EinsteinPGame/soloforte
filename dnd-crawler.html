@@ -97,7 +97,7 @@ const SFX = {
 // ============================================================
 // GAME STATE
 // ============================================================
-const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10, NPC_TALK: 11, EVOLUTION: 12, PARTY_MGMT: 13, TOWN: 14, CAMPFIRE: 15 };
+const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10, NPC_TALK: 11, EVOLUTION: 12, PARTY_MGMT: 13, TOWN: 14, CAMPFIRE: 15, WAR_CHOICE: 16 };
 let gameState = STATE.TITLE;
 let player = null;
 let dungeon = null;
@@ -1667,7 +1667,7 @@ function getPassivePerception() {
 // DUNGEON GENERATION
 // ============================================================
 const TILE = { VOID: 0, WALL: 1, FLOOR: 2, DOOR: 3, STAIRS_DOWN: 4, STAIRS_UP: 5, CORRIDOR: 6 };
-const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start', BOSS: 'boss', SHOP: 'shop', NPC: 'npc', EVOLUTION_QUEST: 'evolution_quest' };
+const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start', BOSS: 'boss', SHOP: 'shop', NPC: 'npc', EVOLUTION_QUEST: 'evolution_quest', WAR_ENCOUNTER: 'war_encounter' };
 const MAP_W = 48, MAP_H = 48;
 const TILE_SIZE = 24;
 
@@ -1757,6 +1757,14 @@ function generateFloor(floorNum) {
     const evoIdx = Math.floor(rooms.length * 2 / 3);
     if (rooms.length >= 7 && !rooms[evoIdx].type) {
       rooms[evoIdx].type = ROOM_TYPE.EVOLUTION_QUEST;
+    }
+  }
+
+  // War encounter room: appears on floors 3+ (index 2+) when war arc is active
+  if (floorNum >= 2 && typeof warState !== 'undefined' && warState !== WAR_STATE.INACTIVE) {
+    const warIdx = Math.floor(rooms.length * 3 / 4);
+    if (rooms.length >= 6 && !rooms[warIdx].type) {
+      rooms[warIdx].type = ROOM_TYPE.WAR_ENCOUNTER;
     }
   }
 
@@ -1853,17 +1861,27 @@ function generateFloor(floorNum) {
     } else if (room.type === ROOM_TYPE.SHRINE) {
       room.shrineUsed = false;
     } else if (room.type === ROOM_TYPE.BOSS) {
-      const bossName = FLOOR_BOSSES[floorNum] || 'Shadow Demon';
-      const bossTemplate = MONSTERS[bossName];
-      const boss = {
-        ...deepClone(bossTemplate),
-        maxHp: bossTemplate.hp + rand(0, Math.floor(bossTemplate.hp * 0.2)),
-        id: Math.random().toString(36).substr(2, 9),
-        conditions: [],
-        px: room.x + Math.floor(room.w / 2),
-        py: room.y + Math.floor(room.h / 2),
-      };
-      boss.hp = boss.maxHp;
+      let boss;
+      // Floor 5 (index 4): use faction-specific boss if war arc is active
+      if (floorNum === 4 && typeof generateFactionBoss !== 'undefined' && typeof warState !== 'undefined' && warState !== WAR_STATE.INACTIVE) {
+        boss = generateFactionBoss();
+        boss.px = room.x + Math.floor(room.w / 2);
+        boss.py = room.y + Math.floor(room.h / 2);
+        boss.id = Math.random().toString(36).substr(2, 9);
+        boss.conditions = [];
+      } else {
+        const bossName = FLOOR_BOSSES[floorNum] || 'Shadow Demon';
+        const bossTemplate = MONSTERS[bossName];
+        boss = {
+          ...deepClone(bossTemplate),
+          maxHp: bossTemplate.hp + rand(0, Math.floor(bossTemplate.hp * 0.2)),
+          id: Math.random().toString(36).substr(2, 9),
+          conditions: [],
+          px: room.x + Math.floor(room.w / 2),
+          py: room.y + Math.floor(room.h / 2),
+        };
+        boss.hp = boss.maxHp;
+      }
       room.enemies = [boss];
     } else if (room.type === ROOM_TYPE.NPC) {
       room.npc = deepClone(COMPANION_POOL[floorNum % COMPANION_POOL.length]);
@@ -1888,6 +1906,57 @@ function generateFloor(floorNum) {
       room.evolutionTrialComplete = false;
       room.evolutionTrialStarted = false;
       // The trial details are determined by player class at interaction time
+    } else if (room.type === ROOM_TYPE.WAR_ENCOUNTER) {
+      // War encounter room: faction enemies or generic war ambush
+      const warGroupKeys = typeof WAR_ENCOUNTER_GROUPS !== 'undefined' ? Object.keys(WAR_ENCOUNTER_GROUPS) : [];
+      if (warGroupKeys.length > 0) {
+        const groupKey = pick(warGroupKeys);
+        const groupData = WAR_ENCOUNTER_GROUPS[groupKey];
+        const numEnemies = Math.min(groupData.count || 2, 3);
+        for (let i = 0; i < numEnemies; i++) {
+          const template = MONSTERS[groupData.enemy] || MONSTERS[pick(FLOOR_MONSTERS[Math.min(floorNum, FLOOR_MONSTERS.length - 1)])];
+          if (template) {
+            const enemy = {
+              ...deepClone(template),
+              maxHp: Math.round((template.hp || 20) * (groupData.hpMult || 1.2)),
+              id: Math.random().toString(36).substr(2, 9),
+              conditions: [],
+              px: room.x + rand(1, room.w - 2),
+              py: room.y + rand(1, room.h - 2),
+              isWarEnemy: true,
+              warGroup: groupKey,
+            };
+            enemy.hp = enemy.maxHp;
+            // Give faction enemies a small attack bonus
+            if (typeof groupData.attackBonus === 'number') {
+              enemy.attack = (enemy.attack || 0) + groupData.attackBonus;
+            }
+            room.enemies.push(enemy);
+          }
+        }
+        room.warGroup = groupKey;
+        room.gold = rand(20 + floorNum * 8, 50 + floorNum * 15);
+        // Completing a war encounter may progress active faction quest
+        room.isFactionQuestTarget = activeFactionQuest && activeFactionQuest.questData.type === 'combat' && !activeFactionQuest.completed;
+      } else {
+        // Fallback: regular combat room
+        const numEnemies = rand(1, 3);
+        for (let i = 0; i < numEnemies; i++) {
+          const template = MONSTERS[pick(FLOOR_MONSTERS[Math.min(floorNum, FLOOR_MONSTERS.length - 1)])];
+          if (template) {
+            const enemy = {
+              ...deepClone(template),
+              maxHp: template.hp + rand(0, Math.floor(template.hp * 0.2)),
+              id: Math.random().toString(36).substr(2, 9),
+              conditions: [],
+              px: room.x + rand(1, room.w - 2),
+              py: room.y + rand(1, room.h - 2),
+            };
+            enemy.hp = enemy.maxHp;
+            room.enemies.push(enemy);
+          }
+        }
+      }
     }
   }
 
@@ -2223,6 +2292,26 @@ function enterRoom(room) {
         }
       }
       break;
+    case ROOM_TYPE.WAR_ENCOUNTER:
+      if (!room.cleared && room.enemies && room.enemies.length > 0) {
+        const leader = room.enemies[0];
+        dungeonMessage = `${leader.name} stands in your path! War encounter!`;
+        dungeonMessageTimer = 2;
+        SFX.trap();
+        setTimeout(() => {
+          if (!room.cleared && room.enemies.length > 0) {
+            startCombat(room);
+          }
+        }, 400);
+      }
+      break;
+  }
+
+  // Assassin encounter check on entering any room past floor 2
+  if (assassinsActive && currentFloor >= 2 && !room.cleared && Math.random() < 0.12) {
+    if (checkAssassinEncounter()) {
+      spawnAssassinEncounter(room);
+    }
   }
 }
 
@@ -2251,6 +2340,14 @@ function handleInteract(floor, room) {
       healUsed: false,
       recruitChecked: false,
     };
+    // Trigger war arc after clearing floor 2 (index 2)
+    if (currentFloor === 2 && warState === WAR_STATE.INACTIVE) {
+      triggerWarArc();
+      warChoiceState.phase = 'intro';
+      gameState = STATE.WAR_CHOICE;
+      saveGame();
+      return;
+    }
     gameState = STATE.TOWN;
     saveGame();
     return;
@@ -2816,6 +2913,9 @@ function renderUI() {
       }
     });
   }
+
+  // War status HUD overlay
+  renderWarStatusHUD();
 }
 
 // ============================================================
@@ -3982,6 +4082,15 @@ function renderCombatVictory(btnAreaY) {
     // Loyalty boost for winning battles together
     applyLoyaltyEvent('boss_victory');
 
+    // Faction quest completion: mark dungeon-type quest complete when clearing a war/combat room
+    if (activeFactionQuest && activeFactionQuest.questData.type === 'combat' && !activeFactionQuest.completed) {
+      const room = combatState.room;
+      if (room && (room.type === ROOM_TYPE.WAR_ENCOUNTER || (wasBoss && currentFloor >= 2))) {
+        activeFactionQuest.stage = 'dungeonComplete';
+        addFloatingText(canvasW/2, canvasH/2 - 70, `Faction Quest: "${activeFactionQuest.questData.title}" — Return to town!`, '#ffd700');
+      }
+    }
+
     // Check if this was an evolution trial combat
     const wasEvolutionTrial = combatState.isEvolutionTrial;
 
@@ -4855,6 +4964,37 @@ function updateCharSheet() {
       X.fillStyle = '#aaccff';
       X.fillText(`${sp} - ${spellData.desc}`, panelX + 5, spY + 16 + i * 14);
     });
+    featY = spY + 16 + player.spells.length * 14 + 8;
+  } else {
+    featY += 8;
+  }
+
+  // Faction standings (war arc)
+  if (warState !== WAR_STATE.INACTIVE) {
+    const facHeaderY = featY;
+    const factionLabel = playerFaction ? `Faction: ${FACTIONS[playerFaction]?.name || playerFaction}` :
+                         warState === WAR_STATE.FREELANCER ? 'Faction: Freelancer' : 'Faction: Undecided';
+    const factionHeaderColor = playerFaction ? (FACTIONS[playerFaction]?.color || '#8844cc') :
+                               warState === WAR_STATE.FREELANCER ? '#ffd700' : '#ff8844';
+    X.fillStyle = factionHeaderColor;
+    X.font = 'bold 12px Consolas, monospace';
+    X.textAlign = 'left';
+    X.fillText(factionLabel, panelX + 5, facHeaderY);
+    if (assassinsActive) {
+      X.fillStyle = '#ff4444';
+      X.font = 'bold 10px Consolas, monospace';
+      X.fillText(`  [DEFECTOR — ${assassinTier} assassins active]`, panelX + 5 + 130, facHeaderY);
+    }
+    const factionList = Object.values(FACTIONS);
+    factionList.forEach((f, fi) => {
+      const fy = facHeaderY + 14 + fi * 14;
+      const rep = factionReps[f.id] || 0;
+      const rank = factionRanks[f.id] || 0;
+      const isMine = f.id === playerFaction;
+      X.fillStyle = isMine ? f.color : '#666';
+      X.font = `${isMine ? 'bold ' : ''}10px Consolas, monospace`;
+      X.fillText(`${isMine ? '► ' : '  '}${f.shortName}: ${getFactionRankName(f.id, rank)} (${rep >= 0 ? '+' : ''}${rep})`, panelX + 10, fy);
+    });
   }
 
   // Close button
@@ -5506,7 +5646,17 @@ function saveGame() {
     dungeon: deepClone(dungeon),
     currentFloor: currentFloor,
     timestamp: Date.now(),
-    version: '2.2',
+    version: '2.3',
+    // War arc state
+    warState: warState,
+    playerFaction: playerFaction,
+    factionReps: deepClone(factionReps),
+    factionRanks: deepClone(factionRanks),
+    completedFactionQuests: deepClone(completedFactionQuests),
+    activeFactionQuest: deepClone(activeFactionQuest),
+    defectionPending: defectionPending,
+    assassinsActive: assassinsActive,
+    assassinTier: assassinTier,
   };
   try {
     localStorage.setItem('dof_save', JSON.stringify(saveData));
@@ -5539,6 +5689,16 @@ function loadGame() {
     player.squad.forEach(c => { if (c.loyalty === undefined) c.loyalty = 50; });
     dungeon = data.dungeon;
     currentFloor = data.currentFloor;
+    // v2.3 war arc backward compat
+    warState = data.warState || WAR_STATE.INACTIVE;
+    playerFaction = data.playerFaction || null;
+    factionReps = data.factionReps || { iron_legion: 0, shadow_syndicate: 0, arcane_conclave: 0, merchant_coalition: 0 };
+    factionRanks = data.factionRanks || { iron_legion: 0, shadow_syndicate: 0, arcane_conclave: 0, merchant_coalition: 0 };
+    completedFactionQuests = data.completedFactionQuests || [];
+    activeFactionQuest = data.activeFactionQuest || null;
+    defectionPending = data.defectionPending || false;
+    assassinsActive = data.assassinsActive || false;
+    assassinTier = data.assassinTier || 'initiate';
     gameState = STATE.DUNGEON;
     revealArea(player.x, player.y, player.torchRadius);
     dungeonMessage = 'Game loaded!';
@@ -5721,6 +5881,7 @@ function updateTown() {
     { name: 'Barracks', color: '#606080', icon: 'B', desc: 'Recruit allies' },
     { name: 'Bounty', color: '#c08020', icon: '$', desc: 'Contracts' },
     { name: 'Campfire', color: '#c04010', icon: '🔥', desc: 'Party talk' },
+    { name: 'Factions', color: warState !== WAR_STATE.INACTIVE ? (playerFaction ? (FACTIONS[playerFaction]?.color || '#8844cc') : '#8844cc') : '#444466', icon: '⚔', desc: 'Allegiance' },
   ];
   const totalBW = buildings.length * (bldW + bldGap) - bldGap;
   const bldStartX = cx - totalBW / 2;
@@ -5768,6 +5929,17 @@ function updateTown() {
   if (clickedInRect(cfX, bldY, bldW, bldH)) {
     SFX.click(); townData.activeSection = 'campfire';
   }
+  // Factions
+  const facX = bldStartX + 4 * (bldW + bldGap);
+  if (clickedInRect(facX, bldY, bldW, bldH)) {
+    SFX.click();
+    if (warState === WAR_STATE.TRIGGERED) {
+      warChoiceState.phase = 'intro';
+      gameState = STATE.WAR_CHOICE;
+      return;
+    }
+    townData.activeSection = 'factions';
+  }
 
   const section = townData.activeSection || 'tavern';
 
@@ -5786,6 +5958,8 @@ function updateTown() {
     drawTownBounty(panelX, contentY, panelW, cx);
   } else if (section === 'campfire') {
     drawTownCampfire(panelX, contentY, panelW, cx);
+  } else if (section === 'factions') {
+    drawTownFactions(panelX, contentY, panelW, cx);
   }
 
   // Descend button
@@ -6201,6 +6375,1094 @@ function calcAC() {
 }
 
 // ============================================================
+// WAR ARC SYSTEM
+// ============================================================
+
+// --- War Arc States ---
+const WAR_STATE = {
+  INACTIVE: 'inactive',       // Before floor 3 cleared
+  TRIGGERED: 'triggered',     // War arc just triggered, waiting for faction choice
+  FREELANCER: 'freelancer',   // Player chose no faction
+  IRON_LEGION: 'iron_legion',
+  SHADOW_SYNDICATE: 'shadow_syndicate',
+  ARCANE_CONCLAVE: 'arcane_conclave',
+  MERCHANT_COALITION: 'merchant_coalition',
+  DEFECTED: 'defected',       // Player betrayed their faction
+};
+
+// Faction definitions
+const FACTIONS = {
+  iron_legion: {
+    id: 'iron_legion',
+    name: 'Iron Legion',
+    shortName: 'Legion',
+    color: '#c04040',
+    accentColor: '#e06060',
+    symbol: 'L',
+    desc: 'Military faction. Values strength, honor, and discipline. Controls the northern territories.',
+    motto: '"Strength is the only law."',
+    rankTitles: ['Outsider', 'Initiate', 'Soldier', 'Officer', 'Commander'],
+    joinReq: 'Rep with Legion must be 0 or higher. Strong fighters preferred.',
+    hatesFactionsOf: ['shadow_syndicate'],
+    representativeName: 'Commander Valdris',
+    representativeDesc: 'A scarred veteran in polished armor, sizing you up for combat potential.',
+    joinGreeting: '"The Iron Legion does not recruit weaklings. Prove your worth and you\'ll have the full might of our armies behind you."',
+    questTitles: ['Supply Raid', 'Capture the Scout', 'Assault on the Shadow Gate', 'March to Glory'],
+  },
+  shadow_syndicate: {
+    id: 'shadow_syndicate',
+    name: 'Shadow Syndicate',
+    shortName: 'Syndicate',
+    color: '#505080',
+    accentColor: '#8080c0',
+    symbol: 'S',
+    desc: 'Thieves guild and assassin network. Operates from underground. Information is currency.',
+    motto: '"Every secret has a price."',
+    rankTitles: ['Outsider', 'Contact', 'Agent', 'Operative', 'Shadowmaster'],
+    joinReq: 'Rep must not be above +60 (squeaky-clean heroes raise suspicion).',
+    hatesFactionsOf: ['iron_legion'],
+    representativeName: 'The Broker',
+    representativeDesc: 'A cloaked figure who never shows their face. Hands always in pockets.',
+    joinGreeting: '"We know who you are. We know what you\'ve done. That\'s why we\'re talking. The Syndicate rewards those who operate outside... conventional constraints."',
+    questTitles: ['Intelligence Gathering', 'Eliminate the Informant', 'Blackmail the Captain', 'The Final Contract'],
+  },
+  arcane_conclave: {
+    id: 'arcane_conclave',
+    name: 'Arcane Conclave',
+    shortName: 'Conclave',
+    color: '#6040c0',
+    accentColor: '#9070e0',
+    symbol: 'A',
+    desc: 'Mage faction seeking magical dominance. Tower-based. Knowledge is power, and they have both.',
+    motto: '"Magic is the future. Resistance is ignorance."',
+    rankTitles: ['Outsider', 'Apprentice', 'Arcanist', 'Magister', 'Archmage-Liaison'],
+    joinReq: 'INT or CHA stat of 14+ preferred. Casters get a discount on rep required.',
+    hatesFactionsOf: ['merchant_coalition'],
+    representativeName: 'Magister Veyrana',
+    representativeDesc: 'An imposing mage in robes covered in shifting runes. Eyes glow faintly.',
+    joinGreeting: '"The Conclave has watched your progress with interest. You demonstrate... potential. Join us and your access to arcane knowledge will be... considerable."',
+    questTitles: ['Recover the Artifact', 'Silence the Rogue Mage', 'The Ritual Components', 'Claim the Nexus'],
+  },
+  merchant_coalition: {
+    id: 'merchant_coalition',
+    name: 'Merchant Coalition',
+    shortName: 'Coalition',
+    color: '#c08030',
+    accentColor: '#e0a050',
+    symbol: 'M',
+    desc: 'Trade-focused alliance of wealthy merchants. Money solves most problems. Politically connected.',
+    motto: '"Every war has a winner. We sell to both sides."',
+    rankTitles: ['Outsider', 'Associate', 'Partner', 'Senior Partner', 'Director'],
+    joinReq: 'Gold of 100+ preferred. High overall reputation helps.',
+    hatesFactionsOf: ['arcane_conclave'],
+    representativeName: 'Merchant-Lord Cassius',
+    representativeDesc: 'A well-dressed, portly man with too many rings and a permanent smile that doesn\'t reach his eyes.',
+    joinGreeting: '"Ah, the adventurers I\'ve heard so much about! The Coalition offers the finest rewards — gold, connections, and merchandise you won\'t find anywhere else. Think of it as a... mutually beneficial arrangement."',
+    questTitles: ['Guard the Shipment', 'Recover the Debt', 'Sabotage the Competition', 'The Grand Investment'],
+  },
+};
+
+// Faction quests - detailed quest content
+const FACTION_QUESTS = {
+  iron_legion: [
+    {
+      id: 'il_q1', title: 'Supply Raid', rank: 1,
+      desc: 'The Shadow Syndicate has stolen a Legion supply cache. Recover it from the dungeon depths.',
+      reward: { gold: 80, rep: 15, item: true },
+      dialogue: '"The Syndicate dogs hit our supply line last night. The cache is somewhere on this floor. Find it and bring it back — or bring back their heads. Either works."',
+      completionText: '"Good work, Soldier. The Legion remembers its debts."',
+      type: 'fetch', enemyBonus: 'syndicate_agents',
+    },
+    {
+      id: 'il_q2', title: 'Capture the Scout', rank: 1,
+      desc: 'A Shadow Syndicate scout is mapping Legion positions. Neutralize them.',
+      reward: { gold: 100, rep: 20, item: false },
+      dialogue: '"There\'s a Syndicate spy embedded in the dungeon population. They\'re wearing this symbol. Find them and make sure they stop reporting."',
+      completionText: '"Efficiently done. You show real Legion potential."',
+      type: 'combat', enemyBonus: 'syndicate_assassin',
+    },
+    {
+      id: 'il_q3', title: 'Hold the Line', rank: 2,
+      desc: 'A joint enemy attack is expected on Floor 4. Hold your position and thin their numbers.',
+      reward: { gold: 150, rep: 25, item: true },
+      dialogue: '"The Coalition is funding our enemies\' push into the deep floors. We\'re setting a defensive line. You\'re on the front. Don\'t break."',
+      completionText: '"The line held. Because of you. Legion honors its warriors."',
+      type: 'combat', enemyBonus: 'coalition_mercenaries',
+    },
+    {
+      id: 'il_q4', title: 'March to Glory', rank: 3,
+      desc: 'Lead the charge. Defeat the faction-opposed boss on Floor 5 and claim the dungeon for the Legion.',
+      reward: { gold: 300, rep: 40, item: true },
+      dialogue: '"This is it, Commander. The dungeon\'s heart. Whatever waits below serves no master but chaos. The Legion will bring order. Lead us."',
+      completionText: '"Victory. The Iron Legion claims these depths. Your name will be carved in our walls of honor."',
+      type: 'boss', enemyBonus: null,
+    },
+  ],
+  shadow_syndicate: [
+    {
+      id: 'ss_q1', title: 'Intelligence Gathering', rank: 1,
+      desc: 'Infiltrate a Legion-held chamber and document their defensive positions. Don\'t get caught.',
+      reward: { gold: 90, rep: 15, item: false },
+      dialogue: '"Simple job. Legion has a staging area on the next floor. We need their patrol routes, their numbers. You go in quiet. Come back with information. Not corpses — well, try not to leave corpses."',
+      completionText: '"This intel is excellent. The Syndicate always rewards useful agents."',
+      type: 'skill', skillStat: 'DEX', skillDC: 13,
+    },
+    {
+      id: 'ss_q2', title: 'Eliminate the Informant', rank: 1,
+      desc: 'A Syndicate member has gone to the Legion with information. Find them before they talk.',
+      reward: { gold: 120, rep: 20, item: true },
+      dialogue: '"One of ours got scared. They\'re in the dungeon somewhere, trying to sell our secrets to the Legion. They know too much. Handle it."',
+      completionText: '"Neatly done. No loose ends. That\'s professional."',
+      type: 'combat', enemyBonus: 'traitor_agent',
+    },
+    {
+      id: 'ss_q3', title: 'Poison the Well', rank: 2,
+      desc: 'Corrupt the Coalition\'s supply route by planting false manifests in their dungeon cache.',
+      reward: { gold: 160, rep: 25, item: true },
+      dialogue: '"The Coalition thinks they\'re untouchable behind their gold. We\'re going to show them money can\'t stop a shadow. Find their cache on Floor 4 and plant these documents."',
+      completionText: '"The Coalition\'s trade war with the Conclave just got... complicated. Beautiful."',
+      type: 'skill', skillStat: 'INT', skillDC: 14,
+    },
+    {
+      id: 'ss_q4', title: 'The Final Contract', rank: 3,
+      desc: 'The Syndicate has a contract on the dungeon\'s final power. Claim it for the shadows.',
+      reward: { gold: 350, rep: 40, item: true },
+      dialogue: '"Someone powerful hired us to make sure what\'s at the bottom of this dungeon never surfaces. I\'m not saying who. I\'m saying the contract is yours. Finish it."',
+      completionText: '"The Syndicate\'s most wanted target is no more. Your legend in the shadows is... permanent."',
+      type: 'boss', enemyBonus: null,
+    },
+  ],
+  arcane_conclave: [
+    {
+      id: 'ac_q1', title: 'Recover the Artifact', rank: 1,
+      desc: 'A powerful artifact has been stolen by dungeon forces. Retrieve it for the Conclave\'s study.',
+      reward: { gold: 85, rep: 15, item: true },
+      dialogue: '"The item that was taken is... significant. Pre-cataclysm in origin, and extremely dangerous in untrained hands. Find it before it is misused. The Conclave will compensate you generously."',
+      completionText: '"Excellent. The Conclave\'s research can now proceed. You have our thanks — which is rarer than you might think."',
+      type: 'fetch', enemyBonus: null,
+    },
+    {
+      id: 'ac_q2', title: 'Silence the Rogue Mage', rank: 1,
+      desc: 'A former Conclave member is selling forbidden magic to the Coalition. They must be stopped.',
+      reward: { gold: 110, rep: 20, item: true },
+      dialogue: '"Expelled. Bitter. Selling our secrets to merchants who will simply weaponize magic without understanding it. You understand why we cannot allow this."',
+      completionText: '"The rogue mage\'s work is sealed. Their knowledge dies with them. You have done the Conclave a great service."',
+      type: 'combat', enemyBonus: 'rogue_mage',
+    },
+    {
+      id: 'ac_q3', title: 'The Ritual Components', rank: 2,
+      desc: 'Gather rare components from the dungeon\'s deep floors for a Conclave ritual to seal the war.',
+      reward: { gold: 170, rep: 25, item: true },
+      dialogue: '"The ritual we are preparing could end this war before it fully ignites. But it requires components only found in the lower floors. The Conclave needs your expedition skills."',
+      completionText: '"These are perfect. The ritual proceeds. History will remember this — though perhaps not your name. Such is the nature of magic."',
+      type: 'fetch', enemyBonus: null,
+    },
+    {
+      id: 'ac_q4', title: 'Claim the Nexus', rank: 3,
+      desc: 'The dungeon\'s deepest chamber is a magical nexus. Claim it for the Conclave.',
+      reward: { gold: 320, rep: 40, item: true },
+      dialogue: '"The nexus at the dungeon\'s heart is a node of tremendous power. With it, the Conclave controls the flow of magic in this entire region. Win it for us, Archmage-Liaison."',
+      completionText: '"The nexus is ours. History bends to those who command the arcane. And you command it magnificently."',
+      type: 'boss', enemyBonus: null,
+    },
+  ],
+  merchant_coalition: [
+    {
+      id: 'mc_q1', title: 'Guard the Shipment', rank: 1,
+      desc: 'A Coalition supply convoy is moving through dungeon-adjacent territory. Ensure it arrives safely.',
+      reward: { gold: 100, rep: 15, item: false },
+      dialogue: '"It\'s simple commerce, really. Goods need to move. Threats need to be neutralized. We pay well. You protect the shipment. Win-win, as they say."',
+      completionText: '"Delivered safely! You know, a partner who can handle themselves is worth more than an army. Have your gold."',
+      type: 'combat', enemyBonus: 'legion_patrol',
+    },
+    {
+      id: 'mc_q2', title: 'Recover the Debt', rank: 1,
+      desc: 'An adventurer borrowed heavily from Coalition funds and vanished into the dungeon. Find them.',
+      reward: { gold: 130, rep: 20, item: true },
+      dialogue: '"This isn\'t personal — it\'s business. The debtor went into the dungeon three weeks ago. Our records suggest they have our gold and our artifact. Both must be returned."',
+      completionText: '"Principal and interest recovered! Excellent. The Coalition takes care of partners who take care of us."',
+      type: 'fetch', enemyBonus: null,
+    },
+    {
+      id: 'mc_q3', title: 'Sabotage the Competition', rank: 2,
+      desc: 'The Arcane Conclave is establishing a rival trade route. Disrupt their magical infrastructure.',
+      reward: { gold: 180, rep: 25, item: true },
+      dialogue: '"The Conclave thinks magic makes them untouchable. Money reaches further than magic. Destroy their relay crystals in the fourth floor and I\'ll make you very wealthy."',
+      completionText: '"The Conclave\'s route is finished. Spectacular! You\'re exactly the kind of partner the Coalition needs."',
+      type: 'skill', skillStat: 'STR', skillDC: 12,
+    },
+    {
+      id: 'mc_q4', title: 'The Grand Investment', rank: 3,
+      desc: 'The ultimate prize: whatever power lies at the dungeon\'s bottom is worth billions. Secure it for the Coalition.',
+      reward: { gold: 400, rep: 40, item: true },
+      dialogue: '"Every war ends. What endures is capital. Whatever power this dungeon holds — bring it under Coalition control. You\'ll be set for life. I stake the full Coalition treasury on this."',
+      completionText: '"The dungeon\'s power, under Coalition management. You\'ll be a legend of commerce, Director. Here is your... considerable reward."',
+      type: 'boss', enemyBonus: null,
+    },
+  ],
+};
+
+// Faction assassin enemy templates
+const ASSASSIN_TEMPLATES = {
+  iron_legion: {
+    initiate: { name: 'Legion Enforcer', hp: 45, ac: 16, attacks: [{name:'Greatsword Strike',bonus:6,damage:[2,6],damageBonus:4}], xp: 300, color: '#c04040', symbol: 'E', cr: 3 },
+    officer: { name: 'Legion Centurion', hp: 80, ac: 18, attacks: [{name:'Commander\'s Blade',bonus:8,damage:[2,8],damageBonus:5},{name:'Shield Charge',bonus:6,damage:[1,6],damageBonus:3}], xp: 600, color: '#e06060', symbol: 'C', cr: 5, boss: false },
+    commander: { name: 'Legion Elite Guard', hp: 120, ac: 19, attacks: [{name:'Legendary Blade',bonus:10,damage:[2,10],damageBonus:6},{name:'War Cry (AOE)',bonus:8,damage:[2,6],damageBonus:4}], xp: 1000, color: '#ff4040', symbol: 'G', cr: 7, boss: true },
+  },
+  shadow_syndicate: {
+    initiate: { name: 'Syndicate Cutthroat', hp: 35, ac: 14, attacks: [{name:'Poisoned Blade',bonus:6,damage:[1,8],damageBonus:4}], xp: 250, color: '#505080', symbol: 'C', cr: 2 },
+    officer: { name: 'Syndicate Shadow', hp: 65, ac: 16, attacks: [{name:'Shadow Strike',bonus:8,damage:[2,6],damageBonus:5},{name:'Poison Bolt',bonus:7,damage:[2,4],damageBonus:3}], xp: 500, color: '#7070c0', symbol: 'S', cr: 4, boss: false },
+    commander: { name: 'Syndicate Deathblade', hp: 100, ac: 17, attacks: [{name:'Assassination Strike',bonus:10,damage:[3,8],damageBonus:6},{name:'Shadow Burst',bonus:9,damage:[2,10],damageBonus:0}], xp: 900, color: '#9090e0', symbol: 'D', cr: 6, boss: true },
+  },
+  arcane_conclave: {
+    initiate: { name: 'Conclave Enforcer', hp: 40, ac: 13, attacks: [{name:'Arcane Bolt',bonus:7,damage:[2,8],damageBonus:4}], xp: 280, color: '#6040c0', symbol: 'E', cr: 3 },
+    officer: { name: 'Conclave War-Mage', hp: 70, ac: 15, attacks: [{name:'Eldritch Barrage',bonus:8,damage:[3,6],damageBonus:3},{name:'Arcane Shield',bonus:6,damage:[1,8],damageBonus:2}], xp: 550, color: '#8060e0', symbol: 'W', cr: 5, boss: false },
+    commander: { name: 'Conclave Archmage', hp: 110, ac: 16, attacks: [{name:'Disintegrate',bonus:10,damage:[4,8],damageBonus:0,autoHit:true},{name:'Counterspell Blast',bonus:9,damage:[3,8],damageBonus:4}], xp: 950, color: '#a080ff', symbol: 'A', cr: 7, boss: true },
+  },
+  merchant_coalition: {
+    initiate: { name: 'Coalition Mercenary', hp: 42, ac: 15, attacks: [{name:'Hired Sword',bonus:5,damage:[1,10],damageBonus:3}], xp: 260, color: '#c08030', symbol: 'M', cr: 2 },
+    officer: { name: 'Coalition Sellsword Captain', hp: 72, ac: 17, attacks: [{name:'Commander\'s Blade',bonus:7,damage:[2,8],damageBonus:4},{name:'Gold Crossbow',bonus:8,damage:[1,10],damageBonus:4}], xp: 520, color: '#e0a050', symbol: 'S', cr: 4, boss: false },
+    commander: { name: 'Coalition Death Squad', hp: 115, ac: 18, attacks: [{name:'Coordinated Strike',bonus:9,damage:[3,8],damageBonus:5},{name:'Alchemical Grenade',bonus:0,damage:[3,6],damageBonus:0,autoHit:true}], xp: 980, color: '#ffb060', symbol: 'D', cr: 6, boss: true },
+  },
+};
+
+// War encounter enemy groups (for dungeon war events)
+const WAR_ENCOUNTER_GROUPS = {
+  legion_vs_syndicate: [
+    { enemy: 'Legion Patrol', enemies: [{name:'Iron Legionnaire',hp:30,ac:16,attacks:[{name:'Shortsword',bonus:5,damage:[1,6],damageBonus:3}],xp:75,color:'#c04040',symbol:'L',cr:1}], desc: 'A Legion patrol sweeps the corridor.' },
+    { enemy: 'Syndicate Ambush', enemies: [{name:'Syndicate Rogue',hp:22,ac:13,attacks:[{name:'Backstab',bonus:6,damage:[2,4],damageBonus:3}],xp:75,color:'#505080',symbol:'R',cr:1}], desc: 'Syndicate agents emerge from the shadows.' },
+  ],
+  conclave_vs_coalition: [
+    { enemy: 'Conclave Apprentice', enemies: [{name:'Conclave Apprentice',hp:18,ac:11,attacks:[{name:'Arcane Missile',bonus:5,damage:[2,6],damageBonus:2}],xp:75,color:'#6040c0',symbol:'C',cr:1}], desc: 'Conclave apprentices conducting a ritual.' },
+    { enemy: 'Coalition Guard', enemies: [{name:'Coalition Guard',hp:28,ac:15,attacks:[{name:'Spear',bonus:4,damage:[1,8],damageBonus:2}],xp:75,color:'#c08030',symbol:'G',cr:1}], desc: 'Coalition guards protecting a trade cache.' },
+  ],
+};
+
+// Companion faction opinions — how each companion feels about each faction
+const COMPANION_FACTION_OPINIONS = {
+  'Elara the Swift': {
+    iron_legion: { attitude: 'hostile', reason: '"Militaristic thugs who call order what the rest of us call oppression. I\'ll fight alongside them but I won\'t call them friends."', loyaltyDelta: -8 },
+    shadow_syndicate: { attitude: 'friendly', reason: '"The Syndicate? I know their type. Not all bad. I\'ve... worked with them before. Don\'t give me that look."', loyaltyDelta: +5 },
+    arcane_conclave: { attitude: 'neutral', reason: '"Mages with delusions of grandeur. Useful, as long as you watch what they\'re watching."', loyaltyDelta: 0 },
+    merchant_coalition: { attitude: 'cautious', reason: '"Rich people with armies of lawyers and hired swords. Could be worse. Could be better."', loyaltyDelta: -3 },
+    freelancer: { attitude: 'friendly', reason: '"Smart. Keep your options open. That\'s how I\'ve always lived."', loyaltyDelta: +8 },
+  },
+  'Brother Aldric': {
+    iron_legion: { attitude: 'cautious', reason: '"Strength without justice is tyranny. I will pray their commanders remember the difference."', loyaltyDelta: -5 },
+    shadow_syndicate: { attitude: 'hostile', reason: '"Assassins. Thieves. People who weaponize darkness. I cannot in good conscience stand beside them."', loyaltyDelta: -15 },
+    arcane_conclave: { attitude: 'cautious', reason: '"Magic serves the divine purpose only when wielded with wisdom and humility. I see... limited humility there."', loyaltyDelta: -5 },
+    merchant_coalition: { attitude: 'neutral', reason: '"Commerce is not sin. Greed is. Watch carefully which the Coalition practices."', loyaltyDelta: 0 },
+    freelancer: { attitude: 'friendly', reason: '"Binding yourself to no faction preserves your moral autonomy. A rare and valuable thing."', loyaltyDelta: +5 },
+  },
+  'Grimjaw': {
+    iron_legion: { attitude: 'friendly', reason: '"IRON LEGION. REAL WARRIORS. GRIMJAW RESPECT. WE FIGHT TOGETHER GOOD."', loyaltyDelta: +10 },
+    shadow_syndicate: { attitude: 'hostile', reason: '"SNEAKY COWARDS. FIGHT LIKE WARRIORS NOT RATS. GRIMJAW NO LIKE."', loyaltyDelta: -12 },
+    arcane_conclave: { attitude: 'neutral', reason: '"Magic people. Useful. Weird. Grimjaw not understand but not need to."', loyaltyDelta: 0 },
+    merchant_coalition: { attitude: 'neutral', reason: '"Gold people. Gold is okay. Grimjaw fine."', loyaltyDelta: -2 },
+    freelancer: { attitude: 'cautious', reason: '"No army? Just us? Grimjaw worried. But... Grimjaw always worried. Fight anyway!"', loyaltyDelta: 0 },
+  },
+  'Lyra Starweave': {
+    iron_legion: { attitude: 'hostile', reason: '"Martial thuggery dressed in armor. Their idea of problem-solving is \'hit it harder.\' No thank you."', loyaltyDelta: -10 },
+    shadow_syndicate: { attitude: 'cautious', reason: '"Information brokers. I respect the knowledge-gathering, not the methods. Tread carefully."', loyaltyDelta: -3 },
+    arcane_conclave: { attitude: 'very_friendly', reason: '"The Arcane Conclave! Access to their library alone makes this worthwhile. Oh, this is wonderful."', loyaltyDelta: +15 },
+    merchant_coalition: { attitude: 'hostile', reason: '"Philistines who think everything has a price tag. Including knowledge that should be free."', loyaltyDelta: -12 },
+    freelancer: { attitude: 'neutral', reason: '"Academic independence is valuable. Though some institutional support is useful..."', loyaltyDelta: +2 },
+  },
+  'Theron Shadowstep': {
+    iron_legion: { attitude: 'neutral', reason: '"Soldiers. Predictable. Useful in a line fight. Less useful in the shadows where I operate."', loyaltyDelta: -2 },
+    shadow_syndicate: { attitude: 'cautious', reason: '"I\'ve dealt with the Syndicate. They are effective. They are also not to be fully trusted. Ever."', loyaltyDelta: -5 },
+    arcane_conclave: { attitude: 'hostile', reason: '"Mages who think nature is a resource to be catalogued and controlled. My prey is theirs. I disagree."', loyaltyDelta: -10 },
+    merchant_coalition: { attitude: 'neutral', reason: '"Commerce folk. They stay out of the wilderness. The wilderness stays out of their ledgers. Fine."', loyaltyDelta: 0 },
+    freelancer: { attitude: 'friendly', reason: '"A hunter does not swear allegiance to the village. A hunter hunts. This I understand."', loyaltyDelta: +8 },
+  },
+  'Seraphina': {
+    iron_legion: { attitude: 'friendly', reason: '"Honor. Discipline. A code of conduct. The Legion has its flaws but these values I can work with."', loyaltyDelta: +8 },
+    shadow_syndicate: { attitude: 'hostile', reason: '"Assassins. My oath is clear on this. I will not walk their path."', loyaltyDelta: -20 },
+    arcane_conclave: { attitude: 'cautious', reason: '"Power without accountability is dangerous. The Conclave hoards both. I watch them carefully."', loyaltyDelta: -5 },
+    merchant_coalition: { attitude: 'neutral', reason: '"Not good. Not evil. Transactional. I can work with transactional."', loyaltyDelta: 0 },
+    freelancer: { attitude: 'friendly', reason: '"Independence keeps your oath your own. A paladin\'s word is their bond — not a faction\'s."', loyaltyDelta: +5 },
+  },
+};
+
+// --- War Arc Global State ---
+let warState = WAR_STATE.INACTIVE;
+let playerFaction = null; // id of current faction, or null
+let factionReps = { iron_legion: 0, shadow_syndicate: 0, arcane_conclave: 0, merchant_coalition: 0 };
+let factionRanks = { iron_legion: 0, shadow_syndicate: 0, arcane_conclave: 0, merchant_coalition: 0 }; // 0=Outsider, 4=Commander
+let completedFactionQuests = []; // array of quest ids completed
+let activeFactionQuest = null; // { factionId, questIndex, questData, stage, skillRoll }
+let defectionPending = false;
+let assassinsActive = false; // assassins currently hunting player
+let assassinTier = 'initiate'; // 'initiate', 'officer', 'commander'
+let warTownSection = null; // which faction rep the player is talking to in town
+let factionChoiceScreen = null; // { stage: 'intro'|'choose'|'confirm', selectedFaction }
+let warEncounterPending = false; // war ambush incoming
+let warEncounterGroup = null; // the war encounter room
+
+// Faction rank name lookup
+function getFactionRankName(factionId, rankIdx) {
+  const f = FACTIONS[factionId];
+  if (!f) return 'Outsider';
+  return f.rankTitles[clamp(rankIdx, 0, 4)];
+}
+
+// Get player's current rank in their faction
+function getPlayerFactionRank() {
+  if (!playerFaction) return 0;
+  return factionRanks[playerFaction] || 0;
+}
+
+// Get display name for current faction
+function getPlayerFactionDisplay() {
+  if (!playerFaction) return warState === WAR_STATE.FREELANCER ? 'Freelancer' : 'None';
+  const f = FACTIONS[playerFaction];
+  return f ? f.name : 'Unknown';
+}
+
+// Change faction reputation
+function changeFactionRep(factionId, amount, reason) {
+  if (!factionReps[factionId] === undefined) return;
+  const old = factionReps[factionId];
+  factionReps[factionId] = clamp((factionReps[factionId] || 0) + amount, -100, 100);
+  const newVal = factionReps[factionId];
+  if (newVal !== old) {
+    const sign = amount > 0 ? '+' : '';
+    const f = FACTIONS[factionId];
+    addFloatingText(canvasW/2, canvasH/2 - 80, `${f ? f.shortName : factionId}: ${sign}${amount}`, f ? f.color : '#aaa');
+  }
+  // Update rank based on rep
+  updateFactionRank(factionId);
+}
+
+function updateFactionRank(factionId) {
+  const rep = factionReps[factionId] || 0;
+  let rank = 0;
+  if (rep >= 80) rank = 4;
+  else if (rep >= 50) rank = 3;
+  else if (rep >= 25) rank = 2;
+  else if (rep >= 0) rank = 1;
+  else rank = 0;
+  factionRanks[factionId] = rank;
+}
+
+// Initialize faction reps based on overall reputation when war arc starts
+function initFactionRepsFromOverallRep() {
+  const rep = player ? player.reputation : 0;
+  // Starting faction reps influenced by overall reputation
+  const baseRep = Math.floor(rep / 5); // overall rep / 5 as starting boost
+  factionReps.iron_legion = clamp(baseRep + (player?.class === 'Fighter' || player?.class === 'Paladin' || player?.class === 'Barbarian' ? 10 : 0), -20, 20);
+  factionReps.shadow_syndicate = clamp(baseRep + (player?.class === 'Rogue' ? 10 : 0), -20, 20);
+  factionReps.arcane_conclave = clamp(baseRep + (player?.class === 'Wizard' || player?.class === 'Sorcerer' || player?.class === 'Warlock' ? 10 : 0), -20, 20);
+  factionReps.merchant_coalition = clamp(baseRep + (player?.gold >= 100 ? 10 : 0), -20, 20);
+  Object.keys(factionReps).forEach(k => updateFactionRank(k));
+}
+
+// Trigger the war arc after floor 3
+function triggerWarArc() {
+  if (warState !== WAR_STATE.INACTIVE) return;
+  warState = WAR_STATE.TRIGGERED;
+  initFactionRepsFromOverallRep();
+  // Show notification
+  dungeonMessage = 'The war arc begins. Factions await in Hearthrest.';
+  dungeonMessageTimer = 3;
+  addFloatingText(canvasW/2, canvasH/2 - 50, '*** WAR ARC BEGINS ***', '#ffd700');
+}
+
+// Apply companion reactions to faction joining
+function applyCompanionFactionReactions(factionId) {
+  if (!player || !player.squad) return;
+  player.squad.forEach(comp => {
+    const shortName = getCompShortName(comp.name);
+    const opinions = COMPANION_FACTION_OPINIONS[comp.name];
+    if (!opinions) return;
+    const opinion = opinions[factionId];
+    if (!opinion) return;
+
+    const delta = opinion.loyaltyDelta || 0;
+    const oldLoy = comp.loyalty;
+    comp.loyalty = clamp(comp.loyalty + delta, 0, 100);
+
+    // Show reaction
+    setTimeout(() => {
+      addFloatingText(canvasW/2 + rand(-80,80), canvasH/2 - 60 - rand(0,40),
+        `${comp.name.split(' ')[0]}: "${opinion.reason.slice(1, 60)}..."`,
+        delta > 0 ? '#44ff88' : delta < 0 ? '#ff6644' : '#aaa'
+      );
+    }, rand(200, 800));
+
+    // Companions with hostile opinion and major negative delta may leave
+    if (comp.loyalty <= 10 && oldLoy > 10) {
+      setTimeout(() => {
+        dungeonMessage = `${comp.name} refuses to follow your faction choice and leaves!`;
+        dungeonMessageTimer = 4;
+        if (player.squad) player.squad = player.squad.filter(c => c.name !== comp.name);
+      }, 1200);
+    } else if (comp.loyalty <= 20 && oldLoy > 20) {
+      setTimeout(() => {
+        dungeonMessage = `${comp.name}: "I have serious reservations about this..."`;
+        dungeonMessageTimer = 3;
+      }, 1200);
+    }
+  });
+}
+
+// Join a faction
+function joinFaction(factionId) {
+  if (playerFaction && playerFaction !== factionId) {
+    // Defecting
+    defectFromFaction();
+  }
+  playerFaction = factionId;
+  warState = factionId;
+  factionReps[factionId] = Math.max(factionReps[factionId] || 0, 10); // minimum rep to be a member
+  updateFactionRank(factionId);
+  applyCompanionFactionReactions(factionId);
+
+  // Hostile factions take notice
+  Object.keys(FACTIONS).forEach(fid => {
+    if (FACTIONS[fid].hatesFactionsOf?.includes(factionId)) {
+      changeFactionRep(fid, -20, 'Enemy Faction Joined');
+    }
+  });
+
+  const f = FACTIONS[factionId];
+  addFloatingText(canvasW/2, canvasH/2 - 30, `Joined: ${f.name}!`, f.color);
+  SFX.levelUp();
+}
+
+// Choose freelancer path
+function chooseFreelanancerPath() {
+  playerFaction = null;
+  warState = WAR_STATE.FREELANCER;
+  applyCompanionFactionReactions('freelancer');
+  addFloatingText(canvasW/2, canvasH/2 - 30, 'Freelancer Path!', '#ffd700');
+  SFX.click();
+}
+
+// Defect from current faction
+function defectFromFaction() {
+  if (!playerFaction) return;
+  const oldFaction = playerFaction;
+  const oldRank = getPlayerFactionRank();
+
+  // Rep crash with old faction
+  factionReps[oldFaction] = clamp((factionReps[oldFaction] || 0) - 60, -100, 0);
+  updateFactionRank(oldFaction);
+
+  // Trigger assassins based on old rank
+  assassinsActive = true;
+  if (oldRank >= 4) assassinTier = 'commander';
+  else if (oldRank >= 3) assassinTier = 'officer';
+  else assassinTier = 'initiate';
+
+  defectionPending = true;
+  const f = FACTIONS[oldFaction];
+  dungeonMessage = `You have betrayed the ${f.name}! Assassins have been dispatched.`;
+  dungeonMessageTimer = 4;
+  addFloatingText(canvasW/2, canvasH/2 - 40, 'DEFECTOR!', '#ff4444');
+  SFX.trap();
+}
+
+// Check if an assassin encounter should trigger
+function checkAssassinEncounter() {
+  if (!assassinsActive) return false;
+  // Random chance per room entered (post-defection)
+  return Math.random() < 0.25;
+}
+
+// Spawn assassin encounter in a room
+function spawnAssassinEncounter(room) {
+  if (!assassinsActive || !playerFaction) return;
+  const oldFaction = warState === WAR_STATE.DEFECTED ? playerFaction : null;
+  const sourceFaction = defectionPending ? playerFaction : null;
+  if (!sourceFaction) return;
+
+  const templates = ASSASSIN_TEMPLATES[sourceFaction];
+  if (!templates) return;
+  const template = templates[assassinTier];
+  if (!template) return;
+
+  const assassin = {
+    ...deepClone(template),
+    maxHp: template.hp,
+    hp: template.hp,
+    id: Math.random().toString(36).substr(2, 9),
+    conditions: [],
+    px: room.cx, py: room.cy,
+    isAssassin: true,
+    fromFaction: sourceFaction,
+  };
+
+  room.enemies = [assassin];
+  room.type = ROOM_TYPE.COMBAT;
+  room.cleared = false;
+  room.isAssassinAmbush = true;
+}
+
+// Start a faction quest
+function startFactionQuest(factionId, questIndex) {
+  const quests = FACTION_QUESTS[factionId];
+  if (!quests || questIndex >= quests.length) return;
+  const quest = quests[questIndex];
+  activeFactionQuest = {
+    factionId,
+    questIndex,
+    questData: quest,
+    stage: 'active',
+    skillRoll: null,
+  };
+  dungeonMessage = `New quest: ${quest.title}`;
+  dungeonMessageTimer = 2.5;
+  SFX.click();
+}
+
+// Complete active faction quest
+function completeFactionQuest() {
+  if (!activeFactionQuest) return;
+  const { factionId, questData } = activeFactionQuest;
+  completedFactionQuests.push(questData.id);
+  changeFactionRep(factionId, questData.reward.rep || 15, 'Quest Complete');
+  player.gold += questData.reward.gold || 50;
+  if (questData.reward.item) {
+    const item = generateTreasureItem(currentFloor);
+    item.rarity = RARITY.UNCOMMON;
+    player.inventory.push(item);
+    addFloatingText(canvasW/2, canvasH/2 - 20, `+${item.name}`, RARITY_COLORS[item.rarity]);
+  }
+  addFloatingText(canvasW/2, canvasH/2, `Quest Complete! +${questData.reward.gold}g`, '#ffd700');
+  activeFactionQuest = null;
+  SFX.chest();
+}
+
+// Get available quests for player's faction
+function getAvailableFactionQuests(factionId) {
+  const quests = FACTION_QUESTS[factionId];
+  if (!quests) return [];
+  return quests.filter(q => {
+    if (completedFactionQuests.includes(q.id)) return false;
+    if (activeFactionQuest && activeFactionQuest.questData.id === q.id) return false;
+    return true;
+  });
+}
+
+// Get war state for final boss selection on Floor 5
+function getWarFloor5Boss() {
+  // Default boss name
+  if (warState === WAR_STATE.INACTIVE || warState === WAR_STATE.TRIGGERED) return 'Ancient Wyrm';
+
+  if (warState === WAR_STATE.FREELANCER) return 'Ancient Wyrm'; // No faction influence
+
+  // Faction-specific boss name and data
+  const factionBosses = {
+    iron_legion: 'Legion Warlord Malgrim',
+    shadow_syndicate: 'Syndicate Grandmaster',
+    arcane_conclave: 'Rogue Archmage',
+    merchant_coalition: 'Coalition War-Director',
+  };
+  // If player betrayed a faction, the old faction sends their best
+  if (assassinsActive && assassinTier === 'commander') {
+    const oldFaction = Object.keys(FACTIONS).find(f => factionReps[f] <= -60);
+    if (oldFaction && factionBosses[oldFaction]) return `${factionBosses[oldFaction]} (Betrayed)`;
+  }
+  return factionBosses[playerFaction] || 'Ancient Wyrm';
+}
+
+// Generate war faction boss enemy
+function generateFactionBoss() {
+  const bossName = getWarFloor5Boss();
+  // If it's the default, use normal boss
+  if (bossName === 'Ancient Wyrm') return deepClone(MONSTERS['Ancient Wyrm']);
+
+  // Generate faction-specific boss
+  const factionBossTemplates = {
+    'Legion Warlord Malgrim': { name: 'Legion Warlord Malgrim', hp: 240, ac: 20, attacks: [{name:'Warlord\'s Greatsword',bonus:13,damage:[3,8],damageBonus:7},{name:'Battlecry (AOE)',bonus:0,damage:[2,8],damageBonus:0,autoHit:true},{name:'Iron Shield Bash',bonus:10,damage:[2,6],damageBonus:5}], xp: 10000, cr: 13, str:22,dex:10,con:20,int:14,wis:14,cha:18, color:'#ff4040', symbol:'W', size:1.8, boss:true },
+    'Syndicate Grandmaster': { name: 'Syndicate Grandmaster', hp: 210, ac: 18, attacks: [{name:'Shadow Execution',bonus:13,damage:[3,10],damageBonus:6},{name:'Poison Cascade',bonus:0,damage:[4,6],damageBonus:0,autoHit:true},{name:'Vanishing Strike',bonus:11,damage:[2,8],damageBonus:5}], xp: 10000, cr: 13, str:16,dex:20,con:18,int:16,wis:15,cha:18, color:'#9090e0', symbol:'G', size:1.4, boss:true },
+    'Rogue Archmage': { name: 'Rogue Archmage', hp: 200, ac: 17, attacks: [{name:'Arcane Annihilation',bonus:12,damage:[4,10],damageBonus:5},{name:'Temporal Shatter',bonus:11,damage:[3,8],damageBonus:6},{name:'Summon Void',bonus:0,damage:[5,8],damageBonus:0,autoHit:true}], xp: 10000, cr: 13, str:10,dex:16,con:18,int:22,wis:16,cha:18, color:'#a080ff', symbol:'A', size:1.4, boss:true },
+    'Coalition War-Director': { name: 'Coalition War-Director', hp: 220, ac: 19, attacks: [{name:'Masterwork Blade',bonus:12,damage:[3,8],damageBonus:6},{name:'Mercenary Volley',bonus:0,damage:[4,6],damageBonus:0,autoHit:true},{name:'Gold Explosion',bonus:10,damage:[2,10],damageBonus:5}], xp: 10000, cr: 13, str:18,dex:14,con:19,int:16,wis:14,cha:20, color:'#ffb060', symbol:'D', size:1.6, boss:true },
+    'Legion Warlord Malgrim (Betrayed)': { name: 'Warlord Malgrim (Vengeful)', hp: 260, ac: 21, attacks: [{name:'Vengeance Cleave',bonus:14,damage:[3,10],damageBonus:8},{name:'Iron Judgement',bonus:0,damage:[3,8],damageBonus:0,autoHit:true}], xp: 12000, cr: 14, str:24,dex:10,con:22,int:14,wis:14,cha:18, color:'#ff2020', symbol:'W', size:2.0, boss:true },
+    'Syndicate Grandmaster (Betrayed)': { name: 'Grandmaster (Vengeful)', hp: 230, ac: 19, attacks: [{name:'Betrayal\'s Edge',bonus:14,damage:[4,8],damageBonus:7},{name:'Shadow Verdict',bonus:0,damage:[4,6],damageBonus:0,autoHit:true}], xp: 12000, cr: 14, str:16,dex:22,con:18,int:16,wis:15,cha:18, color:'#c0c0ff', symbol:'G', size:1.6, boss:true },
+    'Rogue Archmage (Betrayed)': { name: 'Archmage (Vengeful)', hp: 220, ac: 18, attacks: [{name:'Arcane Obliteration',bonus:13,damage:[5,8],damageBonus:6},{name:'Magical Retribution',bonus:0,damage:[4,10],damageBonus:0,autoHit:true}], xp: 12000, cr: 14, str:10,dex:16,con:18,int:24,wis:16,cha:18, color:'#d0b0ff', symbol:'A', size:1.6, boss:true },
+    'Coalition War-Director (Betrayed)': { name: 'War-Director (Vengeful)', hp: 240, ac: 20, attacks: [{name:'Assassination Contract',bonus:13,damage:[4,8],damageBonus:7},{name:'Hired Army Volley',bonus:0,damage:[4,6],damageBonus:0,autoHit:true}], xp: 12000, cr: 14, str:18,dex:14,con:20,int:16,wis:14,cha:22, color:'#ffd080', symbol:'D', size:1.8, boss:true },
+  };
+
+  const template = factionBossTemplates[bossName];
+  if (!template) return deepClone(MONSTERS['Ancient Wyrm']);
+  return deepClone(template);
+}
+
+// ============================================================
+// WAR ARC UI — FACTION CHOICE SCREEN
+// ============================================================
+let warChoiceState = {
+  phase: 'intro', // 'intro', 'choose', 'confirm_faction', 'confirm_freelancer'
+  selectedFaction: null,
+};
+
+function updateWarChoice() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+
+  if (warChoiceState.phase === 'intro') {
+    X.fillStyle = '#ffd700';
+    X.font = `bold ${isMobile ? 22 : 30}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText('THE WAR ARC', cx, 55);
+
+    X.fillStyle = '#c08040';
+    X.font = `bold ${isMobile ? 14 : 18}px Consolas, monospace`;
+    X.fillText('The middle floors have been conquered.', cx, 90);
+    X.fillText('Now the real war begins.', cx, 115);
+
+    X.fillStyle = '#ccc';
+    X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
+    const introLines = [
+      'Four factions have been watching your progress through the dungeon.',
+      'Each has an agenda, and each wants you as an asset.',
+      'Your choice here will change the dungeon, change your companions,',
+      'and change who waits for you at the deepest floor.',
+      '',
+      'You may also choose to walk alone — a freelancer beholden to none.',
+      'That path is harder. The rewards are your own.',
+    ];
+    introLines.forEach((line, i) => {
+      X.fillText(line, cx, 150 + i * 20);
+    });
+
+    const btnW = 180, btnH = 42;
+    drawButton(cx - btnW/2, canvasH - 80, btnW, btnH, 'Choose Your Side', false, '#2a1a3a');
+    if (clickedInRect(cx - btnW/2, canvasH - 80, btnW, btnH)) {
+      SFX.click();
+      warChoiceState.phase = 'choose';
+    }
+
+  } else if (warChoiceState.phase === 'choose') {
+    X.fillStyle = '#ffd700';
+    X.font = `bold ${isMobile ? 20 : 26}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText('CHOOSE YOUR FACTION', cx, 35);
+
+    X.fillStyle = '#888';
+    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    X.fillText('Your reputation and class influenced starting standing with each faction.', cx, 55);
+
+    const cardW = Math.min(canvasW - 30, 440);
+    const cardH = isMobile ? 85 : 95;
+    const gap = 8;
+    const factionList = Object.values(FACTIONS);
+    const startY = 70;
+
+    factionList.forEach((faction, i) => {
+      const cardY = startY + i * (cardH + gap);
+      const hov = isInRect(mouseX, mouseY, cx - cardW/2, cardY, cardW, cardH);
+      const myRep = factionReps[faction.id] || 0;
+      const myRank = factionRanks[faction.id] || 0;
+
+      X.fillStyle = hov ? '#1a1a30' : '#141420';
+      X.fillRect(cx - cardW/2, cardY, cardW, cardH);
+      X.strokeStyle = hov ? faction.color : faction.color + '66';
+      X.lineWidth = hov ? 2 : 1;
+      X.strokeRect(cx - cardW/2, cardY, cardW, cardH);
+
+      // Faction symbol
+      X.fillStyle = faction.color;
+      X.beginPath(); X.arc(cx - cardW/2 + 28, cardY + cardH/2, 18, 0, Math.PI * 2); X.fill();
+      X.fillStyle = '#fff';
+      X.font = 'bold 14px Consolas, monospace';
+      X.textAlign = 'center'; X.textBaseline = 'middle';
+      X.fillText(faction.symbol, cx - cardW/2 + 28, cardY + cardH/2);
+
+      X.textAlign = 'left'; X.textBaseline = 'alphabetic';
+      X.fillStyle = faction.color;
+      X.font = `bold ${isMobile ? 13 : 15}px Consolas, monospace`;
+      X.fillText(faction.name, cx - cardW/2 + 52, cardY + 18);
+
+      X.fillStyle = '#888';
+      X.font = `${isMobile ? 9 : 11}px Consolas, monospace`;
+      const descShort = faction.desc.length > 65 ? faction.desc.substr(0, 62) + '...' : faction.desc;
+      X.fillText(descShort, cx - cardW/2 + 52, cardY + 32);
+
+      X.fillStyle = '#666';
+      X.font = `${isMobile ? 8 : 9}px Consolas, monospace`;
+      X.fillText(faction.motto, cx - cardW/2 + 52, cardY + 46);
+
+      // Faction rep and rank
+      X.fillStyle = myRep >= 0 ? '#44aaff' : '#ff6644';
+      X.font = `${isMobile ? 8 : 10}px Consolas, monospace`;
+      X.fillText(`Standing: ${getFactionRankName(faction.id, myRank)} (${myRep >= 0 ? '+' : ''}${myRep})`, cx - cardW/2 + 52, cardY + 60);
+
+      X.fillStyle = '#555';
+      X.font = `${isMobile ? 8 : 9}px Consolas, monospace`;
+      X.fillText(faction.joinReq, cx - cardW/2 + 52, cardY + 73);
+
+      // Join button
+      const jbw = 55, jbh = 26;
+      const jbx = cx + cardW/2 - jbw - 8;
+      const jby = cardY + (cardH - jbh) / 2;
+      drawButton(jbx, jby, jbw, jbh, 'Join', false, darkenColor(faction.color, 0.5), faction.color);
+      if (clickedInRect(jbx, jby, jbw, jbh)) {
+        SFX.click();
+        warChoiceState.selectedFaction = faction.id;
+        warChoiceState.phase = 'confirm_faction';
+      }
+    });
+
+    // Freelancer option
+    const flY = startY + factionList.length * (cardH + gap) + 5;
+    const flCardH = isMobile ? 55 : 60;
+    const hov2 = isInRect(mouseX, mouseY, cx - cardW/2, flY, cardW, flCardH);
+    X.fillStyle = hov2 ? '#1a1a1a' : '#111111';
+    X.fillRect(cx - cardW/2, flY, cardW, flCardH);
+    X.strokeStyle = hov2 ? '#ffd700' : '#ffd70066';
+    X.lineWidth = hov2 ? 2 : 1;
+    X.strokeRect(cx - cardW/2, flY, cardW, flCardH);
+    X.fillStyle = '#ffd700';
+    X.font = `bold ${isMobile ? 13 : 15}px Consolas, monospace`;
+    X.textAlign = 'left';
+    X.fillText('Walk Alone — Freelancer', cx - cardW/2 + 15, flY + 20);
+    X.fillStyle = '#888';
+    X.font = `${isMobile ? 9 : 11}px Consolas, monospace`;
+    X.fillText('Harder path. No faction benefits. All factions neutral. Complete freedom.', cx - cardW/2 + 15, flY + 36);
+    const flbw = 70, flbh = 26;
+    drawButton(cx + cardW/2 - flbw - 8, flY + (flCardH - flbh)/2, flbw, flbh, 'Choose', false, '#333', '#ffd700');
+    if (clickedInRect(cx + cardW/2 - flbw - 8, flY + (flCardH - flbh)/2, flbw, flbh)) {
+      SFX.click();
+      warChoiceState.phase = 'confirm_freelancer';
+    }
+
+  } else if (warChoiceState.phase === 'confirm_faction') {
+    const faction = FACTIONS[warChoiceState.selectedFaction];
+    if (!faction) { warChoiceState.phase = 'choose'; return; }
+
+    X.fillStyle = faction.color;
+    X.font = `bold ${isMobile ? 22 : 28}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText(faction.name, cx, 55);
+
+    // Large faction symbol
+    X.fillStyle = faction.color + '30';
+    X.beginPath(); X.arc(cx, 120, 55, 0, Math.PI * 2); X.fill();
+    X.fillStyle = faction.color;
+    X.beginPath(); X.arc(cx, 120, 42, 0, Math.PI * 2); X.fill();
+    X.fillStyle = '#fff';
+    X.font = 'bold 32px Consolas, monospace';
+    X.textBaseline = 'middle';
+    X.fillText(faction.symbol, cx, 121);
+    X.textBaseline = 'alphabetic';
+
+    X.fillStyle = '#ccc';
+    X.font = `${isMobile ? 12 : 14}px Consolas, monospace`;
+    X.fillText(faction.desc, cx, 185);
+
+    X.fillStyle = faction.accentColor || faction.color;
+    X.font = `italic ${isMobile ? 12 : 14}px Consolas, monospace`;
+    X.fillText(faction.motto, cx, 208);
+
+    // Representative greeting
+    X.fillStyle = '#ffd700';
+    X.font = `bold ${isMobile ? 11 : 13}px Consolas, monospace`;
+    X.fillText(`${faction.representativeName} says:`, cx, 240);
+
+    X.fillStyle = '#ddd';
+    X.font = `italic ${isMobile ? 10 : 12}px Consolas, monospace`;
+    const greetLines = wrapText(faction.joinGreeting, Math.min(canvasW - 60, 440), isMobile ? 10 : 12);
+    greetLines.forEach((line, i) => X.fillText(line, cx, 260 + i * 17));
+
+    // Companion reaction warning
+    const negCompanions = player.squad ? player.squad.filter(comp => {
+      const opinion = COMPANION_FACTION_OPINIONS[comp.name]?.[faction.id];
+      return opinion && opinion.loyaltyDelta < -5;
+    }) : [];
+    if (negCompanions.length > 0) {
+      X.fillStyle = '#ff8844';
+      X.font = `bold ${isMobile ? 10 : 12}px Consolas, monospace`;
+      X.fillText(`Warning: ${negCompanions.map(c => c.name.split(' ')[0]).join(', ')} may react negatively.`, cx, 260 + greetLines.length * 17 + 18);
+    }
+
+    const btnW = 160, btnH = 42;
+    const confY = canvasH - 95;
+    drawButton(cx - btnW - 8, confY, btnW, btnH, `Join ${faction.shortName}`, false, darkenColor(faction.color, 0.5), faction.color);
+    if (clickedInRect(cx - btnW - 8, confY, btnW, btnH)) {
+      SFX.levelUp();
+      joinFaction(warChoiceState.selectedFaction);
+      warState = warChoiceState.selectedFaction;
+      warChoiceState.phase = 'intro';
+      gameState = STATE.TOWN;
+      townData = townData || { floorCleared: 2, nextFloor: 3, activeSection: 'factions' };
+      dungeonMessage = `You have joined the ${faction.name}!`;
+      dungeonMessageTimer = 3;
+    }
+    drawButton(cx + 8, confY, btnW, btnH, 'Go Back', false, '#333');
+    if (clickedInRect(cx + 8, confY, btnW, btnH)) {
+      SFX.click();
+      warChoiceState.phase = 'choose';
+    }
+
+  } else if (warChoiceState.phase === 'confirm_freelancer') {
+    X.fillStyle = '#ffd700';
+    X.font = `bold ${isMobile ? 22 : 28}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText('WALK ALONE', cx, 60);
+
+    X.fillStyle = '#ccc';
+    X.font = `${isMobile ? 12 : 14}px Consolas, monospace`;
+    const flLines = [
+      'The freelancer path offers no faction support, no quests,',
+      'and no safe harbor. All factions remain neutral — for now.',
+      '',
+      'What you gain: complete independence. No faction can demand',
+      'your loyalty. No assassins will come for your defection.',
+      'Your companions who value freedom will respect this.',
+      '',
+      'The dungeon\'s final boss will be the Ancient Wyrm,',
+      'untouched by faction politics.',
+    ];
+    flLines.forEach((line, i) => X.fillText(line, cx, 100 + i * 20));
+
+    const btnW2 = 160, btnH2 = 42;
+    const confY2 = canvasH - 95;
+    drawButton(cx - btnW2 - 8, confY2, btnW2, btnH2, 'Walk Alone', false, '#333', '#ffd700');
+    if (clickedInRect(cx - btnW2 - 8, confY2, btnW2, btnH2)) {
+      SFX.click();
+      chooseFreelanancerPath();
+      warChoiceState.phase = 'intro';
+      gameState = STATE.TOWN;
+      townData = townData || { floorCleared: 2, nextFloor: 3, activeSection: 'tavern' };
+    }
+    drawButton(cx + 8, confY2, btnW2, btnH2, 'Go Back', false, '#333');
+    if (clickedInRect(cx + 8, confY2, btnW2, btnH2)) {
+      SFX.click();
+      warChoiceState.phase = 'choose';
+    }
+  }
+}
+
+// ============================================================
+// WAR ARC — TOWN FACTION SECTION
+// ============================================================
+function drawTownFactions(px, py, pw, cx) {
+  const faction = playerFaction ? FACTIONS[playerFaction] : null;
+  const titleColor = faction ? faction.color : '#ffd700';
+  const titleText = faction ? `${faction.name.toUpperCase()} — FACTION HQ` : 'FACTION HEADQUARTERS';
+
+  X.fillStyle = titleColor;
+  X.font = 'bold 14px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText(titleText, cx, py + 18);
+
+  if (!playerFaction) {
+    // No faction — show all reps
+    if (warState === WAR_STATE.FREELANCER) {
+      X.fillStyle = '#ffd700';
+      X.font = '13px Consolas, monospace';
+      X.fillText('You walk the Freelancer path. No faction allegiance.', cx, py + 42);
+      X.fillStyle = '#888';
+      X.font = '11px Consolas, monospace';
+      X.fillText('All factions are neutral toward you.', cx, py + 60);
+      return;
+    }
+    // War arc not triggered yet or still choosing
+    if (warState === WAR_STATE.INACTIVE) {
+      X.fillStyle = '#888';
+      X.font = '11px Consolas, monospace';
+      X.fillText('Clear Floor 3 to unlock faction allegiances.', cx, py + 42);
+      return;
+    }
+    if (warState === WAR_STATE.TRIGGERED) {
+      X.fillStyle = '#ff8844';
+      X.font = '12px Consolas, monospace';
+      X.fillText('The factions are watching. Choose your allegiance.', cx, py + 42);
+      const btnW3 = 200, btnH3 = 36;
+      drawButton(cx - btnW3/2, py + 58, btnW3, btnH3, 'Choose a Faction', false, '#2a1a3a', '#ffd700');
+      if (clickedInRect(cx - btnW3/2, py + 58, btnW3, btnH3)) {
+        SFX.click();
+        warChoiceState.phase = 'intro';
+        gameState = STATE.WAR_CHOICE;
+      }
+      return;
+    }
+  }
+
+  // Show faction rep display
+  const factionList = Object.values(FACTIONS);
+  const repY = py + 32;
+  factionList.forEach((f, i) => {
+    const fy = repY + i * 22;
+    const rep = factionReps[f.id] || 0;
+    const rank = factionRanks[f.id] || 0;
+    const isMine = f.id === playerFaction;
+
+    X.fillStyle = isMine ? f.color : '#666';
+    X.font = `${isMine ? 'bold ' : ''}${isMobile ? 10 : 11}px Consolas, monospace`;
+    X.textAlign = 'left';
+    X.fillText(`${isMine ? '► ' : '  '}${f.shortName}: ${getFactionRankName(f.id, rank)} (${rep >= 0 ? '+' : ''}${rep})`, px + 10, fy);
+  });
+
+  if (!faction) return;
+
+  const actY = repY + factionList.length * 22 + 8;
+
+  // Representative dialogue
+  X.fillStyle = faction.color;
+  X.font = 'bold 11px Consolas, monospace';
+  X.textAlign = 'left';
+  X.fillText(`${faction.representativeName}:`, px + 10, actY);
+
+  // Rank status
+  const myRank = getPlayerFactionRank();
+  const rankName = getFactionRankName(playerFaction, myRank);
+  X.fillStyle = '#aaa';
+  X.font = '11px Consolas, monospace';
+  X.fillText(`Your rank: ${rankName} | Rep: ${factionReps[playerFaction]}`, px + 10, actY + 15);
+
+  // Active quest status
+  if (activeFactionQuest && activeFactionQuest.factionId === playerFaction) {
+    X.fillStyle = '#ffaa44';
+    X.font = 'bold 11px Consolas, monospace';
+    X.fillText(`Active Quest: ${activeFactionQuest.questData.title}`, px + 10, actY + 30);
+    X.fillStyle = '#888';
+    X.font = '10px Consolas, monospace';
+    X.fillText(activeFactionQuest.questData.desc, px + 10, actY + 43);
+    // Complete quest button (skill quests auto-resolve, others require dungeon action)
+    if (activeFactionQuest.questData.type === 'skill') {
+      const questBtnW = 130, questBtnH = 28;
+      drawButton(cx - questBtnW/2, actY + 55, questBtnW, questBtnH, 'Attempt Quest', false, '#2a3a1a');
+      if (clickedInRect(cx - questBtnW/2, actY + 55, questBtnW, questBtnH)) {
+        SFX.click();
+        const q = activeFactionQuest.questData;
+        const stat = q.skillStat || 'DEX';
+        const dc = q.skillDC || 14;
+        const roll = d20();
+        const bonus = mod(player.stats[stat]) + PROF_BONUS[player.level];
+        const total = roll + bonus;
+        if (total >= dc) {
+          addFloatingText(canvasW/2, canvasH/2 - 30, `Success! (${total} vs DC ${dc})`, '#44ff44');
+          completeFactionQuest();
+        } else {
+          addFloatingText(canvasW/2, canvasH/2 - 30, `Failed (${total} vs DC ${dc})`, '#ff4444');
+          dungeonMessage = 'Quest failed. Try again later.';
+          dungeonMessageTimer = 2;
+          activeFactionQuest = null;
+        }
+      }
+    } else {
+      X.fillStyle = '#888';
+      X.font = '10px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('Complete in the dungeon. Return to collect reward.', cx, actY + 60);
+      // Check if quest was completed in dungeon
+      if (activeFactionQuest.stage === 'dungeonComplete') {
+        const cmpBtnW = 130, cmpBtnH = 28;
+        drawButton(cx - cmpBtnW/2, actY + 72, cmpBtnW, cmpBtnH, 'Collect Reward', false, '#2a4a2a');
+        if (clickedInRect(cx - cmpBtnW/2, actY + 72, cmpBtnW, cmpBtnH)) {
+          SFX.click();
+          completeFactionQuest();
+        }
+      }
+    }
+  } else {
+    // Show available quests
+    const available = getAvailableFactionQuests(playerFaction);
+    if (available.length === 0) {
+      X.fillStyle = '#888';
+      X.font = '11px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('No new quests available. Your service is valued.', cx, actY + 30);
+    } else {
+      X.fillStyle = '#ffd700';
+      X.font = 'bold 11px Consolas, monospace';
+      X.textAlign = 'left';
+      X.fillText('Available Quests:', px + 10, actY + 28);
+      available.slice(0, 2).forEach((quest, qi) => {
+        const qy = actY + 42 + qi * 52;
+        X.fillStyle = '#1a1a2a';
+        X.fillRect(px + 5, qy, pw - 10, 48);
+        X.strokeStyle = faction.color + '66'; X.lineWidth = 1;
+        X.strokeRect(px + 5, qy, pw - 10, 48);
+        X.fillStyle = '#ccc'; X.font = 'bold 10px Consolas, monospace'; X.textAlign = 'left';
+        X.fillText(quest.title, px + 10, qy + 13);
+        X.fillStyle = '#888'; X.font = '9px Consolas, monospace';
+        const descShort = quest.desc.length > 60 ? quest.desc.substr(0, 57) + '...' : quest.desc;
+        X.fillText(descShort, px + 10, qy + 26);
+        X.fillStyle = '#ffd700'; X.textAlign = 'right';
+        X.fillText(`${quest.reward.gold}g + ${quest.reward.rep}rep`, px + pw - 10, qy + 13);
+
+        const takeBtnW = 55, takeBtnH = 22;
+        drawButton(px + pw - takeBtnW - 8, qy + 23, takeBtnW, takeBtnH, 'Take', false, darkenColor(faction.color, 0.4));
+        if (clickedInRect(px + pw - takeBtnW - 8, qy + 23, takeBtnW, takeBtnH)) {
+          SFX.click();
+          startFactionQuest(playerFaction, FACTION_QUESTS[playerFaction].indexOf(quest));
+        }
+      });
+    }
+  }
+
+  // Defect button (only if in a faction)
+  const defBtnW = 120, defBtnH = 28;
+  drawButton(px + pw - defBtnW - 8, py + (canvasH - py - 60) - 10, defBtnW, defBtnH, 'Defect', false, '#4a1a1a', '#ff6644');
+  if (clickedInRect(px + pw - defBtnW - 8, py + (canvasH - py - 60) - 10, defBtnW, defBtnH)) {
+    SFX.click();
+    defectFromFaction();
+    warState = WAR_STATE.DEFECTED;
+    playerFaction = null;
+    dungeonMessage = 'You have defected! Assassins are coming.';
+    dungeonMessageTimer = 3;
+  }
+}
+
+// ============================================================
+// WAR STATUS INDICATOR IN HUD
+// ============================================================
+function renderWarStatusHUD() {
+  if (warState === WAR_STATE.INACTIVE) return;
+
+  const indicX = isMobile ? 10 : 10;
+  // Position below main UI bars; calculate based on HP bar + spell slot bar + info panel
+  const baseY = canvasH - (isMobile ? 190 : 200);
+
+  const warBoxW = isMobile ? 140 : 170;
+  const warBoxH = assassinsActive ? 46 : 34;
+
+  X.fillStyle = 'rgba(0,0,0,0.75)';
+  X.fillRect(indicX - 2, baseY - 2, warBoxW + 4, warBoxH + 4);
+
+  const faction = playerFaction ? FACTIONS[playerFaction] : null;
+  const statusColor = warState === WAR_STATE.FREELANCER ? '#ffd700' :
+                     warState === WAR_STATE.TRIGGERED ? '#ff8844' :
+                     warState === WAR_STATE.DEFECTED ? '#ff4444' :
+                     faction ? faction.color : '#888';
+
+  X.fillStyle = statusColor;
+  X.font = `bold ${isMobile ? 9 : 10}px Consolas, monospace`;
+  X.textAlign = 'left';
+
+  const statusLabel = warState === WAR_STATE.FREELANCER ? 'WAR: Freelancer' :
+                      warState === WAR_STATE.TRIGGERED ? 'WAR: Choose Faction!' :
+                      warState === WAR_STATE.DEFECTED ? 'WAR: DEFECTOR' :
+                      faction ? `WAR: ${faction.shortName} - ${getFactionRankName(playerFaction, getPlayerFactionRank())}` :
+                      'WAR: Active';
+
+  X.fillText(statusLabel, indicX + 2, baseY + 12);
+
+  if (faction) {
+    X.fillStyle = '#888';
+    X.font = `${isMobile ? 8 : 9}px Consolas, monospace`;
+    X.fillText(`Rep: ${factionReps[playerFaction] >= 0 ? '+' : ''}${factionReps[playerFaction]}`, indicX + 2, baseY + 24);
+  }
+
+  if (assassinsActive) {
+    X.fillStyle = '#ff4444';
+    X.font = `bold ${isMobile ? 8 : 9}px Consolas, monospace`;
+    X.fillText(`!! ASSASSINS: ${assassinTier.toUpperCase()} !!`, indicX + 2, baseY + 36);
+  }
+
+  // War state color bar
+  X.fillStyle = statusColor + '88';
+  X.fillRect(indicX - 2, baseY - 2, warBoxW + 4, 3);
+}
+
+// ============================================================
 // MAIN GAME LOOP
 // ============================================================
 function gameLoop(timestamp) {
@@ -6225,6 +7487,7 @@ function gameLoop(timestamp) {
     case STATE.PARTY_MGMT:   updatePartyMgmt(); break;
     case STATE.TOWN:         updateTown(); break;
     case STATE.CAMPFIRE:     updateCampfire(); break;
+    case STATE.WAR_CHOICE:   updateWarChoice(); break;
   }
 
   updateParticles(dt);
