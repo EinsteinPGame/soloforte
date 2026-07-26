@@ -1,0 +1,3669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Dungeons of Fate</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Consolas','Courier New',monospace;background:#0a0a0a;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center;user-select:none;-webkit-user-select:none}
+canvas{display:block}
+#gc{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
+</style>
+</head>
+<body>
+<script src="auth.js"></script>
+<script src="back-btn.js"></script>
+<div id="gc"><canvas id="g"></canvas></div>
+<script>
+// ============================================================
+// DUNGEONS OF FATE v1.0 — D&D Dungeon Crawler Phase 1
+// ============================================================
+
+const C = document.getElementById('g'), X = C.getContext('2d');
+const isMobile = (()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
+
+// ============================================================
+// CANVAS SETUP
+// ============================================================
+let canvasW = 0, canvasH = 0, scaleFactor = 1;
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  const dpr = window.devicePixelRatio || 1;
+  canvasW = w; canvasH = h;
+  C.width = w * dpr; C.height = h * dpr;
+  C.style.width = w + 'px'; C.style.height = h + 'px';
+  C.style.position = 'absolute'; C.style.left = '0px'; C.style.top = '0px';
+  X.setTransform(dpr, 0, 0, dpr, 0, 0);
+  scaleFactor = dpr;
+}
+addEventListener('resize', resize); resize();
+
+// ============================================================
+// UTILITY
+// ============================================================
+function rand(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function rollDice(num, sides) { let t = 0; for (let i = 0; i < num; i++) t += rand(1, sides); return t; }
+function d20() { return rand(1, 20); }
+function mod(score) { return Math.floor((score - 10) / 2); }
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+// ============================================================
+// AUDIO (Web Audio API)
+// ============================================================
+const SFX = {
+  ctx: null,
+  _init() { if (!this.ctx) try { this.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {} },
+  _tone(freq, dur, type, vol, delay) {
+    this._init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime + (delay || 0);
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(vol || 0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t); o.stop(t + dur);
+  },
+  _noise(dur, vol) {
+    this._init(); if (!this.ctx) return;
+    const bufSz = this.ctx.sampleRate * dur;
+    const buf = this.ctx.createBuffer(1, bufSz, this.ctx.sampleRate);
+    const d = buf.getChannelData(0); for (let i = 0; i < bufSz; i++) d[i] = (Math.random() * 2 - 1) * (vol || 0.1);
+    const s = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    s.buffer = buf; g.gain.setValueAtTime(vol || 0.1, this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + dur);
+    s.connect(g); g.connect(this.ctx.destination); s.start(); s.stop(this.ctx.currentTime + dur);
+  },
+  hit() { this._tone(200, 0.12, 'sine', 0.18); this._noise(0.1, 0.1); },
+  crit() { this._tone(600, 0.08, 'sawtooth', 0.25); this._tone(900, 0.1, 'square', 0.22, 0.04); },
+  miss() { this._tone(150, 0.1, 'triangle', 0.08); },
+  heal() { this._tone(523, 0.15, 'sine', 0.15); this._tone(659, 0.15, 'sine', 0.12, 0.1); this._tone(784, 0.2, 'sine', 0.1, 0.2); },
+  death() { this._tone(400, 0.3, 'sine', 0.2); this._tone(300, 0.4, 'sine', 0.15, 0.3); this._tone(200, 0.5, 'sine', 0.1, 0.6); },
+  levelUp() { [523, 659, 784, 1047].forEach((f, i) => this._tone(f, 0.25, 'sine', 0.2, i * 0.1)); },
+  click() { this._tone(800, 0.04, 'square', 0.06); },
+  door() { this._tone(200, 0.15, 'triangle', 0.1); this._tone(150, 0.2, 'triangle', 0.08, 0.1); },
+  trap() { this._tone(100, 0.2, 'sawtooth', 0.2); this._noise(0.15, 0.15); },
+  chest() { this._tone(440, 0.1, 'sine', 0.15); this._tone(660, 0.1, 'sine', 0.12, 0.08); this._tone(880, 0.15, 'sine', 0.1, 0.16); },
+  spell() { this._tone(800, 0.1, 'triangle', 0.15); this._tone(1200, 0.08, 'triangle', 0.1, 0.05); this._tone(600, 0.12, 'sine', 0.08, 0.1); },
+  stairs() { [300, 400, 500, 600, 700].forEach((f, i) => this._tone(f, 0.1, 'sine', 0.1, i * 0.06)); },
+  save() { this._tone(523, 0.2, 'sine', 0.12); this._tone(784, 0.2, 'sine', 0.1, 0.15); },
+};
+
+// ============================================================
+// GAME STATE
+// ============================================================
+const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9 };
+let gameState = STATE.TITLE;
+let player = null;
+let dungeon = null;
+let currentFloor = 0;
+let combatState = null;
+let floatingTexts = [];
+let particles = [];
+let combatLog = [];
+let gameTime = 0;
+let lastTime = 0;
+let helpOpen = false;
+
+// ============================================================
+// DATA DEFINITIONS
+// ============================================================
+
+// -- Races --
+const RACES = {
+  Human:    { name: 'Human',    bonuses: { STR:1,DEX:1,CON:1,INT:1,WIS:1,CHA:1 }, trait: 'Versatile: +1 to all stats', traitKey: 'versatile', color: '#c8b070' },
+  Elf:      { name: 'Elf',      bonuses: { DEX:2 }, trait: 'Darkvision, Charm Resistance', traitKey: 'darkvision', color: '#70c870' },
+  Dwarf:    { name: 'Dwarf',    bonuses: { CON:2 }, trait: 'Poison Resistance, Stonecunning', traitKey: 'poison_resist', color: '#c8a050' },
+  Halfling: { name: 'Halfling', bonuses: { DEX:2 }, trait: 'Lucky (reroll natural 1s)', traitKey: 'lucky', color: '#e0c080' },
+  Orc:      { name: 'Orc',      bonuses: { STR:2, CON:1 }, trait: 'Relentless Endurance (survive at 1HP once/rest)', traitKey: 'relentless', color: '#80a060' },
+  Tiefling: { name: 'Tiefling', bonuses: { CHA:2, INT:1 }, trait: 'Fire Resistance, Hellish Rebuke', traitKey: 'fire_resist', color: '#c06080' },
+};
+
+// -- Classes --
+const CLASSES = {
+  Fighter: { name: 'Fighter', hitDie: 10, primary: 'STR', savingThrows: ['STR','CON'], skills: ['Athletics','Intimidation'], isCaster: false,
+    features: { 1: 'Second Wind (heal d10+level, 1/rest)', 2: 'Action Surge (extra action, 1/rest)', 5: 'Extra Attack' },
+    startEquip: ['Longsword','Chain Mail','Shield','Health Potion','Health Potion'], color: '#d04040' },
+  Rogue:   { name: 'Rogue', hitDie: 8, primary: 'DEX', savingThrows: ['DEX','INT'], skills: ['Stealth','Acrobatics','Perception','Sleight of Hand'], isCaster: false,
+    features: { 1: 'Sneak Attack (+d6 damage when advantage)', 2: 'Cunning Action (bonus Dash/Disengage/Hide)', 5: 'Uncanny Dodge (half damage reaction)' },
+    startEquip: ['Dagger','Dagger','Leather Armor','Health Potion','Antidote'], color: '#808080' },
+  Wizard:  { name: 'Wizard', hitDie: 6, primary: 'INT', savingThrows: ['INT','WIS'], skills: ['Arcana','Investigation'], isCaster: true,
+    features: { 1: 'Arcane Recovery (regain spell slot 1/rest)', 2: 'Arcane Tradition', 5: 'Empowered Evocation' },
+    spells: ['Magic Missile','Fire Bolt','Shield','Sleep'],
+    startEquip: ['Staff','Leather Armor','Health Potion','Health Potion'], color: '#6060d0' },
+  Cleric:  { name: 'Cleric', hitDie: 8, primary: 'WIS', savingThrows: ['WIS','CHA'], skills: ['Medicine','Religion','Insight'], isCaster: true,
+    features: { 1: 'Divine Domain', 2: 'Turn Undead (frighten undead)', 5: 'Destroy Undead' },
+    spells: ['Cure Wounds','Sacred Flame','Bless'],
+    startEquip: ['Mace','Chain Mail','Shield','Health Potion'], color: '#e0c040' },
+  Ranger:  { name: 'Ranger', hitDie: 10, primary: 'DEX', savingThrows: ['STR','DEX'], skills: ['Survival','Perception','Stealth','Nature'], isCaster: true,
+    features: { 1: 'Favored Enemy (+2 damage vs chosen type)', 2: "Hunter's Instinct (advantage on initiative)", 5: 'Extra Attack' },
+    spells: ["Hunter's Mark",'Cure Wounds'],
+    startEquip: ['Bow','Dagger','Leather Armor','Health Potion','Health Potion'], color: '#40a040' },
+  Bard:    { name: 'Bard', hitDie: 8, primary: 'CHA', savingThrows: ['DEX','CHA'], skills: ['Persuasion','Deception','Perception','Performance'], isCaster: true,
+    features: { 1: 'Bardic Inspiration (d6 bonus to ally, CHA mod/rest)', 2: 'Jack of All Trades (+half prof to unproficient checks)', 5: 'Font of Inspiration' },
+    spells: ['Healing Word','Vicious Mockery'],
+    startEquip: ['Dagger','Leather Armor','Health Potion','Health Potion','Antidote'], color: '#d070d0' },
+};
+
+const STAT_NAMES = ['STR','DEX','CON','INT','WIS','CHA'];
+const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+
+// -- Items --
+const ITEM_TYPES = { WEAPON: 'weapon', ARMOR: 'armor', SHIELD: 'shield', CONSUMABLE: 'consumable', TREASURE: 'treasure' };
+const RARITY = { COMMON: 'common', UNCOMMON: 'uncommon', RARE: 'rare', LEGENDARY: 'legendary' };
+const RARITY_COLORS = { common: '#cccccc', uncommon: '#40c040', rare: '#4080ff', legendary: '#ffd700' };
+
+function makeItem(template, rarity) {
+  return { ...template, id: Math.random().toString(36).substr(2, 9), rarity: rarity || RARITY.COMMON };
+}
+
+const ITEM_TEMPLATES = {
+  // Weapons
+  Longsword:  { name: 'Longsword', type: ITEM_TYPES.WEAPON, damageDice: [1,8], damageType: 'slashing', stat: 'STR', desc: 'd8 slashing', ranged: false },
+  Dagger:     { name: 'Dagger', type: ITEM_TYPES.WEAPON, damageDice: [1,4], damageType: 'piercing', stat: 'DEX', desc: 'd4 piercing, finesse', ranged: false, finesse: true },
+  Staff:      { name: 'Staff', type: ITEM_TYPES.WEAPON, damageDice: [1,6], damageType: 'bludgeoning', stat: 'STR', desc: 'd6 bludgeoning', ranged: false },
+  Bow:        { name: 'Bow', type: ITEM_TYPES.WEAPON, damageDice: [1,8], damageType: 'piercing', stat: 'DEX', desc: 'd8 piercing, ranged', ranged: true },
+  Mace:       { name: 'Mace', type: ITEM_TYPES.WEAPON, damageDice: [1,6], damageType: 'bludgeoning', stat: 'STR', desc: 'd6 bludgeoning', ranged: false },
+  Greataxe:   { name: 'Greataxe', type: ITEM_TYPES.WEAPON, damageDice: [1,12], damageType: 'slashing', stat: 'STR', desc: 'd12 slashing, two-handed', ranged: false, twoHanded: true },
+  Crossbow:   { name: 'Crossbow', type: ITEM_TYPES.WEAPON, damageDice: [1,10], damageType: 'piercing', stat: 'DEX', desc: 'd10 piercing, ranged', ranged: true },
+  // Armor
+  'Leather Armor': { name: 'Leather Armor', type: ITEM_TYPES.ARMOR, acBase: 11, maxDex: 99, desc: 'AC 11 + DEX' },
+  'Chain Mail':    { name: 'Chain Mail', type: ITEM_TYPES.ARMOR, acBase: 14, maxDex: 2, desc: 'AC 14 + DEX (max 2)' },
+  'Plate Armor':   { name: 'Plate Armor', type: ITEM_TYPES.ARMOR, acBase: 18, maxDex: 0, desc: 'AC 18, no DEX bonus' },
+  // Shield
+  Shield: { name: 'Shield', type: ITEM_TYPES.SHIELD, acBonus: 2, desc: '+2 AC' },
+  // Consumables
+  'Health Potion':       { name: 'Health Potion', type: ITEM_TYPES.CONSUMABLE, effect: 'heal', healDice: [2,4], healBonus: 2, desc: 'Heal 2d4+2 HP', stackable: true },
+  'Greater Health Potion': { name: 'Greater Health Potion', type: ITEM_TYPES.CONSUMABLE, effect: 'heal', healDice: [4,4], healBonus: 4, desc: 'Heal 4d4+4 HP', stackable: true },
+  Antidote:              { name: 'Antidote', type: ITEM_TYPES.CONSUMABLE, effect: 'cure_poison', desc: 'Cure poison', stackable: true },
+  // Treasure
+  'Gold Ring':   { name: 'Gold Ring', type: ITEM_TYPES.TREASURE, value: 25, desc: 'Worth 25 gold' },
+  'Ruby':        { name: 'Ruby', type: ITEM_TYPES.TREASURE, value: 50, desc: 'Worth 50 gold' },
+  'Ancient Coin': { name: 'Ancient Coin', type: ITEM_TYPES.TREASURE, value: 10, desc: 'Worth 10 gold' },
+};
+
+// Enhanced weapon variants
+const UNCOMMON_WEAPONS = [
+  { base: 'Longsword', name: 'Keen Longsword', bonusDamage: 1, desc: 'd8+1 slashing' },
+  { base: 'Dagger', name: 'Venomous Dagger', bonusDamage: 2, desc: 'd4+2 piercing + venom' },
+  { base: 'Bow', name: 'Elven Bow', bonusDamage: 1, desc: 'd8+1 piercing, ranged' },
+  { base: 'Mace', name: 'Holy Mace', bonusDamage: 2, desc: 'd6+2 bludgeoning, radiant' },
+  { base: 'Staff', name: 'Arcane Staff', bonusDamage: 2, desc: 'd6+2 bludgeoning, arcane' },
+];
+const RARE_WEAPONS = [
+  { base: 'Longsword', name: 'Flamebrand', bonusDamage: 3, desc: 'd8+3 slashing + fire' },
+  { base: 'Greataxe', name: 'Berserker Axe', bonusDamage: 2, desc: 'd12+2 slashing, frenzy' },
+  { base: 'Bow', name: 'Stormbow', bonusDamage: 3, desc: 'd8+3 piercing + lightning' },
+  { base: 'Crossbow', name: 'Repeating Crossbow', bonusDamage: 2, desc: 'd10+2 piercing, rapid' },
+];
+const LEGENDARY_WEAPONS = [
+  { base: 'Longsword', name: 'Fatebringer', bonusDamage: 5, desc: 'd8+5 slashing, destiny' },
+  { base: 'Greataxe', name: 'Worldcleaver', bonusDamage: 4, desc: 'd12+4 slashing, ruin' },
+];
+
+// -- Spells --
+const SPELLS = {
+  'Magic Missile': { name: 'Magic Missile', level: 1, type: 'damage', autoHit: true, damage: [3,4], damageBonus: 3, range: 'ranged', desc: 'Auto-hit, 3d4+3 force damage', class: ['Wizard'] },
+  'Fire Bolt':     { name: 'Fire Bolt', level: 0, type: 'damage', attackRoll: true, damage: [1,10], damageBonus: 0, range: 'ranged', desc: 'd10 fire damage (cantrip)', class: ['Wizard'] },
+  'Shield':        { name: 'Shield', level: 1, type: 'defense', acBonus: 5, duration: 1, desc: '+5 AC until next turn (reaction)', class: ['Wizard'] },
+  'Sleep':         { name: 'Sleep', level: 1, type: 'control', hpThreshold: 20, desc: 'Put enemies to sleep (5d8 HP worth)', class: ['Wizard'] },
+  'Cure Wounds':   { name: 'Cure Wounds', level: 1, type: 'heal', healDice: [1,8], healStat: 'WIS', desc: 'd8 + WIS mod healing', class: ['Cleric','Ranger'] },
+  'Sacred Flame':  { name: 'Sacred Flame', level: 0, type: 'damage', savingThrow: 'DEX', damage: [1,8], damageBonus: 0, range: 'ranged', desc: 'd8 radiant, DEX save (cantrip)', class: ['Cleric'] },
+  'Bless':         { name: 'Bless', level: 1, type: 'buff', bonus: [1,4], duration: 10, desc: '+d4 to attack rolls and saves', class: ['Cleric'] },
+  "Hunter's Mark": { name: "Hunter's Mark", level: 1, type: 'buff', bonusDamage: [1,6], duration: 10, desc: '+d6 damage to marked target', class: ['Ranger'] },
+  'Healing Word':  { name: 'Healing Word', level: 1, type: 'heal', healDice: [1,4], healStat: 'CHA', desc: 'd4 + CHA mod healing (bonus action)', bonusAction: true, class: ['Bard'] },
+  'Vicious Mockery': { name: 'Vicious Mockery', level: 0, type: 'damage', savingThrow: 'WIS', damage: [1,4], damageBonus: 0, effect: 'disadvantage', desc: 'd4 psychic, target has disadvantage (cantrip)', class: ['Bard'] },
+};
+
+// -- Monsters --
+const MONSTERS = {
+  'Giant Rat': { name: 'Giant Rat', hp: 7, ac: 12, attacks: [{name:'Bite',bonus:4,damage:[1,4],damageBonus:2}], xp: 25, cr: 0.25, str:7,dex:15,con:11,int:2,wis:10,cha:4, color:'#8b6914', symbol:'r', size: 0.6 },
+  'Goblin':    { name: 'Goblin', hp: 12, ac: 13, attacks: [{name:'Scimitar',bonus:4,damage:[1,6],damageBonus:2},{name:'Shortbow',bonus:4,damage:[1,6],damageBonus:2}], xp: 50, cr: 0.5, str:8,dex:14,con:10,int:10,wis:8,cha:8, color:'#4a8c3f', symbol:'G', size: 0.7 },
+  'Skeleton':  { name: 'Skeleton', hp: 13, ac: 13, attacks: [{name:'Shortsword',bonus:4,damage:[1,6],damageBonus:2},{name:'Shortbow',bonus:4,damage:[1,6],damageBonus:2}], xp: 50, cr: 0.5, str:10,dex:14,con:15,int:6,wis:8,cha:5, color:'#d0d0c0', symbol:'S', size: 0.8, undead: true },
+  'Slime':     { name: 'Slime', hp: 22, ac: 8, attacks: [{name:'Pseudopod',bonus:3,damage:[1,6],damageBonus:1}], xp: 50, cr: 0.5, str:12,dex:6,con:16,int:1,wis:6,cha:2, color:'#40c040', symbol:'s', size: 0.9, acidResist: true },
+  'Orc Warrior': { name: 'Orc Warrior', hp: 30, ac: 14, attacks: [{name:'Greataxe',bonus:5,damage:[1,12],damageBonus:3}], xp: 100, cr: 1, str:16,dex:12,con:16,int:7,wis:11,cha:10, color:'#6b8e23', symbol:'O', size: 1.0 },
+  'Dire Wolf':   { name: 'Dire Wolf', hp: 37, ac: 14, attacks: [{name:'Bite',bonus:5,damage:[2,6],damageBonus:3}], xp: 200, cr: 2, str:17,dex:15,con:15,int:3,wis:12,cha:7, color:'#696969', symbol:'W', size: 1.1 },
+  'Ogre':        { name: 'Ogre', hp: 59, ac: 11, attacks: [{name:'Greatclub',bonus:6,damage:[2,8],damageBonus:4}], xp: 450, cr: 3, str:19,dex:8,con:16,int:5,wis:7,cha:7, color:'#8b4513', symbol:'O', size: 1.4 },
+  'Dark Knight': { name: 'Dark Knight', hp: 52, ac: 18, attacks: [{name:'Greatsword',bonus:7,damage:[2,6],damageBonus:4},{name:'Shield Bash',bonus:5,damage:[1,4],damageBonus:3}], xp: 700, cr: 4, str:18,dex:11,con:16,int:10,wis:12,cha:14, color:'#2a0a3a', symbol:'K', size: 1.0 },
+  'Shadow Demon': { name: 'Shadow Demon', hp: 66, ac: 13, attacks: [{name:'Shadow Claw',bonus:6,damage:[2,8],damageBonus:3},{name:'Shadow Bolt',bonus:5,damage:[3,6],damageBonus:0}], xp: 1100, cr: 5, str:14,dex:17,con:13,int:12,wis:14,cha:14, color:'#1a0a2e', symbol:'D', size: 1.2 },
+};
+
+// Monsters by floor difficulty
+const FLOOR_MONSTERS = [
+  ['Giant Rat','Goblin','Skeleton','Slime'],
+  ['Goblin','Skeleton','Slime','Orc Warrior','Dire Wolf'],
+  ['Orc Warrior','Dire Wolf','Ogre','Dark Knight','Shadow Demon'],
+];
+
+// XP thresholds for leveling
+const XP_THRESHOLDS = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000];
+
+// Proficiency bonus by level
+const PROF_BONUS = [0, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4];
+
+// Spell slots by level (simplified: total level 1 slots)
+const SPELL_SLOTS = [0, 2, 3, 4, 4, 4, 4, 4, 5, 5, 5];
+
+// ============================================================
+// CHARACTER CREATION STATE
+// ============================================================
+let charCreate = {
+  step: 0, // 0=race, 1=class, 2=stats, 3=name, 4=preview
+  selectedRace: null,
+  selectedClass: null,
+  statAssignment: {}, // stat -> array value
+  availableValues: [...STANDARD_ARRAY],
+  assignOrder: [],
+  playerName: '',
+  nameInput: '',
+  cursorBlink: 0,
+  scrollY: 0,
+};
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+const keys = {};
+let mouseX = 0, mouseY = 0, mouseDown = false, mouseClicked = false;
+let touchDpadDir = null;
+let lastMoveTime = 0;
+const MOVE_DELAY = 150;
+
+document.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  keys[e.code] = true;
+  if (gameState === STATE.CHAR_CREATE && charCreate.step === 3) {
+    handleNameInput(e);
+    e.preventDefault();
+    return;
+  }
+  if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d',' '].includes(e.key.toLowerCase())) {
+    e.preventDefault();
+  }
+});
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.code] = false; });
+
+function getEventPos(e) {
+  const t = e.touches ? e.touches[0] : e;
+  if (!t) return { x: mouseX, y: mouseY };
+  return { x: t.clientX, y: t.clientY };
+}
+
+C.addEventListener('mousedown', e => { const p = getEventPos(e); mouseX = p.x; mouseY = p.y; mouseDown = true; mouseClicked = true; });
+C.addEventListener('mouseup', e => { mouseDown = false; });
+C.addEventListener('mousemove', e => { const p = getEventPos(e); mouseX = p.x; mouseY = p.y; });
+
+C.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const p = getEventPos(e);
+  mouseX = p.x; mouseY = p.y; mouseDown = true; mouseClicked = true;
+  SFX._init();
+}, { passive: false });
+C.addEventListener('touchend', e => { e.preventDefault(); mouseDown = false; touchDpadDir = null; }, { passive: false });
+C.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const p = getEventPos(e);
+  mouseX = p.x; mouseY = p.y;
+}, { passive: false });
+
+function isInRect(x, y, rx, ry, rw, rh) {
+  return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
+}
+
+function clickedInRect(rx, ry, rw, rh) {
+  return mouseClicked && isInRect(mouseX, mouseY, rx, ry, rw, rh);
+}
+
+// ============================================================
+// NAME INPUT
+// ============================================================
+function handleNameInput(e) {
+  if (e.key === 'Backspace') {
+    charCreate.nameInput = charCreate.nameInput.slice(0, -1);
+  } else if (e.key === 'Enter') {
+    if (charCreate.nameInput.trim().length > 0) {
+      charCreate.playerName = charCreate.nameInput.trim();
+      charCreate.step = 4;
+      SFX.click();
+    }
+  } else if (e.key.length === 1 && charCreate.nameInput.length < 20) {
+    charCreate.nameInput += e.key;
+  }
+}
+
+// ============================================================
+// BUTTON HELPER
+// ============================================================
+function drawButton(x, y, w, h, text, hovered, color, textColor) {
+  const isHov = isInRect(mouseX, mouseY, x, y, w, h);
+  const c = isHov ? (color || '#555') : (color ? darkenColor(color, 0.7) : '#333');
+  X.fillStyle = c;
+  X.fillRect(x, y, w, h);
+  X.strokeStyle = isHov ? '#fff' : '#888';
+  X.lineWidth = isHov ? 2 : 1;
+  X.strokeRect(x, y, w, h);
+  X.fillStyle = textColor || '#fff';
+  X.font = `${Math.min(h * 0.45, 16)}px Consolas, monospace`;
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(text, x + w/2, y + h/2);
+  return isHov;
+}
+
+function darkenColor(hex, factor) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgb(${Math.floor(r*factor)},${Math.floor(g*factor)},${Math.floor(b*factor)})`;
+}
+
+// ============================================================
+// TITLE SCREEN
+// ============================================================
+function updateTitle() {
+  // Draw background
+  X.fillStyle = '#0a0a0a';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  // Decorative border
+  const cx = canvasW / 2;
+  const topY = canvasH * 0.1;
+
+  // Title
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 28 : 42}px Consolas, monospace`;
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText('DUNGEONS OF FATE', cx, topY + 40);
+
+  X.fillStyle = '#888';
+  X.font = `${isMobile ? 12 : 16}px Consolas, monospace`;
+  X.fillText('A D&D Dungeon Crawler', cx, topY + 75);
+
+  // Dungeon art (ASCII style)
+  X.fillStyle = '#444';
+  X.font = `${isMobile ? 10 : 14}px Consolas, monospace`;
+  const art = [
+    '     _______________',
+    '    |  ___________  |',
+    '    | |  _______  | |',
+    '    | | |       | | |',
+    '    | | | ENTER | | |',
+    '    | | |_______| | |',
+    '    | |___________| |',
+    '    |_____     _____|',
+    '          |   |',
+    '          |   |',
+  ];
+  art.forEach((line, i) => {
+    X.fillText(line, cx, topY + 110 + i * (isMobile ? 14 : 18));
+  });
+
+  // Buttons
+  const btnW = isMobile ? 200 : 260;
+  const btnH = isMobile ? 45 : 50;
+  const btnX = cx - btnW/2;
+  const btnY1 = canvasH * 0.55;
+  const btnY2 = btnY1 + btnH + 15;
+
+  drawButton(btnX, btnY1, btnW, btnH, 'NEW GAME', false, '#2a4a2a');
+  if (clickedInRect(btnX, btnY1, btnW, btnH)) {
+    SFX.click();
+    charCreate = { step: 0, selectedRace: null, selectedClass: null, statAssignment: {}, availableValues: [...STANDARD_ARRAY], assignOrder: [], playerName: '', nameInput: '', cursorBlink: 0, scrollY: 0 };
+    gameState = STATE.CHAR_CREATE;
+  }
+
+  // Continue button
+  const hasSave = localStorage.getItem('dof_save') !== null;
+  if (hasSave) {
+    drawButton(btnX, btnY2, btnW, btnH, 'CONTINUE', false, '#2a2a4a');
+    if (clickedInRect(btnX, btnY2, btnW, btnH)) {
+      SFX.click();
+      loadGame();
+    }
+  } else {
+    X.fillStyle = '#333';
+    X.fillRect(btnX, btnY2, btnW, btnH);
+    X.strokeStyle = '#444';
+    X.lineWidth = 1;
+    X.strokeRect(btnX, btnY2, btnW, btnH);
+    X.fillStyle = '#555';
+    X.font = `${Math.min(btnH * 0.45, 16)}px Consolas, monospace`;
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText('NO SAVE DATA', btnX + btnW/2, btnY2 + btnH/2);
+  }
+
+  // Help hint
+  X.fillStyle = '#555';
+  X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
+  X.fillText('Press ? for controls help', cx, canvasH - 30);
+
+  // Version
+  X.fillStyle = '#333';
+  X.font = '11px Consolas, monospace';
+  X.fillText('v1.0 | Phase 1', cx, canvasH - 12);
+}
+
+// ============================================================
+// CHARACTER CREATION
+// ============================================================
+function updateCharCreate() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+  const steps = ['Choose Race', 'Choose Class', 'Assign Stats', 'Name Your Hero', 'Review'];
+
+  // Step indicator
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 16 : 20}px Consolas, monospace`;
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(`Step ${charCreate.step + 1}/5: ${steps[charCreate.step]}`, cx, 30);
+
+  // Step dots
+  for (let i = 0; i < 5; i++) {
+    X.fillStyle = i <= charCreate.step ? '#ffd700' : '#333';
+    X.beginPath();
+    X.arc(cx - 40 + i * 20, 55, 5, 0, Math.PI * 2);
+    X.fill();
+  }
+
+  switch (charCreate.step) {
+    case 0: drawRaceSelection(); break;
+    case 1: drawClassSelection(); break;
+    case 2: drawStatAssignment(); break;
+    case 3: drawNameInput(); break;
+    case 4: drawCharPreview(); break;
+  }
+
+  // Back button (except step 0)
+  if (charCreate.step > 0) {
+    const bx = 10, by = 10, bw = 70, bh = 30;
+    drawButton(bx, by, bw, bh, '< Back', false, '#333');
+    if (clickedInRect(bx, by, bw, bh)) {
+      SFX.click();
+      if (charCreate.step === 2) {
+        charCreate.statAssignment = {};
+        charCreate.availableValues = [...STANDARD_ARRAY];
+        charCreate.assignOrder = [];
+      }
+      charCreate.step--;
+    }
+  } else {
+    // Back to title
+    const bx = 10, by = 10, bw = 70, bh = 30;
+    drawButton(bx, by, bw, bh, '< Menu', false, '#333');
+    if (clickedInRect(bx, by, bw, bh)) { SFX.click(); gameState = STATE.TITLE; }
+  }
+}
+
+function drawRaceSelection() {
+  const cx = canvasW / 2;
+  const races = Object.values(RACES);
+  const cardW = isMobile ? canvasW * 0.85 : 340;
+  const cardH = isMobile ? 60 : 70;
+  const startY = 80;
+
+  races.forEach((race, i) => {
+    const y = startY + i * (cardH + 8);
+    const hov = isInRect(mouseX, mouseY, cx - cardW/2, y, cardW, cardH);
+
+    X.fillStyle = hov ? '#2a2a3a' : '#1a1a2a';
+    X.fillRect(cx - cardW/2, y, cardW, cardH);
+    X.strokeStyle = race.color;
+    X.lineWidth = hov ? 2 : 1;
+    X.strokeRect(cx - cardW/2, y, cardW, cardH);
+
+    // Race color dot
+    X.fillStyle = race.color;
+    X.beginPath();
+    X.arc(cx - cardW/2 + 25, y + cardH/2, 10, 0, Math.PI * 2);
+    X.fill();
+
+    X.fillStyle = '#fff';
+    X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+    X.textAlign = 'left';
+    X.fillText(race.name, cx - cardW/2 + 45, y + 22);
+
+    X.fillStyle = '#aaa';
+    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    const bonusStr = Object.entries(race.bonuses).map(([k,v]) => `+${v} ${k}`).join(', ');
+    X.fillText(bonusStr, cx - cardW/2 + 45, y + 38);
+    X.fillStyle = '#888';
+    X.fillText(race.trait, cx - cardW/2 + 45, y + 52);
+
+    if (clickedInRect(cx - cardW/2, y, cardW, cardH)) {
+      SFX.click();
+      charCreate.selectedRace = race.name;
+      charCreate.step = 1;
+    }
+  });
+}
+
+function drawClassSelection() {
+  const cx = canvasW / 2;
+  const classes = Object.values(CLASSES);
+  const cardW = isMobile ? canvasW * 0.85 : 340;
+  const cardH = isMobile ? 60 : 70;
+  const startY = 80;
+
+  classes.forEach((cls, i) => {
+    const y = startY + i * (cardH + 8);
+    const hov = isInRect(mouseX, mouseY, cx - cardW/2, y, cardW, cardH);
+
+    X.fillStyle = hov ? '#2a2a3a' : '#1a1a2a';
+    X.fillRect(cx - cardW/2, y, cardW, cardH);
+    X.strokeStyle = cls.color;
+    X.lineWidth = hov ? 2 : 1;
+    X.strokeRect(cx - cardW/2, y, cardW, cardH);
+
+    X.fillStyle = cls.color;
+    X.beginPath();
+    X.arc(cx - cardW/2 + 25, y + cardH/2, 10, 0, Math.PI * 2);
+    X.fill();
+    X.fillStyle = '#fff';
+    X.font = 'bold 10px Consolas, monospace';
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(cls.name[0], cx - cardW/2 + 25, y + cardH/2);
+
+    X.fillStyle = '#fff';
+    X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+    X.textAlign = 'left';
+    X.fillText(cls.name, cx - cardW/2 + 45, y + 20);
+
+    X.fillStyle = '#aaa';
+    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    X.fillText(`Hit Die: d${cls.hitDie} | Primary: ${cls.primary}${cls.isCaster ? ' | Caster' : ''}`, cx - cardW/2 + 45, y + 36);
+
+    X.fillStyle = '#888';
+    const feat = cls.features[1] || '';
+    const truncFeat = feat.length > 45 ? feat.substr(0, 42) + '...' : feat;
+    X.fillText(truncFeat, cx - cardW/2 + 45, y + 52);
+
+    if (clickedInRect(cx - cardW/2, y, cardW, cardH)) {
+      SFX.click();
+      charCreate.selectedClass = cls.name;
+      charCreate.step = 2;
+    }
+  });
+}
+
+function drawStatAssignment() {
+  const cx = canvasW / 2;
+  const race = RACES[charCreate.selectedRace];
+  const cardW = isMobile ? canvasW * 0.85 : 400;
+  const startY = 80;
+
+  X.fillStyle = '#aaa';
+  X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('Click a stat, then click a value from the standard array', cx, startY);
+  X.fillText('to assign it. Race bonuses shown in parentheses.', cx, startY + 18);
+
+  // Show available values
+  const valY = startY + 45;
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 13 : 15}px Consolas, monospace`;
+  X.fillText('Available Values:', cx, valY);
+
+  const valBtnW = 45, valBtnH = 35;
+  const totalValW = charCreate.availableValues.length * (valBtnW + 6);
+  const valStartX = cx - totalValW / 2;
+
+  charCreate.availableValues.forEach((val, i) => {
+    const vx = valStartX + i * (valBtnW + 6);
+    const vy = valY + 15;
+    const selected = charCreate._selectedValue === val && charCreate._selectedValueIdx === i;
+    X.fillStyle = selected ? '#4a4a2a' : '#2a2a2a';
+    X.fillRect(vx, vy, valBtnW, valBtnH);
+    X.strokeStyle = selected ? '#ffd700' : '#666';
+    X.lineWidth = selected ? 2 : 1;
+    X.strokeRect(vx, vy, valBtnW, valBtnH);
+    X.fillStyle = '#fff';
+    X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(val.toString(), vx + valBtnW/2, vy + valBtnH/2);
+
+    if (clickedInRect(vx, vy, valBtnW, valBtnH)) {
+      SFX.click();
+      charCreate._selectedValue = val;
+      charCreate._selectedValueIdx = i;
+    }
+  });
+
+  // Stats
+  const statY = valY + 70;
+  const statH = 45;
+
+  STAT_NAMES.forEach((stat, i) => {
+    const y = statY + i * (statH + 6);
+    const assigned = charCreate.statAssignment[stat] !== undefined;
+    const bonus = race.bonuses[stat] || 0;
+    const baseVal = assigned ? charCreate.statAssignment[stat] : '--';
+    const totalVal = assigned ? charCreate.statAssignment[stat] + bonus : '--';
+
+    X.fillStyle = assigned ? '#1a2a1a' : '#1a1a2a';
+    X.fillRect(cx - cardW/2, y, cardW, statH);
+    X.strokeStyle = assigned ? '#4a8a4a' : '#555';
+    X.lineWidth = 1;
+    X.strokeRect(cx - cardW/2, y, cardW, statH);
+
+    X.fillStyle = '#fff';
+    X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+    X.textAlign = 'left';
+    X.fillText(stat, cx - cardW/2 + 15, y + statH/2 - 5);
+
+    X.fillStyle = '#aaa';
+    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    const statDesc = { STR:'Strength', DEX:'Dexterity', CON:'Constitution', INT:'Intelligence', WIS:'Wisdom', CHA:'Charisma' };
+    X.fillText(statDesc[stat], cx - cardW/2 + 55, y + statH/2 - 5);
+
+    // Value display
+    X.fillStyle = '#fff';
+    X.font = `bold ${isMobile ? 18 : 22}px Consolas, monospace`;
+    X.textAlign = 'right';
+    X.fillText(totalVal.toString(), cx + cardW/2 - 15, y + statH/2 - 2);
+
+    if (bonus > 0) {
+      X.fillStyle = '#4a4';
+      X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+      X.fillText(`(+${bonus})`, cx + cardW/2 - 50, y + statH/2 - 2);
+    }
+
+    // Modifier
+    if (assigned) {
+      const m = mod(parseInt(totalVal));
+      X.fillStyle = m >= 0 ? '#4a4' : '#a44';
+      X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
+      X.textAlign = 'right';
+      X.fillText(`mod: ${m >= 0 ? '+' : ''}${m}`, cx + cardW/2 - 80, y + statH/2 - 2);
+    }
+
+    // Click to assign
+    if (clickedInRect(cx - cardW/2, y, cardW, statH)) {
+      if (charCreate._selectedValue !== undefined) {
+        // Unassign if already assigned
+        if (assigned) {
+          charCreate.availableValues.push(charCreate.statAssignment[stat]);
+          charCreate.availableValues.sort((a,b) => b - a);
+          charCreate.assignOrder = charCreate.assignOrder.filter(s => s !== stat);
+        }
+        // Assign selected value
+        charCreate.statAssignment[stat] = charCreate._selectedValue;
+        charCreate.availableValues.splice(charCreate._selectedValueIdx, 1);
+        charCreate.assignOrder.push(stat);
+        charCreate._selectedValue = undefined;
+        charCreate._selectedValueIdx = undefined;
+        SFX.click();
+      } else if (assigned) {
+        // Click assigned stat to unassign
+        charCreate.availableValues.push(charCreate.statAssignment[stat]);
+        charCreate.availableValues.sort((a,b) => b - a);
+        delete charCreate.statAssignment[stat];
+        charCreate.assignOrder = charCreate.assignOrder.filter(s => s !== stat);
+        SFX.click();
+      }
+    }
+  });
+
+  // Continue button
+  const allAssigned = STAT_NAMES.every(s => charCreate.statAssignment[s] !== undefined);
+  if (allAssigned) {
+    const btnW2 = 200, btnH2 = 45;
+    const btnY = statY + 6 * (statH + 6) + 10;
+    drawButton(cx - btnW2/2, btnY, btnW2, btnH2, 'CONTINUE', false, '#2a4a2a');
+    if (clickedInRect(cx - btnW2/2, btnY, btnW2, btnH2)) {
+      SFX.click();
+      charCreate.step = 3;
+    }
+  }
+
+  // Reset button
+  const resetW = 100, resetH = 30;
+  drawButton(cx - resetW/2, statY + 6 * (statH + 6) + 60, resetW, resetH, 'Reset', false, '#4a2a2a');
+  if (clickedInRect(cx - resetW/2, statY + 6 * (statH + 6) + 60, resetW, resetH)) {
+    SFX.click();
+    charCreate.statAssignment = {};
+    charCreate.availableValues = [...STANDARD_ARRAY];
+    charCreate.assignOrder = [];
+    charCreate._selectedValue = undefined;
+  }
+}
+
+function drawNameInput() {
+  const cx = canvasW / 2;
+  const cy = canvasH * 0.4;
+
+  X.fillStyle = '#aaa';
+  X.font = `${isMobile ? 14 : 18}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('Enter your character\'s name:', cx, cy - 40);
+
+  // Input box
+  const boxW = isMobile ? 250 : 320;
+  const boxH = 45;
+  X.fillStyle = '#1a1a2a';
+  X.fillRect(cx - boxW/2, cy, boxW, boxH);
+  X.strokeStyle = '#ffd700';
+  X.lineWidth = 2;
+  X.strokeRect(cx - boxW/2, cy, boxW, boxH);
+
+  charCreate.cursorBlink += 0.03;
+  const cursor = Math.sin(charCreate.cursorBlink * 3) > 0 ? '|' : '';
+
+  X.fillStyle = '#fff';
+  X.font = `bold ${isMobile ? 18 : 22}px Consolas, monospace`;
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(charCreate.nameInput + cursor, cx, cy + boxH/2);
+
+  // Mobile keyboard hint
+  if (isMobile) {
+    X.fillStyle = '#666';
+    X.font = '12px Consolas, monospace';
+    X.fillText('Tap the box and use your keyboard', cx, cy + boxH + 25);
+    // Create a hidden input for mobile
+    if (!document.getElementById('nameInp')) {
+      const inp = document.createElement('input');
+      inp.id = 'nameInp';
+      inp.type = 'text';
+      inp.style.cssText = 'position:fixed;top:-100px;left:0;opacity:0;font-size:16px;';
+      inp.maxLength = 20;
+      inp.addEventListener('input', () => {
+        charCreate.nameInput = inp.value.substr(0, 20);
+      });
+      document.body.appendChild(inp);
+    }
+    if (clickedInRect(cx - boxW/2, cy, boxW, boxH)) {
+      document.getElementById('nameInp').focus();
+    }
+  }
+
+  // Continue
+  if (charCreate.nameInput.trim().length > 0) {
+    const btnW2 = 200, btnH2 = 45;
+    drawButton(cx - btnW2/2, cy + 80, btnW2, btnH2, 'CONTINUE', false, '#2a4a2a');
+    if (clickedInRect(cx - btnW2/2, cy + 80, btnW2, btnH2)) {
+      SFX.click();
+      charCreate.playerName = charCreate.nameInput.trim();
+      charCreate.step = 4;
+      const inp = document.getElementById('nameInp');
+      if (inp) inp.remove();
+    }
+  }
+
+  X.fillStyle = '#555';
+  X.font = '12px Consolas, monospace';
+  X.fillText('Press Enter to continue', cx, cy + 140);
+}
+
+function drawCharPreview() {
+  const cx = canvasW / 2;
+  const race = RACES[charCreate.selectedRace];
+  const cls = CLASSES[charCreate.selectedClass];
+  const startY = 75;
+
+  // Calculate final stats
+  const stats = {};
+  STAT_NAMES.forEach(s => {
+    stats[s] = charCreate.statAssignment[s] + (race.bonuses[s] || 0);
+  });
+
+  // Calculate HP
+  const hp = cls.hitDie + mod(stats.CON);
+
+  // Calculate AC
+  let ac = 10 + mod(stats.DEX);
+  const startItems = cls.startEquip;
+  if (startItems.includes('Chain Mail')) {
+    ac = 14 + Math.min(mod(stats.DEX), 2);
+  } else if (startItems.includes('Leather Armor')) {
+    ac = 11 + mod(stats.DEX);
+  }
+  if (startItems.includes('Shield')) ac += 2;
+
+  const cardW = isMobile ? canvasW * 0.9 : 380;
+
+  // Character card
+  X.fillStyle = '#1a1a2a';
+  X.fillRect(cx - cardW/2, startY, cardW, canvasH - startY - 80);
+  X.strokeStyle = '#ffd700';
+  X.lineWidth = 2;
+  X.strokeRect(cx - cardW/2, startY, cardW, canvasH - startY - 80);
+
+  // Name
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 20 : 24}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText(charCreate.playerName, cx, startY + 30);
+
+  // Race & Class
+  X.fillStyle = race.color;
+  X.font = `${isMobile ? 14 : 16}px Consolas, monospace`;
+  X.fillText(`${race.name} ${cls.name}`, cx, startY + 55);
+
+  // Character icon
+  X.fillStyle = cls.color;
+  X.beginPath();
+  X.arc(cx, startY + 95, 20, 0, Math.PI * 2);
+  X.fill();
+  X.fillStyle = '#fff';
+  X.font = 'bold 18px Consolas, monospace';
+  X.fillText(cls.name[0], cx, startY + 96);
+
+  // Stats
+  const statY = startY + 130;
+  X.font = `${isMobile ? 12 : 14}px Consolas, monospace`;
+  X.textAlign = 'left';
+
+  const col1X = cx - cardW/2 + 20;
+  const col2X = cx + 10;
+
+  STAT_NAMES.forEach((stat, i) => {
+    const col = i < 3 ? col1X : col2X;
+    const row = i < 3 ? i : i - 3;
+    const y = statY + row * 24;
+    const m = mod(stats[stat]);
+
+    X.fillStyle = '#aaa';
+    X.fillText(`${stat}: `, col, y);
+    X.fillStyle = '#fff';
+    X.fillText(`${stats[stat]}`, col + 40, y);
+    X.fillStyle = m >= 0 ? '#4a4' : '#a44';
+    X.fillText(`(${m >= 0 ? '+' : ''}${m})`, col + 65, y);
+  });
+
+  // HP, AC, Speed
+  const infoY = statY + 85;
+  X.fillStyle = '#ff4444';
+  X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+  X.textAlign = 'left';
+  X.fillText(`HP: ${hp}`, col1X, infoY);
+  X.fillStyle = '#4488ff';
+  X.fillText(`AC: ${ac}`, col2X, infoY);
+
+  X.fillStyle = '#aaa';
+  X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
+  X.fillText(`Hit Die: d${cls.hitDie}`, col1X, infoY + 22);
+  X.fillText(`Prof Bonus: +2`, col2X, infoY + 22);
+
+  // Race trait
+  X.fillStyle = race.color;
+  X.fillText(`Racial: ${race.trait}`, col1X, infoY + 46);
+
+  // Class feature
+  X.fillStyle = cls.color;
+  const feat = cls.features[1] || '';
+  const lines = wrapText(feat, cardW - 40, isMobile ? 11 : 13);
+  lines.forEach((line, i) => {
+    X.fillText(i === 0 ? `Feature: ${line}` : line, col1X, infoY + 68 + i * 16);
+  });
+
+  // Starting equipment
+  const equipY = infoY + 68 + lines.length * 16 + 12;
+  X.fillStyle = '#ccc';
+  X.font = `bold ${isMobile ? 12 : 13}px Consolas, monospace`;
+  X.fillText('Starting Equipment:', col1X, equipY);
+  X.font = `${isMobile ? 11 : 12}px Consolas, monospace`;
+  X.fillStyle = '#aaa';
+  const uniqueEquip = [...new Set(cls.startEquip)];
+  uniqueEquip.forEach((item, i) => {
+    const count = cls.startEquip.filter(e => e === item).length;
+    X.fillText(`${count > 1 ? count + 'x ' : ''}${item}`, col1X + 10, equipY + 18 + i * 16);
+  });
+
+  // Spells if caster
+  if (cls.isCaster && cls.spells) {
+    const spY = equipY + 18 + uniqueEquip.length * 16 + 10;
+    X.fillStyle = '#88aaff';
+    X.font = `bold ${isMobile ? 12 : 13}px Consolas, monospace`;
+    X.fillText('Known Spells:', col1X, spY);
+    X.font = `${isMobile ? 11 : 12}px Consolas, monospace`;
+    cls.spells.forEach((sp, i) => {
+      const spell = SPELLS[sp];
+      X.fillStyle = spell.level === 0 ? '#88aaff' : '#aaccff';
+      X.fillText(`${spell.name} ${spell.level === 0 ? '(cantrip)' : `(Lv${spell.level})`}`, col1X + 10, spY + 18 + i * 16);
+    });
+  }
+
+  // Begin Adventure button
+  const btnW2 = 220, btnH2 = 48;
+  const btnY = canvasH - 65;
+  drawButton(cx - btnW2/2, btnY, btnW2, btnH2, 'BEGIN ADVENTURE', false, '#4a3a0a');
+  if (clickedInRect(cx - btnW2/2, btnY, btnW2, btnH2)) {
+    SFX.click();
+    createCharacter();
+    generateDungeon();
+    gameState = STATE.DUNGEON;
+  }
+}
+
+function wrapText(text, maxWidth, fontSize) {
+  X.font = `${fontSize}px Consolas, monospace`;
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? current + ' ' + word : word;
+    if (X.measureText(test).width > maxWidth) {
+      if (current) lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+// ============================================================
+// CREATE CHARACTER
+// ============================================================
+function createCharacter() {
+  const race = RACES[charCreate.selectedRace];
+  const cls = CLASSES[charCreate.selectedClass];
+
+  const stats = {};
+  STAT_NAMES.forEach(s => {
+    stats[s] = charCreate.statAssignment[s] + (race.bonuses[s] || 0);
+  });
+
+  const maxHp = cls.hitDie + mod(stats.CON);
+
+  player = {
+    name: charCreate.playerName,
+    race: charCreate.selectedRace,
+    class: charCreate.selectedClass,
+    level: 1,
+    xp: 0,
+    stats: stats,
+    maxHp: maxHp,
+    hp: maxHp,
+    tempAc: 0,
+    gold: 10,
+    inventory: [],
+    equipped: { weapon: null, armor: null, shield: null },
+    spells: cls.spells ? [...cls.spells] : [],
+    maxSpellSlots: cls.isCaster ? SPELL_SLOTS[1] : 0,
+    spellSlots: cls.isCaster ? SPELL_SLOTS[1] : 0,
+    conditions: [],
+    deathSaves: { successes: 0, failures: 0 },
+    isDead: false,
+    isDying: false,
+    proficiencies: cls.skills || [],
+    savingThrows: cls.savingThrows || [],
+    features: {},
+    secondWindUsed: false,
+    actionSurgeUsed: false,
+    relentlessUsed: false,
+    huntersMark: false,
+    blessActive: false,
+    blessTurns: 0,
+    shieldActive: false,
+    x: 0,
+    y: 0,
+    floor: 0,
+    torchRadius: 5,
+    exploredTiles: [],
+  };
+
+  // Copy features for current level
+  for (let lv = 1; lv <= player.level; lv++) {
+    if (cls.features[lv]) player.features[lv] = cls.features[lv];
+  }
+
+  // Add starting equipment
+  cls.startEquip.forEach(itemName => {
+    const template = ITEM_TEMPLATES[itemName];
+    if (template) {
+      const item = makeItem(template);
+      player.inventory.push(item);
+    }
+  });
+
+  // Auto-equip
+  autoEquip();
+
+  // Init explored tiles for 3 floors
+  player.exploredTiles = [[], [], []];
+}
+
+function autoEquip() {
+  for (const item of player.inventory) {
+    if (item.type === ITEM_TYPES.WEAPON && !player.equipped.weapon) {
+      player.equipped.weapon = item.id;
+    } else if (item.type === ITEM_TYPES.ARMOR && !player.equipped.armor) {
+      player.equipped.armor = item.id;
+    } else if (item.type === ITEM_TYPES.SHIELD && !player.equipped.shield) {
+      player.equipped.shield = item.id;
+    }
+  }
+}
+
+function getEquippedItem(slot) {
+  if (!player.equipped[slot]) return null;
+  return player.inventory.find(i => i.id === player.equipped[slot]) || null;
+}
+
+function calcAC() {
+  let ac = 10 + mod(player.stats.DEX);
+  const armor = getEquippedItem('armor');
+  if (armor) {
+    ac = armor.acBase + Math.min(mod(player.stats.DEX), armor.maxDex);
+  }
+  const shield = getEquippedItem('shield');
+  if (shield) ac += shield.acBonus;
+  ac += player.tempAc;
+  return ac;
+}
+
+function calcAttackBonus() {
+  const weapon = getEquippedItem('weapon');
+  let statMod = mod(player.stats.STR);
+  if (weapon) {
+    if (weapon.finesse) statMod = Math.max(mod(player.stats.STR), mod(player.stats.DEX));
+    else if (weapon.ranged) statMod = mod(player.stats.DEX);
+    else statMod = mod(player.stats[weapon.stat] || player.stats.STR);
+  }
+  return statMod + PROF_BONUS[player.level];
+}
+
+function calcDamage(critical) {
+  const weapon = getEquippedItem('weapon');
+  let dice = weapon ? weapon.damageDice : [1, 4];
+  let numDice = critical ? dice[0] * 2 : dice[0];
+  let dmg = rollDice(numDice, dice[1]);
+  let statMod = mod(player.stats.STR);
+  if (weapon) {
+    if (weapon.finesse) statMod = Math.max(mod(player.stats.STR), mod(player.stats.DEX));
+    else if (weapon.ranged) statMod = mod(player.stats.DEX);
+    else statMod = mod(player.stats[weapon.stat] || player.stats.STR);
+    if (weapon.bonusDamage) dmg += weapon.bonusDamage;
+  }
+  dmg += statMod;
+  // Hunter's Mark bonus
+  if (player.huntersMark) dmg += rollDice(1, 6);
+  // Sneak Attack (Rogue)
+  if (player.class === 'Rogue') {
+    const sneakDice = Math.ceil(player.level / 2);
+    dmg += rollDice(sneakDice, 6);
+  }
+  return Math.max(1, dmg);
+}
+
+function getPassivePerception() {
+  const proficient = player.proficiencies.includes('Perception');
+  return 10 + mod(player.stats.WIS) + (proficient ? PROF_BONUS[player.level] : 0);
+}
+
+// ============================================================
+// DUNGEON GENERATION
+// ============================================================
+const TILE = { VOID: 0, WALL: 1, FLOOR: 2, DOOR: 3, STAIRS_DOWN: 4, STAIRS_UP: 5, CORRIDOR: 6 };
+const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start' };
+const MAP_W = 48, MAP_H = 48;
+const TILE_SIZE = 24;
+
+function generateDungeon() {
+  dungeon = { floors: [] };
+  for (let f = 0; f < 3; f++) {
+    dungeon.floors.push(generateFloor(f));
+  }
+  currentFloor = 0;
+  // Place player at start room
+  const startRoom = dungeon.floors[0].rooms.find(r => r.type === ROOM_TYPE.START);
+  player.x = startRoom.cx;
+  player.y = startRoom.cy;
+  player.floor = 0;
+  revealArea(player.x, player.y, player.torchRadius);
+}
+
+function generateFloor(floorNum) {
+  const tiles = [];
+  for (let y = 0; y < MAP_H; y++) {
+    tiles[y] = [];
+    for (let x = 0; x < MAP_W; x++) {
+      tiles[y][x] = TILE.VOID;
+    }
+  }
+
+  const rooms = [];
+  const numRooms = rand(8, 12);
+  const minRoomSize = 4, maxRoomSize = 8;
+
+  // Generate rooms
+  let attempts = 0;
+  while (rooms.length < numRooms && attempts < 500) {
+    attempts++;
+    const w = rand(minRoomSize, maxRoomSize);
+    const h = rand(minRoomSize, maxRoomSize);
+    const x = rand(2, MAP_W - w - 2);
+    const y = rand(2, MAP_H - h - 2);
+
+    // Check overlap
+    let overlap = false;
+    for (const r of rooms) {
+      if (x < r.x + r.w + 2 && x + w + 2 > r.x && y < r.y + r.h + 2 && y + h + 2 > r.y) {
+        overlap = true; break;
+      }
+    }
+    if (overlap) continue;
+
+    rooms.push({ x, y, w, h, cx: Math.floor(x + w/2), cy: Math.floor(y + h/2), type: null, visited: false, cleared: false, enemies: [], items: [], trapTriggered: false, trapType: null });
+  }
+
+  // Assign room types
+  // First room = start, last room = stairs
+  rooms[0].type = ROOM_TYPE.START;
+
+  // Sort rooms by distance from start to create a natural progression
+  const startRoom = rooms[0];
+  rooms.sort((a, b) => {
+    if (a === startRoom) return -1;
+    if (b === startRoom) return 1;
+    const da = Math.abs(a.cx - startRoom.cx) + Math.abs(a.cy - startRoom.cy);
+    const db = Math.abs(b.cx - startRoom.cx) + Math.abs(b.cy - startRoom.cy);
+    return da - db;
+  });
+
+  rooms[rooms.length - 1].type = ROOM_TYPE.STAIRS;
+
+  // Assign remaining rooms
+  const typeWeights = [
+    { type: ROOM_TYPE.COMBAT, weight: 40 },
+    { type: ROOM_TYPE.TREASURE, weight: 15 },
+    { type: ROOM_TYPE.TRAP, weight: 15 },
+    { type: ROOM_TYPE.EMPTY, weight: 15 },
+    { type: ROOM_TYPE.SHRINE, weight: 15 },
+  ];
+
+  for (let i = 1; i < rooms.length - 1; i++) {
+    if (rooms[i].type) continue;
+    rooms[i].type = weightedPick(typeWeights);
+  }
+
+  // Carve rooms
+  for (const room of rooms) {
+    for (let ry = room.y; ry < room.y + room.h; ry++) {
+      for (let rx = room.x; rx < room.x + room.w; rx++) {
+        tiles[ry][rx] = TILE.FLOOR;
+      }
+    }
+    // Walls around room
+    for (let ry = room.y - 1; ry <= room.y + room.h; ry++) {
+      for (let rx = room.x - 1; rx <= room.x + room.w; rx++) {
+        if (ry >= 0 && ry < MAP_H && rx >= 0 && rx < MAP_W) {
+          if (tiles[ry][rx] === TILE.VOID) tiles[ry][rx] = TILE.WALL;
+        }
+      }
+    }
+  }
+
+  // Connect rooms with corridors (connect each room to nearest unconnected)
+  const connected = new Set([0]);
+  const unconnected = new Set(rooms.map((_, i) => i).slice(1));
+
+  while (unconnected.size > 0) {
+    let bestDist = Infinity, bestFrom = -1, bestTo = -1;
+    for (const ci of connected) {
+      for (const ui of unconnected) {
+        const d = Math.abs(rooms[ci].cx - rooms[ui].cx) + Math.abs(rooms[ci].cy - rooms[ui].cy);
+        if (d < bestDist) { bestDist = d; bestFrom = ci; bestTo = ui; }
+      }
+    }
+    if (bestTo === -1) break;
+
+    carveCorridor(tiles, rooms[bestFrom].cx, rooms[bestFrom].cy, rooms[bestTo].cx, rooms[bestTo].cy);
+    connected.add(bestTo);
+    unconnected.delete(bestTo);
+  }
+
+  // Place stairs tile
+  const stairRoom = rooms.find(r => r.type === ROOM_TYPE.STAIRS);
+  if (stairRoom) {
+    tiles[stairRoom.cy][stairRoom.cx] = floorNum < 2 ? TILE.STAIRS_DOWN : TILE.STAIRS_DOWN;
+  }
+
+  // If not floor 0, place stairs up at start
+  if (floorNum > 0) {
+    tiles[rooms[0].cy][rooms[0].cx] = TILE.STAIRS_UP;
+  }
+
+  // Populate rooms
+  for (const room of rooms) {
+    if (room.type === ROOM_TYPE.COMBAT) {
+      const numEnemies = rand(1, Math.min(2 + floorNum, 3));
+      const possibleMonsters = FLOOR_MONSTERS[floorNum];
+      for (let i = 0; i < numEnemies; i++) {
+        const template = MONSTERS[pick(possibleMonsters)];
+        const enemy = {
+          ...deepClone(template),
+          maxHp: template.hp + rand(0, Math.floor(template.hp * 0.3)),
+          id: Math.random().toString(36).substr(2, 9),
+          conditions: [],
+          px: room.x + rand(1, room.w - 2),
+          py: room.y + rand(1, room.h - 2),
+        };
+        enemy.hp = enemy.maxHp;
+        room.enemies.push(enemy);
+      }
+    } else if (room.type === ROOM_TYPE.TREASURE) {
+      const numItems = rand(1, 3);
+      for (let i = 0; i < numItems; i++) {
+        room.items.push(generateTreasureItem(floorNum));
+      }
+      room.items.push(makeItem(ITEM_TEMPLATES['Health Potion']));
+      // Gold
+      room.gold = rand(5 + floorNum * 10, 20 + floorNum * 15);
+    } else if (room.type === ROOM_TYPE.TRAP) {
+      room.trapType = pick(['pit', 'poison_dart']);
+      room.trapDC = 12 + floorNum;
+    } else if (room.type === ROOM_TYPE.SHRINE) {
+      room.shrineUsed = false;
+    }
+  }
+
+  return { tiles, rooms, width: MAP_W, height: MAP_H };
+}
+
+function carveCorridor(tiles, x1, y1, x2, y2) {
+  let cx = x1, cy = y1;
+  // L-shaped corridor
+  while (cx !== x2) {
+    if (cy >= 0 && cy < MAP_H && cx >= 0 && cx < MAP_W) {
+      if (tiles[cy][cx] === TILE.VOID || tiles[cy][cx] === TILE.WALL) {
+        tiles[cy][cx] = TILE.CORRIDOR;
+      }
+      // Walls along corridor
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ny = cy + dy, nx = cx + dx;
+          if (ny >= 0 && ny < MAP_H && nx >= 0 && nx < MAP_W) {
+            if (tiles[ny][nx] === TILE.VOID) tiles[ny][nx] = TILE.WALL;
+          }
+        }
+      }
+    }
+    cx += cx < x2 ? 1 : -1;
+  }
+  while (cy !== y2) {
+    if (cy >= 0 && cy < MAP_H && cx >= 0 && cx < MAP_W) {
+      if (tiles[cy][cx] === TILE.VOID || tiles[cy][cx] === TILE.WALL) {
+        tiles[cy][cx] = TILE.CORRIDOR;
+      }
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const ny = cy + dy, nx = cx + dx;
+          if (ny >= 0 && ny < MAP_H && nx >= 0 && nx < MAP_W) {
+            if (tiles[ny][nx] === TILE.VOID) tiles[ny][nx] = TILE.WALL;
+          }
+        }
+      }
+    }
+    cy += cy < y2 ? 1 : -1;
+  }
+}
+
+function weightedPick(items) {
+  const total = items.reduce((s, i) => s + i.weight, 0);
+  let r = Math.random() * total;
+  for (const item of items) {
+    r -= item.weight;
+    if (r <= 0) return item.type;
+  }
+  return items[items.length - 1].type;
+}
+
+function generateTreasureItem(floorNum) {
+  const roll = Math.random();
+  if (roll < 0.4) {
+    // Common consumable
+    return makeItem(pick([ITEM_TEMPLATES['Health Potion'], ITEM_TEMPLATES['Antidote']]));
+  } else if (roll < 0.6) {
+    // Common weapon
+    return makeItem(pick([ITEM_TEMPLATES['Dagger'], ITEM_TEMPLATES['Mace'], ITEM_TEMPLATES['Staff']]));
+  } else if (roll < 0.8) {
+    // Uncommon
+    const uw = pick(UNCOMMON_WEAPONS);
+    const base = { ...ITEM_TEMPLATES[uw.base], name: uw.name, bonusDamage: uw.bonusDamage, desc: uw.desc };
+    return makeItem(base, RARITY.UNCOMMON);
+  } else if (roll < 0.93 || floorNum >= 1) {
+    // Rare (more likely on deeper floors)
+    if (floorNum >= 1 && Math.random() < 0.5) {
+      const rw = pick(RARE_WEAPONS);
+      const base = { ...ITEM_TEMPLATES[rw.base], name: rw.name, bonusDamage: rw.bonusDamage, desc: rw.desc };
+      return makeItem(base, RARITY.RARE);
+    }
+    return makeItem(pick([ITEM_TEMPLATES['Greater Health Potion']]), RARITY.UNCOMMON);
+  } else {
+    // Legendary (very rare, floor 2 only)
+    if (floorNum >= 2) {
+      const lw = pick(LEGENDARY_WEAPONS);
+      const base = { ...ITEM_TEMPLATES[lw.base], name: lw.name, bonusDamage: lw.bonusDamage, desc: lw.desc };
+      return makeItem(base, RARITY.LEGENDARY);
+    }
+    return makeItem(ITEM_TEMPLATES['Greater Health Potion'], RARITY.UNCOMMON);
+  }
+}
+
+// ============================================================
+// FOG OF WAR & VISIBILITY
+// ============================================================
+function revealArea(px, py, radius) {
+  if (!player.exploredTiles[currentFloor]) player.exploredTiles[currentFloor] = [];
+  const explored = player.exploredTiles[currentFloor];
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx * dx + dy * dy <= radius * radius) {
+        const tx = px + dx, ty = py + dy;
+        if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H) {
+          const key = `${tx},${ty}`;
+          if (!explored.includes(key)) explored.push(key);
+        }
+      }
+    }
+  }
+}
+
+function isVisible(tx, ty) {
+  const dx = tx - player.x, dy = ty - player.y;
+  return dx * dx + dy * dy <= player.torchRadius * player.torchRadius;
+}
+
+function isExplored(tx, ty) {
+  if (!player.exploredTiles[currentFloor]) return false;
+  return player.exploredTiles[currentFloor].includes(`${tx},${ty}`);
+}
+
+// ============================================================
+// DUNGEON RENDERING & UPDATE
+// ============================================================
+let cameraX = 0, cameraY = 0;
+let dungeonMessage = '';
+let dungeonMessageTimer = 0;
+let interactPrompt = '';
+
+function updateDungeon(dt) {
+  const floor = dungeon.floors[currentFloor];
+
+  // Camera follow
+  const targetCX = player.x * TILE_SIZE - canvasW / 2 + TILE_SIZE / 2;
+  const targetCY = player.y * TILE_SIZE - canvasH / 2 + TILE_SIZE / 2;
+  cameraX += (targetCX - cameraX) * 0.15;
+  cameraY += (targetCY - cameraY) * 0.15;
+
+  // Movement
+  const now = performance.now();
+  if (now - lastMoveTime > MOVE_DELAY) {
+    let dx = 0, dy = 0;
+    if (keys['w'] || keys['arrowup'] || touchDpadDir === 'up') dy = -1;
+    if (keys['s'] || keys['arrowdown'] || touchDpadDir === 'down') dy = 1;
+    if (keys['a'] || keys['arrowleft'] || touchDpadDir === 'left') dx = -1;
+    if (keys['d'] || keys['arrowright'] || touchDpadDir === 'right') dx = 1;
+
+    if (dx !== 0 || dy !== 0) {
+      // Prioritize one direction
+      if (dx !== 0 && dy !== 0) { if (Math.random() < 0.5) dx = 0; else dy = 0; }
+      tryMove(dx, dy);
+      lastMoveTime = now;
+    }
+  }
+
+  // Check for interact
+  interactPrompt = '';
+  const tile = floor.tiles[player.y]?.[player.x];
+  if (tile === TILE.STAIRS_DOWN) {
+    interactPrompt = currentFloor < 2 ? 'Press E to descend' : 'Press E to enter the depths';
+  } else if (tile === TILE.STAIRS_UP) {
+    interactPrompt = 'Press E to ascend';
+  }
+
+  // Check current room
+  const room = getRoomAt(player.x, player.y);
+  if (room && !room.visited) {
+    room.visited = true;
+    enterRoom(room);
+  }
+
+  // Shrine interaction
+  if (room && room.type === ROOM_TYPE.SHRINE && !room.shrineUsed) {
+    interactPrompt = 'Press E to rest at shrine';
+  }
+
+  // Treasure room items
+  if (room && room.type === ROOM_TYPE.TREASURE && !room.cleared && room.items.length > 0) {
+    interactPrompt = 'Press E to loot treasure';
+  }
+
+  // Interact key
+  if (keys['e'] || keys['E']) {
+    keys['e'] = false; keys['E'] = false;
+    handleInteract(floor, room);
+  }
+
+  // Toggle keys
+  if (keys['i'] || keys['I']) { keys['i'] = false; keys['I'] = false; gameState = STATE.INVENTORY; }
+  if (keys['c'] || keys['C']) { keys['c'] = false; keys['C'] = false; gameState = STATE.CHAR_SHEET; }
+  if (keys['?'] || keys['/']) { keys['?'] = false; keys['/'] = false; helpOpen = !helpOpen; if (helpOpen) gameState = STATE.HELP; }
+
+  // Message timer
+  if (dungeonMessageTimer > 0) dungeonMessageTimer -= dt;
+
+  // Render
+  renderDungeon(floor);
+  renderUI();
+  renderMinimap(floor);
+
+  // Mobile controls
+  if (isMobile) renderMobileControls();
+
+  // Floating texts
+  updateFloatingTexts(dt);
+
+  // Interact prompt
+  if (interactPrompt) {
+    X.fillStyle = 'rgba(0,0,0,0.7)';
+    const pw = X.measureText(interactPrompt).width + 20;
+    X.fillRect(canvasW/2 - pw/2, canvasH - 140, pw, 28);
+    X.fillStyle = '#ffd700';
+    X.font = '14px Consolas, monospace';
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(interactPrompt, canvasW/2, canvasH - 126);
+  }
+
+  // Dungeon message
+  if (dungeonMessageTimer > 0 && dungeonMessage) {
+    X.fillStyle = 'rgba(0,0,0,0.8)';
+    X.font = '14px Consolas, monospace';
+    const mw = X.measureText(dungeonMessage).width + 30;
+    X.fillRect(canvasW/2 - mw/2, canvasH * 0.35, mw, 30);
+    X.fillStyle = '#fff';
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(dungeonMessage, canvasW/2, canvasH * 0.35 + 15);
+  }
+}
+
+function tryMove(dx, dy) {
+  const nx = player.x + dx, ny = player.y + dy;
+  const floor = dungeon.floors[currentFloor];
+  if (nx < 0 || nx >= MAP_W || ny < 0 || ny >= MAP_H) return;
+  const tile = floor.tiles[ny][nx];
+  if (tile === TILE.VOID || tile === TILE.WALL) return;
+
+  player.x = nx;
+  player.y = ny;
+  revealArea(nx, ny, player.torchRadius);
+}
+
+function getRoomAt(px, py) {
+  const floor = dungeon.floors[currentFloor];
+  for (const room of floor.rooms) {
+    if (px >= room.x && px < room.x + room.w && py >= room.y && py < room.y + room.h) {
+      return room;
+    }
+  }
+  return null;
+}
+
+function enterRoom(room) {
+  switch (room.type) {
+    case ROOM_TYPE.COMBAT:
+      if (room.enemies.length > 0 && !room.cleared) {
+        dungeonMessage = 'Enemies ahead!';
+        dungeonMessageTimer = 1.5;
+        setTimeout(() => {
+          if (room.enemies.length > 0 && !room.cleared) {
+            startCombat(room);
+          }
+        }, 300);
+      }
+      break;
+    case ROOM_TYPE.TRAP:
+      if (!room.trapTriggered) {
+        handleTrap(room);
+      }
+      break;
+    case ROOM_TYPE.TREASURE:
+      if (!room.cleared) {
+        dungeonMessage = 'You found a treasure room!';
+        dungeonMessageTimer = 2;
+        SFX.chest();
+      }
+      break;
+    case ROOM_TYPE.SHRINE:
+      dungeonMessage = 'A peaceful shrine. You can rest here.';
+      dungeonMessageTimer = 2;
+      break;
+    case ROOM_TYPE.EMPTY:
+      const msgs = ['An empty chamber.', 'Dust and cobwebs.', 'Nothing of interest here.', 'The silence is unsettling.'];
+      dungeonMessage = pick(msgs);
+      dungeonMessageTimer = 1.5;
+      break;
+    case ROOM_TYPE.STAIRS:
+      dungeonMessage = currentFloor < 2 ? 'Stairs leading deeper into the dungeon.' : 'The final stairway descends into darkness...';
+      dungeonMessageTimer = 2;
+      SFX.stairs();
+      break;
+  }
+}
+
+function handleInteract(floor, room) {
+  const tile = floor.tiles[player.y]?.[player.x];
+
+  if (tile === TILE.STAIRS_DOWN && currentFloor < 2) {
+    currentFloor++;
+    player.floor = currentFloor;
+    const startRoom = dungeon.floors[currentFloor].rooms[0];
+    player.x = startRoom.cx;
+    player.y = startRoom.cy;
+    revealArea(player.x, player.y, player.torchRadius);
+    dungeonMessage = `Descended to Floor ${currentFloor + 1}`;
+    dungeonMessageTimer = 2;
+    SFX.stairs();
+    saveGame();
+  } else if (tile === TILE.STAIRS_DOWN && currentFloor === 2) {
+    // Victory!
+    gameState = STATE.VICTORY;
+    SFX.levelUp();
+  } else if (tile === TILE.STAIRS_UP && currentFloor > 0) {
+    currentFloor--;
+    player.floor = currentFloor;
+    const stairRoom = dungeon.floors[currentFloor].rooms.find(r => r.type === ROOM_TYPE.STAIRS);
+    if (stairRoom) {
+      player.x = stairRoom.cx;
+      player.y = stairRoom.cy;
+    }
+    revealArea(player.x, player.y, player.torchRadius);
+    dungeonMessage = `Ascended to Floor ${currentFloor + 1}`;
+    dungeonMessageTimer = 2;
+    SFX.stairs();
+  }
+
+  if (room) {
+    if (room.type === ROOM_TYPE.SHRINE && !room.shrineUsed) {
+      room.shrineUsed = true;
+      player.hp = player.maxHp;
+      player.spellSlots = player.maxSpellSlots;
+      player.secondWindUsed = false;
+      player.actionSurgeUsed = false;
+      player.relentlessUsed = false;
+      player.conditions = [];
+      dungeonMessage = 'Rested at shrine. HP and spells restored!';
+      dungeonMessageTimer = 2.5;
+      SFX.heal();
+      addFloatingText(canvasW/2, canvasH/2 - 40, 'FULLY RESTORED', '#44ff44');
+      saveGame();
+    }
+
+    if (room.type === ROOM_TYPE.TREASURE && !room.cleared) {
+      // Collect items
+      for (const item of room.items) {
+        player.inventory.push(item);
+        addFloatingText(canvasW/2, canvasH/2 - 20, `+${item.name}`, RARITY_COLORS[item.rarity || 'common']);
+      }
+      if (room.gold) {
+        player.gold += room.gold;
+        addFloatingText(canvasW/2, canvasH/2, `+${room.gold} gold`, '#ffd700');
+      }
+      room.items = [];
+      room.cleared = true;
+      SFX.chest();
+    }
+  }
+}
+
+function handleTrap(room) {
+  room.trapTriggered = true;
+
+  // Perception check to spot trap
+  const percCheck = d20() + mod(player.stats.WIS) + (player.proficiencies.includes('Perception') ? PROF_BONUS[player.level] : 0);
+  // Halfling lucky: reroll 1s
+  let spotted = percCheck >= room.trapDC;
+
+  if (spotted) {
+    dungeonMessage = `Spotted a ${room.trapType === 'pit' ? 'pit trap' : 'poison dart trap'}! Avoided it.`;
+    dungeonMessageTimer = 2;
+    SFX.click();
+    return;
+  }
+
+  SFX.trap();
+
+  if (room.trapType === 'pit') {
+    // DEX save
+    let saveRoll = d20();
+    // Halfling reroll 1s
+    if (player.race === 'Halfling' && saveRoll === 1) saveRoll = d20();
+    const save = saveRoll + mod(player.stats.DEX) + (player.savingThrows.includes('DEX') ? PROF_BONUS[player.level] : 0);
+    if (save >= 12) {
+      dungeonMessage = 'Pit trap! You leap aside (DEX save success)';
+      dungeonMessageTimer = 2;
+    } else {
+      const dmg = rollDice(1, 6);
+      player.hp = Math.max(0, player.hp - dmg);
+      dungeonMessage = `Pit trap! Fell in for ${dmg} damage!`;
+      dungeonMessageTimer = 2;
+      addFloatingText(canvasW/2, canvasH/2, `-${dmg}`, '#ff4444');
+      checkPlayerDeath();
+    }
+  } else if (room.trapType === 'poison_dart') {
+    let saveRoll = d20();
+    if (player.race === 'Halfling' && saveRoll === 1) saveRoll = d20();
+    const save = saveRoll + mod(player.stats.CON) + (player.savingThrows.includes('CON') ? PROF_BONUS[player.level] : 0);
+    // Dwarf poison resistance
+    const hasPoisonResist = player.race === 'Dwarf';
+    if (save >= 13) {
+      dungeonMessage = 'Poison darts! You dodged them (CON save success)';
+      dungeonMessageTimer = 2;
+    } else {
+      let dmg = rollDice(1, 4);
+      if (hasPoisonResist) dmg = Math.floor(dmg / 2);
+      player.hp = Math.max(0, player.hp - dmg);
+      if (!hasPoisonResist) {
+        player.conditions.push({ type: 'poisoned', turns: 3 });
+      }
+      dungeonMessage = `Poison darts! ${dmg} damage${!hasPoisonResist ? ' + poisoned!' : ' (resisted poison)'}`;
+      dungeonMessageTimer = 2.5;
+      addFloatingText(canvasW/2, canvasH/2, `-${dmg}`, '#44ff44');
+      checkPlayerDeath();
+    }
+  }
+}
+
+function checkPlayerDeath() {
+  if (player.hp <= 0) {
+    // Orc Relentless Endurance
+    if (player.race === 'Orc' && !player.relentlessUsed) {
+      player.hp = 1;
+      player.relentlessUsed = true;
+      dungeonMessage = 'Relentless Endurance! You survive with 1 HP!';
+      dungeonMessageTimer = 2;
+      addFloatingText(canvasW/2, canvasH/2 - 30, 'RELENTLESS!', '#ff8800');
+      return;
+    }
+    player.hp = 0;
+    player.isDead = true;
+    gameState = STATE.GAME_OVER;
+    SFX.death();
+  }
+}
+
+// ============================================================
+// DUNGEON RENDER
+// ============================================================
+function renderDungeon(floor) {
+  X.fillStyle = '#000';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const startTX = Math.floor(cameraX / TILE_SIZE) - 1;
+  const startTY = Math.floor(cameraY / TILE_SIZE) - 1;
+  const endTX = startTX + Math.ceil(canvasW / TILE_SIZE) + 3;
+  const endTY = startTY + Math.ceil(canvasH / TILE_SIZE) + 3;
+
+  // Draw tiles
+  for (let ty = startTY; ty <= endTY; ty++) {
+    for (let tx = startTX; tx <= endTX; tx++) {
+      if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) continue;
+
+      const sx = tx * TILE_SIZE - cameraX;
+      const sy = ty * TILE_SIZE - cameraY;
+      const tile = floor.tiles[ty][tx];
+      const visible = isVisible(tx, ty);
+      const explored = isExplored(tx, ty);
+
+      if (!visible && !explored) continue; // Black fog
+
+      let color;
+      switch (tile) {
+        case TILE.WALL: color = visible ? '#3a3a4a' : '#1a1a22'; break;
+        case TILE.FLOOR: color = visible ? '#2a2a30' : '#151518'; break;
+        case TILE.CORRIDOR: color = visible ? '#252530' : '#121215'; break;
+        case TILE.DOOR: color = visible ? '#6a4a2a' : '#352515'; break;
+        case TILE.STAIRS_DOWN: color = visible ? '#4a2a5a' : '#251530'; break;
+        case TILE.STAIRS_UP: color = visible ? '#2a4a5a' : '#152530'; break;
+        default: continue;
+      }
+
+      X.fillStyle = color;
+      X.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+
+      // Tile details
+      if (visible) {
+        if (tile === TILE.WALL) {
+          X.strokeStyle = '#4a4a5a';
+          X.lineWidth = 0.5;
+          X.strokeRect(sx + 1, sy + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+          // Stone texture
+          X.fillStyle = '#444450';
+          X.fillRect(sx + 3, sy + 3, 4, 3);
+          X.fillRect(sx + 12, sy + 8, 5, 3);
+          X.fillRect(sx + 5, sy + 15, 4, 3);
+        } else if (tile === TILE.STAIRS_DOWN) {
+          X.fillStyle = '#8a4aaa';
+          X.font = 'bold 16px Consolas, monospace';
+          X.textAlign = 'center'; X.textBaseline = 'middle';
+          X.fillText('>', sx + TILE_SIZE/2, sy + TILE_SIZE/2);
+        } else if (tile === TILE.STAIRS_UP) {
+          X.fillStyle = '#4a8aaa';
+          X.font = 'bold 16px Consolas, monospace';
+          X.textAlign = 'center'; X.textBaseline = 'middle';
+          X.fillText('<', sx + TILE_SIZE/2, sy + TILE_SIZE/2);
+        }
+      }
+
+      // Dim overlay for explored but not visible
+      if (!visible && explored) {
+        X.fillStyle = 'rgba(0,0,0,0.5)';
+        X.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+      }
+    }
+  }
+
+  // Torch light gradient
+  const plSX = player.x * TILE_SIZE - cameraX + TILE_SIZE/2;
+  const plSY = player.y * TILE_SIZE - cameraY + TILE_SIZE/2;
+  const lightRadius = player.torchRadius * TILE_SIZE;
+
+  // Darkness overlay with light hole
+  X.save();
+  X.globalCompositeOperation = 'source-over';
+
+  // Draw darkness around the light
+  const grad = X.createRadialGradient(plSX, plSY, lightRadius * 0.3, plSX, plSY, lightRadius);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(0.6, 'rgba(0,0,0,0.3)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.7)');
+  X.fillStyle = grad;
+  X.fillRect(0, 0, canvasW, canvasH);
+  X.restore();
+
+  // Draw room indicators for visible rooms
+  for (const room of floor.rooms) {
+    if (!isVisible(room.cx, room.cy) && !isExplored(room.cx, room.cy)) continue;
+    const rx = room.cx * TILE_SIZE - cameraX + TILE_SIZE/2;
+    const ry = room.y * TILE_SIZE - cameraY - 8;
+
+    if (room.type === ROOM_TYPE.SHRINE && !room.shrineUsed && isVisible(room.cx, room.cy)) {
+      X.fillStyle = '#44aaff';
+      X.font = '12px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('+ Shrine +', rx, ry);
+    }
+    if (room.type === ROOM_TYPE.TREASURE && !room.cleared && isVisible(room.cx, room.cy)) {
+      X.fillStyle = '#ffd700';
+      X.font = '12px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('$ Treasure $', rx, ry);
+    }
+  }
+
+  // Draw player
+  const px = player.x * TILE_SIZE - cameraX;
+  const py = player.y * TILE_SIZE - cameraY;
+  const cls = CLASSES[player.class];
+
+  // Player glow
+  X.fillStyle = cls.color + '30';
+  X.beginPath();
+  X.arc(px + TILE_SIZE/2, py + TILE_SIZE/2, TILE_SIZE * 0.7, 0, Math.PI * 2);
+  X.fill();
+
+  // Player body
+  X.fillStyle = cls.color;
+  X.beginPath();
+  X.arc(px + TILE_SIZE/2, py + TILE_SIZE/2, TILE_SIZE * 0.4, 0, Math.PI * 2);
+  X.fill();
+
+  // Class letter
+  X.fillStyle = '#fff';
+  X.font = 'bold 12px Consolas, monospace';
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(player.class[0], px + TILE_SIZE/2, py + TILE_SIZE/2 + 1);
+
+  // HP bar under player
+  const hpPct = player.hp / player.maxHp;
+  X.fillStyle = '#300';
+  X.fillRect(px + 2, py + TILE_SIZE + 2, TILE_SIZE - 4, 3);
+  X.fillStyle = hpPct > 0.5 ? '#0c0' : hpPct > 0.25 ? '#cc0' : '#c00';
+  X.fillRect(px + 2, py + TILE_SIZE + 2, (TILE_SIZE - 4) * hpPct, 3);
+
+  // Render particles
+  renderParticles();
+}
+
+// ============================================================
+// MINIMAP
+// ============================================================
+function renderMinimap(floor) {
+  const mmSize = isMobile ? 90 : 120;
+  const mmX = canvasW - mmSize - 10;
+  const mmY = 10;
+  const tileW = mmSize / MAP_W;
+  const tileH = mmSize / MAP_H;
+
+  // Background
+  X.fillStyle = 'rgba(0,0,0,0.7)';
+  X.fillRect(mmX - 2, mmY - 2, mmSize + 4, mmSize + 4);
+  X.strokeStyle = '#555';
+  X.lineWidth = 1;
+  X.strokeRect(mmX - 2, mmY - 2, mmSize + 4, mmSize + 4);
+
+  for (let ty = 0; ty < MAP_H; ty++) {
+    for (let tx = 0; tx < MAP_W; tx++) {
+      if (!isExplored(tx, ty)) continue;
+      const tile = floor.tiles[ty][tx];
+      if (tile === TILE.VOID) continue;
+
+      let color;
+      if (tile === TILE.WALL) color = '#444';
+      else if (tile === TILE.STAIRS_DOWN) color = '#a040c0';
+      else if (tile === TILE.STAIRS_UP) color = '#40a0c0';
+      else color = '#666';
+
+      X.fillStyle = color;
+      X.fillRect(mmX + tx * tileW, mmY + ty * tileH, Math.ceil(tileW), Math.ceil(tileH));
+    }
+  }
+
+  // Player dot
+  X.fillStyle = '#fff';
+  X.fillRect(mmX + player.x * tileW - 1, mmY + player.y * tileH - 1, 3, 3);
+
+  // Floor label
+  X.fillStyle = '#aaa';
+  X.font = '10px Consolas, monospace';
+  X.textAlign = 'right'; X.textBaseline = 'top';
+  X.fillText(`F${currentFloor + 1}`, mmX + mmSize, mmY + mmSize + 4);
+}
+
+// ============================================================
+// HUD / UI
+// ============================================================
+function renderUI() {
+  // HP bar top-left
+  const barX = 10, barY = 10, barW = isMobile ? 140 : 180, barH = 18;
+  const hpPct = player.hp / player.maxHp;
+
+  X.fillStyle = 'rgba(0,0,0,0.7)';
+  X.fillRect(barX - 2, barY - 2, barW + 4, barH + 4);
+  X.fillStyle = '#400';
+  X.fillRect(barX, barY, barW, barH);
+  X.fillStyle = hpPct > 0.5 ? '#c00' : hpPct > 0.25 ? '#c80' : '#800';
+  X.fillRect(barX, barY, barW * hpPct, barH);
+  X.strokeStyle = '#888';
+  X.lineWidth = 1;
+  X.strokeRect(barX, barY, barW, barH);
+  X.fillStyle = '#fff';
+  X.font = 'bold 12px Consolas, monospace';
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(`HP: ${player.hp}/${player.maxHp}`, barX + barW/2, barY + barH/2);
+
+  // Spell slots (if caster)
+  if (player.maxSpellSlots > 0) {
+    const slotY = barY + barH + 6;
+    X.fillStyle = 'rgba(0,0,0,0.7)';
+    X.fillRect(barX - 2, slotY - 2, barW + 4, barH + 4);
+    X.fillStyle = '#004';
+    X.fillRect(barX, slotY, barW, barH);
+    const slotPct = player.spellSlots / player.maxSpellSlots;
+    X.fillStyle = '#44a';
+    X.fillRect(barX, slotY, barW * slotPct, barH);
+    X.strokeStyle = '#888';
+    X.strokeRect(barX, slotY, barW, barH);
+    X.fillStyle = '#aaf';
+    X.font = 'bold 12px Consolas, monospace';
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(`Slots: ${player.spellSlots}/${player.maxSpellSlots}`, barX + barW/2, slotY + barH/2);
+  }
+
+  // Level, XP, Gold
+  const infoY = barY + barH + (player.maxSpellSlots > 0 ? barH + 12 : 6) + 4;
+  X.fillStyle = 'rgba(0,0,0,0.7)';
+  X.fillRect(barX - 2, infoY, barW + 4, 50);
+  X.fillStyle = '#ffd700';
+  X.font = '11px Consolas, monospace';
+  X.textAlign = 'left'; X.textBaseline = 'top';
+  X.fillText(`Lv ${player.level} ${player.class}`, barX + 4, infoY + 4);
+  X.fillStyle = '#aaa';
+  X.fillText(`XP: ${player.xp}/${XP_THRESHOLDS[player.level] || '---'}`, barX + 4, infoY + 18);
+  X.fillStyle = '#ffd700';
+  X.fillText(`Gold: ${player.gold}`, barX + 4, infoY + 32);
+
+  // Conditions
+  if (player.conditions.length > 0) {
+    const condY = infoY + 54;
+    player.conditions.forEach((cond, i) => {
+      X.fillStyle = cond.type === 'poisoned' ? '#40c040' : '#c0c040';
+      X.font = '10px Consolas, monospace';
+      X.fillText(`[${cond.type}${cond.turns ? ` ${cond.turns}t` : ''}]`, barX + 4, condY + i * 14);
+    });
+  }
+
+  // Bottom buttons (non-mobile)
+  if (!isMobile) {
+    const btnY = canvasH - 40;
+    const btnW = 65, btnH = 28;
+    const btns = [
+      { label: '[I]nv', key: 'i', state: STATE.INVENTORY },
+      { label: '[C]har', key: 'c', state: STATE.CHAR_SHEET },
+      { label: '[?]Help', key: '?', state: STATE.HELP },
+      { label: 'Save', key: null, action: 'save' },
+    ];
+    btns.forEach((btn, i) => {
+      const bx = canvasW - (btns.length - i) * (btnW + 5) - 5;
+      drawButton(bx, btnY, btnW, btnH, btn.label, false, '#2a2a2a');
+      if (clickedInRect(bx, btnY, btnW, btnH)) {
+        SFX.click();
+        if (btn.action === 'save') {
+          saveGame();
+          dungeonMessage = 'Game saved!';
+          dungeonMessageTimer = 1.5;
+          SFX.save();
+        } else {
+          gameState = btn.state;
+        }
+      }
+    });
+  }
+}
+
+// ============================================================
+// MOBILE CONTROLS
+// ============================================================
+function renderMobileControls() {
+  // D-pad
+  const dpadSize = 55;
+  const dpadX = 20;
+  const dpadY = canvasH - dpadSize * 3 - 30;
+  const dpadCX = dpadX + dpadSize * 1.5;
+  const dpadCY = dpadY + dpadSize * 1.5;
+
+  touchDpadDir = null;
+
+  const dirs = [
+    { x: dpadCX - dpadSize/2, y: dpadCY - dpadSize * 1.5, w: dpadSize, h: dpadSize, dir: 'up', label: 'W' },
+    { x: dpadCX - dpadSize/2, y: dpadCY + dpadSize * 0.5, w: dpadSize, h: dpadSize, dir: 'down', label: 'S' },
+    { x: dpadCX - dpadSize * 1.5, y: dpadCY - dpadSize/2, w: dpadSize, h: dpadSize, dir: 'left', label: 'A' },
+    { x: dpadCX + dpadSize * 0.5, y: dpadCY - dpadSize/2, w: dpadSize, h: dpadSize, dir: 'right', label: 'D' },
+  ];
+
+  dirs.forEach(d => {
+    const pressed = mouseDown && isInRect(mouseX, mouseY, d.x, d.y, d.w, d.h);
+    X.fillStyle = pressed ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)';
+    X.fillRect(d.x, d.y, d.w, d.h);
+    X.strokeStyle = 'rgba(255,255,255,0.3)';
+    X.lineWidth = 1;
+    X.strokeRect(d.x, d.y, d.w, d.h);
+    X.fillStyle = pressed ? '#fff' : '#888';
+    X.font = 'bold 16px Consolas, monospace';
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(d.label, d.x + d.w/2, d.y + d.h/2);
+    if (pressed) touchDpadDir = d.dir;
+  });
+
+  // Action buttons (right side)
+  const abtnSize = 50;
+  const abtnX = canvasW - abtnSize - 15;
+  const abtnY = canvasH - abtnSize * 4 - 30;
+
+  const actionBtns = [
+    { label: 'E', y: abtnY, action: 'interact' },
+    { label: 'I', y: abtnY + abtnSize + 8, action: 'inventory' },
+    { label: 'C', y: abtnY + (abtnSize + 8) * 2, action: 'character' },
+    { label: '?', y: abtnY + (abtnSize + 8) * 3, action: 'help' },
+  ];
+
+  actionBtns.forEach(btn => {
+    const pressed = mouseDown && isInRect(mouseX, mouseY, abtnX, btn.y, abtnSize, abtnSize);
+    X.fillStyle = pressed ? 'rgba(255,200,0,0.3)' : 'rgba(255,255,255,0.1)';
+    X.fillRect(abtnX, btn.y, abtnSize, abtnSize);
+    X.strokeStyle = 'rgba(255,200,0,0.3)';
+    X.lineWidth = 1;
+    X.strokeRect(abtnX, btn.y, abtnSize, abtnSize);
+    X.fillStyle = pressed ? '#ffd700' : '#aaa';
+    X.font = 'bold 18px Consolas, monospace';
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(btn.label, abtnX + abtnSize/2, btn.y + abtnSize/2);
+
+    if (clickedInRect(abtnX, btn.y, abtnSize, abtnSize)) {
+      SFX.click();
+      if (btn.action === 'interact') { keys['e'] = true; }
+      else if (btn.action === 'inventory') gameState = STATE.INVENTORY;
+      else if (btn.action === 'character') gameState = STATE.CHAR_SHEET;
+      else if (btn.action === 'help') gameState = STATE.HELP;
+    }
+  });
+
+  // Save button (top right area below minimap)
+  const saveBtnW = 55, saveBtnH = 25;
+  const saveBtnX = canvasW - saveBtnW - 10;
+  const saveBtnY = (isMobile ? 90 : 120) + 25;
+  drawButton(saveBtnX, saveBtnY, saveBtnW, saveBtnH, 'Save', false, '#2a2a4a');
+  if (clickedInRect(saveBtnX, saveBtnY, saveBtnW, saveBtnH)) {
+    saveGame();
+    dungeonMessage = 'Game saved!';
+    dungeonMessageTimer = 1.5;
+    SFX.save();
+  }
+}
+
+// ============================================================
+// COMBAT SYSTEM
+// ============================================================
+function startCombat(room) {
+  combatLog = [];
+  const enemies = room.enemies.filter(e => e.hp > 0);
+  if (enemies.length === 0) { room.cleared = true; return; }
+
+  // Roll initiative
+  const playerInit = d20() + mod(player.stats.DEX);
+  const combatants = [];
+  combatants.push({ type: 'player', initiative: playerInit, entity: player });
+
+  enemies.forEach(e => {
+    const init = d20() + mod(e.dex);
+    combatants.push({ type: 'enemy', initiative: init, entity: e });
+  });
+
+  // Sort by initiative (higher goes first)
+  combatants.sort((a, b) => b.initiative - a.initiative);
+
+  combatState = {
+    room: room,
+    combatants: combatants,
+    turnIndex: 0,
+    playerTurn: false,
+    phase: 'start', // start, player_action, enemy_turn, victory, defeat
+    selectedAction: null,
+    selectedSpell: null,
+    selectedItem: null,
+    animTimer: 0,
+    turnDelay: 0,
+    combatRound: 1,
+    fleeing: false,
+  };
+
+  addCombatLog(`--- COMBAT BEGINS (Round 1) ---`);
+  addCombatLog(`Initiative: ${combatants.map(c => `${c.type === 'player' ? player.name : c.entity.name} (${c.initiative})`).join(', ')}`);
+
+  // Start first turn
+  advanceTurn();
+  gameState = STATE.COMBAT;
+}
+
+function addCombatLog(msg) {
+  combatLog.push(msg);
+  if (combatLog.length > 50) combatLog.shift();
+}
+
+function advanceTurn() {
+  if (!combatState) return;
+
+  // Check victory/defeat
+  const aliveEnemies = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
+  if (aliveEnemies.length === 0) {
+    combatState.phase = 'victory';
+    return;
+  }
+  if (player.hp <= 0) {
+    combatState.phase = 'defeat';
+    return;
+  }
+
+  // Find next alive combatant
+  let found = false;
+  let loops = 0;
+  while (!found && loops < combatState.combatants.length * 2) {
+    const current = combatState.combatants[combatState.turnIndex];
+    if (current.type === 'player' && player.hp > 0) {
+      combatState.playerTurn = true;
+      combatState.phase = 'player_action';
+      combatState.selectedAction = null;
+      combatState.selectedSpell = null;
+      combatState.selectedItem = null;
+      found = true;
+
+      // Tick conditions
+      player.conditions = player.conditions.filter(c => {
+        if (c.turns !== undefined) {
+          c.turns--;
+          return c.turns > 0;
+        }
+        return true;
+      });
+      if (player.shieldActive) { player.tempAc -= 5; player.shieldActive = false; }
+      if (player.blessActive) {
+        player.blessTurns--;
+        if (player.blessTurns <= 0) { player.blessActive = false; }
+      }
+    } else if (current.type === 'enemy' && current.entity.hp > 0) {
+      combatState.playerTurn = false;
+      combatState.phase = 'enemy_turn';
+      combatState.turnDelay = 0.8;
+      found = true;
+    } else {
+      combatState.turnIndex = (combatState.turnIndex + 1) % combatState.combatants.length;
+      if (combatState.turnIndex === 0) {
+        combatState.combatRound++;
+        addCombatLog(`--- Round ${combatState.combatRound} ---`);
+      }
+    }
+    loops++;
+  }
+}
+
+function nextTurn() {
+  combatState.turnIndex = (combatState.turnIndex + 1) % combatState.combatants.length;
+  if (combatState.turnIndex === 0) {
+    combatState.combatRound++;
+    addCombatLog(`--- Round ${combatState.combatRound} ---`);
+  }
+  advanceTurn();
+}
+
+function playerAttack() {
+  const aliveEnemies = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
+  if (aliveEnemies.length === 0) return;
+  const target = aliveEnemies[0].entity;
+
+  let roll = d20();
+  // Halfling lucky
+  if (player.race === 'Halfling' && roll === 1) { roll = d20(); addCombatLog('Lucky! Rerolled a 1.'); }
+  // Bless bonus
+  if (player.blessActive) roll += rollDice(1, 4);
+  // Disadvantage from poison
+  const isPoisoned = player.conditions.some(c => c.type === 'poisoned');
+  if (isPoisoned) {
+    const roll2 = d20();
+    roll = Math.min(roll, roll2);
+    addCombatLog('Disadvantage (poisoned)!');
+  }
+
+  const attackBonus = calcAttackBonus();
+  const totalRoll = roll + attackBonus;
+  const weapon = getEquippedItem('weapon');
+  const weaponName = weapon ? weapon.name : 'Fists';
+
+  if (roll === 20) {
+    // Critical hit!
+    const dmg = calcDamage(true);
+    target.hp = Math.max(0, target.hp - dmg);
+    addCombatLog(`${player.name} attacks ${target.name} with ${weaponName}: NAT 20! CRITICAL HIT for ${dmg} damage!`);
+    addFloatingText(canvasW/2, canvasH * 0.3, `CRIT! -${dmg}`, '#ff4444');
+    SFX.crit();
+    spawnParticles(canvasW/2, canvasH * 0.3, '#ff4444', 15);
+  } else if (roll === 1) {
+    addCombatLog(`${player.name} attacks ${target.name} with ${weaponName}: NAT 1! Critical miss!`);
+    addFloatingText(canvasW/2, canvasH * 0.3, 'MISS!', '#888');
+    SFX.miss();
+  } else if (totalRoll >= target.ac) {
+    const dmg = calcDamage(false);
+    target.hp = Math.max(0, target.hp - dmg);
+    addCombatLog(`${player.name} attacks ${target.name} with ${weaponName}: ${totalRoll} vs AC ${target.ac} - HIT for ${dmg} damage!`);
+    addFloatingText(canvasW/2, canvasH * 0.3, `-${dmg}`, '#ff6644');
+    SFX.hit();
+    spawnParticles(canvasW/2, canvasH * 0.3, '#ff6644', 8);
+  } else {
+    addCombatLog(`${player.name} attacks ${target.name} with ${weaponName}: ${totalRoll} vs AC ${target.ac} - MISS!`);
+    addFloatingText(canvasW/2, canvasH * 0.3, 'MISS', '#888');
+    SFX.miss();
+  }
+
+  if (target.hp <= 0) {
+    addCombatLog(`${target.name} is defeated!`);
+    addFloatingText(canvasW/2, canvasH * 0.3 - 20, 'DEFEATED!', '#ffd700');
+  }
+
+  // Extra Attack (Fighter/Ranger level 5+)
+  if ((player.class === 'Fighter' || player.class === 'Ranger') && player.level >= 5 && !combatState._extraAttackUsed) {
+    combatState._extraAttackUsed = true;
+    addCombatLog('Extra Attack!');
+    setTimeout(() => playerAttack(), 200);
+    return;
+  }
+  combatState._extraAttackUsed = false;
+
+  nextTurn();
+}
+
+function playerDodge() {
+  addCombatLog(`${player.name} takes the Dodge action. Attacks against you have disadvantage until your next turn.`);
+  player.conditions.push({ type: 'dodging', turns: 1 });
+  nextTurn();
+}
+
+function playerFlee() {
+  let roll = d20();
+  if (player.race === 'Halfling' && roll === 1) roll = d20();
+  const check = roll + mod(player.stats.DEX);
+  const dc = 10 + currentFloor * 2;
+
+  if (check >= dc) {
+    addCombatLog(`${player.name} flees! (${check} vs DC ${dc})`);
+    combatState.phase = 'flee_success';
+    combatState.turnDelay = 1;
+  } else {
+    addCombatLog(`${player.name} fails to flee! (${check} vs DC ${dc})`);
+    nextTurn();
+  }
+}
+
+function playerUseItem() {
+  // Find usable consumables
+  const consumables = player.inventory.filter(i => i.type === ITEM_TYPES.CONSUMABLE);
+  if (consumables.length === 0) {
+    addCombatLog('No usable items!');
+    return;
+  }
+  combatState.selectedAction = 'item';
+}
+
+function useConsumable(item) {
+  if (item.effect === 'heal') {
+    const heal = rollDice(item.healDice[0], item.healDice[1]) + (item.healBonus || 0);
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+    addCombatLog(`${player.name} uses ${item.name}: healed ${heal} HP!`);
+    addFloatingText(canvasW/2, canvasH * 0.6, `+${heal}`, '#44ff44');
+    SFX.heal();
+  } else if (item.effect === 'cure_poison') {
+    player.conditions = player.conditions.filter(c => c.type !== 'poisoned');
+    addCombatLog(`${player.name} uses ${item.name}: poison cured!`);
+    SFX.heal();
+  }
+
+  // Remove item
+  const idx = player.inventory.findIndex(i => i.id === item.id);
+  if (idx !== -1) player.inventory.splice(idx, 1);
+
+  combatState.selectedAction = null;
+  nextTurn();
+}
+
+function playerCastSpell(spell) {
+  const spellData = SPELLS[spell];
+  if (!spellData) return;
+
+  // Check spell slots (cantrips are free)
+  if (spellData.level > 0) {
+    if (player.spellSlots <= 0) {
+      addCombatLog('No spell slots remaining!');
+      return;
+    }
+    player.spellSlots--;
+  }
+
+  SFX.spell();
+
+  const aliveEnemies = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
+  const target = aliveEnemies.length > 0 ? aliveEnemies[0].entity : null;
+
+  switch (spellData.type) {
+    case 'damage':
+      if (!target) { addCombatLog('No targets!'); return; }
+      if (spellData.autoHit) {
+        // Magic Missile
+        const dmg = rollDice(spellData.damage[0], spellData.damage[1]) + spellData.damageBonus;
+        target.hp = Math.max(0, target.hp - dmg);
+        addCombatLog(`${player.name} casts ${spell}! Auto-hit for ${dmg} damage!`);
+        addFloatingText(canvasW/2, canvasH * 0.3, `-${dmg}`, '#8888ff');
+        spawnParticles(canvasW/2, canvasH * 0.3, '#8888ff', 12);
+      } else if (spellData.savingThrow) {
+        // Save-based (Sacred Flame, Vicious Mockery)
+        const saveMod = mod(target[spellData.savingThrow.toLowerCase()] || 10);
+        const saveRoll = d20() + saveMod;
+        const dc = 8 + PROF_BONUS[player.level] + mod(player.stats[CLASSES[player.class].primary]);
+        if (saveRoll < dc) {
+          const dmg = rollDice(spellData.damage[0], spellData.damage[1]) + spellData.damageBonus;
+          target.hp = Math.max(0, target.hp - dmg);
+          addCombatLog(`${player.name} casts ${spell}! ${target.name} fails save (${saveRoll} vs DC ${dc}): ${dmg} damage!`);
+          addFloatingText(canvasW/2, canvasH * 0.3, `-${dmg}`, '#ffaa44');
+          if (spellData.effect === 'disadvantage') {
+            target.conditions = target.conditions || [];
+            target.conditions.push({ type: 'disadvantage', turns: 1 });
+            addCombatLog(`${target.name} has disadvantage on next attack!`);
+          }
+        } else {
+          addCombatLog(`${player.name} casts ${spell}! ${target.name} saves (${saveRoll} vs DC ${dc}): No damage!`);
+        }
+        spawnParticles(canvasW/2, canvasH * 0.3, '#ffaa44', 8);
+      } else if (spellData.attackRoll) {
+        // Fire Bolt
+        let roll = d20();
+        if (player.race === 'Halfling' && roll === 1) roll = d20();
+        const attackMod = mod(player.stats[CLASSES[player.class].primary]) + PROF_BONUS[player.level];
+        const totalRoll = roll + attackMod;
+        if (roll === 20) {
+          const dmg = rollDice(spellData.damage[0] * 2, spellData.damage[1]);
+          target.hp = Math.max(0, target.hp - dmg);
+          addCombatLog(`${player.name} casts ${spell}: NAT 20! CRIT for ${dmg} damage!`);
+          addFloatingText(canvasW/2, canvasH * 0.3, `CRIT -${dmg}`, '#ff4400');
+          SFX.crit();
+        } else if (roll === 1) {
+          addCombatLog(`${player.name} casts ${spell}: NAT 1! Miss!`);
+          addFloatingText(canvasW/2, canvasH * 0.3, 'MISS', '#888');
+        } else if (totalRoll >= target.ac) {
+          const dmg = rollDice(spellData.damage[0], spellData.damage[1]);
+          target.hp = Math.max(0, target.hp - dmg);
+          addCombatLog(`${player.name} casts ${spell}: ${totalRoll} vs AC ${target.ac} - HIT for ${dmg}!`);
+          addFloatingText(canvasW/2, canvasH * 0.3, `-${dmg}`, '#ff6600');
+        } else {
+          addCombatLog(`${player.name} casts ${spell}: ${totalRoll} vs AC ${target.ac} - MISS!`);
+          addFloatingText(canvasW/2, canvasH * 0.3, 'MISS', '#888');
+        }
+        spawnParticles(canvasW/2, canvasH * 0.3, '#ff6600', 10);
+      }
+      if (target && target.hp <= 0) {
+        addCombatLog(`${target.name} is defeated!`);
+      }
+      break;
+
+    case 'heal': {
+      const healStat = spellData.healStat || 'WIS';
+      const heal = rollDice(spellData.healDice[0], spellData.healDice[1]) + Math.max(0, mod(player.stats[healStat]));
+      player.hp = Math.min(player.maxHp, player.hp + heal);
+      addCombatLog(`${player.name} casts ${spell}: healed ${heal} HP!`);
+      addFloatingText(canvasW/2, canvasH * 0.6, `+${heal}`, '#44ff44');
+      SFX.heal();
+      break;
+    }
+
+    case 'defense':
+      if (spell === 'Shield') {
+        player.tempAc += 5;
+        player.shieldActive = true;
+        addCombatLog(`${player.name} casts Shield: +5 AC until next turn!`);
+        addFloatingText(canvasW/2, canvasH * 0.6, '+5 AC', '#4488ff');
+      }
+      break;
+
+    case 'buff':
+      if (spell === 'Bless') {
+        player.blessActive = true;
+        player.blessTurns = 10;
+        addCombatLog(`${player.name} casts Bless: +d4 to attacks and saves!`);
+        addFloatingText(canvasW/2, canvasH * 0.6, 'BLESSED', '#ffd700');
+      } else if (spell === "Hunter's Mark") {
+        player.huntersMark = true;
+        addCombatLog(`${player.name} casts Hunter's Mark: +d6 damage to target!`);
+        addFloatingText(canvasW/2, canvasH * 0.6, "MARKED", '#40c040');
+      }
+      break;
+
+    case 'control':
+      if (spell === 'Sleep') {
+        let hpPool = rollDice(5, 8);
+        addCombatLog(`${player.name} casts Sleep! (${hpPool} HP worth)`);
+        // Put enemies to sleep starting from lowest HP
+        const sorted = [...aliveEnemies].sort((a, b) => a.entity.hp - b.entity.hp);
+        for (const ce of sorted) {
+          if (ce.entity.hp <= hpPool) {
+            hpPool -= ce.entity.hp;
+            ce.entity.conditions = ce.entity.conditions || [];
+            ce.entity.conditions.push({ type: 'asleep', turns: 10 });
+            addCombatLog(`${ce.entity.name} falls asleep!`);
+          }
+        }
+      }
+      break;
+  }
+
+  combatState.selectedAction = null;
+  combatState.selectedSpell = null;
+
+  // Bonus action spells don't end turn (Healing Word)
+  if (spellData.bonusAction) {
+    addCombatLog('(Bonus action - you can still act)');
+    return;
+  }
+
+  nextTurn();
+}
+
+function enemyTurn(enemy) {
+  // Check conditions
+  if (enemy.conditions) {
+    // Asleep - skip turn
+    const asleep = enemy.conditions.find(c => c.type === 'asleep');
+    if (asleep) {
+      addCombatLog(`${enemy.name} is asleep and does nothing.`);
+      asleep.turns--;
+      if (asleep.turns <= 0) enemy.conditions = enemy.conditions.filter(c => c.type !== 'asleep');
+      nextTurn();
+      return;
+    }
+    // Tick conditions
+    enemy.conditions = enemy.conditions.filter(c => {
+      if (c.turns !== undefined) { c.turns--; return c.turns > 0; }
+      return true;
+    });
+  }
+
+  // Pick an attack
+  const attack = pick(enemy.attacks);
+  let roll = d20();
+  let totalRoll = roll + attack.bonus;
+
+  // Check disadvantage
+  const hasDisadvantage = enemy.conditions && enemy.conditions.some(c => c.type === 'disadvantage');
+  const playerDodging = player.conditions.some(c => c.type === 'dodging');
+  if (hasDisadvantage || playerDodging) {
+    const roll2 = d20();
+    roll = Math.min(roll, roll2);
+    totalRoll = roll + attack.bonus;
+  }
+
+  const ac = calcAC();
+
+  if (roll === 20) {
+    const dmg = rollDice(attack.damage[0] * 2, attack.damage[1]) + attack.damageBonus;
+    // Rogue Uncanny Dodge
+    let finalDmg = dmg;
+    if (player.class === 'Rogue' && player.level >= 5) {
+      finalDmg = Math.floor(dmg / 2);
+      addCombatLog('Uncanny Dodge: halved damage!');
+    }
+    player.hp = Math.max(0, player.hp - finalDmg);
+    addCombatLog(`${enemy.name} uses ${attack.name}: NAT 20! CRIT for ${finalDmg} damage!`);
+    addFloatingText(canvasW/2, canvasH * 0.65, `-${finalDmg}`, '#ff0000');
+    SFX.crit();
+    spawnParticles(canvasW/2, canvasH * 0.65, '#ff0000', 12);
+  } else if (roll === 1) {
+    addCombatLog(`${enemy.name} uses ${attack.name}: NAT 1! Miss!`);
+  } else if (totalRoll >= ac) {
+    let dmg = rollDice(attack.damage[0], attack.damage[1]) + attack.damageBonus;
+    // Fire resistance for Tiefling
+    if (player.race === 'Tiefling' && attack.name.toLowerCase().includes('fire')) {
+      dmg = Math.floor(dmg / 2);
+    }
+    player.hp = Math.max(0, player.hp - dmg);
+    addCombatLog(`${enemy.name} uses ${attack.name}: ${totalRoll} vs AC ${ac} - HIT for ${dmg}!`);
+    addFloatingText(canvasW/2, canvasH * 0.65, `-${dmg}`, '#ff4444');
+    SFX.hit();
+    spawnParticles(canvasW/2, canvasH * 0.65, '#ff4444', 6);
+  } else {
+    addCombatLog(`${enemy.name} uses ${attack.name}: ${totalRoll} vs AC ${ac} - MISS!`);
+    addFloatingText(canvasW/2, canvasH * 0.65, 'MISS', '#888');
+  }
+
+  // Check player death
+  if (player.hp <= 0) {
+    // Orc Relentless Endurance
+    if (player.race === 'Orc' && !player.relentlessUsed) {
+      player.hp = 1;
+      player.relentlessUsed = true;
+      addCombatLog('Relentless Endurance activates! Survived with 1 HP!');
+      addFloatingText(canvasW/2, canvasH * 0.65 - 20, 'RELENTLESS!', '#ff8800');
+    } else {
+      // Death saving throws
+      player.isDying = true;
+      combatState.phase = 'death_saves';
+      return;
+    }
+  }
+
+  nextTurn();
+}
+
+function doDeathSave() {
+  const roll = d20();
+  if (roll === 20) {
+    player.hp = 1;
+    player.isDying = false;
+    player.deathSaves = { successes: 0, failures: 0 };
+    addCombatLog(`Death Save: NAT 20! ${player.name} regains 1 HP!`);
+    addFloatingText(canvasW/2, canvasH * 0.5, 'NAT 20! REVIVED!', '#44ff44');
+    SFX.heal();
+    combatState.phase = 'player_action';
+    return;
+  }
+  if (roll === 1) {
+    player.deathSaves.failures += 2;
+    addCombatLog(`Death Save: NAT 1! Two failures! (${player.deathSaves.failures}/3)`);
+  } else if (roll >= 10) {
+    player.deathSaves.successes++;
+    addCombatLog(`Death Save: ${roll} - Success! (${player.deathSaves.successes}/3)`);
+  } else {
+    player.deathSaves.failures++;
+    addCombatLog(`Death Save: ${roll} - Failure! (${player.deathSaves.failures}/3)`);
+  }
+
+  if (player.deathSaves.successes >= 3) {
+    player.hp = 1;
+    player.isDying = false;
+    player.deathSaves = { successes: 0, failures: 0 };
+    addCombatLog(`${player.name} stabilizes!`);
+    addFloatingText(canvasW/2, canvasH * 0.5, 'STABILIZED', '#44ff44');
+    SFX.heal();
+    nextTurn();
+  } else if (player.deathSaves.failures >= 3) {
+    player.isDead = true;
+    player.isDying = false;
+    combatState.phase = 'defeat';
+    addCombatLog(`${player.name} has died!`);
+    SFX.death();
+  } else {
+    nextTurn();
+  }
+}
+
+function handleSecondWind() {
+  if (player.secondWindUsed) { addCombatLog('Second Wind already used!'); return; }
+  const heal = rollDice(1, 10) + player.level;
+  player.hp = Math.min(player.maxHp, player.hp + heal);
+  player.secondWindUsed = true;
+  addCombatLog(`${player.name} uses Second Wind: healed ${heal} HP!`);
+  addFloatingText(canvasW/2, canvasH * 0.6, `+${heal}`, '#44ff44');
+  SFX.heal();
+  nextTurn();
+}
+
+function handleActionSurge() {
+  if (player.actionSurgeUsed) { addCombatLog('Action Surge already used!'); return; }
+  player.actionSurgeUsed = true;
+  addCombatLog(`${player.name} uses Action Surge! Extra action!`);
+  addFloatingText(canvasW/2, canvasH * 0.6, 'ACTION SURGE!', '#ffd700');
+  // Don't advance turn - player gets another action
+}
+
+// ============================================================
+// COMBAT RENDERING
+// ============================================================
+function updateCombat(dt) {
+  if (!combatState) return;
+
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  // Combat scene background
+  const sceneY = 60;
+  const sceneH = canvasH * 0.35;
+
+  // Floor texture
+  X.fillStyle = '#1a1a20';
+  X.fillRect(0, sceneY, canvasW, sceneH);
+  for (let i = 0; i < 20; i++) {
+    X.fillStyle = `rgba(255,255,255,${0.02 + Math.random() * 0.02})`;
+    X.fillRect(Math.random() * canvasW, sceneY + Math.random() * sceneH, rand(2, 6), rand(2, 4));
+  }
+
+  // Draw enemies
+  const aliveEnemies = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
+  const enemySpacing = Math.min(120, (canvasW - 80) / Math.max(aliveEnemies.length, 1));
+  const enemyStartX = canvasW / 2 - (aliveEnemies.length - 1) * enemySpacing / 2;
+
+  aliveEnemies.forEach((ce, i) => {
+    const enemy = ce.entity;
+    const ex = enemyStartX + i * enemySpacing;
+    const ey = sceneY + sceneH * 0.35;
+    const size = 25 * (enemy.size || 1);
+
+    // Shadow
+    X.fillStyle = 'rgba(0,0,0,0.3)';
+    X.beginPath();
+    X.ellipse(ex, ey + size + 5, size * 0.8, 5, 0, 0, Math.PI * 2);
+    X.fill();
+
+    // Body
+    X.fillStyle = enemy.color;
+    if (enemy.symbol === 's') {
+      // Slime - blob shape
+      X.beginPath();
+      X.ellipse(ex, ey, size, size * 0.7, 0, 0, Math.PI * 2);
+      X.fill();
+    } else if (enemy.symbol === 'r') {
+      // Rat - oval
+      X.beginPath();
+      X.ellipse(ex, ey, size * 0.8, size * 0.5, 0, 0, Math.PI * 2);
+      X.fill();
+    } else {
+      // Humanoid - circle
+      X.beginPath();
+      X.arc(ex, ey, size, 0, Math.PI * 2);
+      X.fill();
+    }
+
+    // Letter
+    X.fillStyle = '#fff';
+    X.font = `bold ${Math.floor(size * 0.8)}px Consolas, monospace`;
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(enemy.symbol, ex, ey + 1);
+
+    // HP bar
+    const hpPct = enemy.hp / enemy.maxHp;
+    const hpW = size * 2;
+    X.fillStyle = '#400';
+    X.fillRect(ex - hpW/2, ey - size - 12, hpW, 6);
+    X.fillStyle = hpPct > 0.5 ? '#0c0' : hpPct > 0.25 ? '#cc0' : '#c00';
+    X.fillRect(ex - hpW/2, ey - size - 12, hpW * hpPct, 6);
+
+    // Name & HP
+    X.fillStyle = '#ccc';
+    X.font = '10px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText(`${enemy.name}`, ex, ey - size - 16);
+    X.fillText(`${enemy.hp}/${enemy.maxHp}`, ex, ey - size - 2);
+
+    // Status effects
+    if (enemy.conditions && enemy.conditions.length > 0) {
+      enemy.conditions.forEach((cond, ci) => {
+        X.fillStyle = cond.type === 'asleep' ? '#8888ff' : '#ffaa00';
+        X.font = '9px Consolas, monospace';
+        X.fillText(`[${cond.type}]`, ex, ey + size + 15 + ci * 12);
+      });
+    }
+  });
+
+  // Draw player character
+  const plX = canvasW / 2;
+  const plY = sceneY + sceneH * 0.75;
+  const cls = CLASSES[player.class];
+
+  X.fillStyle = 'rgba(0,0,0,0.3)';
+  X.beginPath();
+  X.ellipse(plX, plY + 25, 20, 6, 0, 0, Math.PI * 2);
+  X.fill();
+
+  X.fillStyle = cls.color;
+  X.beginPath();
+  X.arc(plX, plY, 22, 0, Math.PI * 2);
+  X.fill();
+  X.fillStyle = '#fff';
+  X.font = 'bold 16px Consolas, monospace';
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(player.class[0], plX, plY + 1);
+
+  // Player name & HP
+  X.fillStyle = '#ffd700';
+  X.font = 'bold 12px Consolas, monospace';
+  X.fillText(player.name, plX, plY + 35);
+  X.fillStyle = '#aaa';
+  X.font = '11px Consolas, monospace';
+  X.fillText(`HP: ${player.hp}/${player.maxHp}  AC: ${calcAC()}`, plX, plY + 50);
+
+  // Round indicator
+  X.fillStyle = '#888';
+  X.font = '12px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText(`Floor ${currentFloor + 1} | Round ${combatState.combatRound}`, canvasW/2, 20);
+
+  // Turn indicator
+  const currentCombatant = combatState.combatants[combatState.turnIndex];
+  X.fillStyle = '#ffd700';
+  X.font = 'bold 14px Consolas, monospace';
+  const turnName = currentCombatant.type === 'player' ? player.name : currentCombatant.entity.name;
+  X.fillText(`${turnName}'s Turn`, canvasW/2, 40);
+
+  // Combat log
+  const logX = 10;
+  const logY = sceneY + sceneH + 10;
+  const logH = isMobile ? 100 : 130;
+
+  X.fillStyle = 'rgba(0,0,0,0.8)';
+  X.fillRect(logX, logY, canvasW - 20, logH);
+  X.strokeStyle = '#333';
+  X.lineWidth = 1;
+  X.strokeRect(logX, logY, canvasW - 20, logH);
+
+  X.fillStyle = '#aaa';
+  X.font = `${isMobile ? 10 : 11}px Consolas, monospace`;
+  X.textAlign = 'left'; X.textBaseline = 'top';
+  const visibleLogs = combatLog.slice(-(Math.floor(logH / 14)));
+  visibleLogs.forEach((log, i) => {
+    X.fillStyle = log.includes('CRIT') ? '#ff4444' : log.includes('HIT') ? '#ffaa44' : log.includes('MISS') ? '#666' : log.includes('heal') || log.includes('Heal') ? '#44ff44' : log.includes('---') ? '#888' : '#ccc';
+    const displayLog = log.length > 70 ? log.substr(0, 67) + '...' : log;
+    X.fillText(displayLog, logX + 5, logY + 5 + i * 14);
+  });
+
+  // Action buttons area
+  const btnAreaY = logY + logH + 10;
+
+  // Handle different combat phases
+  if (combatState.phase === 'player_action') {
+    renderPlayerActions(btnAreaY);
+  } else if (combatState.phase === 'death_saves') {
+    renderDeathSaves(btnAreaY);
+  } else if (combatState.phase === 'enemy_turn') {
+    combatState.turnDelay -= dt;
+    if (combatState.turnDelay <= 0) {
+      const current = combatState.combatants[combatState.turnIndex];
+      enemyTurn(current.entity);
+    }
+    X.fillStyle = '#aaa';
+    X.font = '14px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('Enemy turn...', canvasW/2, btnAreaY + 20);
+  } else if (combatState.phase === 'victory') {
+    renderCombatVictory(btnAreaY);
+  } else if (combatState.phase === 'defeat') {
+    X.fillStyle = '#ff4444';
+    X.font = 'bold 24px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('DEFEATED', canvasW/2, btnAreaY + 20);
+    const bw = 160, bh = 40;
+    drawButton(canvasW/2 - bw/2, btnAreaY + 40, bw, bh, 'Main Menu', false, '#4a1a1a');
+    if (clickedInRect(canvasW/2 - bw/2, btnAreaY + 40, bw, bh)) {
+      SFX.click();
+      gameState = STATE.GAME_OVER;
+    }
+  } else if (combatState.phase === 'flee_success') {
+    combatState.turnDelay -= dt;
+    if (combatState.turnDelay <= 0) {
+      // Move player back a step
+      combatState = null;
+      gameState = STATE.DUNGEON;
+      dungeonMessage = 'You escaped!';
+      dungeonMessageTimer = 1.5;
+    }
+    X.fillStyle = '#ffd700';
+    X.font = '16px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('Escaping...', canvasW/2, btnAreaY + 20);
+  }
+
+  // Floating texts & particles
+  updateFloatingTexts(dt);
+  renderParticles();
+}
+
+function renderPlayerActions(btnAreaY) {
+  const btnW = isMobile ? 75 : 90;
+  const btnH = isMobile ? 35 : 38;
+  const btnGap = 6;
+  const cls = CLASSES[player.class];
+
+  if (combatState.selectedAction === 'spell') {
+    // Spell selection
+    X.fillStyle = '#aaa';
+    X.font = '12px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('Choose a spell:', canvasW/2, btnAreaY);
+
+    const spells = player.spells;
+    const spellBtnW = isMobile ? 130 : 160;
+    const spellBtnH = 32;
+    spells.forEach((spell, i) => {
+      const spellData = SPELLS[spell];
+      const canCast = spellData.level === 0 || player.spellSlots > 0;
+      const bx = canvasW/2 - spellBtnW/2;
+      const by = btnAreaY + 15 + i * (spellBtnH + 4);
+      const color = canCast ? '#2a2a5a' : '#1a1a1a';
+      drawButton(bx, by, spellBtnW, spellBtnH, `${spell} ${spellData.level === 0 ? '(C)' : `(Lv${spellData.level})`}`, false, color, canCast ? '#aaccff' : '#555');
+      if (clickedInRect(bx, by, spellBtnW, spellBtnH) && canCast) {
+        SFX.click();
+        playerCastSpell(spell);
+      }
+    });
+
+    // Back button
+    const backBtnW = 80;
+    drawButton(canvasW/2 - backBtnW/2, btnAreaY + 15 + spells.length * (spellBtnH + 4) + 5, backBtnW, 30, 'Back', false, '#333');
+    if (clickedInRect(canvasW/2 - backBtnW/2, btnAreaY + 15 + spells.length * (spellBtnH + 4) + 5, backBtnW, 30)) {
+      combatState.selectedAction = null;
+    }
+    return;
+  }
+
+  if (combatState.selectedAction === 'item') {
+    // Item selection
+    const consumables = player.inventory.filter(i => i.type === ITEM_TYPES.CONSUMABLE);
+    X.fillStyle = '#aaa';
+    X.font = '12px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('Choose an item:', canvasW/2, btnAreaY);
+
+    const itemBtnW = isMobile ? 160 : 180;
+    const itemBtnH = 30;
+    consumables.forEach((item, i) => {
+      const bx = canvasW/2 - itemBtnW/2;
+      const by = btnAreaY + 15 + i * (itemBtnH + 4);
+      drawButton(bx, by, itemBtnW, itemBtnH, item.name, false, '#2a3a2a');
+      if (clickedInRect(bx, by, itemBtnW, itemBtnH)) {
+        SFX.click();
+        useConsumable(item);
+      }
+    });
+
+    if (consumables.length === 0) {
+      X.fillStyle = '#666';
+      X.fillText('No consumable items', canvasW/2, btnAreaY + 30);
+    }
+
+    const backY = btnAreaY + 15 + Math.max(consumables.length, 1) * (itemBtnH + 4) + 5;
+    drawButton(canvasW/2 - 40, backY, 80, 30, 'Back', false, '#333');
+    if (clickedInRect(canvasW/2 - 40, backY, 80, 30)) {
+      combatState.selectedAction = null;
+    }
+    return;
+  }
+
+  // Main action buttons
+  const actions = [];
+  actions.push({ label: 'Attack', action: () => playerAttack() });
+  if (cls.isCaster && player.spells.length > 0) {
+    actions.push({ label: 'Spells', action: () => { combatState.selectedAction = 'spell'; } });
+  }
+  actions.push({ label: 'Dodge', action: () => playerDodge() });
+  actions.push({ label: 'Item', action: () => { combatState.selectedAction = 'item'; } });
+  actions.push({ label: 'Flee', action: () => playerFlee() });
+
+  // Class-specific actions
+  if (player.class === 'Fighter' && !player.secondWindUsed) {
+    actions.push({ label: '2nd Wind', action: () => handleSecondWind() });
+  }
+  if (player.class === 'Fighter' && player.level >= 2 && !player.actionSurgeUsed) {
+    actions.push({ label: 'Surge', action: () => handleActionSurge() });
+  }
+
+  const totalW = actions.length * (btnW + btnGap) - btnGap;
+  const startX = canvasW/2 - totalW/2;
+
+  // Wrap buttons if too wide
+  const maxPerRow = Math.floor((canvasW - 20) / (btnW + btnGap));
+  const rows = Math.ceil(actions.length / maxPerRow);
+
+  actions.forEach((action, i) => {
+    const row = Math.floor(i / maxPerRow);
+    const col = i % maxPerRow;
+    const rowCount = Math.min(maxPerRow, actions.length - row * maxPerRow);
+    const rowW = rowCount * (btnW + btnGap) - btnGap;
+    const rowStartX = canvasW/2 - rowW/2;
+
+    const bx = rowStartX + col * (btnW + btnGap);
+    const by = btnAreaY + row * (btnH + 5);
+    drawButton(bx, by, btnW, btnH, action.label, false, '#2a2a3a');
+    if (clickedInRect(bx, by, btnW, btnH)) {
+      SFX.click();
+      action.action();
+    }
+  });
+}
+
+function renderDeathSaves(btnAreaY) {
+  X.fillStyle = '#ff4444';
+  X.font = 'bold 18px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('DEATH SAVING THROWS', canvasW/2, btnAreaY);
+
+  // Show current saves
+  X.font = '14px Consolas, monospace';
+  X.fillStyle = '#44ff44';
+  X.fillText(`Successes: ${'O'.repeat(player.deathSaves.successes)}${'_'.repeat(3 - player.deathSaves.successes)}`, canvasW/2, btnAreaY + 25);
+  X.fillStyle = '#ff4444';
+  X.fillText(`Failures:  ${'X'.repeat(player.deathSaves.failures)}${'_'.repeat(3 - player.deathSaves.failures)}`, canvasW/2, btnAreaY + 45);
+
+  const bw = 140, bh = 40;
+  drawButton(canvasW/2 - bw/2, btnAreaY + 65, bw, bh, 'Roll Save', false, '#4a2a2a');
+  if (clickedInRect(canvasW/2 - bw/2, btnAreaY + 65, bw, bh)) {
+    SFX.click();
+    doDeathSave();
+  }
+}
+
+function renderCombatVictory(btnAreaY) {
+  // Calculate XP
+  const deadEnemies = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp <= 0);
+  let totalXP = 0;
+  deadEnemies.forEach(c => totalXP += c.entity.xp);
+
+  X.fillStyle = '#ffd700';
+  X.font = 'bold 20px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('VICTORY!', canvasW/2, btnAreaY);
+  X.fillStyle = '#aaa';
+  X.font = '14px Consolas, monospace';
+  X.fillText(`+${totalXP} XP`, canvasW/2, btnAreaY + 25);
+
+  const bw = 140, bh = 40;
+  drawButton(canvasW/2 - bw/2, btnAreaY + 45, bw, bh, 'Continue', false, '#2a4a2a');
+  if (clickedInRect(canvasW/2 - bw/2, btnAreaY + 45, bw, bh)) {
+    SFX.click();
+    // Award XP
+    player.xp += totalXP;
+    // Mark room cleared
+    combatState.room.cleared = true;
+    combatState.room.enemies = combatState.room.enemies.filter(e => e.hp > 0);
+
+    // Drop random item from combat
+    if (Math.random() < 0.3) {
+      const item = generateTreasureItem(currentFloor);
+      player.inventory.push(item);
+      dungeonMessage = `Found: ${item.name}!`;
+      dungeonMessageTimer = 2;
+    }
+
+    // Drop gold
+    const goldDrop = rand(2 + currentFloor * 3, 10 + currentFloor * 8);
+    player.gold += goldDrop;
+
+    // Reset combat buffs
+    player.huntersMark = false;
+    player.conditions = player.conditions.filter(c => c.type !== 'dodging');
+
+    // Check level up
+    if (player.level < 10 && player.xp >= XP_THRESHOLDS[player.level]) {
+      gameState = STATE.LEVEL_UP;
+    } else {
+      gameState = STATE.DUNGEON;
+    }
+    combatState = null;
+  }
+}
+
+// ============================================================
+// LEVEL UP
+// ============================================================
+function updateLevelUp() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+  const cls = CLASSES[player.class];
+  const newLevel = player.level + 1;
+
+  // Calculate HP gain
+  const hpGain = Math.floor(cls.hitDie / 2) + 1 + mod(player.stats.CON);
+
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 24 : 30}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('LEVEL UP!', cx, 80);
+
+  X.fillStyle = '#fff';
+  X.font = `bold ${isMobile ? 18 : 22}px Consolas, monospace`;
+  X.fillText(`Level ${player.level} -> Level ${newLevel}`, cx, 120);
+
+  X.fillStyle = '#aaa';
+  X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
+  X.fillText(`HP: +${hpGain} (${player.maxHp} -> ${player.maxHp + hpGain})`, cx, 160);
+  X.fillText(`Proficiency Bonus: +${PROF_BONUS[newLevel]}`, cx, 185);
+
+  if (cls.isCaster) {
+    const newSlots = SPELL_SLOTS[newLevel];
+    X.fillText(`Spell Slots: ${player.maxSpellSlots} -> ${newSlots}`, cx, 210);
+  }
+
+  // New features
+  if (cls.features[newLevel]) {
+    X.fillStyle = '#ffaa44';
+    X.font = 'bold 14px Consolas, monospace';
+    X.fillText('New Feature:', cx, 245);
+    X.fillStyle = '#ccc';
+    X.font = '13px Consolas, monospace';
+    const lines = wrapText(cls.features[newLevel], canvasW - 80, 13);
+    lines.forEach((line, i) => {
+      X.fillText(line, cx, 265 + i * 18);
+    });
+  }
+
+  // Ability Score Improvement at level 4, 8
+  let abilityImprove = (newLevel === 4 || newLevel === 8);
+
+  if (abilityImprove) {
+    X.fillStyle = '#44ff44';
+    X.font = 'bold 14px Consolas, monospace';
+    X.fillText('Ability Score Improvement: +2 to one stat or +1 to two stats', cx, 320);
+
+    // Simple: +2 to primary stat
+    X.fillStyle = '#aaa';
+    X.font = '12px Consolas, monospace';
+    X.fillText(`(Auto: +2 ${cls.primary})`, cx, 340);
+  }
+
+  const bw = 180, bh = 45;
+  drawButton(cx - bw/2, canvasH - 100, bw, bh, 'Accept', false, '#2a4a2a');
+  if (clickedInRect(cx - bw/2, canvasH - 100, bw, bh)) {
+    SFX.levelUp();
+    player.level = newLevel;
+    player.maxHp += hpGain;
+    player.hp = player.maxHp; // Full heal on level up
+    if (cls.isCaster) {
+      player.maxSpellSlots = SPELL_SLOTS[newLevel];
+      player.spellSlots = player.maxSpellSlots;
+    }
+    if (cls.features[newLevel]) {
+      player.features[newLevel] = cls.features[newLevel];
+    }
+    if (abilityImprove) {
+      player.stats[cls.primary] = Math.min(20, player.stats[cls.primary] + 2);
+    }
+
+    // Check if still need to level up more
+    if (player.level < 10 && player.xp >= XP_THRESHOLDS[player.level]) {
+      // Keep showing level up
+    } else {
+      gameState = STATE.DUNGEON;
+    }
+  }
+}
+
+// ============================================================
+// INVENTORY SCREEN
+// ============================================================
+let invScroll = 0;
+
+function updateInventory() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+  const panelW = Math.min(canvasW - 20, 420);
+  const panelX = cx - panelW / 2;
+
+  // Title
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 18 : 22}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('INVENTORY', cx, 30);
+
+  // Gold
+  X.fillStyle = '#ffd700';
+  X.font = '14px Consolas, monospace';
+  X.fillText(`Gold: ${player.gold}`, cx, 52);
+
+  // Equipment slots
+  const eqY = 70;
+  X.fillStyle = '#aaa';
+  X.font = 'bold 13px Consolas, monospace';
+  X.textAlign = 'left';
+  X.fillText('EQUIPPED:', panelX + 5, eqY);
+
+  const slots = ['weapon', 'armor', 'shield'];
+  slots.forEach((slot, i) => {
+    const item = getEquippedItem(slot);
+    const sy = eqY + 18 + i * 24;
+    const slotLabel = slot.charAt(0).toUpperCase() + slot.slice(1);
+
+    X.fillStyle = '#555';
+    X.fillRect(panelX, sy, panelW, 22);
+    X.strokeStyle = '#444';
+    X.lineWidth = 1;
+    X.strokeRect(panelX, sy, panelW, 22);
+
+    X.fillStyle = '#888';
+    X.font = '11px Consolas, monospace';
+    X.textAlign = 'left';
+    X.fillText(`${slotLabel}:`, panelX + 5, sy + 15);
+
+    if (item) {
+      X.fillStyle = RARITY_COLORS[item.rarity || 'common'];
+      X.fillText(item.name, panelX + 70, sy + 15);
+      X.fillStyle = '#888';
+      X.textAlign = 'right';
+      X.fillText(item.desc || '', panelX + panelW - 50, sy + 15);
+
+      // Unequip button
+      drawButton(panelX + panelW - 45, sy + 2, 40, 18, 'Off', false, '#4a2a2a');
+      if (clickedInRect(panelX + panelW - 45, sy + 2, 40, 18)) {
+        SFX.click();
+        player.equipped[slot] = null;
+      }
+    } else {
+      X.fillStyle = '#444';
+      X.fillText('(empty)', panelX + 70, sy + 15);
+    }
+  });
+
+  // Inventory list
+  const listY = eqY + 18 + slots.length * 24 + 15;
+  X.fillStyle = '#aaa';
+  X.font = 'bold 13px Consolas, monospace';
+  X.textAlign = 'left';
+  X.fillText(`ITEMS (${player.inventory.length}):`, panelX + 5, listY);
+
+  const itemH = 28;
+  const maxVisible = Math.floor((canvasH - listY - 60) / itemH);
+  const visibleItems = player.inventory.slice(invScroll, invScroll + maxVisible);
+
+  visibleItems.forEach((item, i) => {
+    const iy = listY + 18 + i * itemH;
+    const isEquipped = Object.values(player.equipped).includes(item.id);
+
+    X.fillStyle = isEquipped ? '#1a2a1a' : '#1a1a22';
+    X.fillRect(panelX, iy, panelW, itemH - 2);
+    X.strokeStyle = RARITY_COLORS[item.rarity || 'common'] + '60';
+    X.lineWidth = 1;
+    X.strokeRect(panelX, iy, panelW, itemH - 2);
+
+    // Item name
+    X.fillStyle = RARITY_COLORS[item.rarity || 'common'];
+    X.font = '11px Consolas, monospace';
+    X.textAlign = 'left';
+    X.fillText(item.name + (isEquipped ? ' [E]' : ''), panelX + 5, iy + 16);
+
+    // Item desc
+    X.fillStyle = '#666';
+    X.font = '10px Consolas, monospace';
+    X.textAlign = 'right';
+    X.fillText(item.desc || '', panelX + panelW - 80, iy + 16);
+
+    // Action button
+    if (item.type === ITEM_TYPES.WEAPON && !isEquipped) {
+      drawButton(panelX + panelW - 75, iy + 2, 70, itemH - 6, 'Equip', false, '#2a3a2a');
+      if (clickedInRect(panelX + panelW - 75, iy + 2, 70, itemH - 6)) {
+        SFX.click();
+        player.equipped.weapon = item.id;
+      }
+    } else if (item.type === ITEM_TYPES.ARMOR && !isEquipped) {
+      drawButton(panelX + panelW - 75, iy + 2, 70, itemH - 6, 'Equip', false, '#2a3a2a');
+      if (clickedInRect(panelX + panelW - 75, iy + 2, 70, itemH - 6)) {
+        SFX.click();
+        player.equipped.armor = item.id;
+      }
+    } else if (item.type === ITEM_TYPES.SHIELD && !isEquipped) {
+      drawButton(panelX + panelW - 75, iy + 2, 70, itemH - 6, 'Equip', false, '#2a3a2a');
+      if (clickedInRect(panelX + panelW - 75, iy + 2, 70, itemH - 6)) {
+        SFX.click();
+        player.equipped.shield = item.id;
+      }
+    } else if (item.type === ITEM_TYPES.CONSUMABLE && gameState !== STATE.COMBAT) {
+      drawButton(panelX + panelW - 75, iy + 2, 70, itemH - 6, 'Use', false, '#2a2a3a');
+      if (clickedInRect(panelX + panelW - 75, iy + 2, 70, itemH - 6)) {
+        SFX.click();
+        useItemOutOfCombat(item);
+      }
+    } else if (item.type === ITEM_TYPES.TREASURE) {
+      drawButton(panelX + panelW - 75, iy + 2, 70, itemH - 6, 'Sell', false, '#3a3a2a');
+      if (clickedInRect(panelX + panelW - 75, iy + 2, 70, itemH - 6)) {
+        SFX.click();
+        player.gold += item.value || 5;
+        const idx = player.inventory.findIndex(inv => inv.id === item.id);
+        if (idx !== -1) player.inventory.splice(idx, 1);
+      }
+    }
+  });
+
+  // Scroll indicators
+  if (invScroll > 0) {
+    X.fillStyle = '#ffd700';
+    X.font = '12px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('^ Scroll Up ^', cx, listY + 8);
+  }
+  if (invScroll + maxVisible < player.inventory.length) {
+    X.fillStyle = '#ffd700';
+    X.font = '12px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('v Scroll Down v', cx, canvasH - 50);
+  }
+
+  // Scroll with arrow keys
+  if (keys['arrowup'] || keys['w']) { keys['arrowup'] = false; keys['w'] = false; invScroll = Math.max(0, invScroll - 1); }
+  if (keys['arrowdown'] || keys['s']) { keys['arrowdown'] = false; keys['s'] = false; invScroll = Math.min(Math.max(0, player.inventory.length - maxVisible), invScroll + 1); }
+
+  // Close button
+  const closeBtnW = 100, closeBtnH = 35;
+  drawButton(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH, 'Close [I]', false, '#333');
+  if (clickedInRect(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH) || keys['i'] || keys['I'] || keys['Escape']) {
+    keys['i'] = false; keys['I'] = false; keys['Escape'] = false;
+    SFX.click();
+    gameState = STATE.DUNGEON;
+  }
+}
+
+function useItemOutOfCombat(item) {
+  if (item.effect === 'heal') {
+    const heal = rollDice(item.healDice[0], item.healDice[1]) + (item.healBonus || 0);
+    player.hp = Math.min(player.maxHp, player.hp + heal);
+    addFloatingText(canvasW/2, canvasH/2, `+${heal} HP`, '#44ff44');
+    SFX.heal();
+  } else if (item.effect === 'cure_poison') {
+    player.conditions = player.conditions.filter(c => c.type !== 'poisoned');
+    SFX.heal();
+  }
+  const idx = player.inventory.findIndex(i => i.id === item.id);
+  if (idx !== -1) player.inventory.splice(idx, 1);
+}
+
+// ============================================================
+// CHARACTER SHEET
+// ============================================================
+function updateCharSheet() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+  const race = RACES[player.race];
+  const cls = CLASSES[player.class];
+  const panelW = Math.min(canvasW - 20, 400);
+  const panelX = cx - panelW / 2;
+
+  // Title
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 18 : 22}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText(player.name, cx, 30);
+
+  X.fillStyle = race.color;
+  X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
+  X.fillText(`${player.race} ${player.class} | Level ${player.level}`, cx, 52);
+
+  // Stats
+  let y = 75;
+  X.fillStyle = '#aaa';
+  X.font = 'bold 12px Consolas, monospace';
+  X.textAlign = 'left';
+
+  const colW = panelW / 3;
+  STAT_NAMES.forEach((stat, i) => {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    const sx = panelX + col * colW;
+    const sy = y + row * 50;
+
+    // Stat box
+    X.fillStyle = '#1a1a2a';
+    X.fillRect(sx + 2, sy, colW - 4, 45);
+    X.strokeStyle = '#444';
+    X.lineWidth = 1;
+    X.strokeRect(sx + 2, sy, colW - 4, 45);
+
+    X.fillStyle = '#888';
+    X.font = '10px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText(stat, sx + colW/2, sy + 12);
+
+    X.fillStyle = '#fff';
+    X.font = 'bold 18px Consolas, monospace';
+    X.fillText(player.stats[stat].toString(), sx + colW/2, sy + 30);
+
+    const m = mod(player.stats[stat]);
+    X.fillStyle = m >= 0 ? '#4a4' : '#a44';
+    X.font = '11px Consolas, monospace';
+    X.fillText(`${m >= 0 ? '+' : ''}${m}`, sx + colW/2, sy + 42);
+  });
+
+  // Combat info
+  y += 110;
+  const infoItems = [
+    { label: 'HP', value: `${player.hp}/${player.maxHp}`, color: '#ff4444' },
+    { label: 'AC', value: calcAC().toString(), color: '#4488ff' },
+    { label: 'Attack', value: `+${calcAttackBonus()}`, color: '#ff8844' },
+    { label: 'Prof Bonus', value: `+${PROF_BONUS[player.level]}`, color: '#aaa' },
+    { label: 'XP', value: `${player.xp}/${XP_THRESHOLDS[player.level] || 'MAX'}`, color: '#ffd700' },
+    { label: 'Initiative', value: `+${mod(player.stats.DEX)}`, color: '#aaa' },
+  ];
+
+  const infoColW = panelW / 3;
+  infoItems.forEach((info, i) => {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    const ix = panelX + col * infoColW + 5;
+    const iy = y + row * 22;
+
+    X.fillStyle = '#888';
+    X.font = '11px Consolas, monospace';
+    X.textAlign = 'left';
+    X.fillText(`${info.label}: `, ix, iy);
+    X.fillStyle = info.color;
+    X.fillText(info.value, ix + 55, iy);
+  });
+
+  // Saving throws
+  y += 52;
+  X.fillStyle = '#aaa';
+  X.font = 'bold 12px Consolas, monospace';
+  X.textAlign = 'left';
+  X.fillText('Saving Throws:', panelX + 5, y);
+  X.fillStyle = '#888';
+  X.font = '11px Consolas, monospace';
+  X.fillText(player.savingThrows.join(', '), panelX + 120, y);
+
+  // Skills
+  y += 22;
+  X.fillStyle = '#aaa';
+  X.font = 'bold 12px Consolas, monospace';
+  X.fillText('Proficiencies:', panelX + 5, y);
+  X.fillStyle = '#888';
+  X.font = '11px Consolas, monospace';
+  const skillStr = player.proficiencies.join(', ');
+  const skillLines = wrapText(skillStr, panelW - 15, 11);
+  skillLines.forEach((line, i) => {
+    X.fillText(line, panelX + 5, y + 16 + i * 14);
+  });
+
+  y += 16 + skillLines.length * 14 + 8;
+
+  // Racial trait
+  X.fillStyle = race.color;
+  X.font = 'bold 12px Consolas, monospace';
+  X.fillText('Racial Trait:', panelX + 5, y);
+  X.fillStyle = '#888';
+  X.font = '11px Consolas, monospace';
+  X.fillText(race.trait, panelX + 5, y + 16);
+  y += 35;
+
+  // Class features
+  X.fillStyle = cls.color;
+  X.font = 'bold 12px Consolas, monospace';
+  X.fillText('Class Features:', panelX + 5, y);
+  X.fillStyle = '#888';
+  X.font = '11px Consolas, monospace';
+  let featY = y + 16;
+  for (const [lv, feat] of Object.entries(player.features)) {
+    X.fillText(`Lv${lv}: ${feat}`, panelX + 5, featY);
+    featY += 14;
+  }
+
+  // Spells
+  if (player.spells.length > 0) {
+    const spY = featY + 8;
+    X.fillStyle = '#88aaff';
+    X.font = 'bold 12px Consolas, monospace';
+    X.fillText(`Spells (Slots: ${player.spellSlots}/${player.maxSpellSlots}):`, panelX + 5, spY);
+    X.font = '11px Consolas, monospace';
+    player.spells.forEach((sp, i) => {
+      const spellData = SPELLS[sp];
+      X.fillStyle = '#aaccff';
+      X.fillText(`${sp} - ${spellData.desc}`, panelX + 5, spY + 16 + i * 14);
+    });
+  }
+
+  // Close button
+  const closeBtnW = 100, closeBtnH = 35;
+  drawButton(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH, 'Close [C]', false, '#333');
+  if (clickedInRect(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH) || keys['c'] || keys['C'] || keys['Escape']) {
+    keys['c'] = false; keys['C'] = false; keys['Escape'] = false;
+    SFX.click();
+    gameState = STATE.DUNGEON;
+  }
+}
+
+// ============================================================
+// HELP SCREEN
+// ============================================================
+function updateHelp() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+
+  X.fillStyle = '#ffd700';
+  X.font = 'bold 20px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('CONTROLS', cx, 35);
+
+  const controls = [
+    { key: 'WASD / Arrows', action: 'Move' },
+    { key: 'E', action: 'Interact (doors, stairs, shrine, treasure)' },
+    { key: 'I', action: 'Open/Close Inventory' },
+    { key: 'C', action: 'Open/Close Character Sheet' },
+    { key: '?', action: 'Open/Close Help' },
+    { key: 'ESC', action: 'Close current panel' },
+    { key: '', action: '' },
+    { key: 'COMBAT', action: '' },
+    { key: 'Click', action: 'Select actions during combat' },
+    { key: '', action: '' },
+    { key: 'TIPS', action: '' },
+    { key: '', action: 'Rest at shrines to restore HP and spells.' },
+    { key: '', action: 'Combat rooms must be cleared before looting.' },
+    { key: '', action: 'Equip better gear from the inventory.' },
+    { key: '', action: 'Use potions outside combat with the Use button.' },
+    { key: '', action: 'Save at shrines or with the Save button.' },
+    { key: '', action: 'Descend 3 floors to complete the dungeon!' },
+  ];
+
+  X.font = '13px Consolas, monospace';
+  X.textAlign = 'left';
+  controls.forEach((ctrl, i) => {
+    const y = 65 + i * 22;
+    if (ctrl.key === 'COMBAT' || ctrl.key === 'TIPS') {
+      X.fillStyle = '#ffd700';
+      X.font = 'bold 14px Consolas, monospace';
+      X.fillText(ctrl.key, cx - 150, y);
+      X.font = '13px Consolas, monospace';
+      return;
+    }
+    if (ctrl.key) {
+      X.fillStyle = '#fff';
+      X.fillText(ctrl.key, cx - 150, y);
+      X.fillStyle = '#888';
+      X.fillText(ctrl.action, cx - 10, y);
+    } else {
+      X.fillStyle = '#888';
+      X.fillText(ctrl.action, cx - 150, y);
+    }
+  });
+
+  const closeBtnW = 100, closeBtnH = 35;
+  drawButton(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH, 'Close [?]', false, '#333');
+  if (clickedInRect(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH) || keys['?'] || keys['/'] || keys['Escape']) {
+    keys['?'] = false; keys['/'] = false; keys['Escape'] = false;
+    SFX.click();
+    helpOpen = false;
+    gameState = STATE.DUNGEON;
+  }
+}
+
+// ============================================================
+// GAME OVER SCREEN
+// ============================================================
+function updateGameOver() {
+  X.fillStyle = '#0a0a0a';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+
+  X.fillStyle = '#ff2222';
+  X.font = `bold ${isMobile ? 28 : 36}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('YOU HAVE FALLEN', cx, canvasH * 0.3);
+
+  X.fillStyle = '#888';
+  X.font = `${isMobile ? 14 : 16}px Consolas, monospace`;
+  X.fillText(`${player.name} the ${player.race} ${player.class}`, cx, canvasH * 0.38);
+  X.fillText(`Level ${player.level} | Floor ${currentFloor + 1}`, cx, canvasH * 0.43);
+  X.fillText(`XP: ${player.xp} | Gold: ${player.gold}`, cx, canvasH * 0.48);
+
+  X.fillStyle = '#555';
+  X.font = '13px Consolas, monospace';
+  X.fillText('The dungeon claims another soul...', cx, canvasH * 0.56);
+
+  const btnW = 180, btnH = 45;
+  drawButton(cx - btnW/2, canvasH * 0.65, btnW, btnH, 'Main Menu', false, '#4a1a1a');
+  if (clickedInRect(cx - btnW/2, canvasH * 0.65, btnW, btnH)) {
+    SFX.click();
+    gameState = STATE.TITLE;
+  }
+
+  // Load save if exists
+  const hasSave = localStorage.getItem('dof_save') !== null;
+  if (hasSave) {
+    drawButton(cx - btnW/2, canvasH * 0.65 + btnH + 15, btnW, btnH, 'Load Save', false, '#2a2a4a');
+    if (clickedInRect(cx - btnW/2, canvasH * 0.65 + btnH + 15, btnW, btnH)) {
+      SFX.click();
+      loadGame();
+    }
+  }
+}
+
+// ============================================================
+// VICTORY SCREEN
+// ============================================================
+function updateVictory() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  const cx = canvasW / 2;
+
+  // Golden glow effect
+  const t = gameTime * 2;
+  X.fillStyle = `rgba(255,215,0,${0.05 + Math.sin(t) * 0.03})`;
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  X.fillStyle = '#ffd700';
+  X.font = `bold ${isMobile ? 28 : 40}px Consolas, monospace`;
+  X.textAlign = 'center';
+  X.fillText('VICTORY!', cx, canvasH * 0.2);
+
+  X.fillStyle = '#fff';
+  X.font = `${isMobile ? 16 : 20}px Consolas, monospace`;
+  X.fillText('You have conquered the Dungeons of Fate!', cx, canvasH * 0.3);
+
+  X.fillStyle = '#aaa';
+  X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
+  X.fillText(`${player.name} the ${player.race} ${player.class}`, cx, canvasH * 0.4);
+  X.fillText(`Level ${player.level}`, cx, canvasH * 0.45);
+  X.fillText(`XP: ${player.xp} | Gold: ${player.gold}`, cx, canvasH * 0.5);
+  X.fillText(`Items collected: ${player.inventory.length}`, cx, canvasH * 0.55);
+
+  X.fillStyle = '#ffd700';
+  X.font = '14px Consolas, monospace';
+  X.fillText('The depths have yielded their secrets to you.', cx, canvasH * 0.65);
+  X.fillText('Your legend will echo through the ages.', cx, canvasH * 0.7);
+
+  const btnW = 180, btnH = 45;
+  drawButton(cx - btnW/2, canvasH * 0.8, btnW, btnH, 'Main Menu', false, '#4a3a0a');
+  if (clickedInRect(cx - btnW/2, canvasH * 0.8, btnW, btnH)) {
+    SFX.click();
+    gameState = STATE.TITLE;
+  }
+}
+
+// ============================================================
+// FLOATING TEXTS
+// ============================================================
+function addFloatingText(x, y, text, color) {
+  floatingTexts.push({ x, y, text, color, life: 1.5, maxLife: 1.5 });
+}
+
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.life -= dt;
+    ft.y -= 30 * dt;
+
+    if (ft.life <= 0) { floatingTexts.splice(i, 1); continue; }
+
+    const alpha = ft.life / ft.maxLife;
+    X.fillStyle = ft.color;
+    X.globalAlpha = alpha;
+    X.font = 'bold 16px Consolas, monospace';
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(ft.text, ft.x, ft.y);
+    X.globalAlpha = 1;
+  }
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 200,
+      vy: (Math.random() - 0.5) * 200,
+      life: 0.5 + Math.random() * 0.3,
+      maxLife: 0.8,
+      color,
+      size: 2 + Math.random() * 3,
+    });
+  }
+}
+
+function renderParticles() {
+  for (const p of particles) {
+    const alpha = p.life / p.maxLife;
+    X.fillStyle = p.color;
+    X.globalAlpha = alpha;
+    X.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+  }
+  X.globalAlpha = 1;
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    p.size *= 0.98;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+// ============================================================
+// SAVE / LOAD
+// ============================================================
+function saveGame() {
+  const saveData = {
+    player: deepClone(player),
+    dungeon: deepClone(dungeon),
+    currentFloor: currentFloor,
+    timestamp: Date.now(),
+    version: '1.0',
+  };
+  try {
+    localStorage.setItem('dof_save', JSON.stringify(saveData));
+  } catch(e) {
+    console.error('Save failed:', e);
+  }
+}
+
+function loadGame() {
+  try {
+    const data = JSON.parse(localStorage.getItem('dof_save'));
+    if (!data || !data.player || !data.dungeon) {
+      dungeonMessage = 'Save data corrupted!';
+      dungeonMessageTimer = 2;
+      return;
+    }
+    player = data.player;
+    dungeon = data.dungeon;
+    currentFloor = data.currentFloor;
+    gameState = STATE.DUNGEON;
+    revealArea(player.x, player.y, player.torchRadius);
+    dungeonMessage = 'Game loaded!';
+    dungeonMessageTimer = 1.5;
+  } catch(e) {
+    console.error('Load failed:', e);
+    dungeonMessage = 'Failed to load!';
+    dungeonMessageTimer = 2;
+  }
+}
+
+// ============================================================
+// MAIN GAME LOOP
+// ============================================================
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
+  lastTime = timestamp;
+  gameTime += dt;
+
+  switch (gameState) {
+    case STATE.TITLE:        updateTitle(); break;
+    case STATE.CHAR_CREATE:  updateCharCreate(); break;
+    case STATE.DUNGEON:      updateDungeon(dt); break;
+    case STATE.COMBAT:       updateCombat(dt); break;
+    case STATE.INVENTORY:    updateInventory(); break;
+    case STATE.CHAR_SHEET:   updateCharSheet(); break;
+    case STATE.GAME_OVER:    updateGameOver(); break;
+    case STATE.VICTORY:      updateVictory(); break;
+    case STATE.HELP:         updateHelp(); break;
+    case STATE.LEVEL_UP:     updateLevelUp(); break;
+  }
+
+  updateParticles(dt);
+
+  // Reset click
+  mouseClicked = false;
+
+  requestAnimationFrame(gameLoop);
+}
+
+// Handle ? key globally
+document.addEventListener('keydown', e => {
+  if (e.key === '?' && gameState === STATE.DUNGEON) {
+    gameState = STATE.HELP;
+    e.preventDefault();
+  }
+});
+
+// Start
+lastTime = performance.now();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
