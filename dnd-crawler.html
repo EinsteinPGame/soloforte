@@ -97,7 +97,7 @@ const SFX = {
 // ============================================================
 // GAME STATE
 // ============================================================
-const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10 };
+const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10, NPC_TALK: 11 };
 let gameState = STATE.TITLE;
 let player = null;
 let dungeon = null;
@@ -111,6 +111,7 @@ let lastTime = 0;
 let helpOpen = false;
 let shopRoom = null;
 let shopScrollY = 0;
+let npcRoom = null;
 
 // ============================================================
 // DATA DEFINITIONS
@@ -332,6 +333,28 @@ const SHOP_ITEMS = {
     { name: 'Shield', cost: 40, item: 'Shield' },
   ],
 };
+
+// Recruitable companion NPCs
+const COMPANION_POOL = [
+  { name: 'Elara the Swift', class: 'Rogue', hp: 22, maxHp: 22, ac: 14, attacks: [{name:'Twin Daggers',bonus:5,damage:[1,4],damageBonus:3}],
+    color: '#808080', symbol: 'E', personality: 'A quick-witted rogue who escaped the dungeon once before.',
+    greeting: '"Need a blade at your back? I know these tunnels."', loyalty: 50 },
+  { name: 'Brother Aldric', class: 'Cleric', hp: 28, maxHp: 28, ac: 16, attacks: [{name:'Mace',bonus:4,damage:[1,6],damageBonus:2}],
+    color: '#e0c040', symbol: 'A', personality: 'A stoic cleric seeking to purify the dungeon depths.',
+    greeting: '"The light guides my steps. Shall it guide yours?"', loyalty: 50, canHeal: true },
+  { name: 'Grimjaw', class: 'Barbarian', hp: 35, maxHp: 35, ac: 12, attacks: [{name:'Greataxe',bonus:6,damage:[1,12],damageBonus:4}],
+    color: '#a04020', symbol: 'G', personality: 'A scarred half-orc with a thirst for battle.',
+    greeting: '"GRIMJAW SMASH! ...ahem. I mean, need a strong arm?"', loyalty: 50 },
+  { name: 'Lyra Starweave', class: 'Wizard', hp: 18, maxHp: 18, ac: 12, attacks: [{name:'Arcane Bolt',bonus:6,damage:[1,10],damageBonus:3}],
+    color: '#6060d0', symbol: 'L', personality: 'A young wizard researching ancient magic in the depths.',
+    greeting: '"Fascinating... these ruins hold secrets beyond measure."', loyalty: 50 },
+  { name: 'Theron Shadowstep', class: 'Ranger', hp: 25, maxHp: 25, ac: 14, attacks: [{name:'Longbow',bonus:5,damage:[1,8],damageBonus:3}],
+    color: '#40a040', symbol: 'T', personality: 'A silent ranger tracking a beast through the dungeon.',
+    greeting: '"Stay quiet. I\'ve been tracking something... large."', loyalty: 50 },
+  { name: 'Seraphina', class: 'Paladin', hp: 30, maxHp: 30, ac: 17, attacks: [{name:'Holy Blade',bonus:5,damage:[1,8],damageBonus:3}],
+    color: '#f0d060', symbol: 'S', personality: 'A paladin on a sacred quest to cleanse the dungeon.',
+    greeting: '"By my oath, I shall not let evil stand. Join me?"', loyalty: 50, canHeal: true },
+];
 
 // XP thresholds for leveling
 const XP_THRESHOLDS = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000];
@@ -1237,8 +1260,10 @@ function createCharacter() {
   // Auto-equip
   autoEquip();
 
-  // Init explored tiles for 3 floors
-  player.exploredTiles = [[], [], []];
+  // Init explored tiles for 5 floors
+  player.exploredTiles = [[], [], [], [], []];
+  player.companion = null; // recruited companion NPC
+  player.companionsSeen = []; // track which NPCs have been encountered
 }
 
 function autoEquip() {
@@ -1313,7 +1338,7 @@ function getPassivePerception() {
 // DUNGEON GENERATION
 // ============================================================
 const TILE = { VOID: 0, WALL: 1, FLOOR: 2, DOOR: 3, STAIRS_DOWN: 4, STAIRS_UP: 5, CORRIDOR: 6 };
-const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start', BOSS: 'boss', SHOP: 'shop' };
+const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start', BOSS: 'boss', SHOP: 'shop', NPC: 'npc' };
 const MAP_W = 48, MAP_H = 48;
 const TILE_SIZE = 24;
 
@@ -1390,6 +1415,12 @@ function generateFloor(floorNum) {
   const midIdx = Math.floor(rooms.length / 2);
   if (rooms.length >= 5 && !rooms[midIdx].type) {
     rooms[midIdx].type = ROOM_TYPE.SHOP;
+  }
+
+  // NPC room: one per floor (pick a room between start and mid)
+  const npcIdx = Math.floor(rooms.length / 3);
+  if (rooms.length >= 6 && !rooms[npcIdx].type) {
+    rooms[npcIdx].type = ROOM_TYPE.NPC;
   }
 
   // Assign remaining rooms
@@ -1497,6 +1528,10 @@ function generateFloor(floorNum) {
       };
       boss.hp = boss.maxHp;
       room.enemies = [boss];
+    } else if (room.type === ROOM_TYPE.NPC) {
+      room.npc = deepClone(COMPANION_POOL[floorNum % COMPANION_POOL.length]);
+      room.npcRecruited = false;
+      room.npcDismissed = false;
     } else if (room.type === ROOM_TYPE.SHOP) {
       room.shopStock = [];
       // Always stock potions
@@ -1815,6 +1850,13 @@ function enterRoom(room) {
         SFX.click();
       }
       break;
+    case ROOM_TYPE.NPC:
+      if (room.npc && !room.npcRecruited && !room.npcDismissed) {
+        dungeonMessage = `${room.npc.name} stands here. ${room.npc.greeting}`;
+        dungeonMessageTimer = 3;
+        SFX.click();
+      }
+      break;
   }
 }
 
@@ -1879,6 +1921,7 @@ function handleInteract(floor, room) {
       player.wildShapeUsed = 0;
       player.sorceryPoints = player.maxSorceryPoints;
       player.conditions = [];
+      if (player.companion) { player.companion.hp = player.companion.maxHp; }
       dungeonMessage = 'Rested at shrine. HP and spells restored!';
       dungeonMessageTimer = 2.5;
       SFX.heal();
@@ -1905,6 +1948,12 @@ function handleInteract(floor, room) {
       shopRoom = room;
       shopScrollY = 0;
       gameState = STATE.SHOP;
+      SFX.click();
+    }
+
+    if (room.type === ROOM_TYPE.NPC && room.npc && !room.npcRecruited && !room.npcDismissed) {
+      npcRoom = room;
+      gameState = STATE.NPC_TALK;
       SFX.click();
     }
   }
@@ -2174,6 +2223,12 @@ function renderDungeon(floor) {
       X.textAlign = 'center';
       X.fillText('$ Shop $', rx, ry);
     }
+    if (room.type === ROOM_TYPE.NPC && !room.npcRecruited && !room.npcDismissed && isVisible(room.cx, room.cy)) {
+      X.fillStyle = '#ffaa44';
+      X.font = '12px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('? NPC ?', rx, ry);
+    }
   }
 
   // Draw player
@@ -2316,6 +2371,27 @@ function renderUI() {
       X.font = '10px Consolas, monospace';
       X.fillText(`[${cond.type}${cond.turns ? ` ${cond.turns}t` : ''}]`, barX + 4, condY + i * 14);
     });
+  }
+
+  // Companion display
+  if (player.companion) {
+    const comp = player.companion;
+    const compY = infoY + 54 + (player.conditions.length > 0 ? player.conditions.length * 14 + 4 : 0);
+    X.fillStyle = 'rgba(0,0,0,0.7)';
+    X.fillRect(barX - 2, compY, barW + 4, 36);
+    X.fillStyle = comp.color;
+    X.font = 'bold 10px Consolas, monospace';
+    X.textAlign = 'left';
+    X.fillText(`[${comp.symbol}] ${comp.name}`, barX + 4, compY + 12);
+    // Companion HP bar
+    const compHpPct = comp.hp / comp.maxHp;
+    X.fillStyle = '#300';
+    X.fillRect(barX + 4, compY + 18, barW - 8, 6);
+    X.fillStyle = compHpPct > 0.5 ? '#0a8' : compHpPct > 0.25 ? '#aa0' : '#a00';
+    X.fillRect(barX + 4, compY + 18, (barW - 8) * compHpPct, 6);
+    X.fillStyle = '#aaa';
+    X.font = '9px Consolas, monospace';
+    X.fillText(`${comp.hp}/${comp.maxHp}`, barX + 4, compY + 32);
   }
 
   // Bottom buttons (non-mobile)
@@ -2532,6 +2608,14 @@ function advanceTurn() {
 }
 
 function nextTurn() {
+  // Companion acts after player's turn (if player just acted)
+  if (combatState.playerTurn && player.companion && player.companion.hp > 0) {
+    companionTurn();
+    // Check if companion killed all enemies
+    const alive = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
+    if (alive.length === 0) { combatState.phase = 'victory'; return; }
+  }
+
   combatState.turnIndex = (combatState.turnIndex + 1) % combatState.combatants.length;
   if (combatState.turnIndex === 0) {
     combatState.combatRound++;
@@ -2815,6 +2899,26 @@ function enemyTurn(enemy) {
       if (c.turns !== undefined) { c.turns--; return c.turns > 0; }
       return true;
     });
+  }
+
+  // 30% chance to target companion instead of player
+  if (player.companion && player.companion.hp > 0 && Math.random() < 0.3) {
+    const attack = pick(enemy.attacks);
+    const roll = d20();
+    const totalRoll = roll + attack.bonus;
+    if (roll === 20 || (roll !== 1 && totalRoll >= player.companion.ac)) {
+      const dmg = roll === 20 ? rollDice(attack.damage[0]*2,attack.damage[1])+attack.damageBonus : rollDice(attack.damage[0],attack.damage[1])+attack.damageBonus;
+      player.companion.hp = Math.max(0, player.companion.hp - dmg);
+      addCombatLog(`${enemy.name} attacks ${player.companion.name}: ${roll===20?'CRIT! ':''}HIT for ${dmg}!`);
+      if (player.companion.hp <= 0) {
+        addCombatLog(`${player.companion.name} has fallen!`);
+        addFloatingText(canvasW/2, canvasH*0.5, `${player.companion.name} DOWN!`, '#ff4444');
+      }
+    } else {
+      addCombatLog(`${enemy.name} attacks ${player.companion.name}: MISS!`);
+    }
+    nextTurn();
+    return;
   }
 
   // Pick an attack
@@ -4160,6 +4264,140 @@ function updateShop() {
 }
 
 // ============================================================
+// NPC TALK SCREEN
+// ============================================================
+function updateNpcTalk() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  if (!npcRoom || !npcRoom.npc) { gameState = STATE.DUNGEON; return; }
+  const npc = npcRoom.npc;
+  const cx = canvasW / 2;
+
+  // NPC portrait circle
+  const portraitY = canvasH * 0.18;
+  X.fillStyle = npc.color + '30';
+  X.beginPath(); X.arc(cx, portraitY, 50, 0, Math.PI * 2); X.fill();
+  X.fillStyle = npc.color;
+  X.beginPath(); X.arc(cx, portraitY, 40, 0, Math.PI * 2); X.fill();
+  X.fillStyle = '#fff';
+  X.font = 'bold 28px Consolas, monospace';
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(npc.symbol, cx, portraitY + 1);
+
+  // Name
+  X.fillStyle = '#fff';
+  X.font = `bold ${isMobile ? 18 : 22}px Consolas, monospace`;
+  X.fillText(npc.name, cx, portraitY + 65);
+
+  // Class
+  X.fillStyle = '#aaa';
+  X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
+  X.fillText(`${npc.class} Companion`, cx, portraitY + 88);
+
+  // Stats
+  X.fillStyle = '#888';
+  X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
+  X.fillText(`HP: ${npc.hp}/${npc.maxHp} | AC: ${npc.ac} | ${npc.attacks[0].name}: d${npc.attacks[0].damage[1]}+${npc.attacks[0].damageBonus}`, cx, portraitY + 110);
+
+  // Personality
+  X.fillStyle = '#aaa';
+  X.font = `italic ${isMobile ? 11 : 13}px Consolas, monospace`;
+  X.fillText(npc.personality, cx, portraitY + 135);
+
+  // Quote
+  X.fillStyle = '#ccc';
+  X.font = `${isMobile ? 12 : 14}px Consolas, monospace`;
+  const lines = wrapText(npc.greeting, canvasW - 60, isMobile ? 12 : 14);
+  lines.forEach((line, i) => {
+    X.fillText(line, cx, portraitY + 165 + i * 18);
+  });
+
+  // Current companion info
+  if (player.companion) {
+    X.fillStyle = '#666';
+    X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
+    X.fillText(`Current companion: ${player.companion.name} (will be dismissed)`, cx, canvasH * 0.65);
+  }
+
+  // Buttons
+  const btnW = isMobile ? 180 : 200;
+  const btnH = 45;
+  const btnX = cx - btnW / 2;
+  const btnY1 = canvasH * 0.72;
+  const btnY2 = btnY1 + btnH + 12;
+
+  drawButton(btnX, btnY1, btnW, btnH, 'RECRUIT', false, '#2a5a2a');
+  if (clickedInRect(btnX, btnY1, btnW, btnH)) {
+    SFX.click();
+    player.companion = deepClone(npc);
+    npcRoom.npcRecruited = true;
+    dungeonMessage = `${npc.name} joins your party!`;
+    dungeonMessageTimer = 2.5;
+    addFloatingText(canvasW / 2, canvasH / 2, `+${npc.name}`, npc.color);
+    gameState = STATE.DUNGEON;
+    saveGame();
+  }
+
+  drawButton(btnX, btnY2, btnW, btnH, 'DECLINE', false, '#4a2a2a');
+  if (clickedInRect(btnX, btnY2, btnW, btnH)) {
+    SFX.click();
+    npcRoom.npcDismissed = true;
+    dungeonMessage = `You part ways with ${npc.name}.`;
+    dungeonMessageTimer = 1.5;
+    gameState = STATE.DUNGEON;
+  }
+
+  // ESC to close
+  if (keys['escape']) {
+    gameState = STATE.DUNGEON;
+    keys['escape'] = false;
+  }
+}
+
+// ============================================================
+// COMPANION COMBAT AI
+// ============================================================
+function companionTurn() {
+  if (!player.companion || player.companion.hp <= 0) return;
+  const comp = player.companion;
+  const aliveEnemies = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
+  if (aliveEnemies.length === 0) return;
+
+  // Healer companions heal player if low HP
+  if (comp.canHeal && player.hp < player.maxHp * 0.4 && Math.random() < 0.6) {
+    const healAmt = rollDice(1, 8) + 2;
+    player.hp = Math.min(player.maxHp, player.hp + healAmt);
+    addCombatLog(`${comp.name} heals you for ${healAmt} HP!`);
+    addFloatingText(canvasW / 2, canvasH * 0.65, `+${healAmt}`, '#44ff44');
+    SFX.heal();
+    return;
+  }
+
+  // Attack a random enemy
+  const target = pick(aliveEnemies);
+  const attack = comp.attacks[0];
+  const roll = d20();
+  const totalRoll = roll + attack.bonus;
+
+  if (roll === 20) {
+    const dmg = rollDice(attack.damage[0] * 2, attack.damage[1]) + attack.damageBonus;
+    target.entity.hp = Math.max(0, target.entity.hp - dmg);
+    addCombatLog(`${comp.name} uses ${attack.name}: NAT 20! CRIT for ${dmg}!`);
+    SFX.crit();
+  } else if (roll === 1) {
+    addCombatLog(`${comp.name} uses ${attack.name}: NAT 1! Miss!`);
+  } else if (totalRoll >= target.entity.ac) {
+    const dmg = rollDice(attack.damage[0], attack.damage[1]) + attack.damageBonus;
+    target.entity.hp = Math.max(0, target.entity.hp - dmg);
+    addCombatLog(`${comp.name} uses ${attack.name} on ${target.entity.name}: HIT for ${dmg}!`);
+    SFX.hit();
+  } else {
+    addCombatLog(`${comp.name} uses ${attack.name}: MISS! (${totalRoll} vs AC ${target.entity.ac})`);
+  }
+}
+
+// ============================================================
 // SAVE / LOAD
 // ============================================================
 function saveGame() {
@@ -4219,6 +4457,7 @@ function gameLoop(timestamp) {
     case STATE.HELP:         updateHelp(); break;
     case STATE.LEVEL_UP:     updateLevelUp(); break;
     case STATE.SHOP:         updateShop(); break;
+    case STATE.NPC_TALK:     updateNpcTalk(); break;
   }
 
   updateParticles(dt);
