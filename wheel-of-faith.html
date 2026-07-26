@@ -17,7 +17,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// WHEEL OF FAITH v2.13.0 — Dynamic character portrait: race-specific body, weapon, armour, enchantment glow
+// WHEEL OF FAITH v2.14.0 — Cinematic spin: celebration particles, screen flash, scale-in result, dramatic slowdown
 // 17+ spin categories, 50+ races, 100s of options, full-screen wheels,
 // conditional spins, neon glow, segment weighting, rainbow wheels
 // ============================================================
@@ -96,8 +96,9 @@ const SFX={
     o.connect(g);g.connect(this.ctx.destination);
     o.start(this.ctx.currentTime+(delay||0));o.stop(this.ctx.currentTime+(delay||0)+dur);
   },
-  tick(){this._tone(600,0.03,'sine',0.08)},
-  land(){this._tone(400,0.15,'sine',0.2);this._tone(600,0.2,'sine',0.15,0.1)},
+  tick(vol){this._tone(600,0.03,'sine',vol||0.08)},
+  tickLoud(){this._tone(700,0.05,'sine',0.18);this._tone(500,0.03,'triangle',0.1,0.02)},
+  land(){this._tone(400,0.2,'sine',0.25);this._tone(600,0.25,'sine',0.2,0.1);this._tone(800,0.15,'sine',0.12,0.2);this._tone(500,0.3,'triangle',0.08,0.3)},
   spin(){for(let i=0;i<3;i++)this._tone(500+i*50,0.05,'square',0.05,i*0.04)},
   click(){this._tone(800,0.05,'square',0.06)},
   victory(){for(let i=0;i<6;i++)this._tone(400+i*80,0.2,'sine',0.12,i*0.12);this._tone(900,0.4,'sine',0.15,0.72)},
@@ -951,7 +952,54 @@ let savedChars=[];
 let selectPage=0;
 
 // Spin state
-let spin={phase:'idle',angle:0,speed:0,targetIdx:-1,result:null,landedIdx:-1};
+let spin={phase:'idle',angle:0,speed:0,targetIdx:-1,result:null,landedIdx:-1,landTime:0};
+let bgParticles=[]; // ambient background particles
+let screenFlash=0; // screen flash intensity
+let resultScale=0; // result text scale-in animation
+
+// Background ambient particles
+function spawnBgParticles(){
+  while(bgParticles.length<40){
+    bgParticles.push({x:Math.random()*VW,y:Math.random()*VH,vx:(Math.random()-0.5)*0.5,vy:-0.3-Math.random()*0.5,
+      size:1+Math.random()*2,life:60+Math.random()*120,maxLife:180,color:'rgba(255,255,255,0.15)'});
+  }
+}
+function updateBgParticles(){
+  for(let i=bgParticles.length-1;i>=0;i--){
+    const p=bgParticles[i];p.x+=p.vx;p.y+=p.vy;p.life--;
+    if(p.life<=0||p.y<-10||p.x<-10||p.x>VW+10){bgParticles.splice(i,1);}
+  }
+}
+function drawBgParticles(){
+  bgParticles.forEach(p=>{
+    const alpha=(p.life/p.maxLife)*0.3;
+    X.globalAlpha=alpha;X.fillStyle=p.color;
+    X.beginPath();X.arc(p.x,p.y,p.size,0,Math.PI*2);X.fill();
+  });
+  X.globalAlpha=1;
+}
+
+// Landing celebration burst
+function spawnCelebration(cx,cy,color){
+  screenFlash=1.0;
+  resultScale=0;
+  for(let i=0;i<60;i++){
+    const angle=Math.random()*Math.PI*2;
+    const speed=2+Math.random()*6;
+    const hue=Math.random()*360;
+    spawnParticle(cx+Math.cos(angle)*20,cy+Math.sin(angle)*20,{
+      vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-2,
+      life:40+Math.random()*40,size:2+Math.random()*4,
+      color:`hsl(${hue},80%,60%)`,glow:true,gravity:0.08,friction:0.98
+    });
+  }
+  // Sparkle ring
+  for(let i=0;i<24;i++){
+    const angle=i/24*Math.PI*2;
+    spawnParticle(cx,cy,{vx:Math.cos(angle)*4,vy:Math.sin(angle)*4,
+      life:25,size:2,color:color||'#fff',glow:true,gravity:0,friction:0.95});
+  }
+}
 
 // Battle state
 let battleState=null,battleTime=0,battleLog=[];
@@ -1022,12 +1070,18 @@ function updateSpin(){
     let curSeg=cat.items.length-1,lastSeg=cat.items.length-1;
     for(let i=0;i<cat.items.length;i++){if(normA<cum[i+1]){curSeg=i;break;}}
     for(let i=0;i<cat.items.length;i++){if(normL<cum[i+1]){lastSeg=i;break;}}
-    if(curSeg!==lastSeg&&spin.speed>0.01)SFX.tick();
+    if(curSeg!==lastSeg&&spin.speed>0.01){
+      // Louder ticks as wheel slows down (more dramatic)
+      if(spin.speed<0.03)SFX.tickLoud();
+      else if(spin.speed<0.06)SFX.tick(0.14);
+      else SFX.tick();
+    }
   }
   lastTickAngle=spin.angle;
 
   if(spin.speed<0.001){
     spin.phase='landed';
+    spin.landTime=Date.now();
     if(cat){
       const items=cat.items;
       const cum=getCumAngles(cat);
@@ -1039,6 +1093,8 @@ function updateSpin(){
       charResult[cat.id]=spin.result;
       checkConditionals();
       SFX.land();
+      // Celebration burst
+      spawnCelebration(VW/2,VH*0.52,cat.color||'#2196F3');
     }
   }
 }
@@ -1111,7 +1167,7 @@ function drawTitle(){
   }
 
   X.font='11px "Segoe UI",sans-serif';X.fillStyle='#333';X.textAlign='center';
-  X.fillText('WoF v2.13.0 // soloforte.ai',cx,VH-15);
+  X.fillText('WoF v2.14.0 // soloforte.ai',cx,VH-15);
   buttons.forEach(drawBtn);
 }
 
@@ -1121,6 +1177,29 @@ function drawTitle(){
 function drawSpin(){
   clearBtns();
   X.fillStyle='#000';X.fillRect(0,0,VW,VH);
+
+  // Background ambient particles
+  if(spin.phase==='spinning'){spawnBgParticles();}
+  updateBgParticles();
+  drawBgParticles();
+
+  // Dramatic slowdown glow — wheel glows brighter as it slows
+  if(spin.phase==='spinning'&&spin.speed<0.05&&spin.speed>0.001){
+    const intensity=(0.05-spin.speed)/0.05;
+    X.fillStyle=`rgba(255,255,255,${intensity*0.06})`;
+    X.fillRect(0,0,VW,VH);
+  }
+
+  // Screen flash on land
+  if(screenFlash>0){
+    X.fillStyle=`rgba(255,255,255,${screenFlash*0.4})`;
+    X.fillRect(0,0,VW,VH);
+    screenFlash*=0.88;
+    if(screenFlash<0.01)screenFlash=0;
+  }
+
+  // Result scale-in animation
+  if(spin.phase==='landed'&&resultScale<1){resultScale=Math.min(1,resultScale+0.06);}
 
   const cat=getCurrentWheel();
   if(!cat){
@@ -1156,11 +1235,21 @@ function drawSpin(){
   X.font='bold '+(isMobile?14:17)+'px "Segoe UI",Arial,sans-serif';
   X.fillText(pillText,VW/2,pillY+pillH/2);
 
-  // Result text (big bold) — only when landed
+  // Result text (big bold) — only when landed, with scale-in animation
   let resultY=pillY+pillH+15;
   if(spin.phase==='landed'&&spin.result){
-    X.font='bold '+(isMobile?24:36)+'px "Segoe UI",Arial,sans-serif';
+    const scale=resultScale;
+    const baseFontSize=isMobile?24:36;
+    const fontSize=Math.round(baseFontSize*scale);
+    X.font='bold '+fontSize+'px "Segoe UI",Arial,sans-serif';
+    // Glow on result text
+    const t=(Date.now()-spin.landTime)*0.003;
+    const glowIntensity=8+Math.sin(t*2)*4;
+    X.save();
+    X.shadowColor=cat.color||'#2196F3';
+    X.shadowBlur=glowIntensity*scale;
     X.fillStyle='#fff';
+    X.globalAlpha=scale;
     // Wrap long text
     const maxW=VW-40;
     let txt=spin.result;
@@ -1175,6 +1264,9 @@ function drawSpin(){
       txt=txt+'..';
     }
     X.fillText(txt,VW/2,resultY+15);
+    X.shadowBlur=0;
+    X.globalAlpha=1;
+    X.restore();
     resultY+=isMobile?40:55;
   }else{
     resultY+=10;
@@ -1225,9 +1317,16 @@ function drawSpin(){
       segColor=shades[i%shades.length];
     }
 
-    // Landed: highlight winner with category-specific glow, dim others
+    // Landed: highlight winner with category-specific glow + pulse, dim others
     if(spin.phase==='landed'){
       if(i===spin.landedIdx){
+        // Pulsing glow on winning segment
+        const pulseT=(Date.now()-spin.landTime)*0.003;
+        const pulseIntensity=0.15+Math.sin(pulseT*3)*0.1;
+        X.save();
+        X.shadowColor=cat.color||'#fff';
+        X.shadowBlur=12+Math.sin(pulseT*2)*6;
+        X.restore();
         // Category-specific highlight: bright saturated version of category color
         const catHighlights={
           race:'#42A5F5',size:'#8BC34A',strength:'#CE93D8',speed:'#42A5F5',
