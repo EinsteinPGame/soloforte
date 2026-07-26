@@ -18794,45 +18794,64 @@ function drawYukiWeapon(r,ext,flash,f){
 function drawMantisBlades(r,ext,flash,f){
   const bladeLen=55; // proportional to arena
   const extLen=18; // visible extension arm
+  const t=battleTime*0.06;
+  const neonPulse=Math.sin(battleTime*0.1)*0.3+0.7;
 
   // === FOREARM HOUSING — dark chrome rectangular housing on the arm ===
   const hx=r-10, hw=28, hh=18;
   const hg=X.createLinearGradient(hx,-hh/2,hx,hh/2);
-  hg.addColorStop(0,'#3a3a40');hg.addColorStop(0.3,'#252530');hg.addColorStop(0.7,'#252530');hg.addColorStop(1,'#3a3a40');
+  hg.addColorStop(0,'#3a3a48');hg.addColorStop(0.2,'#1e1e2a');hg.addColorStop(0.5,'#252535');hg.addColorStop(0.8,'#1e1e2a');hg.addColorStop(1,'#3a3a48');
   X.fillStyle=hg;X.fillRect(hx,-hh/2,hw,hh);
-  X.strokeStyle='#4a4a50';X.lineWidth=1;X.strokeRect(hx,-hh/2,hw,hh);
-  // Panel seams
+  X.strokeStyle='#4a4a58';X.lineWidth=1;X.strokeRect(hx,-hh/2,hw,hh);
+  // Panel seams with subtle glow
   X.strokeStyle='#333';X.lineWidth=0.6;
   for(let i=1;i<4;i++){X.beginPath();X.moveTo(hx+hw*i/4,-hh/2);X.lineTo(hx+hw*i/4,hh/2);X.stroke();}
-  // Red LED strip on housing
-  X.fillStyle=flash?'#ff4444':'#cc2222';
+  // Circuit trace pattern on housing
+  X.strokeStyle='rgba(255,40,40,'+neonPulse*0.35+')';X.lineWidth=0.6;
+  X.beginPath();X.moveTo(hx+4,-hh/2+4);X.lineTo(hx+8,-hh/2+4);X.lineTo(hx+8,-hh/2+7);X.lineTo(hx+14,-hh/2+7);X.stroke();
+  X.beginPath();X.moveTo(hx+4,hh/2-4);X.lineTo(hx+10,hh/2-4);X.lineTo(hx+10,hh/2-7);X.lineTo(hx+16,hh/2-7);X.stroke();
+  // Neon red LED strip on housing with glow
+  X.shadowColor='#ff2020';X.shadowBlur=flash?12:4;
+  X.fillStyle=flash?'#ff5555':'rgba(255,34,34,'+neonPulse+')';
   X.fillRect(hx+2,-hh/2,hw-4,1.5);
   X.fillRect(hx+2,hh/2-1.5,hw-4,1.5);
-  if(flash){X.shadowColor='#ff2020';X.shadowBlur=6;X.fillRect(hx+2,-hh/2,hw-4,1.5);X.fillRect(hx+2,hh/2-1.5,hw-4,1.5);X.shadowBlur=0;}
-  // Ejection slots
+  X.shadowBlur=0;
+  // Ejection slots with inner glow
   X.fillStyle='#0a0a0e';X.fillRect(hx+hw-3,-hh/2+2,3,5);X.fillRect(hx+hw-3,hh/2-7,3,5);
+  X.fillStyle='rgba(255,30,30,0.3)';X.fillRect(hx+hw-2,-hh/2+3,1,3);X.fillRect(hx+hw-2,hh/2-6,1,3);
+  // Micro LEDs on housing
+  X.fillStyle=flash?'#ff6666':'#cc2222';
+  X.beginPath();X.arc(hx+6,-hh/2+hh*0.3,1.2,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(hx+6,hh/2-hh*0.3,1.2,0,Math.PI*2);X.fill();
 
   // === EXTENSION MECHANISM — twin rails/pistons from housing to blade ===
   const ex0=hx+hw; // where extension starts
   [-1,1].forEach(dir=>{
     const ry=dir*5; // rail Y offset
     // Outer rail — dark metallic track
-    X.fillStyle='#1e1e25';
+    const rg=X.createLinearGradient(ex0,ry-2.5,ex0,ry+2.5);
+    rg.addColorStop(0,'#1a1a28');rg.addColorStop(0.5,'#252535');rg.addColorStop(1,'#1a1a28');
+    X.fillStyle=rg;
     X.fillRect(ex0,ry-2.5,extLen,5);
-    X.strokeStyle='#3a3a44';X.lineWidth=0.8;
+    X.strokeStyle='#3a3a4a';X.lineWidth=0.8;
     X.strokeRect(ex0,ry-2.5,extLen,5);
     // Piston rod sliding inside — chrome, extends with weapon
     const pistonExt=extLen*(0.3+ext*0.7);
     const pg=X.createLinearGradient(ex0,ry-1.5,ex0,ry+1.5);
-    pg.addColorStop(0,'#888');pg.addColorStop(0.5,'#bbb');pg.addColorStop(1,'#777');
+    pg.addColorStop(0,'#888');pg.addColorStop(0.3,'#bbb');pg.addColorStop(0.5,'#ddd');pg.addColorStop(0.7,'#bbb');pg.addColorStop(1,'#777');
     X.fillStyle=pg;
     X.fillRect(ex0+2,ry-1.5,pistonExt,3);
-    // Piston joint ring
+    // Piston joint ring with neon accent
     X.fillStyle='#555';X.fillRect(ex0+pistonExt-2,ry-3,4,6);
-    X.strokeStyle='#666';X.lineWidth=0.5;X.strokeRect(ex0+pistonExt-2,ry-3,4,6);
+    X.strokeStyle='rgba(255,50,50,0.5)';X.lineWidth=0.6;X.strokeRect(ex0+pistonExt-2,ry-3,4,6);
+    // Tiny red LED on piston
+    X.fillStyle='rgba(255,40,40,'+neonPulse+')';
+    X.beginPath();X.arc(ex0+pistonExt,ry,1,0,Math.PI*2);X.fill();
   });
-  // Center spine connecting rails
+  // Center spine connecting rails with energy line
   X.fillStyle='#1a1a22';X.fillRect(ex0+extLen*0.3,-1.5,extLen*0.4,3);
+  X.strokeStyle='rgba(255,50,30,'+neonPulse*0.4+')';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(ex0+extLen*0.32,0);X.lineTo(ex0+extLen*0.68,0);X.stroke();
 
   // === BLADE — single wide blade, side-profile, metallic silver/chrome ===
   const bx=ex0+extLen; // blade starts where extension ends
@@ -18851,34 +18870,45 @@ function drawMantisBlades(r,ext,flash,f){
   X.lineTo(bx,4);
   X.closePath();
 
-  // Metallic chrome/silver gradient — NOT gold
+  // Metallic chrome/silver gradient with cooler tones
   const bg=X.createLinearGradient(bx,-9,bx+bladeLen,0);
-  bg.addColorStop(0,'#667');bg.addColorStop(0.1,'#99a');bg.addColorStop(0.3,'#ccd');
-  bg.addColorStop(0.5,'#eef');bg.addColorStop(0.65,'#bbc');bg.addColorStop(0.85,'#889');bg.addColorStop(1,'#556');
+  bg.addColorStop(0,'#556');bg.addColorStop(0.08,'#88a');bg.addColorStop(0.2,'#bbcce0');
+  bg.addColorStop(0.4,'#ddeeff');bg.addColorStop(0.55,'#eef5ff');bg.addColorStop(0.7,'#bbcce0');bg.addColorStop(0.85,'#88a');bg.addColorStop(1,'#556');
   X.fillStyle=bg;X.fill();
   X.strokeStyle='#445';X.lineWidth=1;X.stroke();
 
-  // Highlight along spine
-  X.strokeStyle='rgba(220,230,255,0.6)';X.lineWidth=0.8;
+  // Highlight along spine — brighter, sharper
+  X.strokeStyle='rgba(230,240,255,0.7)';X.lineWidth=1;
   X.beginPath();X.moveTo(bx+2,-6.5);
   X.quadraticCurveTo(bx+bladeLen*0.4,-8.5,bx+bladeLen*0.7,-5);
   X.quadraticCurveTo(bx+bladeLen*0.9,-2,bx+bladeLen,-0.3);
   X.stroke();
 
-  // Cutting edge glow — red/orange on inner edge
-  X.strokeStyle=flash?'rgba(255,80,40,0.9)':'rgba(255,50,30,0.3)';
-  X.lineWidth=flash?2.5:1.2;
+  // Nano-etched circuit pattern on blade — cyberpunk tech lines
+  X.strokeStyle='rgba(255,60,40,'+neonPulse*0.25+')';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(bx+8,-3);X.lineTo(bx+16,-3);X.lineTo(bx+16,-1);X.lineTo(bx+24,-1);X.lineTo(bx+24,-4);X.lineTo(bx+30,-4);X.stroke();
+  X.beginPath();X.moveTo(bx+12,1);X.lineTo(bx+20,1);X.lineTo(bx+20,3);X.lineTo(bx+28,3);X.stroke();
+
+  // Cutting edge glow — neon red/orange on inner edge with enhanced glow
+  X.shadowColor='#ff3020';X.shadowBlur=flash?14:5;
+  X.strokeStyle=flash?'rgba(255,80,40,1)':'rgba(255,50,30,'+neonPulse*0.5+')';
+  X.lineWidth=flash?3:1.5;
   X.beginPath();X.moveTo(bx+3,4);
   X.quadraticCurveTo(bx+bladeLen*0.35,7,bx+bladeLen*0.7,4);
   X.quadraticCurveTo(bx+bladeLen*0.9,2,bx+bladeLen+1,0);
   X.stroke();
-  if(flash){X.shadowColor='#ff4020';X.shadowBlur=8;X.stroke();X.shadowBlur=0;}
+  X.shadowBlur=0;
 
   // Blood groove / fuller — dark line along blade center
   X.strokeStyle='rgba(60,65,80,0.5)';X.lineWidth=0.7;
   X.beginPath();X.moveTo(bx+10,-1);
   X.quadraticCurveTo(bx+bladeLen*0.4,-2,bx+bladeLen*0.8,-1);
   X.stroke();
+
+  // Blade tip energy — neon red point glow
+  const tipGlow=X.createRadialGradient(bx+bladeLen+2,0,0,bx+bladeLen+2,0,8);
+  tipGlow.addColorStop(0,'rgba(255,100,60,'+(flash?0.7:0.25)+')');tipGlow.addColorStop(1,'rgba(255,50,30,0)');
+  X.fillStyle=tipGlow;X.beginPath();X.arc(bx+bladeLen+2,0,8,0,Math.PI*2);X.fill();
 
   // === SECOND BLADE (lower, slightly offset) — twin mantis blades ===
   X.save();X.scale(1,-1); // mirror vertically
@@ -18892,59 +18922,86 @@ function drawMantisBlades(r,ext,flash,f){
   X.quadraticCurveTo(bx+bladeLen*0.85,4,bx+bladeLen*0.6,6);
   X.quadraticCurveTo(bx+bladeLen*0.35,7,bx+bladeLen*0.1,5);
   X.lineTo(bx,4);X.closePath();
-  // Slightly darker second blade
+  // Slightly darker second blade with blue-steel tint
   const bg2=X.createLinearGradient(bx,-9,bx+bladeLen,0);
-  bg2.addColorStop(0,'#556');bg2.addColorStop(0.1,'#889');bg2.addColorStop(0.3,'#aab');
-  bg2.addColorStop(0.5,'#ccd');bg2.addColorStop(0.65,'#99a');bg2.addColorStop(0.85,'#778');bg2.addColorStop(1,'#445');
+  bg2.addColorStop(0,'#456');bg2.addColorStop(0.08,'#789');bg2.addColorStop(0.2,'#aabbd0');
+  bg2.addColorStop(0.4,'#ccddee');bg2.addColorStop(0.55,'#ddeeff');bg2.addColorStop(0.7,'#aabbd0');bg2.addColorStop(0.85,'#789');bg2.addColorStop(1,'#456');
   X.fillStyle=bg2;X.fill();
   X.strokeStyle='#445';X.lineWidth=1;X.stroke();
+  // Circuit traces on second blade
+  X.strokeStyle='rgba(255,60,40,'+neonPulse*0.2+')';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(bx+10,-2);X.lineTo(bx+18,-2);X.lineTo(bx+18,0);X.lineTo(bx+26,0);X.stroke();
   // Cutting edge glow mirrored
-  X.strokeStyle=flash?'rgba(255,80,40,0.9)':'rgba(255,50,30,0.3)';
-  X.lineWidth=flash?2.5:1.2;
+  X.shadowColor='#ff3020';X.shadowBlur=flash?12:4;
+  X.strokeStyle=flash?'rgba(255,80,40,1)':'rgba(255,50,30,'+neonPulse*0.45+')';
+  X.lineWidth=flash?3:1.5;
   X.beginPath();X.moveTo(bx+3,4);
   X.quadraticCurveTo(bx+bladeLen*0.35,7,bx+bladeLen*0.7,4);
   X.quadraticCurveTo(bx+bladeLen*0.9,2,bx+bladeLen+1,0);
   X.stroke();
+  X.shadowBlur=0;
   X.restore();
 
-  // Slash trail on attack
+  // Neon ambient glow around both blades
+  X.shadowColor='#ff2020';X.shadowBlur=flash?18:6;
+  X.strokeStyle='rgba(255,40,30,'+(flash?0.35:0.1)+')';X.lineWidth=flash?4:2;
+  X.beginPath();X.moveTo(bx,0);X.lineTo(bx+bladeLen+2,0);X.stroke();
+  X.shadowBlur=0;
+
+  // Slash trail on attack — enhanced with neon afterglow
   if(flash&&f.attackAnim>0){
     const slashDir=f.attackSide;
-    X.strokeStyle='rgba(255,80,40,0.5)';X.lineWidth=5;
+    X.shadowColor='#ff4020';X.shadowBlur=10;
+    X.strokeStyle='rgba(255,80,40,0.6)';X.lineWidth=5;
     X.beginPath();X.arc(0,0,r+bladeLen*0.6,-0.5*slashDir,0.5*slashDir);X.stroke();
-    X.strokeStyle='rgba(255,180,100,0.25)';X.lineWidth=10;
+    X.strokeStyle='rgba(255,180,100,0.3)';X.lineWidth=10;
     X.beginPath();X.arc(0,0,r+bladeLen*0.4,-0.35*slashDir,0.35*slashDir);X.stroke();
+    // Extra neon trail
+    X.strokeStyle='rgba(255,60,40,0.2)';X.lineWidth=16;
+    X.beginPath();X.arc(0,0,r+bladeLen*0.3,-0.25*slashDir,0.25*slashDir);X.stroke();
+    X.shadowBlur=0;
   }
-
-  // No tip orb — slash trail is enough
 }
 
 function drawGorillaArms(r,ext,flash,f){
   const armLen=48; // proportional to arena
   const isDownslam=f.attackPhase===2&&f.attackAnim>0;
+  const neonPulse=Math.sin(battleTime*0.1)*0.3+0.7;
 
   // Single MASSIVE fist — Cyberpunk Gorilla Arms
   X.save();X.translate(r-8,0);
 
-  // Forearm — dark metallic, wide
+  // Forearm — dark metallic, wide, with enhanced gradient
   const armW=24;
   const fg=X.createLinearGradient(0,-armW/2,0,armW/2);
-  fg.addColorStop(0,'#1a1a22');fg.addColorStop(0.2,'#2a2a35');fg.addColorStop(0.5,'#303040');fg.addColorStop(0.8,'#2a2a35');fg.addColorStop(1,'#1a1a22');
+  fg.addColorStop(0,'#1a1a28');fg.addColorStop(0.15,'#252538');fg.addColorStop(0.4,'#303045');fg.addColorStop(0.5,'#353550');fg.addColorStop(0.6,'#303045');fg.addColorStop(0.85,'#252538');fg.addColorStop(1,'#1a1a28');
   X.fillStyle=fg;
   X.fillRect(0,-armW/2,armLen*0.4,armW);
-  X.strokeStyle='#3a3a44';X.lineWidth=1;
+  X.strokeStyle='#3a3a4a';X.lineWidth=1;
   X.strokeRect(0,-armW/2,armLen*0.4,armW);
   // Panel seams
   X.strokeStyle='#333';X.lineWidth=0.6;
   for(let i=1;i<4;i++){X.beginPath();X.moveTo(armLen*0.4*i/4,-armW/2);X.lineTo(armLen*0.4*i/4,armW/2);X.stroke();}
-  // Red accent lines
-  X.fillStyle='rgba(255,40,40,0.6)';
+  // Circuit traces on forearm
+  X.strokeStyle='rgba(255,100,30,'+neonPulse*0.3+')';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(4,-armW/2+6);X.lineTo(10,-armW/2+6);X.lineTo(10,-armW/2+9);X.lineTo(16,-armW/2+9);X.stroke();
+  X.beginPath();X.moveTo(4,armW/2-6);X.lineTo(12,armW/2-6);X.lineTo(12,armW/2-9);X.lineTo(18,armW/2-9);X.stroke();
+  // Red neon accent lines with glow
+  X.shadowColor='#ff4400';X.shadowBlur=flash?8:3;
+  X.fillStyle='rgba(255,60,30,'+neonPulse*0.8+')';
   X.fillRect(2,-armW/2,armLen*0.35,2);
   X.fillRect(2,armW/2-2,armLen*0.35,2);
-  // Hydraulic pistons
-  X.strokeStyle='#555';X.lineWidth=2.5;
+  X.shadowBlur=0;
+  // Hydraulic pistons with chrome gradient
+  const pistonG=X.createLinearGradient(0,0,armLen*0.35,0);
+  pistonG.addColorStop(0,'#555');pistonG.addColorStop(0.3,'#888');pistonG.addColorStop(0.5,'#aaa');pistonG.addColorStop(0.7,'#888');pistonG.addColorStop(1,'#555');
+  X.strokeStyle=pistonG;X.lineWidth=2.5;
   X.beginPath();X.moveTo(3,-armW/2+3);X.lineTo(armLen*0.35,-armW/2+3);X.stroke();
   X.beginPath();X.moveTo(3,armW/2-3);X.lineTo(armLen*0.35,armW/2-3);X.stroke();
+  // Piston glow line
+  X.strokeStyle='rgba(255,80,40,0.15)';X.lineWidth=1;
+  X.beginPath();X.moveTo(4,-armW/2+3);X.lineTo(armLen*0.34,-armW/2+3);X.stroke();
+  X.beginPath();X.moveTo(4,armW/2-3);X.lineTo(armLen*0.34,armW/2-3);X.stroke();
 
   // MASSIVE FIST — chunky, armored, very bulky
   const fistX=armLen*0.35;
@@ -18952,9 +19009,15 @@ function drawGorillaArms(r,ext,flash,f){
   const fistH=38;
   drawRoundRect(fistX,-fistH/2,fistW,fistH,6);
   const fistG=X.createLinearGradient(fistX,-fistH/2,fistX,fistH/2);
-  fistG.addColorStop(0,'#181820');fistG.addColorStop(0.2,'#252530');fistG.addColorStop(0.5,'#2e2e3a');fistG.addColorStop(0.8,'#252530');fistG.addColorStop(1,'#181820');
+  fistG.addColorStop(0,'#141420');fistG.addColorStop(0.15,'#1e1e30');fistG.addColorStop(0.4,'#282840');fistG.addColorStop(0.5,'#2e2e48');fistG.addColorStop(0.6,'#282840');fistG.addColorStop(0.85,'#1e1e30');fistG.addColorStop(1,'#141420');
   X.fillStyle=fistG;X.fill();
   X.strokeStyle='#444';X.lineWidth=1.5;X.stroke();
+
+  // Fist internal circuit glow pattern
+  X.strokeStyle='rgba(255,80,40,'+neonPulse*0.15+')';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(fistX+8,-fistH/2+8);X.lineTo(fistX+14,-fistH/2+8);X.lineTo(fistX+14,-fistH/2+14);
+  X.lineTo(fistX+22,-fistH/2+14);X.stroke();
+  X.beginPath();X.moveTo(fistX+8,fistH/2-8);X.lineTo(fistX+16,fistH/2-8);X.lineTo(fistX+16,fistH/2-12);X.stroke();
 
   // Thick mechanical fingers — 4 chunky segments extending from fist
   for(let k=0;k<4;k++){
@@ -18962,64 +19025,83 @@ function drawGorillaArms(r,ext,flash,f){
     const kx=fistX+fistW-5;
     const kw=14+ext*8;
     drawRoundRect(kx,ky-4,kw,8,3);
-    X.fillStyle='#222230';X.fill();
-    X.strokeStyle='#3a3a44';X.lineWidth=0.8;X.stroke();
-    // Finger joint line
+    const fingerG=X.createLinearGradient(kx,ky-4,kx,ky+4);
+    fingerG.addColorStop(0,'#1a1a2a');fingerG.addColorStop(0.5,'#252538');fingerG.addColorStop(1,'#1a1a2a');
+    X.fillStyle=fingerG;X.fill();
+    X.strokeStyle='#3a3a4a';X.lineWidth=0.8;X.stroke();
+    // Finger joint line with subtle glow
     X.strokeStyle='#333';X.lineWidth=0.5;
     X.beginPath();X.moveTo(kx+kw*0.4,ky-4);X.lineTo(kx+kw*0.4,ky+4);X.stroke();
+    // Tiny orange LED at joint
+    X.fillStyle='rgba(255,120,40,'+neonPulse*0.6+')';
+    X.beginPath();X.arc(kx+kw*0.4,ky,1,0,Math.PI*2);X.fill();
   }
 
-  // Red/chrome knuckle reinforcement caps — BIG, glowing
+  // Red/chrome knuckle reinforcement caps — BIG, neon glowing
   for(let k=0;k<4;k++){
     const ky=(-fistH/2+6)+k*(fistH-12)/3;
     const kx=fistX+fistW*0.45;
     const kw=fistW*0.35;
-    // Chrome cap base
+    // Chrome cap base with richer gradient
     drawRoundRect(kx,ky-5,kw,10,3);
     const kg=X.createLinearGradient(kx,ky-5,kx,ky+5);
-    kg.addColorStop(0,'#666');kg.addColorStop(0.3,'#999');kg.addColorStop(0.5,'#aaa');kg.addColorStop(0.7,'#888');kg.addColorStop(1,'#555');
+    kg.addColorStop(0,'#555');kg.addColorStop(0.2,'#888');kg.addColorStop(0.4,'#aaa');kg.addColorStop(0.5,'#bbb');kg.addColorStop(0.6,'#aaa');kg.addColorStop(0.8,'#888');kg.addColorStop(1,'#555');
     X.fillStyle=kg;X.fill();
     X.strokeStyle='#777';X.lineWidth=0.6;X.stroke();
-    // Red glowing insert — bright
-    X.fillStyle=flash?'rgba(255,50,50,1)':'rgba(255,30,30,0.8)';
+    // Red glowing insert — bright neon with enhanced glow
+    X.shadowColor='#ff2020';X.shadowBlur=flash?14:6;
+    X.fillStyle=flash?'rgba(255,60,60,1)':'rgba(255,30,30,'+neonPulse+')';
     X.fillRect(kx+3,ky-2.5,kw-6,5);
-    // Red glow effect
-    X.shadowColor='#ff2020';X.shadowBlur=flash?10:4;
-    X.fillStyle=flash?'rgba(255,80,80,0.9)':'rgba(255,40,40,0.5)';
-    X.fillRect(kx+3,ky-2.5,kw-6,5);
+    // Hot center line
+    X.fillStyle=flash?'rgba(255,200,180,0.8)':'rgba(255,150,100,'+neonPulse*0.4+')';
+    X.fillRect(kx+4,ky-0.5,kw-8,1);
     X.shadowBlur=0;
   }
 
   // Fist armor panel details
-  X.strokeStyle='#3a3a44';X.lineWidth=0.8;
+  X.strokeStyle='#3a3a4a';X.lineWidth=0.8;
   X.beginPath();X.moveTo(fistX+fistW*0.15,-fistH/2+3);X.lineTo(fistX+fistW*0.15,fistH/2-3);X.stroke();
   X.beginPath();X.moveTo(fistX+fistW*0.4,-fistH/2+3);X.lineTo(fistX+fistW*0.4,fistH/2-3);X.stroke();
+  // Additional horizontal armor panel line
+  X.beginPath();X.moveTo(fistX+3,0);X.lineTo(fistX+fistW*0.4,0);X.stroke();
 
-  // Wrist joint ring
+  // Wrist joint ring with neon glow
   X.strokeStyle='#555';X.lineWidth=2.5;
   X.beginPath();X.arc(0,0,armW/2+2,0,Math.PI*2);X.stroke();
-  X.strokeStyle=flash?'rgba(255,50,50,0.8)':'rgba(255,40,40,0.3)';X.lineWidth=1.5;
+  X.shadowColor='#ff4400';X.shadowBlur=flash?12:4;
+  X.strokeStyle=flash?'rgba(255,60,40,0.9)':'rgba(255,50,30,'+neonPulse*0.5+')';X.lineWidth=1.5;
   X.beginPath();X.arc(0,0,armW/2,0,Math.PI*2);X.stroke();
+  X.shadowBlur=0;
 
-  // Impact shockwave
+  // Impact shockwave — enhanced with radial gradient and neon
   if(flash){
-    X.beginPath();X.arc(fistX+fistW+8,0,16,0,Math.PI*2);
-    X.fillStyle='rgba(255,60,40,0.4)';X.fill();
-    X.beginPath();X.arc(fistX+fistW+8,0,7,0,Math.PI*2);
-    X.fillStyle='rgba(255,255,255,0.7)';X.fill();
+    const impactG=X.createRadialGradient(fistX+fistW+8,0,0,fistX+fistW+8,0,20);
+    impactG.addColorStop(0,'rgba(255,255,255,0.8)');impactG.addColorStop(0.3,'rgba(255,120,60,0.5)');impactG.addColorStop(0.7,'rgba(255,60,40,0.2)');impactG.addColorStop(1,'rgba(255,40,20,0)');
+    X.fillStyle=impactG;X.beginPath();X.arc(fistX+fistW+8,0,20,0,Math.PI*2);X.fill();
+    // Inner hot core
+    X.shadowColor='#ff6040';X.shadowBlur=10;
+    X.beginPath();X.arc(fistX+fistW+8,0,5,0,Math.PI*2);
+    X.fillStyle='rgba(255,255,220,0.9)';X.fill();
+    X.shadowBlur=0;
   }
 
   X.restore();
 
-  // Downslam ground crack
+  // Downslam ground crack — enhanced with neon glow
   if(isDownslam){
     X.save();X.translate(0,r+15);
+    X.shadowColor='#ff4030';X.shadowBlur=8;
     X.strokeStyle='#ff4030';X.lineWidth=3;
     for(let i=0;i<10;i++){
       const a=Math.PI*2*i/10;
-      const len=20+Math.random()*30;
+      const len=20+Math.sin(i*3.7+battleTime*0.1)*15+15;
       X.beginPath();X.moveTo(0,0);X.lineTo(Math.cos(a)*len,Math.sin(a)*len);X.stroke();
     }
+    // Inner glow circle
+    const crackG=X.createRadialGradient(0,0,0,0,0,25);
+    crackG.addColorStop(0,'rgba(255,100,50,0.4)');crackG.addColorStop(1,'rgba(255,60,30,0)');
+    X.fillStyle=crackG;X.beginPath();X.arc(0,0,25,0,Math.PI*2);X.fill();
+    X.shadowBlur=0;
     X.restore();
   }
 }
@@ -19027,25 +19109,44 @@ function drawGorillaArms(r,ext,flash,f){
 function drawMonowire(r,ext,flash,f){
   const wireLen=75; // proportional to arena
   const isSpinning=f.relicWhipSpinTimer>0;
+  const neonPulse=Math.sin(battleTime*0.1)*0.3+0.7;
 
-  // Wrist housing — small rectangular slot on forearm plate
-  X.fillStyle='#2a2a30';
+  // Wrist housing — enhanced forearm plate with gradient and circuit details
+  const housingG=X.createLinearGradient(r-6,-8,r-6,8);
+  housingG.addColorStop(0,'#2a2a38');housingG.addColorStop(0.3,'#1e1e2a');housingG.addColorStop(0.7,'#1e1e2a');housingG.addColorStop(1,'#2a2a38');
+  X.fillStyle=housingG;
   X.fillRect(r-6,-8,14,16);
-  X.strokeStyle='#3a3a44';X.lineWidth=1;
+  X.strokeStyle='#3a3a4a';X.lineWidth=1;
   X.strokeRect(r-6,-8,14,16);
   // Panel detail
   X.strokeStyle='#333';X.lineWidth=0.5;
   X.beginPath();X.moveTo(r,-8);X.lineTo(r,8);X.stroke();
-  // Wire ejection slot
+  // Circuit trace on housing
+  X.strokeStyle='rgba(255,140,30,'+neonPulse*0.35+')';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(r-4,-6);X.lineTo(r-1,-6);X.lineTo(r-1,-3);X.lineTo(r+2,-3);X.stroke();
+  X.beginPath();X.moveTo(r-4,6);X.lineTo(r-1,6);X.lineTo(r-1,3);X.lineTo(r+3,3);X.stroke();
+  // Wire ejection slot with inner neon glow
   X.fillStyle='#0a0a0e';
   X.fillRect(r+6,-3,6,6);
   X.strokeStyle='#555';X.lineWidth=0.8;
   X.strokeRect(r+6,-3,6,6);
-  // Status LED
+  // Inner ejection glow
+  const ejectG=X.createRadialGradient(r+9,0,0,r+9,0,3);
+  ejectG.addColorStop(0,'rgba(255,160,40,'+neonPulse*0.4+')');ejectG.addColorStop(1,'rgba(255,100,20,0)');
+  X.fillStyle=ejectG;X.beginPath();X.arc(r+9,0,3,0,Math.PI*2);X.fill();
+  // Status LEDs with glow
+  X.shadowColor='#ff8800';X.shadowBlur=ext>0.1?5:0;
   X.beginPath();X.arc(r-2,-5,1.5,0,Math.PI*2);
-  X.fillStyle=ext>0.1?'#ff8800':'#553300';X.fill();
+  X.fillStyle=ext>0.1?'#ff9922':'#553300';X.fill();
+  X.shadowBlur=0;
   X.beginPath();X.arc(r-2,5,1.5,0,Math.PI*2);
-  X.fillStyle='#444';X.fill();
+  X.fillStyle='rgba(255,140,30,'+neonPulse*0.3+')';X.fill();
+  // Neon accent lines on housing edges
+  X.shadowColor='#ff8800';X.shadowBlur=3;
+  X.fillStyle='rgba(255,140,40,'+neonPulse*0.6+')';
+  X.fillRect(r-5,-8,12,1);
+  X.fillRect(r-5,7,12,1);
+  X.shadowBlur=0;
 
   // WIRE — bright orange/gold, long, luminous
   const t=battleTime*0.08;
@@ -19053,12 +19154,15 @@ function drawMonowire(r,ext,flash,f){
 
   if(isSpinning){
     const spinLen=100;
-    X.shadowColor='#ff8800';X.shadowBlur=15;
+    X.shadowColor='#ff8800';X.shadowBlur=20;
     for(let w=0;w<2;w++){
       const wa=f.rotation*3+w*Math.PI;
       const tipX=Math.cos(wa)*spinLen,tipY=Math.sin(wa)*spinLen;
+      // Ultra-wide outer glow
+      X.strokeStyle='rgba(255,140,30,0.15)';X.lineWidth=16;
+      X.beginPath();X.moveTo(0,0);X.lineTo(tipX,tipY);X.stroke();
       // Wide outer glow
-      X.strokeStyle='rgba(255,140,30,0.25)';X.lineWidth=10;
+      X.strokeStyle='rgba(255,140,30,0.3)';X.lineWidth=8;
       X.beginPath();X.moveTo(0,0);X.lineTo(tipX,tipY);X.stroke();
       // Core wire
       X.strokeStyle='rgba(255,180,50,0.9)';X.lineWidth=2.5;
@@ -19066,15 +19170,17 @@ function drawMonowire(r,ext,flash,f){
       // Bright center
       X.strokeStyle='rgba(255,240,180,0.7)';X.lineWidth=1;
       X.beginPath();X.moveTo(0,0);X.lineTo(tipX,tipY);X.stroke();
-      // Tip glow
-      X.beginPath();X.arc(tipX,tipY,5,0,Math.PI*2);X.fillStyle='#ffcc44';X.fill();
+      // Tip glow — enhanced with radial gradient
+      const tipG=X.createRadialGradient(tipX,tipY,0,tipX,tipY,8);
+      tipG.addColorStop(0,'#ffffff');tipG.addColorStop(0.3,'#ffdd66');tipG.addColorStop(0.7,'rgba(255,140,30,0.4)');tipG.addColorStop(1,'rgba(255,100,20,0)');
+      X.fillStyle=tipG;X.beginPath();X.arc(tipX,tipY,8,0,Math.PI*2);X.fill();
     }
     X.shadowBlur=0;
   } else {
     // Outer glow — wide, soft orange
     X.strokeStyle=flash?'rgba(255,180,50,0.4)':'rgba(255,140,30,0.15)';
-    X.lineWidth=flash?12:8;
-    X.shadowColor='#ff8800';X.shadowBlur=flash?20:10;
+    X.lineWidth=flash?14:8;
+    X.shadowColor='#ff8800';X.shadowBlur=flash?25:12;
     X.beginPath();X.moveTo(r+10,0);
     for(let i=1;i<=30;i++){
       const px=r+10+(wireLen-10)*i/30;
@@ -19083,8 +19189,8 @@ function drawMonowire(r,ext,flash,f){
     }
     X.stroke();
 
-    // Main wire — bright orange
-    X.strokeStyle=flash?'rgba(255,200,60,1)':'rgba(255,160,40,0.75)';
+    // Main wire — bright orange with pulsing neon
+    X.strokeStyle=flash?'rgba(255,200,60,1)':'rgba(255,160,40,'+neonPulse*0.9+')';
     X.lineWidth=flash?3:2;
     X.beginPath();X.moveTo(r+10,0);
     for(let i=1;i<=30;i++){
@@ -19106,97 +19212,151 @@ function drawMonowire(r,ext,flash,f){
     X.stroke();
     X.shadowBlur=0;
 
-    // Wire tip — bright glowing point
+    // Wire tip — enhanced glowing point with radial gradient
     const tipX=r+wireLen;
-    X.beginPath();X.arc(tipX,0,flash?6:3.5,0,Math.PI*2);
-    X.fillStyle=flash?'#ffffff':'#ffcc44';X.fill();
-    X.beginPath();X.arc(tipX,0,flash?12:7,0,Math.PI*2);
-    X.fillStyle=flash?'rgba(255,180,50,0.4)':'rgba(255,140,30,0.12)';X.fill();
+    const tipG=X.createRadialGradient(tipX,0,0,tipX,0,flash?14:8);
+    tipG.addColorStop(0,flash?'#ffffff':'#ffdd66');
+    tipG.addColorStop(0.25,flash?'#ffee88':'#ffcc44');
+    tipG.addColorStop(0.6,'rgba(255,140,30,'+(flash?0.5:0.2)+')');
+    tipG.addColorStop(1,'rgba(255,100,20,0)');
+    X.fillStyle=tipG;X.beginPath();X.arc(tipX,0,flash?14:8,0,Math.PI*2);X.fill();
+    // Hot core dot
+    X.shadowColor='#ffaa00';X.shadowBlur=flash?12:5;
+    X.beginPath();X.arc(tipX,0,flash?3:2,0,Math.PI*2);
+    X.fillStyle=flash?'#ffffff':'#ffee88';X.fill();
+    X.shadowBlur=0;
 
+    // Electric sparks along wire
     if(flash){
-      for(let i=0;i<5;i++){
-        const cx=r+15+Math.random()*(wireLen-20);
-        const cy=(Math.random()-0.5)*10;
-        X.strokeStyle='#ffdd88';X.lineWidth=0.8;
+      for(let i=0;i<6;i++){
+        const cx=r+15+Math.sin(i*4.3+battleTime*0.2)*(wireLen-25)*0.5+(wireLen-25)*0.5;
+        const cy=Math.sin(i*0.15+t)*waveAmp*(1-((cx-r-10)/(wireLen-10))/1.1);
+        X.strokeStyle='#ffee88';X.lineWidth=0.8;
+        X.shadowColor='#ff8800';X.shadowBlur=4;
         X.beginPath();X.moveTo(cx,cy);
-        X.lineTo(cx+rand(-8,8),cy+rand(-8,8));X.stroke();
+        const bx=cx+Math.sin(i*7.1+battleTime*0.3)*6;
+        const by=cy+Math.cos(i*5.3+battleTime*0.2)*6;
+        X.lineTo(bx,by);X.stroke();
       }
+      X.shadowBlur=0;
     }
   }
 }
 
 function drawPLS(r,ext,flash,f){
   const launcherLen=50; // proportional to arena
+  const neonPulse=Math.sin(battleTime*0.1)*0.3+0.7;
 
-  // Forearm base plate — dark metallic
-  X.fillStyle='#2a2a30';
+  // Forearm base plate — dark metallic with gradient
+  const baseG=X.createLinearGradient(r-8,-10,r-8,10);
+  baseG.addColorStop(0,'#2a2a38');baseG.addColorStop(0.3,'#1e1e2a');baseG.addColorStop(0.7,'#1e1e2a');baseG.addColorStop(1,'#2a2a38');
+  X.fillStyle=baseG;
   X.fillRect(r-8,-10,16,20);
-  X.strokeStyle='#3a3a44';X.lineWidth=1;
+  X.strokeStyle='#3a3a4a';X.lineWidth=1;
   X.strokeRect(r-8,-10,16,20);
   X.strokeStyle='#333';X.lineWidth=0.5;
   X.beginPath();X.moveTo(r-2,-10);X.lineTo(r-2,10);X.stroke();
   X.beginPath();X.moveTo(r+4,-10);X.lineTo(r+4,10);X.stroke();
-  // Mounting bolts
-  X.fillStyle='#555';
+  // Circuit traces on base plate
+  X.strokeStyle='rgba(50,220,50,'+neonPulse*0.3+')';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(r-5,-7);X.lineTo(r-2,-7);X.lineTo(r-2,-4);X.lineTo(r+1,-4);X.stroke();
+  X.beginPath();X.moveTo(r-5,7);X.lineTo(r-2,7);X.lineTo(r-2,4);X.lineTo(r+2,4);X.stroke();
+  // Mounting bolts with metallic gradient
+  X.fillStyle='#666';
   X.beginPath();X.arc(r-4,-7,1.5,0,Math.PI*2);X.fill();
   X.beginPath();X.arc(r-4,7,1.5,0,Math.PI*2);X.fill();
+  X.fillStyle='#888';
+  X.beginPath();X.arc(r-4,-7,0.8,0,Math.PI*2);X.fill();
+  X.beginPath();X.arc(r-4,7,0.8,0,Math.PI*2);X.fill();
 
-  // Barrel cannon — proportional, dark metallic
+  // Barrel cannon — proportional, dark metallic with richer gradient
   const bx=r+6;
   const bLen=launcherLen;
   const barrelR=8;
   const bg=X.createLinearGradient(bx,-barrelR,bx,barrelR);
-  bg.addColorStop(0,'#151518');bg.addColorStop(0.15,'#2a2a35');bg.addColorStop(0.4,'#333340');
-  bg.addColorStop(0.6,'#3a3a48');bg.addColorStop(0.85,'#2a2a35');bg.addColorStop(1,'#151518');
+  bg.addColorStop(0,'#121218');bg.addColorStop(0.1,'#1e1e2a');bg.addColorStop(0.3,'#2a2a3a');
+  bg.addColorStop(0.45,'#333345');bg.addColorStop(0.55,'#363648');bg.addColorStop(0.7,'#2a2a3a');bg.addColorStop(0.9,'#1e1e2a');bg.addColorStop(1,'#121218');
   X.fillStyle=bg;
   drawRoundRect(bx,-barrelR,bLen,barrelR*2,3);
   X.fill();
   X.strokeStyle='#444';X.lineWidth=1.2;X.stroke();
 
-  // Green LED accent strips (green instead of red — energy weapon)
-  X.fillStyle=flash?'rgba(50,255,50,1)':'rgba(30,200,30,0.6)';
+  // Green neon LED accent strips with glow
+  X.shadowColor='#33ff33';X.shadowBlur=flash?12:4;
+  X.fillStyle=flash?'rgba(80,255,80,1)':'rgba(40,220,40,'+neonPulse+')';
   X.fillRect(bx+3,-barrelR,bLen-6,2);
   X.fillRect(bx+3,barrelR-2,bLen-6,2);
-  if(flash){X.shadowColor='#33ff33';X.shadowBlur=8;X.fillRect(bx+3,-barrelR,bLen-6,2);X.fillRect(bx+3,barrelR-2,bLen-6,2);X.shadowBlur=0;}
+  X.shadowBlur=0;
+  // Neon center line inside LED strip
+  X.fillStyle=flash?'rgba(200,255,200,0.7)':'rgba(150,255,150,'+neonPulse*0.3+')';
+  X.fillRect(bx+4,-barrelR+0.5,bLen-8,0.5);
+  X.fillRect(bx+4,barrelR-1.5,bLen-8,0.5);
 
-  // Barrel segments
-  X.strokeStyle='#2a2a35';X.lineWidth=1;
+  // Barrel segments with panel line detail
+  X.strokeStyle='#2a2a38';X.lineWidth=1;
   [0.25,0.5,0.75].forEach(p=>{X.beginPath();X.moveTo(bx+bLen*p,-barrelR);X.lineTo(bx+bLen*p,barrelR);X.stroke();});
+  // Circuit pattern on barrel
+  X.strokeStyle='rgba(50,200,50,'+neonPulse*0.2+')';X.lineWidth=0.4;
+  X.beginPath();X.moveTo(bx+8,-barrelR+4);X.lineTo(bx+14,-barrelR+4);X.lineTo(bx+14,-barrelR+6);X.lineTo(bx+20,-barrelR+6);X.stroke();
+  X.beginPath();X.moveTo(bx+bLen*0.5+3,barrelR-4);X.lineTo(bx+bLen*0.5+9,barrelR-4);X.lineTo(bx+bLen*0.5+9,barrelR-6);X.stroke();
 
-  // Top breach mechanism
-  X.fillStyle='#1e1e28';
+  // Top breach mechanism with enhanced detail
+  const breachG=X.createLinearGradient(bx+3,-barrelR-4,bx+3,-barrelR);
+  breachG.addColorStop(0,'#1a1a28');breachG.addColorStop(1,'#252535');
+  X.fillStyle=breachG;
   X.fillRect(bx+3,-barrelR-4,bLen*0.3,4);
-  X.strokeStyle='#3a3a44';X.lineWidth=0.8;X.strokeRect(bx+3,-barrelR-4,bLen*0.3,4);
-  X.fillStyle=flash?'#44ff44':'#228822';X.fillRect(bx+5,-barrelR-3,4,2);
-  // Bottom rail
+  X.strokeStyle='#3a3a4a';X.lineWidth=0.8;X.strokeRect(bx+3,-barrelR-4,bLen*0.3,4);
+  // Breach LED — pulsing green
+  X.shadowColor='#33ff33';X.shadowBlur=flash?6:2;
+  X.fillStyle=flash?'#66ff66':'rgba(34,136,34,'+neonPulse+')';X.fillRect(bx+5,-barrelR-3,4,2);
+  X.shadowBlur=0;
+  // Bottom rail with mounting detail
   X.fillStyle='#1e1e28';X.fillRect(bx+bLen*0.2,barrelR,bLen*0.35,3);
+  X.strokeStyle='#2a2a35';X.lineWidth=0.5;X.strokeRect(bx+bLen*0.2,barrelR,bLen*0.35,3);
 
   // Muzzle — dark barrel opening with energy glow
   const muzzX=bx+bLen;
   X.beginPath();X.arc(muzzX,0,barrelR-1,0,Math.PI*2);
   X.fillStyle='#0a0a10';X.fill();
   X.strokeStyle='#444';X.lineWidth=1.2;X.stroke();
-  X.beginPath();X.arc(muzzX,0,barrelR-4,0,Math.PI*2);
-  X.fillStyle=flash?'rgba(50,255,50,0.3)':'#050508';X.fill();
-  // Rifling
-  X.strokeStyle='#222';X.lineWidth=0.5;
-  for(let i=0;i<6;i++){const a=Math.PI*2*i/6;X.beginPath();X.moveTo(muzzX+Math.cos(a)*2,Math.sin(a)*2);X.lineTo(muzzX+Math.cos(a)*(barrelR-2),Math.sin(a)*(barrelR-2));X.stroke();}
+  // Inner barrel with neon green charge glow
+  const innerG=X.createRadialGradient(muzzX,0,0,muzzX,0,barrelR-2);
+  innerG.addColorStop(0,flash?'rgba(100,255,100,0.5)':'rgba(30,120,30,'+neonPulse*0.3+')');
+  innerG.addColorStop(0.5,flash?'rgba(50,200,50,0.2)':'rgba(20,80,20,0.1)');
+  innerG.addColorStop(1,'#050508');
+  X.fillStyle=innerG;X.beginPath();X.arc(muzzX,0,barrelR-2,0,Math.PI*2);X.fill();
+  // Rifling with slight green tint
+  X.strokeStyle='rgba(30,60,30,0.5)';X.lineWidth=0.5;
+  for(let i=0;i<6;i++){const a=Math.PI*2*i/6+battleTime*0.02;X.beginPath();X.moveTo(muzzX+Math.cos(a)*2,Math.sin(a)*2);X.lineTo(muzzX+Math.cos(a)*(barrelR-2),Math.sin(a)*(barrelR-2));X.stroke();}
+  // Muzzle ring glow
+  X.shadowColor='#33ff33';X.shadowBlur=flash?8:3;
+  X.strokeStyle='rgba(50,200,50,'+(flash?0.7:neonPulse*0.3)+')';X.lineWidth=1;
+  X.beginPath();X.arc(muzzX,0,barrelR-1,0,Math.PI*2);X.stroke();
+  X.shadowBlur=0;
 
-  // Muzzle flash — BIG green energy burst
+  // Muzzle flash — BIG green energy burst with radial gradient
   if(flash){
-    X.shadowColor='#33ff33';X.shadowBlur=15;
-    X.beginPath();X.arc(muzzX+5,0,16,0,Math.PI*2);
-    X.fillStyle='rgba(100,255,100,0.5)';X.fill();
-    X.beginPath();X.arc(muzzX+5,0,8,0,Math.PI*2);
-    X.fillStyle='rgba(200,255,200,0.8)';X.fill();
+    X.shadowColor='#33ff33';X.shadowBlur=20;
+    const mfG=X.createRadialGradient(muzzX+5,0,0,muzzX+5,0,20);
+    mfG.addColorStop(0,'rgba(220,255,220,0.9)');mfG.addColorStop(0.25,'rgba(100,255,100,0.6)');mfG.addColorStop(0.6,'rgba(50,200,50,0.3)');mfG.addColorStop(1,'rgba(30,150,30,0)');
+    X.fillStyle=mfG;X.beginPath();X.arc(muzzX+5,0,20,0,Math.PI*2);X.fill();
+    // Inner hot core
+    X.beginPath();X.arc(muzzX+3,0,5,0,Math.PI*2);
+    X.fillStyle='rgba(255,255,255,0.8)';X.fill();
     X.shadowBlur=0;
   }
 
-  // Targeting optic on top
-  X.strokeStyle='#55cc55';X.lineWidth=1;
+  // Targeting optic on top — enhanced with glow and lens detail
+  X.strokeStyle='rgba(85,204,85,'+neonPulse*0.8+')';X.lineWidth=1;
   X.beginPath();X.moveTo(bx+bLen*0.55,-barrelR-4);X.lineTo(bx+bLen*0.55,-barrelR-8);X.lineTo(bx+bLen*0.7,-barrelR-8);X.stroke();
-  X.beginPath();X.arc(bx+bLen*0.7,-barrelR-8,2,0,Math.PI*2);
-  X.fillStyle=flash?'#aaffaa':'#55ff55';X.fill();
+  // Optic lens with glow
+  X.shadowColor='#55ff55';X.shadowBlur=flash?8:3;
+  X.beginPath();X.arc(bx+bLen*0.7,-barrelR-8,2.5,0,Math.PI*2);
+  X.fillStyle=flash?'#aaffaa':'rgba(85,255,85,'+neonPulse+')';X.fill();
+  X.shadowBlur=0;
+  // Lens highlight
+  X.fillStyle='rgba(255,255,255,0.5)';
+  X.beginPath();X.arc(bx+bLen*0.7-0.5,-barrelR-8.5,0.8,0,Math.PI*2);X.fill();
 
   // PLS Relic — BIG targeting reticle on enemy (visible during charge AND rapid fire)
   if(f&&f.specialActive&&f.relicLockTarget){
@@ -19245,37 +19405,82 @@ function drawPLS(r,ext,flash,f){
 
 function drawSandy(r,ext,flash,f){
   // Sandevistan — NO weapon, no spine. Just the ball. Deals body collision damage.
+  const neonPulse=Math.sin(battleTime*0.1)*0.3+0.7;
 
-  // Sandevistan active — BIG obvious blue energy field
+  // Passive spine implant glow — visible even when inactive
+  if(f&&!f.sandyActive){
+    X.save();X.rotate(-f.weaponAngle);
+    // Subtle cyan spine glow at back
+    const spineG=X.createRadialGradient(0,0,f.radius-2,0,0,f.radius+6);
+    spineG.addColorStop(0,'rgba(68,136,255,0)');spineG.addColorStop(0.7,'rgba(68,136,255,'+neonPulse*0.08+')');spineG.addColorStop(1,'rgba(68,136,255,0)');
+    X.fillStyle=spineG;X.beginPath();X.arc(0,0,f.radius+6,0,Math.PI*2);X.fill();
+    // Subtle speed-ready indicators — 4 small cyan dots
+    for(let i=0;i<4;i++){
+      const da=battleTime*0.03+i*Math.PI/2;
+      X.fillStyle='rgba(68,170,255,'+neonPulse*0.3+')';
+      X.beginPath();X.arc(Math.cos(da)*(f.radius+3),Math.sin(da)*(f.radius+3),1.5,0,Math.PI*2);X.fill();
+    }
+    X.restore();
+  }
+
+  // Sandevistan active — BIG obvious blue energy field with enhanced cyberpunk effects
   if(f&&f.sandyActive){
     X.save();X.rotate(-f.weaponAngle);
-    // Massive blue aura fill
+    // Massive blue aura fill — multi-layered radial gradient
     const pulse=Math.sin(battleTime*0.12)*8;
-    X.beginPath();X.arc(0,0,f.radius+20+pulse,0,Math.PI*2);
-    const ag=X.createRadialGradient(0,0,f.radius,0,0,f.radius+20+pulse);
-    ag.addColorStop(0,'rgba(68,136,255,0.5)');ag.addColorStop(0.5,'rgba(68,136,255,0.2)');ag.addColorStop(1,'rgba(68,136,255,0)');
+    X.beginPath();X.arc(0,0,f.radius+24+pulse,0,Math.PI*2);
+    const ag=X.createRadialGradient(0,0,f.radius*0.8,0,0,f.radius+24+pulse);
+    ag.addColorStop(0,'rgba(100,180,255,0.55)');ag.addColorStop(0.3,'rgba(68,136,255,0.35)');ag.addColorStop(0.6,'rgba(68,136,255,0.15)');ag.addColorStop(1,'rgba(68,136,255,0)');
     X.fillStyle=ag;X.fill();
-    // Bright blue outer ring
+    // Bright neon blue outer ring with enhanced glow
+    X.shadowColor='#4488ff';X.shadowBlur=25;
     X.beginPath();X.arc(0,0,f.radius+16+pulse,0,Math.PI*2);
-    X.shadowColor='#4488ff';X.shadowBlur=20;
-    X.strokeStyle='rgba(68,136,255,0.9)';X.lineWidth=4;X.stroke();
-    // Inner bright ring
+    X.strokeStyle='rgba(68,170,255,0.95)';X.lineWidth=4;X.stroke();
+    // Secondary outer ring — thin, electric
+    X.beginPath();X.arc(0,0,f.radius+20+pulse,0,Math.PI*2);
+    X.strokeStyle='rgba(100,200,255,0.4)';X.lineWidth=1.5;X.stroke();
+    // Inner bright ring with cyan neon
     X.beginPath();X.arc(0,0,f.radius+4,0,Math.PI*2);
-    X.strokeStyle='rgba(136,200,255,0.6)';X.lineWidth=6;X.stroke();
+    X.strokeStyle='rgba(150,220,255,0.7)';X.lineWidth=6;X.stroke();
+    // Inner hot ring
+    X.beginPath();X.arc(0,0,f.radius+2,0,Math.PI*2);
+    X.strokeStyle='rgba(200,240,255,0.3)';X.lineWidth=2;X.stroke();
     X.shadowBlur=0;
-    // 12 speed lines radiating outward — very visible
-    for(let i=0;i<12;i++){
-      const sa=battleTime*0.18+i*Math.PI/6;
-      const lineLen=15+pulse+Math.sin(battleTime*0.3+i)*5;
-      X.strokeStyle='rgba(100,180,255,0.6)';X.lineWidth=2.5;
-      X.beginPath();X.moveTo(Math.cos(sa)*(f.radius+6),Math.sin(sa)*(f.radius+6));
-      X.lineTo(Math.cos(sa)*(f.radius+6+lineLen),Math.sin(sa)*(f.radius+6+lineLen));X.stroke();
+    // 16 speed lines radiating outward — staggered lengths, neon glow
+    X.shadowColor='#4488ff';X.shadowBlur=6;
+    for(let i=0;i<16;i++){
+      const sa=battleTime*0.18+i*Math.PI/8;
+      const lineLen=12+pulse+Math.sin(battleTime*0.3+i*1.7)*6+(i%2)*4;
+      const lineAlpha=0.4+Math.sin(battleTime*0.2+i*0.9)*0.2;
+      X.strokeStyle='rgba(100,200,255,'+lineAlpha+')';X.lineWidth=i%3===0?3:2;
+      X.beginPath();X.moveTo(Math.cos(sa)*(f.radius+5),Math.sin(sa)*(f.radius+5));
+      X.lineTo(Math.cos(sa)*(f.radius+5+lineLen),Math.sin(sa)*(f.radius+5+lineLen));X.stroke();
+    }
+    X.shadowBlur=0;
+    // Hexagonal time-distortion pattern around ball
+    X.strokeStyle='rgba(100,200,255,0.2)';X.lineWidth=1;
+    for(let i=0;i<6;i++){
+      const ha=battleTime*0.04+i*Math.PI/3;
+      const hr=f.radius+12+pulse*0.5;
+      X.beginPath();
+      X.moveTo(Math.cos(ha)*hr,Math.sin(ha)*hr);
+      X.lineTo(Math.cos(ha+Math.PI/3)*hr,Math.sin(ha+Math.PI/3)*hr);
+      X.stroke();
+    }
+    // Circuit trace pattern — tech overlay
+    X.strokeStyle='rgba(68,170,255,'+neonPulse*0.25+')';X.lineWidth=0.5;
+    for(let i=0;i<3;i++){
+      const ca=battleTime*0.05+i*Math.PI*2/3;
+      const cr=f.radius+8;
+      const cx=Math.cos(ca)*cr,cy=Math.sin(ca)*cr;
+      X.beginPath();X.moveTo(cx,cy);X.lineTo(cx+Math.cos(ca)*6,cy+Math.sin(ca)*6);
+      X.lineTo(cx+Math.cos(ca+0.5)*10,cy+Math.sin(ca+0.5)*10);X.stroke();
     }
     // Blue particles around ball
     if(battleTime%2<1){
-      for(let i=0;i<3;i++){
+      for(let i=0;i<4;i++){
         const a=Math.random()*Math.PI*2;
-        spawnParticle(f.x+Math.cos(a)*(f.radius+5),f.y+Math.sin(a)*(f.radius+5),'#6699ff',Math.cos(a)*2,Math.sin(a)*2,12,3);
+        spawnParticle(f.x+Math.cos(a)*(f.radius+5),f.y+Math.sin(a)*(f.radius+5),pick(['#6699ff','#88bbff','#44ccff']),Math.cos(a)*2.5,Math.sin(a)*2.5,14,3);
       }
     }
     X.restore();
@@ -19423,16 +19628,27 @@ function drawKatanaWeapon(r,ext,flash,f){
     return; // skip normal blade draw
   }
 
-  // Handle/tsuka — wrapped grip
-  X.fillStyle='#1a1a22';X.fillRect(r-8,-5,16,10);
-  X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-5,16,10);
-  // Wrapping lines — dark blue/silver for Katana
-  X.strokeStyle='#4466cc';X.lineWidth=0.8;
+  const neonPulse=Math.sin(battleTime*0.1)*0.3+0.7;
+
+  // Handle/tsuka — wrapped grip with gradient
+  const handleG=X.createLinearGradient(r-8,-5,r-8,5);
+  handleG.addColorStop(0,'#1a1a28');handleG.addColorStop(0.5,'#222235');handleG.addColorStop(1,'#1a1a28');
+  X.fillStyle=handleG;X.fillRect(r-8,-5,16,10);
+  X.strokeStyle='#3a3a4a';X.lineWidth=1;X.strokeRect(r-8,-5,16,10);
+  // Wrapping lines — neon blue/silver for Katana with glow
+  X.shadowColor='#4466cc';X.shadowBlur=2;
+  X.strokeStyle='rgba(68,120,220,'+neonPulse*0.8+')';X.lineWidth=0.8;
   for(let i=0;i<4;i++){X.beginPath();X.moveTo(r-6+i*4,-5);X.lineTo(r-4+i*4,5);X.stroke();}
-  // Tsuba (guard) — oval crossguard, gold accent
+  X.shadowBlur=0;
+  // Tsuba (guard) — oval crossguard with metallic gradient and gold accent
   X.beginPath();X.ellipse(r+8,0,4,10,0,0,Math.PI*2);
-  X.fillStyle='#554';X.fill();X.strokeStyle='#887';X.lineWidth=1;X.stroke();
-  X.fillStyle='#ccaa44';X.fillRect(r+6,-1,4,2); // gold accent
+  const tsubaG=X.createLinearGradient(r+4,-10,r+12,10);
+  tsubaG.addColorStop(0,'#444');tsubaG.addColorStop(0.3,'#666');tsubaG.addColorStop(0.5,'#777');tsubaG.addColorStop(0.7,'#666');tsubaG.addColorStop(1,'#444');
+  X.fillStyle=tsubaG;X.fill();X.strokeStyle='#888';X.lineWidth=1;X.stroke();
+  // Gold accent with subtle glow
+  X.shadowColor='#ccaa44';X.shadowBlur=3;
+  X.fillStyle='#ddbb55';X.fillRect(r+6,-1,4,2);
+  X.shadowBlur=0;
 
   // Blade — curved katana profile, single edge
   const bx=r+12;
@@ -19447,70 +19663,103 @@ function drawKatanaWeapon(r,ext,flash,f){
   X.quadraticCurveTo(bx+bladeLen*0.8,5,bx+bladeLen*0.5,5.5);
   X.quadraticCurveTo(bx+bladeLen*0.2,5,bx,3);
   X.closePath();
-  // Steel gradient — bright silver/blue tint
+  // Steel gradient — bright silver/blue tint with richer stops
   const bg=X.createLinearGradient(bx,-5,bx+bladeLen,0);
-  bg.addColorStop(0,'#778');bg.addColorStop(0.15,'#aab');bg.addColorStop(0.35,'#dde');
-  bg.addColorStop(0.5,'#eef');bg.addColorStop(0.7,'#ccd');bg.addColorStop(0.9,'#99a');bg.addColorStop(1,'#667');
+  bg.addColorStop(0,'#667a8a');bg.addColorStop(0.1,'#99aabb');bg.addColorStop(0.25,'#bbd0e0');
+  bg.addColorStop(0.4,'#ddeeff');bg.addColorStop(0.5,'#eef5ff');bg.addColorStop(0.65,'#ccdde8');bg.addColorStop(0.8,'#99aabb');bg.addColorStop(0.95,'#667a8a');bg.addColorStop(1,'#556070');
   X.fillStyle=bg;X.fill();
   X.strokeStyle='#556';X.lineWidth=0.8;X.stroke();
-  // Hamon line — wavy temper line
-  X.strokeStyle='rgba(255,200,150,0.4)';X.lineWidth=1.2;
+  // Hamon line — wavy temper line with blue-white tint
+  X.strokeStyle='rgba(200,220,255,0.45)';X.lineWidth=1.2;
   X.beginPath();X.moveTo(bx+5,2);
   X.quadraticCurveTo(bx+bladeLen*0.2,3.5,bx+bladeLen*0.35,2);
   X.quadraticCurveTo(bx+bladeLen*0.5,3.5,bx+bladeLen*0.65,2);
   X.quadraticCurveTo(bx+bladeLen*0.8,3,bx+bladeLen*0.95,0.5);
   X.stroke();
-  // Cutting edge glow — blue/purple Katana energy
-  X.strokeStyle=flash?'rgba(80,100,255,0.9)':'rgba(68,102,204,0.4)';
-  X.lineWidth=flash?2.5:1;
+  // Nano-circuit pattern etched on blade — cyberpunk tech lines
+  X.strokeStyle='rgba(68,120,220,'+neonPulse*0.2+')';X.lineWidth=0.4;
+  X.beginPath();X.moveTo(bx+10,-2);X.lineTo(bx+16,-2);X.lineTo(bx+16,0);X.lineTo(bx+22,0);X.lineTo(bx+22,-1.5);X.lineTo(bx+28,-1.5);X.stroke();
+  X.beginPath();X.moveTo(bx+32,-1);X.lineTo(bx+38,-1);X.lineTo(bx+38,1);X.lineTo(bx+44,1);X.stroke();
+  // Cutting edge glow — neon blue/purple Katana energy with enhanced glow
+  X.shadowColor='#4466cc';X.shadowBlur=flash?14:5;
+  X.strokeStyle=flash?'rgba(100,140,255,1)':'rgba(68,102,204,'+neonPulse*0.5+')';
+  X.lineWidth=flash?3:1.2;
   X.beginPath();X.moveTo(bx+2,3);
   X.quadraticCurveTo(bx+bladeLen*0.3,5.5,bx+bladeLen*0.6,5);
   X.quadraticCurveTo(bx+bladeLen*0.85,3,bx+bladeLen+1,0.5);
   X.stroke();
-  if(flash){X.shadowColor='#4466cc';X.shadowBlur=10;X.stroke();X.shadowBlur=0;}
+  X.shadowBlur=0;
 
-  // Deflect stance glow — blue Katana readiness
+  // Blade tip energy glow — neon point
+  const tipG=X.createRadialGradient(bx+bladeLen+2,0.5,0,bx+bladeLen+2,0.5,6);
+  tipG.addColorStop(0,'rgba(120,160,255,'+(flash?0.6:0.2)+')');tipG.addColorStop(1,'rgba(68,102,204,0)');
+  X.fillStyle=tipG;X.beginPath();X.arc(bx+bladeLen+2,0.5,6,0,Math.PI*2);X.fill();
+
+  // Deflect stance glow — blue Katana readiness with neon
   if(f&&!f.katanaDashing&&!f.katanaRushing){
     const pulse=Math.sin(battleTime*0.08)*3;
-    X.strokeStyle='rgba(68,102,204,'+(0.2+Math.sin(battleTime*0.1)*0.1)+')';
+    X.shadowColor='#4466cc';X.shadowBlur=4;
+    X.strokeStyle='rgba(68,120,220,'+(0.25+Math.sin(battleTime*0.1)*0.12)+')';
     X.lineWidth=3+pulse*0.3;
     X.beginPath();X.arc(bx+bladeLen*0.5,0,bladeLen*0.35+pulse,Math.PI*0.7,Math.PI*1.3);X.stroke();
+    X.shadowBlur=0;
   }
-  // Relic rush — intense blue/purple aura (Judgement Cut End)
+  // Relic rush — intense blue/purple aura (Judgement Cut End) with enhanced neon
   if(f&&f.katanaRushing){
-    X.shadowColor='#4466cc';X.shadowBlur=25;
-    X.strokeStyle='rgba(68,102,204,0.7)';X.lineWidth=4;
+    X.shadowColor='#4488ff';X.shadowBlur=30;
+    X.strokeStyle='rgba(80,140,255,0.8)';X.lineWidth=4;
     X.beginPath();X.moveTo(bx+2,3);
     X.quadraticCurveTo(bx+bladeLen*0.5,8,bx+bladeLen+2,0);
-    X.stroke();X.shadowBlur=0;
+    X.stroke();
+    // Secondary neon trail
+    X.strokeStyle='rgba(150,200,255,0.4)';X.lineWidth=2;
+    X.beginPath();X.moveTo(bx+5,2);
+    X.quadraticCurveTo(bx+bladeLen*0.5,6,bx+bladeLen,0);
+    X.stroke();
+    X.shadowBlur=0;
   }
 
-  // Slash trail
+  // Slash trail — enhanced with neon afterglow
   if(flash&&f.attackAnim>0){
-    X.strokeStyle='rgba(255,100,60,0.5)';X.lineWidth=5;
+    X.shadowColor='#4466cc';X.shadowBlur=8;
+    X.strokeStyle='rgba(100,140,255,0.5)';X.lineWidth=5;
     X.beginPath();X.arc(0,0,r+bladeLen*0.5,-0.4,0.4);X.stroke();
-    X.strokeStyle='rgba(255,200,100,0.25)';X.lineWidth=10;
+    X.strokeStyle='rgba(150,200,255,0.25)';X.lineWidth=10;
     X.beginPath();X.arc(0,0,r+bladeLen*0.35,-0.3,0.3);X.stroke();
+    // Extra wide neon trail
+    X.strokeStyle='rgba(68,102,204,0.12)';X.lineWidth=16;
+    X.beginPath();X.arc(0,0,r+bladeLen*0.25,-0.2,0.2);X.stroke();
+    X.shadowBlur=0;
   }
 }
 
 function drawBerserkWeapon(r,ext,flash,f){
   const gunLen=50;
-  // Arm/forearm
-  X.fillStyle='#2a2a30';X.fillRect(r-8,-8,16,16);
-  X.strokeStyle='#3a3a44';X.lineWidth=1;X.strokeRect(r-8,-8,16,16);
-  // Pink accent (Berserk's style)
-  X.fillStyle='rgba(255,85,170,0.7)';X.fillRect(r-6,-8,12,2);X.fillRect(r-6,6,12,2);
+  const neonPulse=Math.sin(battleTime*0.1)*0.3+0.7;
 
-  // Shotgun body — blocky, double barrel
+  // Arm/forearm with gradient
+  const armG=X.createLinearGradient(r-8,-8,r-8,8);
+  armG.addColorStop(0,'#2a2a38');armG.addColorStop(0.3,'#1e1e2a');armG.addColorStop(0.7,'#1e1e2a');armG.addColorStop(1,'#2a2a38');
+  X.fillStyle=armG;X.fillRect(r-8,-8,16,16);
+  X.strokeStyle='#3a3a4a';X.lineWidth=1;X.strokeRect(r-8,-8,16,16);
+  // Circuit traces on arm
+  X.strokeStyle='rgba(255,85,170,'+neonPulse*0.3+')';X.lineWidth=0.5;
+  X.beginPath();X.moveTo(r-5,-5);X.lineTo(r-2,-5);X.lineTo(r-2,-2);X.lineTo(r+2,-2);X.stroke();
+  X.beginPath();X.moveTo(r-5,5);X.lineTo(r-1,5);X.lineTo(r-1,2);X.lineTo(r+3,2);X.stroke();
+  // Magenta neon accent (Berserk's style) with glow
+  X.shadowColor='#ff55aa';X.shadowBlur=flash?8:3;
+  X.fillStyle='rgba(255,85,170,'+neonPulse*0.9+')';X.fillRect(r-6,-8,12,2);X.fillRect(r-6,6,12,2);
+  X.shadowBlur=0;
+
+  // Shotgun body — blocky, double barrel with richer gradient
   const bx=r+6;
   const bodyG=X.createLinearGradient(bx,-10,bx,10);
-  bodyG.addColorStop(0,'#151518');bodyG.addColorStop(0.3,'#252530');bodyG.addColorStop(0.5,'#2e2e38');
-  bodyG.addColorStop(0.7,'#252530');bodyG.addColorStop(1,'#151518');
+  bodyG.addColorStop(0,'#121218');bodyG.addColorStop(0.15,'#1e1e2a');bodyG.addColorStop(0.35,'#282838');
+  bodyG.addColorStop(0.5,'#303042');bodyG.addColorStop(0.65,'#282838');bodyG.addColorStop(0.85,'#1e1e2a');bodyG.addColorStop(1,'#121218');
   X.fillStyle=bodyG;
   drawRoundRect(bx,-10,gunLen,20,3);X.fill();
   X.strokeStyle='#444';X.lineWidth=1.2;X.stroke();
-  // Double barrel holes
+  // Double barrel holes with inner glow
   const muzzX=bx+gunLen;
   X.fillStyle='#0a0a10';
   X.beginPath();X.arc(muzzX,-3.5,4,0,Math.PI*2);X.fill();
@@ -19518,64 +19767,116 @@ function drawBerserkWeapon(r,ext,flash,f){
   X.strokeStyle='#444';X.lineWidth=0.8;
   X.beginPath();X.arc(muzzX,-3.5,4,0,Math.PI*2);X.stroke();
   X.beginPath();X.arc(muzzX,3.5,4,0,Math.PI*2);X.stroke();
-  // Pink LED strips (Berserk)
-  X.fillStyle=flash?'rgba(255,85,170,1)':'rgba(255,55,140,0.6)';
+  // Inner barrel glow — residual heat
+  const barrelHeat1=X.createRadialGradient(muzzX,-3.5,0,muzzX,-3.5,3);
+  barrelHeat1.addColorStop(0,flash?'rgba(255,100,50,0.5)':'rgba(255,55,140,'+neonPulse*0.15+')');barrelHeat1.addColorStop(1,'rgba(0,0,0,0)');
+  X.fillStyle=barrelHeat1;X.beginPath();X.arc(muzzX,-3.5,3,0,Math.PI*2);X.fill();
+  const barrelHeat2=X.createRadialGradient(muzzX,3.5,0,muzzX,3.5,3);
+  barrelHeat2.addColorStop(0,flash?'rgba(255,100,50,0.5)':'rgba(255,55,140,'+neonPulse*0.15+')');barrelHeat2.addColorStop(1,'rgba(0,0,0,0)');
+  X.fillStyle=barrelHeat2;X.beginPath();X.arc(muzzX,3.5,3,0,Math.PI*2);X.fill();
+  // Magenta neon LED strips (Berserk) with enhanced glow
+  X.shadowColor='#ff55aa';X.shadowBlur=flash?14:5;
+  X.fillStyle=flash?'rgba(255,100,180,1)':'rgba(255,60,150,'+neonPulse+')';
   X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);
-  if(flash){X.shadowColor='#ff55aa';X.shadowBlur=10;X.fillRect(bx+3,-10,gunLen-6,1.5);X.fillRect(bx+3,8.5,gunLen-6,1.5);X.shadowBlur=0;}
+  X.shadowBlur=0;
+  // Hot neon center line in LED strip
+  X.fillStyle=flash?'rgba(255,200,230,0.6)':'rgba(255,180,220,'+neonPulse*0.25+')';
+  X.fillRect(bx+4,-9.5,gunLen-8,0.5);X.fillRect(bx+4,9,gunLen-8,0.5);
   // Barrel segments
-  X.strokeStyle='#2a2a35';X.lineWidth=0.8;
+  X.strokeStyle='#2a2a38';X.lineWidth=0.8;
   [0.3,0.55,0.8].forEach(p=>{X.beginPath();X.moveTo(bx+gunLen*p,-10);X.lineTo(bx+gunLen*p,10);X.stroke();});
-  // Pump grip
-  X.fillStyle='#331111';
+  // Circuit pattern on barrel body
+  X.strokeStyle='rgba(255,85,170,'+neonPulse*0.18+')';X.lineWidth=0.4;
+  X.beginPath();X.moveTo(bx+8,-6);X.lineTo(bx+14,-6);X.lineTo(bx+14,-4);X.lineTo(bx+20,-4);X.stroke();
+  X.beginPath();X.moveTo(bx+gunLen*0.55+2,5);X.lineTo(bx+gunLen*0.55+8,5);X.lineTo(bx+gunLen*0.55+8,3);X.lineTo(bx+gunLen*0.55+14,3);X.stroke();
+  // Pump grip with gradient
+  const pumpG=X.createLinearGradient(bx+gunLen*0.25,-12,bx+gunLen*0.25,-8);
+  pumpG.addColorStop(0,'#2a0808');pumpG.addColorStop(0.5,'#3a1515');pumpG.addColorStop(1,'#2a0808');
+  X.fillStyle=pumpG;
   drawRoundRect(bx+gunLen*0.25,-12,gunLen*0.2,4,2);X.fill();
   drawRoundRect(bx+gunLen*0.25,8,gunLen*0.2,4,2);X.fill();
+  // Pump grip texture lines
+  X.strokeStyle='#441818';X.lineWidth=0.4;
+  for(let i=0;i<3;i++){X.beginPath();X.moveTo(bx+gunLen*0.27+i*3,-12);X.lineTo(bx+gunLen*0.27+i*3,-8);X.stroke();}
+  for(let i=0;i<3;i++){X.beginPath();X.moveTo(bx+gunLen*0.27+i*3,8);X.lineTo(bx+gunLen*0.27+i*3,12);X.stroke();}
 
-  // Muzzle flash — BIG red/orange shotgun blast
+  // Muzzle flash — BIG magenta/red shotgun blast with radial gradient
   if(flash){
-    X.shadowColor='#ff4400';X.shadowBlur=15;
-    X.beginPath();X.arc(muzzX+8,0,20,0,Math.PI*2);
-    X.fillStyle='rgba(255,80,40,0.5)';X.fill();
-    X.beginPath();X.arc(muzzX+5,0,10,0,Math.PI*2);
-    X.fillStyle='rgba(255,200,100,0.7)';X.fill();
-    // Pellet scatter lines
-    for(let i=0;i<6;i++){
-      const a=(Math.random()-0.5)*1.2;
-      X.strokeStyle='rgba(255,150,50,0.6)';X.lineWidth=1.5;
-      X.beginPath();X.moveTo(muzzX,0);
-      X.lineTo(muzzX+Math.cos(a)*25,Math.sin(a)*25);X.stroke();
+    X.shadowColor='#ff4400';X.shadowBlur=20;
+    const mfG=X.createRadialGradient(muzzX+6,0,0,muzzX+6,0,24);
+    mfG.addColorStop(0,'rgba(255,255,220,0.85)');mfG.addColorStop(0.2,'rgba(255,150,80,0.6)');mfG.addColorStop(0.5,'rgba(255,80,40,0.35)');mfG.addColorStop(1,'rgba(255,50,30,0)');
+    X.fillStyle=mfG;X.beginPath();X.arc(muzzX+6,0,24,0,Math.PI*2);X.fill();
+    // Inner hot core
+    X.beginPath();X.arc(muzzX+4,0,6,0,Math.PI*2);
+    X.fillStyle='rgba(255,255,255,0.8)';X.fill();
+    // Pellet scatter lines with neon
+    for(let i=0;i<8;i++){
+      const a=Math.sin(i*4.7+battleTime*0.3)*0.6;
+      X.strokeStyle='rgba(255,150,80,0.5)';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(muzzX,Math.sin(i*2.3)*3);
+      X.lineTo(muzzX+Math.cos(a)*28,Math.sin(a)*28);X.stroke();
     }
     X.shadowBlur=0;
   }
 
-  // Reload indicator — shell loading visual
+  // Muzzle ring glow — constant subtle neon
+  X.shadowColor='#ff55aa';X.shadowBlur=3;
+  X.strokeStyle='rgba(255,85,170,'+(flash?0.6:neonPulse*0.25)+')';X.lineWidth=0.8;
+  X.beginPath();X.arc(muzzX,-3.5,4.5,0,Math.PI*2);X.stroke();
+  X.beginPath();X.arc(muzzX,3.5,4.5,0,Math.PI*2);X.stroke();
+  X.shadowBlur=0;
+
+  // Reload indicator — shell loading visual with neon bar
   if(f&&f.berserkReloadTimer>0){
     const reloadPct=f.berserkReloadTimer/(f.berserkInvincible?45:150);
-    X.fillStyle='rgba(255,50,50,0.3)';
+    X.shadowColor='#ff55aa';X.shadowBlur=4;
+    X.fillStyle='rgba(255,85,170,0.4)';
     X.fillRect(bx,10,gunLen*reloadPct,3);
-    // Shell icon
-    X.fillStyle='#aa4444';X.fillRect(bx+gunLen*0.4,-2,8,4);
-    X.strokeStyle='#cc6666';X.lineWidth=0.5;X.strokeRect(bx+gunLen*0.4,-2,8,4);
+    X.shadowBlur=0;
+    // Shell icon with gradient
+    const shellG=X.createLinearGradient(bx+gunLen*0.4,-2,bx+gunLen*0.4,2);
+    shellG.addColorStop(0,'#cc4444');shellG.addColorStop(0.5,'#aa3333');shellG.addColorStop(1,'#883333');
+    X.fillStyle=shellG;X.fillRect(bx+gunLen*0.4,-2,8,4);
+    X.strokeStyle='#dd6666';X.lineWidth=0.5;X.strokeRect(bx+gunLen*0.4,-2,8,4);
+    // Shell brass cap
+    X.fillStyle='#ddaa44';X.fillRect(bx+gunLen*0.4,-2,2,4);
   }
 
-  // Berserk mode — massive red aura
+  // Berserk mode — massive magenta/red aura with enhanced neon
   if(f&&f.berserkInvincible){
     X.save();X.rotate(-f.weaponAngle);
     const pulse=Math.sin(battleTime*0.12)*8;
-    X.beginPath();X.arc(0,0,f.radius+18+pulse,0,Math.PI*2);
-    const ag=X.createRadialGradient(0,0,f.radius,0,0,f.radius+18+pulse);
-    ag.addColorStop(0,'rgba(221,34,34,0.5)');ag.addColorStop(0.5,'rgba(221,34,34,0.2)');ag.addColorStop(1,'rgba(221,34,34,0)');
+    X.beginPath();X.arc(0,0,f.radius+22+pulse,0,Math.PI*2);
+    const ag=X.createRadialGradient(0,0,f.radius*0.8,0,0,f.radius+22+pulse);
+    ag.addColorStop(0,'rgba(255,50,80,0.5)');ag.addColorStop(0.3,'rgba(221,34,34,0.3)');ag.addColorStop(0.6,'rgba(221,34,34,0.12)');ag.addColorStop(1,'rgba(221,34,34,0)');
     X.fillStyle=ag;X.fill();
-    X.beginPath();X.arc(0,0,f.radius+14+pulse,0,Math.PI*2);
-    X.shadowColor='#dd2222';X.shadowBlur=20;
-    X.strokeStyle='rgba(221,34,34,0.8)';X.lineWidth=4;X.stroke();
+    // Neon outer ring
+    X.shadowColor='#dd2222';X.shadowBlur=25;
+    X.beginPath();X.arc(0,0,f.radius+16+pulse,0,Math.PI*2);
+    X.strokeStyle='rgba(255,50,50,0.85)';X.lineWidth=4;X.stroke();
+    // Secondary thin ring
+    X.beginPath();X.arc(0,0,f.radius+20+pulse,0,Math.PI*2);
+    X.strokeStyle='rgba(255,80,80,0.35)';X.lineWidth=1.5;X.stroke();
     X.shadowBlur=0;
-    // Red rage lines
-    for(let i=0;i<8;i++){
-      const sa=battleTime*0.15+i*Math.PI/4;
-      const lineLen=12+pulse+Math.sin(battleTime*0.25+i)*4;
-      X.strokeStyle='rgba(255,50,50,0.5)';X.lineWidth=2.5;
+    // Red rage lines — more of them, with glow
+    X.shadowColor='#ff3030';X.shadowBlur=5;
+    for(let i=0;i<12;i++){
+      const sa=battleTime*0.15+i*Math.PI/6;
+      const lineLen=10+pulse+Math.sin(battleTime*0.25+i*1.3)*5+(i%2)*3;
+      X.strokeStyle='rgba(255,60,60,'+(0.4+Math.sin(battleTime*0.2+i)*0.15)+')';X.lineWidth=i%3===0?3:2;
       X.beginPath();X.moveTo(Math.cos(sa)*(f.radius+5),Math.sin(sa)*(f.radius+5));
       X.lineTo(Math.cos(sa)*(f.radius+5+lineLen),Math.sin(sa)*(f.radius+5+lineLen));X.stroke();
+    }
+    X.shadowBlur=0;
+    // Hex pattern overlay — berserker glitch
+    X.strokeStyle='rgba(255,50,50,0.15)';X.lineWidth=1;
+    for(let i=0;i<6;i++){
+      const ha=battleTime*0.03+i*Math.PI/3;
+      const hr=f.radius+10+pulse*0.5;
+      X.beginPath();
+      X.moveTo(Math.cos(ha)*hr,Math.sin(ha)*hr);
+      X.lineTo(Math.cos(ha+Math.PI/3)*hr,Math.sin(ha+Math.PI/3)*hr);
+      X.stroke();
     }
     X.restore();
   }
