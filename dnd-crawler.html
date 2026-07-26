@@ -116,12 +116,12 @@ let helpOpen = false;
 
 // -- Races --
 const RACES = {
-  Human:    { name: 'Human',    bonuses: { STR:1,DEX:1,CON:1,INT:1,WIS:1,CHA:1 }, trait: 'Versatile: +1 to all stats', traitKey: 'versatile', color: '#c8b070' },
-  Elf:      { name: 'Elf',      bonuses: { DEX:2 }, trait: 'Darkvision, Charm Resistance', traitKey: 'darkvision', color: '#70c870' },
-  Dwarf:    { name: 'Dwarf',    bonuses: { CON:2 }, trait: 'Poison Resistance, Stonecunning', traitKey: 'poison_resist', color: '#c8a050' },
-  Halfling: { name: 'Halfling', bonuses: { DEX:2 }, trait: 'Lucky (reroll natural 1s)', traitKey: 'lucky', color: '#e0c080' },
-  Orc:      { name: 'Orc',      bonuses: { STR:2, CON:1 }, trait: 'Relentless Endurance (survive at 1HP once/rest)', traitKey: 'relentless', color: '#80a060' },
-  Tiefling: { name: 'Tiefling', bonuses: { CHA:2, INT:1 }, trait: 'Fire Resistance, Hellish Rebuke', traitKey: 'fire_resist', color: '#c06080' },
+  Human:    { name: 'Human',    bonuses: { STR:1,DEX:1,CON:1,INT:1,WIS:1,CHA:1 }, trait: 'Versatile: +1 to all stats', traitKey: 'versatile', color: '#c8b070', desc: 'Adaptable and ambitious \u2014 the most common race' },
+  Elf:      { name: 'Elf',      bonuses: { DEX:2 }, trait: 'Darkvision, Charm Resistance', traitKey: 'darkvision', color: '#70c870', desc: 'Graceful and long-lived \u2014 keen senses and magic affinity' },
+  Dwarf:    { name: 'Dwarf',    bonuses: { CON:2 }, trait: 'Poison Resistance, Stonecunning', traitKey: 'poison_resist', color: '#c8a050', desc: 'Stout and hardy \u2014 master craftsmen and warriors' },
+  Halfling: { name: 'Halfling', bonuses: { DEX:2 }, trait: 'Lucky (reroll natural 1s)', traitKey: 'lucky', color: '#e0c080', desc: 'Small but nimble \u2014 naturally lucky and brave' },
+  Orc:      { name: 'Orc',      bonuses: { STR:2, CON:1 }, trait: 'Relentless Endurance (survive at 1HP once/rest)', traitKey: 'relentless', color: '#80a060', desc: 'Powerful and fierce \u2014 resilient warriors with great strength' },
+  Tiefling: { name: 'Tiefling', bonuses: { CHA:2, INT:1 }, trait: 'Fire Resistance, Hellish Rebuke', traitKey: 'fire_resist', color: '#c06080', desc: 'Demon-blooded \u2014 charismatic with infernal powers' },
 };
 
 // -- Classes --
@@ -450,9 +450,21 @@ function updateTitle() {
 // ============================================================
 // CHARACTER CREATION
 // ============================================================
+const TOP_PAD = 40;
+const STAT_DESCS = {
+  STR: 'Melee damage, breaking doors, carrying capacity',
+  DEX: 'Ranged attacks, dodging, initiative, stealth',
+  CON: 'Hit points, resist poison, endurance',
+  INT: 'Arcana, investigation, wizard spells',
+  WIS: 'Perception, survival, cleric/ranger spells',
+  CHA: 'Persuasion, deception, bard/warlock spells'
+};
 function updateCharCreate() {
   X.fillStyle = '#0a0a0f';
   X.fillRect(0, 0, canvasW, canvasH);
+
+  // Remove mobile name overlay if not on name step
+  if (charCreate.step !== 3) removeNameOverlay();
 
   const cx = canvasW / 2;
   const steps = ['Choose Race', 'Choose Class', 'Assign Stats', 'Name Your Hero', 'Review'];
@@ -461,13 +473,13 @@ function updateCharCreate() {
   X.fillStyle = '#ffd700';
   X.font = `bold ${isMobile ? 16 : 20}px Consolas, monospace`;
   X.textAlign = 'center'; X.textBaseline = 'middle';
-  X.fillText(`Step ${charCreate.step + 1}/5: ${steps[charCreate.step]}`, cx, 30);
+  X.fillText(`Step ${charCreate.step + 1}/5: ${steps[charCreate.step]}`, cx, 30 + TOP_PAD);
 
   // Step dots
   for (let i = 0; i < 5; i++) {
     X.fillStyle = i <= charCreate.step ? '#ffd700' : '#333';
     X.beginPath();
-    X.arc(cx - 40 + i * 20, 55, 5, 0, Math.PI * 2);
+    X.arc(cx - 40 + i * 20, 55 + TOP_PAD, 5, 0, Math.PI * 2);
     X.fill();
   }
 
@@ -481,10 +493,13 @@ function updateCharCreate() {
 
   // Back button (except step 0)
   if (charCreate.step > 0) {
-    const bx = 10, by = 10, bw = 70, bh = 30;
+    const bx = 10, by = 10 + TOP_PAD, bw = 70, bh = 30;
     drawButton(bx, by, bw, bh, '< Back', false, '#333');
     if (clickedInRect(bx, by, bw, bh)) {
       SFX.click();
+      if (charCreate.step === 3) {
+        removeNameOverlay();
+      }
       if (charCreate.step === 2) {
         charCreate.statAssignment = {};
         charCreate.availableValues = [...STANDARD_ARRAY];
@@ -494,7 +509,7 @@ function updateCharCreate() {
     }
   } else {
     // Back to title
-    const bx = 10, by = 10, bw = 70, bh = 30;
+    const bx = 10, by = 10 + TOP_PAD, bw = 70, bh = 30;
     drawButton(bx, by, bw, bh, '< Menu', false, '#333');
     if (clickedInRect(bx, by, bw, bh)) { SFX.click(); gameState = STATE.TITLE; }
   }
@@ -504,8 +519,8 @@ function drawRaceSelection() {
   const cx = canvasW / 2;
   const races = Object.values(RACES);
   const cardW = isMobile ? canvasW * 0.85 : 340;
-  const cardH = isMobile ? 60 : 70;
-  const startY = 80;
+  const cardH = isMobile ? 74 : 84;
+  const startY = 80 + TOP_PAD;
 
   races.forEach((race, i) => {
     const y = startY + i * (cardH + 8);
@@ -526,14 +541,17 @@ function drawRaceSelection() {
     X.fillStyle = '#fff';
     X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
     X.textAlign = 'left';
-    X.fillText(race.name, cx - cardW/2 + 45, y + 22);
+    X.fillText(race.name, cx - cardW/2 + 45, y + 18);
 
     X.fillStyle = '#aaa';
     X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
     const bonusStr = Object.entries(race.bonuses).map(([k,v]) => `+${v} ${k}`).join(', ');
-    X.fillText(bonusStr, cx - cardW/2 + 45, y + 38);
+    X.fillText(bonusStr, cx - cardW/2 + 45, y + 34);
     X.fillStyle = '#888';
-    X.fillText(race.trait, cx - cardW/2 + 45, y + 52);
+    X.fillText(race.trait, cx - cardW/2 + 45, y + 48);
+    X.fillStyle = '#666';
+    X.font = `italic ${isMobile ? 9 : 11}px Consolas, monospace`;
+    X.fillText(race.desc, cx - cardW/2 + 45, y + 62);
 
     if (clickedInRect(cx - cardW/2, y, cardW, cardH)) {
       SFX.click();
@@ -548,7 +566,7 @@ function drawClassSelection() {
   const classes = Object.values(CLASSES);
   const cardW = isMobile ? canvasW * 0.85 : 340;
   const cardH = isMobile ? 60 : 70;
-  const startY = 80;
+  const startY = 80 + TOP_PAD;
 
   classes.forEach((cls, i) => {
     const y = startY + i * (cardH + 8);
@@ -595,7 +613,7 @@ function drawStatAssignment() {
   const cx = canvasW / 2;
   const race = RACES[charCreate.selectedRace];
   const cardW = isMobile ? canvasW * 0.85 : 400;
-  const startY = 80;
+  const startY = 80 + TOP_PAD;
 
   X.fillStyle = '#aaa';
   X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
@@ -660,6 +678,11 @@ function drawStatAssignment() {
     X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
     const statDesc = { STR:'Strength', DEX:'Dexterity', CON:'Constitution', INT:'Intelligence', WIS:'Wisdom', CHA:'Charisma' };
     X.fillText(statDesc[stat], cx - cardW/2 + 55, y + statH/2 - 5);
+
+    X.fillStyle = '#666';
+    X.font = `${isMobile ? 8 : 10}px Consolas, monospace`;
+    X.textAlign = 'left';
+    X.fillText(STAT_DESCS[stat], cx - cardW/2 + 15, y + statH/2 + 12);
 
     // Value display
     X.fillStyle = '#fff';
@@ -733,6 +756,11 @@ function drawStatAssignment() {
   }
 }
 
+function removeNameOverlay() {
+  const w = document.getElementById('nameWrapper');
+  if (w) w.remove();
+}
+
 function drawNameInput() {
   const cx = canvasW / 2;
   const cy = canvasH * 0.4;
@@ -742,68 +770,101 @@ function drawNameInput() {
   X.textAlign = 'center';
   X.fillText('Enter your character\'s name:', cx, cy - 40);
 
-  // Input box
-  const boxW = isMobile ? 250 : 320;
-  const boxH = 45;
-  X.fillStyle = '#1a1a2a';
-  X.fillRect(cx - boxW/2, cy, boxW, boxH);
-  X.strokeStyle = '#ffd700';
-  X.lineWidth = 2;
-  X.strokeRect(cx - boxW/2, cy, boxW, boxH);
-
-  charCreate.cursorBlink += 0.03;
-  const cursor = Math.sin(charCreate.cursorBlink * 3) > 0 ? '|' : '';
-
-  X.fillStyle = '#fff';
-  X.font = `bold ${isMobile ? 18 : 22}px Consolas, monospace`;
-  X.textAlign = 'center'; X.textBaseline = 'middle';
-  X.fillText(charCreate.nameInput + cursor, cx, cy + boxH/2);
-
-  // Mobile keyboard hint
   if (isMobile) {
-    X.fillStyle = '#666';
-    X.font = '12px Consolas, monospace';
-    X.fillText('Tap the box and use your keyboard', cx, cy + boxH + 25);
-    // Create a hidden input for mobile
-    if (!document.getElementById('nameInp')) {
-      const inp = document.createElement('input');
+    // Mobile: use actual HTML input overlay
+    let inp = document.getElementById('nameInp');
+    if (!inp) {
+      const wrapper = document.createElement('div');
+      wrapper.id = 'nameWrapper';
+      wrapper.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10000;pointer-events:none;';
+
+      inp = document.createElement('input');
       inp.id = 'nameInp';
       inp.type = 'text';
-      inp.style.cssText = 'position:fixed;top:-100px;left:0;opacity:0;font-size:16px;';
+      inp.placeholder = 'Your hero name...';
       inp.maxLength = 20;
+      inp.autocomplete = 'off';
+      inp.style.cssText = 'width:260px;height:45px;font-size:18px;font-family:Consolas,monospace;font-weight:bold;text-align:center;background:#1a1a2a;color:#fff;border:2px solid #ffd700;border-radius:4px;outline:none;pointer-events:auto;';
       inp.addEventListener('input', () => {
         charCreate.nameInput = inp.value.substr(0, 20);
       });
-      document.body.appendChild(inp);
-    }
-    if (clickedInRect(cx - boxW/2, cy, boxW, boxH)) {
-      document.getElementById('nameInp').focus();
-    }
-  }
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && charCreate.nameInput.trim().length > 0) {
+          charCreate.playerName = charCreate.nameInput.trim();
+          charCreate.step = 4;
+          removeNameOverlay();
+        }
+      });
 
-  // Continue
-  if (charCreate.nameInput.trim().length > 0) {
-    const btnW2 = 200, btnH2 = 45;
-    drawButton(cx - btnW2/2, cy + 80, btnW2, btnH2, 'CONTINUE', false, '#2a4a2a');
-    if (clickedInRect(cx - btnW2/2, cy + 80, btnW2, btnH2)) {
-      SFX.click();
-      charCreate.playerName = charCreate.nameInput.trim();
-      charCreate.step = 4;
-      const inp = document.getElementById('nameInp');
-      if (inp) inp.remove();
-    }
-  }
+      const btn = document.createElement('button');
+      btn.textContent = 'CONFIRM \u2192';
+      btn.style.cssText = 'margin-top:15px;width:200px;height:45px;font-size:16px;font-family:Consolas,monospace;font-weight:bold;background:#2a4a2a;color:#4a4;border:2px solid #4a4;border-radius:6px;pointer-events:auto;';
+      btn.addEventListener('click', () => {
+        if (charCreate.nameInput.trim().length > 0) {
+          charCreate.playerName = charCreate.nameInput.trim();
+          charCreate.step = 4;
+          removeNameOverlay();
+        }
+      });
 
-  X.fillStyle = '#555';
-  X.font = '12px Consolas, monospace';
-  X.fillText('Press Enter to continue', cx, cy + 140);
+      wrapper.appendChild(inp);
+      wrapper.appendChild(btn);
+      document.body.appendChild(wrapper);
+
+      setTimeout(() => inp.focus(), 100);
+    }
+
+    // Sync input value
+    if (inp && inp.value !== charCreate.nameInput) {
+      inp.value = charCreate.nameInput;
+    }
+
+    // Draw the input box on canvas too (underneath the HTML overlay)
+    const boxW = 250, boxH = 45;
+    X.fillStyle = '#1a1a2a';
+    X.fillRect(cx - boxW/2, cy, boxW, boxH);
+    X.strokeStyle = '#ffd700';
+    X.lineWidth = 2;
+    X.strokeRect(cx - boxW/2, cy, boxW, boxH);
+
+  } else {
+    // Desktop: canvas-based input
+    const boxW = 320, boxH = 45;
+    X.fillStyle = '#1a1a2a';
+    X.fillRect(cx - boxW/2, cy, boxW, boxH);
+    X.strokeStyle = '#ffd700';
+    X.lineWidth = 2;
+    X.strokeRect(cx - boxW/2, cy, boxW, boxH);
+
+    charCreate.cursorBlink += 0.03;
+    const cursor = Math.sin(charCreate.cursorBlink * 3) > 0 ? '|' : '';
+
+    X.fillStyle = '#fff';
+    X.font = 'bold 22px Consolas, monospace';
+    X.textAlign = 'center'; X.textBaseline = 'middle';
+    X.fillText(charCreate.nameInput + cursor, cx, cy + boxH/2);
+
+    if (charCreate.nameInput.trim().length > 0) {
+      const btnW2 = 200, btnH2 = 45;
+      drawButton(cx - btnW2/2, cy + 80, btnW2, btnH2, 'CONTINUE', false, '#2a4a2a');
+      if (clickedInRect(cx - btnW2/2, cy + 80, btnW2, btnH2)) {
+        SFX.click();
+        charCreate.playerName = charCreate.nameInput.trim();
+        charCreate.step = 4;
+      }
+    }
+
+    X.fillStyle = '#555';
+    X.font = '12px Consolas, monospace';
+    X.fillText('Press Enter to continue', cx, cy + 140);
+  }
 }
 
 function drawCharPreview() {
   const cx = canvasW / 2;
   const race = RACES[charCreate.selectedRace];
   const cls = CLASSES[charCreate.selectedClass];
-  const startY = 75;
+  const startY = 75 + TOP_PAD;
 
   // Calculate final stats
   const stats = {};
