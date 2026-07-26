@@ -93,7 +93,20 @@ button{cursor:pointer;font-family:inherit;border:none;outline:none}
 .choice-btn:hover{border-color:var(--accent);background:rgba(108,92,231,.08);transform:translateX(4px)}
 .choice-btn .check-info{font-size:.75rem;color:var(--warning);margin-top:4px}
 .choice-btn .rel-info{font-size:.75rem;color:#fd79a8;margin-top:2px}
+.choice-btn .effect-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.choice-btn .effect-tag{font-size:.65rem;padding:2px 8px;border-radius:20px;font-weight:600;letter-spacing:.3px}
+.choice-btn .effect-tag.stat-up{background:rgba(0,184,148,.15);color:#00b894;border:1px solid rgba(0,184,148,.3)}
+.choice-btn .effect-tag.stat-down{background:rgba(214,48,49,.15);color:#ff7675;border:1px solid rgba(214,48,49,.3)}
+.choice-btn .effect-tag.rel-up{background:rgba(253,121,168,.15);color:#fd79a8;border:1px solid rgba(253,121,168,.3)}
+.choice-btn .effect-tag.rel-down{background:rgba(214,48,49,.15);color:#ff7675;border:1px solid rgba(214,48,49,.3)}
 .choice-btn.disabled{opacity:.4;pointer-events:none}
+.effect-toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:200;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.effect-toast-item{padding:8px 18px;border-radius:10px;font-size:.85rem;font-weight:700;animation:toastIn .4s ease-out,toastOut .4s ease-in 1.8s forwards;white-space:nowrap;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.effect-toast-item.positive{background:rgba(0,184,148,.9);color:#fff}
+.effect-toast-item.negative{background:rgba(214,48,49,.9);color:#fff}
+.effect-toast-item.neutral{background:rgba(108,92,231,.9);color:#fff}
+@keyframes toastIn{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes toastOut{from{opacity:1}to{opacity:0;transform:translateY(-10px)}}
 
 /* Stat check result overlay */
 .check-result{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.7);z-index:100;animation:fadeIn .3s}
@@ -1297,6 +1310,47 @@ function applyEffects(effects) {
   }
 }
 
+function scrollToStory() {
+  setTimeout(() => {
+    const storyText = document.querySelector('.story-text');
+    if (storyText) storyText.scrollIntoView({behavior:'smooth',block:'start'});
+  }, 80);
+}
+
+function showEffectToasts(effects) {
+  if (!effects) return;
+  const toasts = [];
+  if (effects.stats) {
+    for (const [k,v] of Object.entries(effects.stats)) {
+      const name = STAT_NAMES[k] || k;
+      if (v > 0) toasts.push({text:`${name} +${v}`,cls:'positive'});
+      else if (v < 0) toasts.push({text:`${name} ${v}`,cls:'negative'});
+    }
+  }
+  if (effects.relationships) {
+    for (const [k,v] of Object.entries(effects.relationships)) {
+      const name = k.charAt(0).toUpperCase()+k.slice(1);
+      if (v > 0) toasts.push({text:`${name} +${v}`,cls:'positive'});
+      else if (v < 0) toasts.push({text:`${name} ${v}`,cls:'negative'});
+    }
+  }
+  if (effects.inventory) {
+    effects.inventory.forEach(item => toasts.push({text:`+ ${item}`,cls:'neutral'}));
+  }
+  if (!toasts.length) return;
+  const container = document.createElement('div');
+  container.className = 'effect-toast';
+  toasts.forEach((t,i) => {
+    const el = document.createElement('div');
+    el.className = `effect-toast-item ${t.cls}`;
+    el.textContent = t.text;
+    el.style.animationDelay = `${i*0.1}s, ${1.8+i*0.1}s`;
+    container.appendChild(el);
+  });
+  document.body.appendChild(container);
+  setTimeout(() => container.remove(), 2500);
+}
+
 function goToNode(nodeId) {
   if (nodeId === '_menu') { STATE.screen = 'menu'; render(); return; }
   const scenario = SCENARIOS[STATE.scenario];
@@ -1305,12 +1359,13 @@ function goToNode(nodeId) {
   if (!node) return;
   STATE.currentNode = nodeId;
   STATE.history.push(nodeId);
-  if (node.effects) applyEffects(node.effects);
+  if (node.effects) { applyEffects(node.effects); showEffectToasts(node.effects); }
   render();
+  scrollToStory();
 }
 
 function handleChoice(choice) {
-  if (choice.effects) applyEffects(choice.effects);
+  if (choice.effects) { applyEffects(choice.effects); showEffectToasts(choice.effects); }
   if (choice.check) {
     const result = statCheck(choice.check.stat, choice.check.dc);
     STATE.checkResult = result;
@@ -1325,7 +1380,8 @@ function dismissCheck() {
   const next = STATE.pendingNext;
   STATE.checkResult = null;
   STATE.pendingNext = null;
-  goToNode(next);
+  if (next) goToNode(next);
+  scrollToStory();
 }
 
 // ============================================================
@@ -1373,7 +1429,7 @@ function playCutscene(panels, onComplete) {
         <button class="start-btn" id="cs-continue" style="max-width:300px;margin:12px auto;display:block;padding:12px">Continue</button>`;
       container.appendChild(controls);
       document.getElementById('cs-replay').onclick = () => { replayCutscene(); };
-      document.getElementById('cs-continue').onclick = () => { if (onComplete) onComplete(); };
+      document.getElementById('cs-continue').onclick = () => { if (onComplete) onComplete(); scrollToStory(); };
       return;
     }
     const p = panels[panelIdx];
@@ -1800,7 +1856,25 @@ function renderGameScreen() {
     let extra = '';
     if (c.check) extra += `<div class="check-info">[${STAT_NAMES[c.check.stat]} check — DC ${c.check.dc}]</div>`;
     if (c.relHint) extra += `<div class="rel-info">${c.relHint}</div>`;
-    return `<button class="choice-btn" onclick="handleChoice(SCENARIOS['${STATE.scenario}'].nodes['${STATE.currentNode}'].choices[${(node.choices||[]).indexOf(c)}])">${c.text}${extra}</button>`;
+    // Effect preview tags
+    let tags = '';
+    if (c.effects) {
+      const tagParts = [];
+      if (c.effects.stats) {
+        for (const [k,v] of Object.entries(c.effects.stats)) {
+          const cls = v > 0 ? 'stat-up' : 'stat-down';
+          tagParts.push(`<span class="effect-tag ${cls}">${STAT_NAMES[k]||k} ${v>0?'+':''}${v}</span>`);
+        }
+      }
+      if (c.effects.relationships) {
+        for (const [k,v] of Object.entries(c.effects.relationships)) {
+          const cls = v > 0 ? 'rel-up' : 'rel-down';
+          tagParts.push(`<span class="effect-tag ${cls}">${k.charAt(0).toUpperCase()+k.slice(1)} ${v>0?'+':''}${v}</span>`);
+        }
+      }
+      if (tagParts.length) tags = `<div class="effect-tags">${tagParts.join('')}</div>`;
+    }
+    return `<button class="choice-btn" onclick="handleChoice(SCENARIOS['${STATE.scenario}'].nodes['${STATE.currentNode}'].choices[${(node.choices||[]).indexOf(c)}])">${c.text}${extra}${tags}</button>`;
   }).join('');
 
   // Sidebar: stats
