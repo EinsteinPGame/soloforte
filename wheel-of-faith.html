@@ -1163,9 +1163,16 @@ function drawSpin(){
     X.fillStyle='#fff';
     // Wrap long text
     const maxW=VW-40;
-    const txt=spin.result;
+    let txt=spin.result;
     if(X.measureText(txt).width>maxW){
       X.font='bold '+(isMobile?18:26)+'px "Segoe UI",Arial,sans-serif';
+    }
+    if(X.measureText(txt).width>maxW){
+      X.font='bold '+(isMobile?14:20)+'px "Segoe UI",Arial,sans-serif';
+    }
+    if(X.measureText(txt).width>maxW){
+      while(X.measureText(txt+'..').width>maxW&&txt.length>2)txt=txt.slice(0,-1);
+      txt=txt+'..';
     }
     X.fillText(txt,VW/2,resultY+15);
     resultY+=isMobile?40:55;
@@ -1263,14 +1270,18 @@ function drawSpin(){
     // Font size based on number of items and arc size — bigger for readability
     let fontSize=Math.min(16,Math.max(8,wr*0.1));
     if(items.length>20)fontSize=Math.min(13,Math.max(7,wr*0.08));
-    if(items.length>30)fontSize=Math.min(11,Math.max(6,wr*0.06));
-    if(items.length>60)fontSize=Math.min(9,Math.max(5,wr*0.04));
-    if(items.length>100)fontSize=Math.min(7,Math.max(4,wr*0.028));
+    if(items.length>30)fontSize=Math.min(11,Math.max(6,wr*0.055));
+    if(items.length>60)fontSize=Math.min(8,Math.max(5,wr*0.035));
+    if(items.length>100)fontSize=Math.min(6,Math.max(4,wr*0.024));
+    if(items.length>140)fontSize=Math.min(5,Math.max(3,wr*0.018));
     // Shrink text for tiny weighted segments (rare/powerful items)
     if(arcSize<Math.PI*2/items.length*0.6)fontSize=Math.max(4,fontSize*0.7);
 
     X.font='bold '+fontSize+'px "Segoe UI",Arial,sans-serif';
     X.textAlign='center';X.textBaseline='middle';
+
+    // Skip text for segments too small to read (< 3px arc width)
+    if(arcChord<3&&!(spin.phase==='landed'&&i===spin.landedIdx)){X.restore();X.restore();continue;}
 
     // Dim non-winner text when landed; Darwizzy always dim grey
     if(spin.phase==='landed'&&i!==spin.landedIdx){
@@ -1282,7 +1293,9 @@ function drawSpin(){
     }
 
     const label=items[i];
-    const maxTextW=wr*0.48*Math.min(1,arcSize/(Math.PI*2/items.length));
+    // Cap text width to actual arc chord at text radius to prevent visual overlap
+    const arcChord=2*textR*Math.sin(Math.min(arcSize,Math.PI)/2);
+    const maxTextW=Math.min(wr*0.48,arcChord*0.85)*Math.min(1,arcSize/(Math.PI*2/items.length));
     if(X.measureText(label).width<=maxTextW){
       X.fillText(label,0,0);
     }else{
@@ -1295,8 +1308,8 @@ function drawSpin(){
         line2=words.slice(mid).join(' ');
         // Check if wrapped lines fit
         if(X.measureText(line1).width<=maxTextW*1.1&&X.measureText(line2).width<=maxTextW*1.1){
-          X.fillText(line1,0,-fontSize*0.55);
-          X.fillText(line2,0,fontSize*0.55);
+          X.fillText(line1,0,-fontSize*0.7);
+          X.fillText(line2,0,fontSize*0.7);
         }else{
           // Still too long — truncate
           let trunc=label;
