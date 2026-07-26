@@ -119,6 +119,7 @@ button{cursor:pointer;font-family:inherit;border:none;outline:none}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:200;animation:fadeIn .2s}
 .modal{background:var(--card);border-radius:20px;padding:28px;max-width:440px;width:90%;border:1px solid #333}
 .modal h3{margin-bottom:16px;font-size:1.2rem}
+.modal{max-height:80vh;overflow-y:auto}
 .save-slot{padding:14px;background:#1a1a2e;border:1px solid #333;border-radius:10px;margin-bottom:10px;cursor:pointer;transition:all .2s}
 .save-slot:hover{border-color:var(--accent)}
 .save-slot .slot-name{font-weight:600;font-size:.9rem}
@@ -137,6 +138,17 @@ button{cursor:pointer;font-family:inherit;border:none;outline:none}
 .end-screen h2{font-size:2rem;margin-bottom:16px}
 .end-screen p{color:var(--text-dim);line-height:1.7;margin-bottom:24px}
 .end-screen button{padding:14px 32px;background:var(--accent);color:#fff;border-radius:12px;font-size:1rem;font-weight:600;margin:6px}
+
+/* ===== CUTSCENE ===== */
+.cutscene-panel{background:var(--card);border-radius:16px;margin-bottom:16px;overflow:hidden;border:1px solid #222;animation:panelSlideIn .6s ease}
+@keyframes panelSlideIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+.cutscene-panel .panel-image{width:100%;height:180px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;font-size:3rem}
+.cutscene-panel .panel-text{padding:16px;font-size:.95rem;line-height:1.7;color:var(--text)}
+.cutscene-panel .panel-text .caption{font-size:.8rem;color:var(--text-dim);font-style:italic;margin-top:8px}
+.cutscene-replay{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:var(--text-dim);font-size:.8rem;margin-bottom:16px;cursor:pointer}
+.cutscene-replay:hover{color:var(--text);border-color:#555}
+.cutscene-progress{height:3px;background:#222;border-radius:2px;margin-bottom:16px;overflow:hidden}
+.cutscene-progress .fill{height:100%;background:var(--accent);transition:width .3s linear}
 
 /* ===== MOBILE ===== */
 .sidebar-toggle{display:none;padding:10px 16px;background:var(--card);border:1px solid #222;border-radius:10px;color:var(--text-dim);font-size:.85rem;margin-bottom:12px;width:100%}
@@ -271,6 +283,12 @@ Your hands are shaking.`,
     ]
   },
   zo_window:{
+    cutscene:[
+      {image:'linear-gradient(135deg,#0a0a1a,#1a1a2e)',icon:'&#127747;',text:'You grip the blinds. Your fingers are shaking. The sounds outside are getting louder — screaming, glass breaking, something heavy hitting pavement.',caption:'The window...'},
+      {image:'linear-gradient(135deg,#d63031,#2d3436)',icon:'&#128663;',text:'A car is flipped on its side below, still smoking. Flames lick from under the hood. The streetlights flicker, casting everything in orange and shadow.',caption:'Four floors down...'},
+      {image:'linear-gradient(135deg,#2d3436,#d63031)',icon:'&#129503;',text:'People are running. Behind them, others move WRONG — stumbling, lurching, impossibly fast. One catches a woman by the hair. You look away.',caption:'They\'re not human anymore.'},
+      {image:'linear-gradient(135deg,#636e72,#2d3436)',icon:'&#128680;',text:'Red and blue lights flash from an abandoned police cruiser. Doors open. Nobody inside. A military Humvee rumbles past, soldiers scanning rooftops.',caption:'The city is falling.'}
+    ],
     text:`You pull the blinds back and freeze.
 
 The street four floors below is chaos. A car is flipped on its side, still smoking. People are running — some in pajamas, some barefoot. And behind them, others are moving wrong. Stumbling, lurching, fast when they shouldn't be. One of them catches a woman by the hair and drags her down. You look away before you see the rest.
@@ -1295,6 +1313,113 @@ function dismissCheck() {
   goToNode(next);
 }
 
+// ============================================================
+// CUTSCENE ENGINE — Graphic Novel Style
+// ============================================================
+// Cutscenes are arrays of panels shown sequentially (10s total).
+// Each panel: {image: 'gradient/emoji', text: 'narration', caption: 'optional'}
+// Text and images STAY visible — they build up like a graphic novel.
+// Replay button lets you rewatch the sequence.
+
+function playCutscene(panels, onComplete) {
+  if (!panels || !panels.length) { if (onComplete) onComplete(); return; }
+  const container = document.createElement('div');
+  container.className = 'cutscene-container';
+  container.style.cssText = 'max-width:700px;margin:0 auto;padding:16px';
+
+  const progressBar = document.createElement('div');
+  progressBar.className = 'cutscene-progress';
+  progressBar.innerHTML = '<div class="fill" style="width:0%"></div>';
+  container.appendChild(progressBar);
+
+  const panelArea = document.createElement('div');
+  panelArea.className = 'cutscene-panels';
+  container.appendChild(panelArea);
+
+  // Replace game main content with cutscene
+  const gameMain = document.querySelector('.game-main');
+  if (!gameMain) { if (onComplete) onComplete(); return; }
+  const origContent = gameMain.innerHTML;
+  gameMain.innerHTML = '';
+  gameMain.appendChild(container);
+
+  const perPanel = Math.max(2000, Math.floor(10000 / panels.length));
+  let panelIdx = 0;
+  let timer = null;
+
+  function showNextPanel() {
+    if (panelIdx >= panels.length) {
+      progressBar.querySelector('.fill').style.width = '100%';
+      // Add replay + continue buttons
+      const controls = document.createElement('div');
+      controls.style.cssText = 'text-align:center;margin-top:16px';
+      controls.innerHTML = `
+        <button class="cutscene-replay" id="cs-replay">&#8635; Replay</button>
+        <button class="start-btn" id="cs-continue" style="max-width:300px;margin:12px auto;display:block;padding:12px">Continue</button>`;
+      container.appendChild(controls);
+      document.getElementById('cs-replay').onclick = () => { replayCutscene(); };
+      document.getElementById('cs-continue').onclick = () => { if (onComplete) onComplete(); };
+      return;
+    }
+    const p = panels[panelIdx];
+    const panel = document.createElement('div');
+    panel.className = 'cutscene-panel';
+    panel.innerHTML = `
+      <div class="panel-image" style="background:${p.image || 'linear-gradient(135deg,#2d3436,#636e72)'}">
+        ${p.icon ? `<span style="font-size:3rem;filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))">${p.icon}</span>` : ''}
+      </div>
+      <div class="panel-text">${formatText(p.text)}${p.caption ? `<div class="caption">${p.caption}</div>` : ''}</div>`;
+    panelArea.appendChild(panel);
+    panelIdx++;
+    const pct = Math.round((panelIdx / panels.length) * 100);
+    progressBar.querySelector('.fill').style.width = pct + '%';
+    panel.scrollIntoView({behavior:'smooth',block:'end'});
+    if (panelIdx < panels.length) {
+      timer = setTimeout(showNextPanel, perPanel);
+    } else {
+      timer = setTimeout(showNextPanel, 1000);
+    }
+  }
+
+  function replayCutscene() {
+    if (timer) clearTimeout(timer);
+    panelArea.innerHTML = '';
+    progressBar.querySelector('.fill').style.width = '0%';
+    const ctrl = container.querySelector('#cs-replay')?.closest('div');
+    if (ctrl) ctrl.remove();
+    panelIdx = 0;
+    timer = setTimeout(showNextPanel, 500);
+  }
+
+  timer = setTimeout(showNextPanel, 500);
+}
+
+// Nodes can have a `cutscene` array to trigger before showing the node text.
+// We hook into goToNode to check for cutscenes.
+const _origGoToNode = goToNode;
+goToNode = function(nodeId) {
+  if (nodeId === '_menu') { STATE.screen = 'menu'; render(); return; }
+  const scenario = SCENARIOS[STATE.scenario];
+  if (!scenario) return;
+  const node = scenario.nodes[nodeId];
+  if (!node) return;
+  if (node.cutscene && node.cutscene.length) {
+    // Set state first so sidebar updates
+    STATE.currentNode = nodeId;
+    STATE.history.push(nodeId);
+    if (node.effects) applyEffects(node.effects);
+    render();
+    // Play cutscene, then re-render to show the normal node
+    setTimeout(() => {
+      playCutscene(node.cutscene, () => {
+        render(); // Re-render to show normal text + choices after cutscene
+      });
+    }, 100);
+  } else {
+    _origGoToNode(nodeId);
+  }
+};
+
 function startScenario(id) {
   const sc = SCENARIOS[id];
   if (!sc || !sc.startNode) return;
@@ -1321,9 +1446,14 @@ function beginGame() {
 }
 
 // ============================================================
-// SAVE / LOAD
+// SAVE / LOAD — Unlimited Dynamic Saves
 // ============================================================
-function saveGame(slot) {
+function getSaveIndex() {
+  try { return JSON.parse(localStorage.getItem('sg_saves') || '[]'); } catch(e) { return []; }
+}
+function setSaveIndex(ids) { localStorage.setItem('sg_saves', JSON.stringify(ids)); }
+
+function saveGame(saveId) {
   const data = {
     scenario: STATE.scenario,
     player: JSON.parse(JSON.stringify(STATE.player)),
@@ -1335,11 +1465,20 @@ function saveGame(slot) {
     preset: STATE.preset,
     savedAt: new Date().toISOString()
   };
-  localStorage.setItem('sg_save_' + slot, JSON.stringify(data));
+  localStorage.setItem('sg_save_' + saveId, JSON.stringify(data));
+  const idx = getSaveIndex();
+  if (!idx.includes(saveId)) { idx.unshift(saveId); setSaveIndex(idx); }
+  else { idx.splice(idx.indexOf(saveId), 1); idx.unshift(saveId); setSaveIndex(idx); }
 }
 
-function loadGame(slot) {
-  const raw = localStorage.getItem('sg_save_' + slot);
+function createNewSave() {
+  const saveId = Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+  saveGame(saveId);
+  return saveId;
+}
+
+function loadGame(saveId) {
+  const raw = localStorage.getItem('sg_save_' + saveId);
   if (!raw) return false;
   const data = JSON.parse(raw);
   Object.assign(STATE, {
@@ -1359,12 +1498,13 @@ function loadGame(slot) {
   return true;
 }
 
-function getSaveInfo(slot) {
-  const raw = localStorage.getItem('sg_save_' + slot);
+function getSaveInfo(saveId) {
+  const raw = localStorage.getItem('sg_save_' + saveId);
   if (!raw) return null;
   const data = JSON.parse(raw);
   const meta = SCENARIO_META.find(m => m.id === data.scenario);
   return {
+    id: saveId,
     scenario: meta ? meta.title : data.scenario,
     name: data.player.name,
     role: data.player.role,
@@ -1374,9 +1514,25 @@ function getSaveInfo(slot) {
   };
 }
 
-function deleteSave(slot) {
-  localStorage.removeItem('sg_save_' + slot);
+function deleteSave(saveId) {
+  localStorage.removeItem('sg_save_' + saveId);
+  const idx = getSaveIndex();
+  const pos = idx.indexOf(saveId);
+  if (pos !== -1) { idx.splice(pos, 1); setSaveIndex(idx); }
 }
+
+// Migrate old fixed slots to dynamic system
+(function migrateSaves() {
+  const idx = getSaveIndex();
+  for (let i = 0; i < 5; i++) {
+    const key = 'sg_save_' + i;
+    const raw = localStorage.getItem(key);
+    if (raw && !idx.includes(String(i))) {
+      idx.push(String(i));
+    }
+  }
+  if (idx.length) setSaveIndex(idx);
+})();
 
 // ============================================================
 // PRIVATE UNLOCK
@@ -1516,7 +1672,7 @@ function renderMenu() {
         </div>`;
     }).join('');
 
-  const hasSaves = [0,1,2,3,4].some(i => getSaveInfo(i));
+  const hasSaves = getSaveIndex().some(id => getSaveInfo(id));
 
   app.innerHTML = `
     <div class="menu-screen">
@@ -1700,31 +1856,48 @@ function formatText(text) {
 }
 
 function showSaveModal() {
-  const slots = [0,1,2,3,4].map(i => {
-    const info = getSaveInfo(i);
-    return `<div class="save-slot" onclick="saveGame(${i});this.closest('.modal-overlay').remove()">
-      <div class="slot-name">Slot ${i+1}</div>
-      <div class="slot-info">${info ? `${info.scenario} - ${info.name} (${info.role||'no role'}) | ${info.steps} steps | ${info.date}` : 'Empty'}</div>
+  const idx = getSaveIndex();
+  const existingSlots = idx.map(id => {
+    const info = getSaveInfo(id);
+    if (!info) return '';
+    return `<div class="save-slot" style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;cursor:pointer" onclick="saveGame('${id}');this.closest('.modal-overlay').remove()">
+        <div class="slot-name">${info.scenario}</div>
+        <div class="slot-info">${info.name} (${info.role||'no role'}) | ${info.steps} steps | ${info.date}</div>
+      </div>
+      <button onclick="event.stopPropagation();if(confirm('Delete this save?')){deleteSave('${id}');this.closest('.modal-overlay').remove();showSaveModal()}" style="background:none;color:var(--danger);font-size:1.1rem;padding:4px 8px" title="Delete">&#10005;</button>
     </div>`;
-  }).join('');
+  }).filter(Boolean).join('');
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal"><h3>Save Game</h3>${slots}<button class="modal-close" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div>`;
+  overlay.innerHTML = `<div class="modal"><h3>Save Game</h3>
+    <div class="save-slot" onclick="createNewSave();this.closest('.modal-overlay').remove()" style="border:1px dashed var(--accent);text-align:center">
+      <div class="slot-name" style="color:var(--accent)">+ New Save</div>
+    </div>
+    ${existingSlots}
+    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div>`;
   document.body.appendChild(overlay);
 }
 
 function showLoadModal() {
-  const slots = [0,1,2,3,4].map(i => {
-    const info = getSaveInfo(i);
-    if (!info) return `<div class="save-slot" style="opacity:.3"><div class="slot-name">Slot ${i+1}</div><div class="slot-info">Empty</div></div>`;
-    return `<div class="save-slot" onclick="loadGame(${i});this.closest('.modal-overlay').remove()">
-      <div class="slot-name">Slot ${i+1}</div>
-      <div class="slot-info">${info.scenario} - ${info.name} (${info.role||'no role'}) | ${info.steps} steps | ${info.date}</div>
+  const idx = getSaveIndex();
+  const slots = idx.map(id => {
+    const info = getSaveInfo(id);
+    if (!info) return '';
+    return `<div class="save-slot" style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;cursor:pointer" onclick="loadGame('${id}');this.closest('.modal-overlay').remove()">
+        <div class="slot-name">${info.scenario}</div>
+        <div class="slot-info">${info.name} (${info.role||'no role'}) | ${info.steps} steps | ${info.date}</div>
+      </div>
+      <button onclick="event.stopPropagation();if(confirm('Delete this save?')){deleteSave('${id}');this.closest('.modal-overlay').remove();showLoadModal()}" style="background:none;color:var(--danger);font-size:1.1rem;padding:4px 8px" title="Delete">&#10005;</button>
     </div>`;
-  }).join('');
+  }).filter(Boolean).join('');
+
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal"><h3>Load Game</h3>${slots}<button class="modal-close" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div>`;
+  overlay.innerHTML = `<div class="modal"><h3>Load Game</h3>${slots || '<div style="text-align:center;color:var(--text-dim);padding:20px">No saved games</div>'}
+    <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div>`;
   document.body.appendChild(overlay);
 }
 
