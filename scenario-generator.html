@@ -1005,13 +1005,15 @@ const SCENARIO_META = [
   {id:'neonabyss',title:'Neon Abyss',desc:'Night City, 2089. Chrome skin, neural implants, and a debt that will get you flatlined.',icon:'&#127747;',gradient:'linear-gradient(135deg,#e84393,#00cec9)',tags:['Cyberpunk','RPG'],status:'soon',private:false,progression:'cyberware'},
   {id:'rome',title:'Legions of Rome',desc:'Lead your century into battle. Glory or death — the Senate demands results.',icon:'&#9876;',gradient:'linear-gradient(135deg,#d4a017,#c0392b)',tags:['Historical','Strategy'],status:'soon',private:false},
   {id:'olympus',title:'Wrath of Olympus',desc:'The gods offer their boons. Monsters roam the land. Prove yourself worthy of legend.',icon:'&#9889;',gradient:'linear-gradient(135deg,#6c5ce7,#fdcb6e)',tags:['Mythology','Action'],status:'soon',private:false,progression:'boons'},
-  {id:'hogwarts',title:'Hogwarts',desc:'Year 1 begins. Choose your house, learn your spells, uncover a mystery lurking in the castle.',icon:'&#9733;',gradient:'linear-gradient(135deg,#6c5ce7,#d4a017)',tags:['Fantasy','Magic'],status:'soon',private:false,progression:'spells'}
+  {id:'hogwarts',title:'Hogwarts',desc:'Year 1 begins. Choose your house, learn your spells, uncover a mystery lurking in the castle.',icon:'&#9733;',gradient:'linear-gradient(135deg,#6c5ce7,#d4a017)',tags:['Fantasy','Magic'],status:'soon',private:false,progression:'spells'},
+  {id:'jjk',title:'JJK: Altered Fates',desc:'Enroll at Tokyo Jujutsu High alongside Yuji Itadori. Your choices rewrite the timeline — who lives, who dies, and whether Sukuna ever rises.',icon:'&#128308;',gradient:'linear-gradient(135deg,#2a0845,#1a0a2e,#4a0000)',tags:['Anime','Action','Supernatural'],status:'playable',private:false}
 ];
 
 const SCENARIO_ROLES = {
   zombie:['Survivor','Ex-Military','Medic'],
   fratparty:['Nervous Freshman','Confident Transfer','Star Athlete'],
-  heist:['Veteran Thief','First-Timer','Inside Man']
+  heist:['Veteran Thief','First-Timer','Inside Man'],
+  jjk:['Cursed Prodigy','Tactical Genius','Cursed Speech User']
 };
 const ROLE_DATA = {
   'Veteran Thief':{desc:'You have done this before. The scars prove it. One last job — then you are out.',bonuses:{per:2,int:1,cou:-1},startFlag:'role_veteran'},
@@ -1019,7 +1021,10 @@ const ROLE_DATA = {
   'Inside Man':{desc:'You used to work at Meridian. You know the building. You know the people. You know where the bodies are buried.',bonuses:{int:2,per:1,lck:-1},startFlag:'role_insideman'},
   'Nervous Freshman':{desc:'First semester. First party. Everything is new and terrifying.',bonuses:{per:2,int:1,cou:-1},startFlag:'role_freshman'},
   'Confident Transfer':{desc:'Transferred from another school. You know the game — just not these people.',bonuses:{cha:2,int:1,str:-1},startFlag:'role_transfer'},
-  'Star Athlete':{desc:'Everyone knows your name from the roster. Tonight you\'re just trying to have fun.',bonuses:{str:2,cou:1,cha:-1},startFlag:'role_athlete'}
+  'Star Athlete':{desc:'Everyone knows your name from the roster. Tonight you\'re just trying to have fun.',bonuses:{str:2,cou:1,cha:-1},startFlag:'role_athlete'},
+  'Cursed Prodigy':{desc:'You were born saturated with cursed energy. Techniques come naturally — control does not.',bonuses:{str:2,per:1,int:-1},startFlag:'role_prodigy'},
+  'Tactical Genius':{desc:'You see patterns others miss. Every curse has a weakness. You just need to survive long enough to find it.',bonuses:{int:2,per:1,str:-1},startFlag:'role_tactician'},
+  'Cursed Speech User':{desc:'Your words carry power. A single command can stop a curse in its tracks — but overuse shreds your throat.',bonuses:{cha:2,cou:1,per:-1},startFlag:'role_speech'}
 };
 
 // ============================================================
@@ -2046,8 +2051,8 @@ Eventually, the music shifts. Someone downstairs is shouting about a midnight to
   effects:{flags:{kissed_mia:true,mia_romance:true},relationships:{mia:4}},
   choices:[
     {text:'"Let\'s go down. But stay with me."',next:'fp_late_night_together',effects:{relationships:{mia:2}}},
-    {text:'"Five more minutes up here. Then we rejoin the world."',next:'fp_late_night_together',effects:{relationships:{mia:2}}},
-    {text:'"Honestly? I could stay here all night."',next:'fp_ending_roof',effects:{relationships:{mia:3}}}
+    {text:'"Five more minutes up here. Then we rejoin the world."',next:'fp_mia_roof_linger',effects:{relationships:{mia:3}}},
+    {text:'"Honestly? I could stay here all night."',next:'fp_mia_roof_linger',effects:{relationships:{mia:3}}}
   ]
 },
 fp_roof_gentle:{
@@ -2122,7 +2127,7 @@ Tyler gives you a thumbs up from across the room. You give him one back.
   scene:'party',mood:'#6c5ce7',
   effects:{relationships:{mia:2}},
   choices:[
-    {text:'"Absolutely. Let\'s go."',next:'fp_walk_home_mia',effects:{relationships:{mia:2}}},
+    {text:'"Absolutely. Let\'s go."',next:'fp_mia_walk_intimate',effects:{relationships:{mia:2}}},
     {text:'"Let me say bye to Tyler first, then yes."',next:'fp_walk_home_mia',effects:{relationships:{tyler:1,mia:1}}},
     {text:'"Actually — one more stop first. There\'s a Polaroid station outside."',next:'fp_polaroid_mia',effects:{relationships:{mia:2}}},
     {text:'"The night\'s not over yet. Let\'s find the Polaroid station first."',next:'fp_polaroid_mia',effects:{relationships:{mia:1}}}
@@ -2249,7 +2254,7 @@ fp_roof_luna:{characters:['luna'],text:'Luna grabs your hand and leads you throu
 fp_roof_luna_real:{characters:['luna'],text:'Luna stops drawing. She looks at you — really looks, like she\'s deciding whether you mean it.\n\n"Okay." She closes the sketchbook. "Something real."\n\nShe pulls her knees up, wraps her arms around them. The string lights catch the silver in her rings.\n\n"I almost dropped out last semester. Like, packed-my-bags almost. I couldn\'t draw anymore — total block. Every line felt wrong. I sat in my dorm for three weeks doing nothing."\n\nShe\'s quiet for a moment. A breeze moves her hair.\n\n"My roommate dragged me to a party. This house, actually. And I ended up on this exact roof, sketching the skyline, and it just... came back. Like it was waiting for me up here."\n\nShe looks at you. "So now I come back. Every time. Superstitious, maybe. But it works."\n\n"That\'s why you know all the good spots," you say.\n\nShe smiles — smaller than her other smiles, but more real. "Yeah. That\'s why."',scene:'party',mood:'#6c5ce7',effects:{relationships:{luna:3},flags:{luna_opened_up:true}},choices:[{text:'Share something real back — she earned it.',next:'fp_roof_luna_share',effects:{relationships:{luna:3}},check:{stat:'cha',dc:8}},{text:'"Thank you for telling me that. I mean it."',next:'fp_luna_draws_you',effects:{relationships:{luna:2}}},{text:'Move closer. Let the moment breathe.',next:'fp_roof_luna_close',effects:{relationships:{luna:2}}}]},
 fp_roof_luna_share:{characters:['luna'],text:'You tell her about yourself. The real stuff — not the highlight reel you give people at orientation. She listens the way she draws: carefully, catching details other people miss.\n\nWhen you finish, she\'s quiet for a moment. Then she reaches over and squeezes your hand. Brief, warm, deliberate.\n\n"I\'m glad you came to this party," she says. "And I\'m glad you picked the roof."\n\nThe lo-fi speaker shifts to something with piano. The campus lights blur a little — or maybe that\'s just the moment.\n\n"Can I draw you?" she asks. "Not the party version of you. The version I just met."',scene:'party',mood:'#fd79a8',effects:{relationships:{luna:3},flags:{shared_real:true}},choices:[{text:'"Yeah. Draw the real version."',next:'fp_luna_draws_you',effects:{relationships:{luna:3}}},{text:'Kiss her instead.',next:'fp_roof_luna_kiss',effects:{relationships:{luna:4}},check:{stat:'cou',dc:11}}]},
 fp_roof_luna_close:{characters:['luna'],text:'You move your chair closer. Close enough that your shoulders almost touch. Luna doesn\'t move away.\n\nShe opens her sketchbook again but doesn\'t draw. Just holds it. The lo-fi plays something soft with rain sounds mixed in.\n\n"You\'re different," she says, not looking at you. "From the people down there. They\'re performing. You\'re just... here."\n\n"So are you."\n\nShe turns her head. You\'re close enough to see the flecks of gold in her brown eyes. The crescent moon tattoo on her wrist catches the string light.\n\n"Draw me?" you ask.\n\nShe smiles. "I already started."',scene:'party',mood:'#fd79a8',effects:{relationships:{luna:3}},choices:[{text:'Let her draw you.',next:'fp_luna_draws_you',effects:{relationships:{luna:2}}},{text:'Lean in.',next:'fp_roof_luna_kiss',effects:{relationships:{luna:3}},check:{stat:'cou',dc:10}}]},
-fp_roof_luna_kiss:{characters:['luna'],text:'You lean in. She meets you halfway.\n\nThe kiss is soft. Unhurried. She tastes like the drink she was holding earlier — something citrusy. Her hand comes up to rest on the side of your face, fingers cool from the night air.\n\nWhen you pull apart, she\'s smiling with her eyes closed. "I knew you were going to do that," she says.\n\n"Was it obvious?"\n\n"The whole time." She opens her eyes. Gold-brown, catching starlight. "I was just waiting for you to figure it out."\n\nShe leans her head on your shoulder. Her hair smells like paint and jasmine. The campus spreads out below you, beautiful and indifferent, and up here on the roof of a frat house at 1 AM, everything feels exactly right.\n\n"Stay up here with me?" she asks. "Until sunrise?"',scene:'party',mood:'#fd79a8',effects:{flags:{kissed_luna:true,luna_romance:true},relationships:{luna:5}},choices:[{text:'"I\'m not going anywhere."',next:'fp_ending_luna',effects:{relationships:{luna:3}}},{text:'"Only if you draw the sunrise when it comes."',next:'fp_ending_luna',effects:{relationships:{luna:3},flags:{sunrise_drawing:true}}}]},
+fp_roof_luna_kiss:{characters:['luna'],text:'You lean in. She meets you halfway.\n\nThe kiss is soft. Unhurried. She tastes like the drink she was holding earlier — something citrusy. Her hand comes up to rest on the side of your face, fingers cool from the night air.\n\nWhen you pull apart, she\'s smiling with her eyes closed. "I knew you were going to do that," she says.\n\n"Was it obvious?"\n\n"The whole time." She opens her eyes. Gold-brown, catching starlight. "I was just waiting for you to figure it out."\n\nShe leans her head on your shoulder. Her hair smells like paint and jasmine. The campus spreads out below you, beautiful and indifferent, and up here on the roof of a frat house at 1 AM, everything feels exactly right.\n\n"Stay up here with me?" she asks. "Until sunrise?"',scene:'party',mood:'#fd79a8',effects:{flags:{kissed_luna:true,luna_romance:true},relationships:{luna:5}},choices:[{text:'"I\'m not going anywhere."',next:'fp_luna_kiss_linger',effects:{relationships:{luna:3}}},{text:'"Only if you draw the sunrise when it comes."',next:'fp_luna_kiss_linger',effects:{relationships:{luna:3},flags:{sunrise_drawing:true}}}]},
 fp_luna_tour:{characters:['luna'],text:'Luna takes you on the unofficial tour. She knows every corner — the pantry where Jake hides the good snacks ("don\'t tell anyone"), the basement that nobody goes to ("it\'s weirdly peaceful"), and the spot in the backyard where you can hear the fountain from campus.\n\nShe talks about art, about how she sees parties as living paintings. She points out moments — "See that guy proposing a toast? That\'s a Caravaggio." You don\'t fully get it but you love how her mind works.\n\nThe tour ends on the roof.',scene:'party',mood:'#6c5ce7',effects:{relationships:{luna:3}},choices:[{text:'Stay on the roof with Luna.',next:'fp_luna_quiet',effects:{relationships:{luna:2}}},{text:'"This tour was incredible. Draw me?"',next:'fp_luna_draws_you',effects:{relationships:{luna:2}}}]},
 
 // === NADIA DEEP PATH ===
@@ -2257,7 +2262,7 @@ fp_nadia_walk:{characters:['nadia'],text:'You catch up to Nadia at the door. She
 fp_nadia_real:{characters:['nadia'],text:'Nadia doesn\'t respond right away. She just walks, thinking. The silence is different from most silences — it\'s not empty, it\'s full. She\'s processing.\n\n"Mine is mediocrity," she says finally. "Not failing — that at least means you tried something hard. Mediocrity. Being fine. Having a fine career and a fine apartment and a fine life. I\'d rather crash and burn doing something extraordinary than coast through something forgettable."\n\nShe kicks a pebble. It skips three times.\n\n"You know what\'s weird? I\'ve been at this school three months and you\'re the first person I\'ve said that to. Including my roommate." She looks at you sideways. "Don\'t make it weird."\n\nYou\'ve reached a fork in the path — left toward the dorms, right toward the 24-hour coffee shop that always has that weird jazz playing.',scene:'party',mood:'#6c5ce7',effects:{relationships:{nadia:3}},choices:[{text:'"Coffee? I know a place that\'s open." Point toward the shop.',next:'fp_nadia_coffee',effects:{relationships:{nadia:2},flags:{nadia_coffee:true}}},{text:'Walk her to her dorm. Some conversations are perfect at this length.',next:'fp_nadia_goodbye',effects:{relationships:{nadia:2}}},{text:'"It\'s not weird. It\'s honest. I respect that about you."',next:'fp_nadia_honest',effects:{relationships:{nadia:3},stats:{cha:1}}}]},
 fp_nadia_deflect:{characters:['nadia'],text:'She snorts. "It\'s always a test. Life is a test. But you\'re doing okay so far — B plus."\n\n"Only B plus?"\n\n"A minus requires vulnerability. You\'re funny but you\'re hiding behind it." She says it matter-of-factly, like diagnosing a condition. "It\'s fine. Most people do. The interesting ones eventually stop."\n\nYou walk in silence for a bit. She\'s right, and you both know it.\n\n"I\'ll give you one more chance," she says. "Coffee shop\'s around the corner. Open 24 hours. Terrible jazz but decent espresso. You can try for that A minus."',scene:'party',mood:'#636e72',effects:{relationships:{nadia:1}},choices:[{text:'Go for coffee. She deserves the real version of you.',next:'fp_nadia_coffee',effects:{relationships:{nadia:2},flags:{nadia_coffee:true}}},{text:'Walk her home instead. "Rain check on the A minus."',next:'fp_nadia_goodbye',effects:{relationships:{nadia:1}}}]},
 fp_nadia_coffee:{characters:['nadia'],text:'The coffee shop is exactly as described — terrible jazz, decent espresso, and a barista who looks like he hasn\'t slept since 2019. You grab a corner booth.\n\nNadia orders a double espresso at 1 AM like a sociopath. You get the same because you\'re trying to keep up.\n\nShe pulls out a notebook — not a phone, an actual paper notebook — and starts writing. "Sorry, I just — I had a thought. Give me thirty seconds."\n\nYou watch her write. Her handwriting is precise, almost architectural. When she finishes, she looks up.\n\n"Okay. Here\'s what I think about you." She flips the notebook around. She\'s written three words: CURIOUS. GUARDED. KIND.\n\n"I profile people. Force of habit. Pre-med thing." She shrugs. "Disagree with any of them?"',scene:'party',mood:'#fdcb6e',effects:{relationships:{nadia:3},stats:{int:1}},choices:[{text:'"Guarded. Yeah, maybe. Working on it." Let the walls down a little.',next:'fp_nadia_walls_down',effects:{relationships:{nadia:4},stats:{cha:1}}},{text:'"Kind? That\'s generous. You barely know me."',next:'fp_nadia_walls_down',effects:{relationships:{nadia:2}}},{text:'Take the notebook and write three words about HER.',next:'fp_nadia_profile',effects:{relationships:{nadia:3},stats:{int:1}},check:{stat:'int',dc:9}}]},
-fp_nadia_walls_down:{characters:['nadia'],text:'Something shifts. The conversation goes deeper — past the witty deflections and into the real stuff. She tells you about growing up in a town where ambition was suspicious. About her mom, who wanted her to stay close. About the day she got her acceptance letter and cried in her car for an hour.\n\n"Not from happiness," she clarifies. "From guilt. Because leaving felt like betraying everyone who stayed."\n\nThe espresso grows cold. The jazz loops. The barista changes shifts and the new one doesn\'t even notice you.\n\nAt some point, your knees are touching under the table and neither of you moves away.\n\n"It\'s almost 3 AM," she says, checking her phone for the first time all night. "I have a 9 AM lab." But she doesn\'t move.',scene:'party',mood:'#fd79a8',effects:{relationships:{nadia:4},flags:{nadia_deep_talk:true}},choices:[{text:'"Stay five more minutes. The lab can wait."',next:'fp_ending_nadia',effects:{relationships:{nadia:3}}},{text:'Walk her home. This night doesn\'t need a grand gesture to be perfect.',next:'fp_ending_nadia_walk',effects:{relationships:{nadia:3}}},{text:'"Why pre-med? The real reason — not the resume answer."',next:'fp_nadia_study',effects:{relationships:{nadia:3},stats:{per:1}}}]},
+fp_nadia_walls_down:{characters:['nadia'],text:'Something shifts. The conversation goes deeper — past the witty deflections and into the real stuff. She tells you about growing up in a town where ambition was suspicious. About her mom, who wanted her to stay close. About the day she got her acceptance letter and cried in her car for an hour.\n\n"Not from happiness," she clarifies. "From guilt. Because leaving felt like betraying everyone who stayed."\n\nThe espresso grows cold. The jazz loops. The barista changes shifts and the new one doesn\'t even notice you.\n\nAt some point, your knees are touching under the table and neither of you moves away.\n\n"It\'s almost 3 AM," she says, checking her phone for the first time all night. "I have a 9 AM lab." But she doesn\'t move.',scene:'party',mood:'#fd79a8',effects:{relationships:{nadia:4},flags:{nadia_deep_talk:true}},choices:[{text:'"Stay five more minutes. The lab can wait."',next:'fp_nadia_coffee_tension',effects:{relationships:{nadia:3}}},{text:'Walk her home. This night doesn\'t need a grand gesture to be perfect.',next:'fp_ending_nadia_walk',effects:{relationships:{nadia:3}}},{text:'"Why pre-med? The real reason — not the resume answer."',next:'fp_nadia_study',effects:{relationships:{nadia:3},stats:{per:1}}}]},
 fp_nadia_profile:{characters:['nadia'],text:'You take the pen. Think. Write three words and turn the notebook back.\n\nShe reads them. Her expression changes — the armor cracks, just for a second. Whatever you wrote, it landed.\n\n"Huh," she says quietly. Then louder: "Okay. A minus. Possibly A."\n\nShe doesn\'t take the notebook back right away. She reads the words again.\n\nThe conversation after that is different. Real. She stops testing you and starts talking to you — about her research, her fears, the paper she\'s writing about empathy in clinical settings. You talk until the barista pointedly starts mopping around your table.\n\n"We should go," she says. But she\'s smiling. That rare, face-changing smile.',scene:'party',mood:'#fd79a8',effects:{relationships:{nadia:5},stats:{int:1},flags:{nadia_profiled:true}},choices:[{text:'Walk her home under the street lamps.',next:'fp_ending_nadia_walk',effects:{relationships:{nadia:3}}},{text:'"One more espresso. I want to hear about that paper."',next:'fp_ending_nadia',effects:{relationships:{nadia:3}}}]},
 fp_nadia_honest:{characters:['nadia'],text:'"I respect that about you." The words hang there — simple, direct.\n\nNadia stops walking. Turns to face you fully. The street lamp catches her eyes and you realize they\'re dark green, not brown like you thought.\n\n"You know what? Upgraded to A minus." She holds out her hand — not to shake, but palm up, offering. "Coffee. Now. Before I remember I\'m supposed to be antisocial."\n\nYou take her hand. It\'s warm. Her fingers close around yours, firm and sure, like she makes decisions and doesn\'t second-guess them.',scene:'party',mood:'#fd79a8',effects:{relationships:{nadia:4}},choices:[{text:'Coffee shop. This night just got a second act.',next:'fp_nadia_coffee',effects:{relationships:{nadia:2}}},{text:'"Actually — forget coffee. Show me the stars."',next:'fp_nadia_stars',effects:{relationships:{nadia:3}}},{text:'"Antisocial is underrated. I like it."',next:'fp_ending_nadia_walk',effects:{relationships:{nadia:2}}}]},
 fp_nadia_goodbye:{characters:['nadia'],text:'You walk Nadia to her dorm. She stops at the entrance, keys in hand, and turns around.\n\n"Tonight was... not terrible," she says. Coming from her, it\'s a rave review.\n\n"High praise."\n\n"Don\'t let it go to your head." She opens the door, pauses. "That number on the napkin? Use it. But not before noon. I\'m not a morning person."\n\nShe disappears inside. You stand there for a moment, the napkin in your pocket feeling heavier than paper should.\n\nThe walk back to your dorm is quiet. The party is a distant memory — a thumping bass line that faded into crickets and coffee and a girl who sees through people like X-rays.',scene:'party',mood:'#6c5ce7',effects:{flags:{ending_nadia_gentle:true,chapter1_complete:true},relationships:{nadia:3}},choices:[{text:'CHAPTER 2 COMING SOON — Return to Menu',next:'_menu'}]},
@@ -2534,6 +2539,44 @@ fp_mia_looking:{characters:['mia'],text:'You scan the party for Mia. She\'s not 
 
 fp_ending_fight_expelled:{characters:[],text:'The punch connects before you even realize you threw it.\n\nEverything after is adrenaline and noise and hands pulling you apart. Campus security arrives in four minutes. The other guy has a split lip. You have bloody knuckles and a sinking feeling that you just changed the trajectory of your semester.\n\nThe security officer takes your student ID. "You\'ll be hearing from the Dean of Students. Both of you."\n\nTyler walks you home in silence. He\'s not angry — he\'s scared. For you.\n\n"What were you thinking?"\n\n"I wasn\'t."\n\n"Yeah. I know."\n\nThe disciplinary hearing is in two weeks. Best case: academic probation. Worst case: the thing nobody wants to say out loud.\n\nOne punch. That\'s all it takes.\n\n---\n\nBAD ENDING: ONE PUNCH\n\nSome mistakes can be unlearned. Some can\'t be undone.',scene:'dark',mood:'#d63031',effects:{flags:{ending_expelled:true,chapter1_complete:true}},choices:[{text:'TRY AGAIN — Return to Menu',next:'_menu'}]}
 };
+
+// === INTIMATE BUILDUP — MIA PATH ===
+FRATPARTY_NODES.fp_mia_roof_linger = {text:`You don\u2019t go back down. Not yet. The kiss changed the air between you \u2014 thickened it, charged it. Mia shifts in her chair so she\u2019s facing you, one leg tucked under her. The string lights paint warm shadows across her collarbones.\n\n\u201cSo,\u201d she says, and her voice is different now. Lower. Like she\u2019s speaking just for you.\n\n\u201cSo,\u201d you echo.\n\nShe reaches out and traces a line down your forearm with one finger. Slow. Deliberate. Your skin prickles in the wake of her touch.\n\n\u201cYour heart is racing,\u201d she murmurs, fingertip resting on your wrist.\n\n\u201cYours isn\u2019t?\u201d\n\nShe takes your hand and presses it flat against her sternum. You feel it \u2014 fast, steady, matching yours beat for beat. The warmth of her skin through the thin fabric of her top. The rise and fall of her breathing.\n\n\u201cGuess we\u2019re both in trouble,\u201d she whispers.`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:3},flags:{mia_intimate:true}},choices:[{text:'Brush the hair from her face. Take your time.',next:'fp_mia_slow_touch',effects:{relationships:{mia:2}}},{text:'"Come here." Pull her closer.',next:'fp_mia_closer',effects:{relationships:{mia:2},stats:{cou:1}}},{text:'"We don\'t have to rush this."',next:'fp_mia_slow_pace',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_slow_touch = {text:`You reach out and tuck a strand of hair behind her ear. Your fingers linger at her temple, drift down the curve of her jaw. She tilts her head into your hand like a reflex \u2014 eyes half-closing.\n\n\u201cThat\u2019s nice,\u201d she breathes.\n\nThe rooftop is silent except for the distant thrum of bass through the floor. The air is cool but everywhere you\u2019re touching her is warm.\n\nYou trace the line of her neck with your thumb. She shivers \u2014 not from cold. Goosebumps rise on her skin.\n\n\u201cYou\u2019re shaking,\u201d you say.\n\n\u201cI know.\u201d She opens her eyes. Gold-dark in the low light. \u201cDon\u2019t stop.\u201d`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:2}},choices:[{text:'Kiss her neck \u2014 right where your thumb just was.',next:'fp_mia_neck',effects:{relationships:{mia:3},stats:{cou:1}}},{text:'Let your hand slide to her shoulder. Slow, asking permission with every inch.',next:'fp_mia_shoulder',effects:{relationships:{mia:2}}},{text:'"Can I?" Pause. Wait for her answer before going further.',next:'fp_mia_permission',effects:{relationships:{mia:4}}}]};
+FRATPARTY_NODES.fp_mia_closer = {text:`She moves without hesitation. One fluid motion \u2014 from her chair to yours, knees on either side of your hips, hands on your shoulders. The lawn chair creaks. You don\u2019t care.\n\nUp close, you can see everything. The faint dusting of freckles across her nose. The way her lips are still slightly swollen from the kiss. The rapid flutter of her pulse in the hollow of her throat.\n\n\u201cHi,\u201d she says, looking down at you.\n\n\u201cHi.\u201d\n\nShe cups your face in both hands. Her thumbs trace your cheekbones. She\u2019s studying you the way she studies everything \u2014 carefully, thoroughly.\n\n\u201cYou have a freckle right here,\u201d she says, touching a spot below your left eye. \u201cI never noticed in class.\u201d\n\n\u201cBetter or worse?\u201d\n\n\u201cBetter.\u201d Her fingers slide into your hair. \u201cEverything\u2019s better up here.\u201d`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:3}},choices:[{text:'Pull her in. Kiss her again \u2014 deeper this time.',next:'fp_mia_deep_kiss',effects:{relationships:{mia:3},stats:{cou:1}}},{text:'Run your hands up her sides. Feel her breathing change.',next:'fp_mia_sides',effects:{relationships:{mia:2}}},{text:'Rest your forehead against hers. Breathe the same air.',next:'fp_mia_breathe',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_slow_pace = {text:`She exhales \u2014 relief and gratitude tangled together.\n\n\u201cThank you for saying that.\u201d She pulls her knees up but leans into you so her shoulder presses against your chest. \u201cMost guys would\u2019ve \u2014 I don\u2019t know. Assumed.\u201d\n\n\u201cI\u2019m not most guys.\u201d\n\n\u201cI\u2019m starting to realize that.\u201d\n\nYou sit like that for a while. Her weight against you, your arm around her shoulders. The scent of her shampoo \u2014 vanilla and something warmer underneath.\n\nShe turns her head and presses her lips to your collarbone. Just once. Soft.\n\n\u201cI like this,\u201d she murmurs against your skin. \u201cBeing close without it having to go somewhere. Just... being here. With you.\u201d\n\nThe string lights flicker. A breeze lifts her hair. The moment feels like something being carefully built \u2014 each second a brick, each breath a beam.`,scene:'intimate',mood:'#6c5ce7',characters:['mia'],effects:{relationships:{mia:4}},choices:[{text:'Tilt her chin up and kiss her forehead.',next:'fp_mia_forehead',effects:{relationships:{mia:3}}},{text:'"It can go wherever you want it to go. You set the pace."',next:'fp_mia_her_pace',effects:{relationships:{mia:4}}},{text:'Pull the blanket from the other chair. Wrap it around both of you.',next:'fp_mia_blanket',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_neck = {text:`You lean in and press your lips to the curve of her neck. She inhales sharply \u2014 a small, startled sound that reverberates against your mouth.\n\nHer skin is impossibly soft. Warm. You can feel her pulse hammering against your lips. She tilts her head back, giving you more space, and her fingers tighten on your arm.\n\n\u201cOh,\u201d she says. Just that. A single syllable that contains entire paragraphs.\n\nYou trail slow kisses up the side of her neck. Behind her ear. Along her jaw. Each one deliberate, each one drawing a different reaction \u2014 a hitch in her breath, a tightening of her grip, a barely-audible sigh.\n\nWhen you reach the corner of her mouth, you stop. She opens her eyes.\n\n\u201cWhy\u2019d you stop?\u201d\n\n\u201cBecause I want you to close the gap this time.\u201d`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:3}},choices:[{text:'She does. She absolutely does.',next:'fp_mia_deep_kiss',effects:{relationships:{mia:4}}},{text:'She hesitates \u2014 then smiles and pulls you in slowly.',next:'fp_mia_breathe',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_shoulder = {text:`Your hand drifts from her neck to her shoulder. The strap of her top is thin \u2014 just a dark ribbon against her skin. Your thumb traces the line of her collarbone.\n\nThe night air moves around you both. She watches your fingers with half-lidded eyes.\n\n\u201cThat thing you\u2019re doing,\u201d she says.\n\n\u201cWhat thing?\u201d\n\n\u201cGoing slow. Like you\u2019re actually paying attention.\u201d She swallows. \u201cNobody does that.\u201d\n\nYour fingers find the curve where her shoulder meets her neck \u2014 that soft hollow that makes her breath catch. She leans into you until you can feel the warmth radiating off her.\n\n\u201cI\u2019m paying attention,\u201d you confirm.\n\n\u201cI noticed.\u201d Her voice is barely there.`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:3}},choices:[{text:'Kiss that spot \u2014 the one that made her breath catch.',next:'fp_mia_neck',effects:{relationships:{mia:2}}},{text:'"Tell me what you want." Give her the words.',next:'fp_mia_her_pace',effects:{relationships:{mia:4}}},{text:'Let the moment build. Sometimes anticipation is everything.',next:'fp_mia_breathe',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_permission = {text:`You pause. Your hand on her jaw, her eyes on yours.\n\n\u201cCan I...?\u201d\n\nShe doesn\u2019t answer with words. She takes your hand and places it against the side of her neck, thumb resting on her pulse point. Her skin is fever-warm.\n\n\u201cYou don\u2019t have to ask,\u201d she says. \u201cBut I love that you do.\u201d\n\nThere\u2019s something in her eyes that wasn\u2019t there before \u2014 not just attraction, but trust. The kind that takes most people weeks to build, compressed into one night on a rooftop.\n\nShe leans forward until your noses almost touch. The string lights catch in her eyes like trapped stars.\n\n\u201cAsk me again,\u201d she whispers.`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:4}},choices:[{text:'"Can I kiss you like I\'ve been thinking about it all night?"',next:'fp_mia_deep_kiss',effects:{relationships:{mia:4},stats:{cha:1}}},{text:'"Can I hold you? Just... hold you?"',next:'fp_mia_blanket',effects:{relationships:{mia:4}}},{text:'Don\'t ask. Just close the distance. She told you not to ask.',next:'fp_mia_deep_kiss',effects:{relationships:{mia:3},stats:{cou:1}}}]};
+FRATPARTY_NODES.fp_mia_deep_kiss = {text:`This kiss isn\u2019t like the first one. The first was a question. This one is a conversation.\n\nHer hands slide around the back of your neck, fingers threading into your hair. Your arms wrap around her waist, pulling her against you until there\u2019s no space left. You can feel the architecture of her body through her clothes \u2014 the curve of her ribs, the warmth of her lower back, the way she arches slightly when your hand finds the right spot.\n\nThe kiss deepens \u2014 slower than you\u2019d expect, deliberate. Her teeth graze your lower lip and a sound escapes you that you didn\u2019t know you could make.\n\nWhen you finally break apart, you\u2019re both breathing hard. Her lipstick is smudged. Your shirt is twisted where she grabbed it.\n\n\u201cOkay,\u201d she says, pressing her forehead against yours. \u201cThat was... yeah.\u201d\n\n\u201cYeah.\u201d\n\nThe campus stretches out below, indifferent. Up here, the whole world is about four square feet of rooftop.`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:4},flags:{mia_deep_connection:true}},choices:[{text:'Stay tangled together. Watch the sky change color.',next:'fp_mia_roof_dawn',effects:{relationships:{mia:3}}},{text:'"Stay with me tonight? Just... this. Talking and being close."',next:'fp_mia_roof_dawn',effects:{relationships:{mia:4}}},{text:'"Let me walk you home. Before I forget how to let you go."',next:'fp_mia_walk_intimate',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_breathe = {text:`You press your forehead against hers. Close your eyes. Just breathe.\n\nHer breath mingles with yours \u2014 warm, slightly unsteady. You can feel her pulse everywhere you\u2019re touching.\n\nNeither of you moves. The stillness is its own kind of intimacy \u2014 more charged than any kiss, more honest than any words.\n\n\u201cI can feel you smiling,\u201d she whispers.\n\n\u201cHow?\u201d\n\n\u201cBecause I\u2019m smiling too.\u201d\n\nHer nose brushes against yours. An almost-kiss. The space between your lips is electric \u2014 close enough to feel the warmth, far enough to ache.\n\nThe anticipation builds like music approaching a crescendo. Every nerve ending is awake.`,scene:'intimate',mood:'#6c5ce7',characters:['mia'],effects:{relationships:{mia:3}},choices:[{text:'Close the gap. Slowly.',next:'fp_mia_deep_kiss',effects:{relationships:{mia:3}}},{text:'Let her close it. Wait.',next:'fp_mia_deep_kiss',effects:{relationships:{mia:3}}},{text:'Stay in the almost. Sometimes the edge of the kiss is better than the kiss.',next:'fp_mia_roof_dawn',effects:{relationships:{mia:4}}}]};
+FRATPARTY_NODES.fp_mia_forehead = {text:`You tilt her chin up gently and press your lips to her forehead. Long, slow, unhurried.\n\nShe melts. Her shoulders drop, her eyes close, and she exhales like she\u2019s been holding tension for years.\n\n\u201cGod,\u201d she whispers. \u201cHow is that more intimate than an actual kiss?\u201d\n\n\u201cBecause it\u2019s not trying to be anything. It just is.\u201d\n\nShe buries her face in your neck. You can feel her eyelashes against your skin, the warmth of her breath, the shape of her smile. Your arms tighten around her.\n\nHer fingers trace absent patterns on your chest \u2014 spirals and lines and what might be letters.\n\n\u201cI\u2019m writing my number on you,\u201d she murmurs. \u201cIn case you forget.\u201d\n\n\u201cI\u2019m not going to forget.\u201d\n\n\u201cWrite it anyway. So I can keep touching you.\u201d`,scene:'intimate',mood:'#6c5ce7',characters:['mia'],effects:{relationships:{mia:4}},choices:[{text:'Stay until sunrise.',next:'fp_mia_roof_dawn',effects:{relationships:{mia:4}}},{text:'"Don\'t stop. I\'ll memorize every letter."',next:'fp_mia_roof_dawn',effects:{relationships:{mia:3},stats:{cha:1}}}]};
+FRATPARTY_NODES.fp_mia_her_pace = {text:`Mia looks at you \u2014 really looks, the way she does when she\u2019s analyzing something in psych class. Except this time, what she\u2019s analyzing is how much she trusts you.\n\nShe decides.\n\nShe takes your hand and presses it flat against her stomach, over her top. You feel her abs tense under your palm, the nervous flutter of her breathing.\n\n\u201cThere,\u201d she says. \u201cNow stay.\u201d She places her own hand over yours. \u201cI want to feel your hand get warm. That\u2019s it. Just... warmth.\u201d\n\nIt\u2019s such a small thing. Such a specific, vulnerable, human thing. Your hand warming her skin through fabric. Her hand holding yours there. The rise and fall of each breath moving you both like a tide.\n\nMinutes pass. Your hand warms. Her breathing slows. She leans back against you and the tension in her body unwinds, degree by degree.\n\n\u201cBetter,\u201d she says softly. \u201cBetter.\u201d`,scene:'intimate',mood:'#6c5ce7',characters:['mia'],effects:{relationships:{mia:5}},choices:[{text:'Stay exactly like this. Don\'t move. Don\'t rush.',next:'fp_mia_roof_dawn',effects:{relationships:{mia:4}}},{text:'Press a kiss to the top of her head.',next:'fp_mia_forehead',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_blanket = {text:`You reach for the blanket draped over the other lawn chair. You wrap it around both of you and she immediately presses against your side.\n\nUnder the blanket, the world shrinks to the size of two bodies. Her leg against yours. Her head on your shoulder. Your arm around her waist, thumb tracing slow circles on her hip.\n\n\u201cYour hand is warm,\u201d she says.\n\n\u201cYou\u2019re cold.\u201d\n\n\u201cNot anymore.\u201d She snuggles deeper. Her hand finds the hem of your shirt and slips under \u2014 just her fingertips, resting against your side. The contact is electric. Five points of warmth against your bare skin.\n\n\u201cIs this okay?\u201d she asks.\n\n\u201cMore than okay.\u201d\n\nHer fingers trace your ribs like she\u2019s reading braille. Counting them. Memorizing the shape of you in the dark.`,scene:'intimate',mood:'#6c5ce7',characters:['mia'],effects:{relationships:{mia:4}},choices:[{text:'Mirror her. Let your hand find the warmth under her jacket.',next:'fp_mia_sides',effects:{relationships:{mia:3}}},{text:'Pull her closer. Let body heat do what words can\'t.',next:'fp_mia_roof_dawn',effects:{relationships:{mia:4}}},{text:'"Stay. Just like this. Until the sun comes up."',next:'fp_mia_roof_dawn',effects:{relationships:{mia:4}}}]};
+FRATPARTY_NODES.fp_mia_sides = {text:`Your hands find her waist \u2014 the curve of her hips, the dip of her waist, the ridge of her ribs beneath the soft fabric. She draws a sharp breath.\n\n\u201cBreathe,\u201d you tell her.\n\nShe laughs \u2014 nervous, giddy. \u201cI\u2019m trying. You\u2019re making it difficult.\u201d\n\nYour thumbs trace the lines of her body. She responds to each touch differently \u2014 a shiver here, a soft hum there, a sharp intake of breath when you find the sensitive spot just above her hip bone.\n\n\u201cThere,\u201d she whispers.\n\n\u201cHere?\u201d\n\n\u201cMm-hm.\u201d Her eyes are closed. Her hands grip your arms. The night is so quiet you can hear her heartbeat \u2014 or maybe that\u2019s yours.`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:3}},choices:[{text:'Pull her against you.',next:'fp_mia_deep_kiss',effects:{relationships:{mia:3}}},{text:'Slow down. Trace the moment out.',next:'fp_mia_breathe',effects:{relationships:{mia:3}}},{text:'Wrap her up. The night is getting cold and she is getting warm.',next:'fp_mia_roof_dawn',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_roof_dawn = {text:`Time dissolves. You lose track of where the talking ends and the touching begins.\n\nShe tells you about her childhood bedroom. You trace the bones of her wrist. She confesses her fear of being forgettable. You press your lips to her temple. She laughs about a terrible first date. Your hands rest on her waist like they were designed for exactly that purpose.\n\nAt some point, the sky begins to change. Not sunrise yet \u2014 the deep blue lightens at the edges, a whisper of grey-pink along the horizon. The first birds test the silence.\n\nMia is curled against you, her fingers intertwined with yours, her breathing slow and even. Not asleep \u2014 just present. Completely, fearlessly present.\n\n\u201cI don\u2019t want this night to end,\u201d she says.\n\n\u201cThen let\u2019s call it a really long morning instead.\u201d\n\nShe laughs, tilts her face up, and kisses you one more time. Soft. Certain.\n\nThe sunrise finds you like that \u2014 tangled together on a lawn chair, two people who walked into a party as strangers and walked out as something the English language hasn\u2019t invented a word for yet.`,scene:'intimate',mood:'#fdcb6e',characters:['mia'],effects:{flags:{ending_mia_intimate:true,chapter1_complete:true},relationships:{mia:5}},choices:[{text:'CHAPTER 2 COMING SOON \u2014 Return to Menu',next:'_menu'}]};
+FRATPARTY_NODES.fp_mia_walk_intimate = {text:`The walk to her dorm feels different now. Electric. Every accidental brush of knuckles is intentional.\n\nMia walks close \u2014 close enough that her shoulder bumps yours with every step. The campus is deserted at 3 AM. Street lamps cast pools of amber light.\n\nHalfway there, she stops. Turns. Grabs the front of your shirt with both hands and pulls you under a lamppost.\n\n\u201cI want to do something,\u201d she says. \u201cBefore we get to my dorm and I have to be a responsible adult.\u201d\n\nShe wraps her arms around your neck and kisses you under the streetlight. Not hurried \u2014 exploratory. Her body presses against yours and you can feel every point of contact.\n\nA car passes in the distance. Neither of you flinches.\n\nWhen she pulls back, she\u2019s breathing hard. \u201cOkay. Now we can walk.\u201d`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:4}},choices:[{text:'Walk her the rest of the way. Savor every remaining step.',next:'fp_mia_dorm_door',effects:{relationships:{mia:3}}},{text:'"Who says we have to keep walking?" Find a bench.',next:'fp_mia_bench',effects:{relationships:{mia:3}}}]};
+FRATPARTY_NODES.fp_mia_bench = {text:`There\u2019s a bench under an old oak tree, half-hidden from the path. You sit. She sits beside you \u2014 then turns, legs across your lap, back against the armrest.\n\nThe position is casual and impossibly intimate at the same time.\n\n\u201cTell me something you\u2019ve never told anyone,\u201d she says.\n\nYou do. She listens with her whole body \u2014 leaning in, eyes soft, one hand drawing circles on your shoulder.\n\nThen she tells you something back. You respond by pressing a kiss to the inside of her wrist where the veins run blue beneath her skin.\n\nShe shivers. \u201cHow do you keep doing that?\u201d\n\n\u201cDoing what?\u201d\n\n\u201cFinding the exact right spot.\u201d She looks at you like you\u2019re a question she wants to spend a long time answering.`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{relationships:{mia:4}},choices:[{text:'Walk her the rest of the way home. Slowly.',next:'fp_mia_dorm_door',effects:{relationships:{mia:3}}},{text:'Stay on this bench until the sprinklers force you to move.',next:'fp_mia_roof_dawn',effects:{relationships:{mia:4}}}]};
+FRATPARTY_NODES.fp_mia_dorm_door = {text:`Her dorm. The porch light casts everything in soft gold. She turns, back against the door, and looks up at you.\n\nYou\u2019re standing close. Close enough to count the freckles on her nose. Close enough that when she breathes, you feel it.\n\n\u201cSo,\u201d she says.\n\n\u201cSo.\u201d\n\nShe reaches up and straightens your collar. Her fingers linger, then drift to your chest. She spreads her palm flat over your heart.\n\n\u201cStill racing,\u201d she observes.\n\n\u201cYou have that effect.\u201d\n\nShe rises on her toes and kisses the corner of your jaw. Then your cheek. Then the space just below your ear. Each one feather-light, each one devastating.\n\n\u201cTuesday,\u201d she whispers against your skin. \u201cPsych class. Don\u2019t be late.\u201d\n\nShe slips inside. The door clicks. You stand there for a full minute, heart hammering, her perfume still clinging to your shirt.`,scene:'intimate',mood:'#fd79a8',characters:['mia'],effects:{flags:{ending_mia_dorm:true,chapter1_complete:true},relationships:{mia:5}},choices:[{text:'CHAPTER 2 COMING SOON \u2014 Return to Menu',next:'_menu'}]};
+
+// === INTIMATE BUILDUP — LUNA PATH ===
+FRATPARTY_NODES.fp_luna_kiss_linger = {text:`The kiss ends but the closeness doesn\u2019t. Luna keeps her hand on your face, thumb tracing your cheekbone. Her eyes are still closed.\n\n\u201cDon\u2019t move,\u201d she says. \u201cI\u2019m memorizing this.\u201d\n\n\u201cFor a drawing?\u201d\n\n\u201cFor everything.\u201d\n\nShe opens her eyes. The gold in them catches the string lights.\n\nShe shifts closer until she\u2019s leaning into you, and interlaces your fingers. Her rings are cool against your skin.\n\n\u201cYour hands are warm,\u201d she says quietly. \u201cArtists\u2019 hands are always cold. Bad circulation.\u201d She brings your intertwined hands to her lips and presses a kiss to your knuckles. \u201cYou\u2019re like a portable heater. I might keep you.\u201d`,scene:'intimate',mood:'#6c5ce7',characters:['luna'],effects:{relationships:{luna:3}},choices:[{text:'Wrap your arm around her. Share all the warmth you have.',next:'fp_luna_warmth',effects:{relationships:{luna:3}}},{text:'"What would you draw right now? If you could capture this?"',next:'fp_luna_describe',effects:{relationships:{luna:3}}},{text:'Turn her hand over. Trace the lines of her palm.',next:'fp_luna_palm',effects:{relationships:{luna:2}}}]};
+FRATPARTY_NODES.fp_luna_warmth = {text:`You wrap your arm around her and pull her close. She fits against you like she was drawn there \u2014 shoulder under your arm, head in the hollow of your neck.\n\nThe crescent moon tattoo on her wrist presses against your chest. Her hair smells like jasmine and linseed oil.\n\nShe traces the collar of your shirt with one finger. Slow loops and spirals, like she\u2019s drawing on you. The touch is feather-light but you feel it everywhere.\n\n\u201cI\u2019m going to tell you something embarrassing,\u201d she says.\n\n\u201cGo ahead.\u201d\n\n\u201cI drew you before tonight. In class. You sit three rows ahead of me in Art History. You never noticed.\u201d She hides her face against your neck. \u201cI have like four sketches of the back of your head. That\u2019s so creepy. Why did I tell you that?\u201d\n\nYou can feel her cheeks burning against your skin.`,scene:'intimate',mood:'#6c5ce7',characters:['luna'],effects:{relationships:{luna:4}},choices:[{text:'"That\'s not creepy. That\'s the best thing anyone\'s ever said to me."',next:'fp_luna_tender',effects:{relationships:{luna:4},stats:{cha:1}}},{text:'Kiss the top of her head. Let her hide as long as she needs.',next:'fp_luna_tender',effects:{relationships:{luna:3}}},{text:'"Show me. Next class. I want to see all four."',next:'fp_luna_tender',effects:{relationships:{luna:3}}}]};
+FRATPARTY_NODES.fp_luna_describe = {text:`Luna is quiet for a moment. When she speaks, her voice has that distant quality \u2014 the one she gets when she\u2019s seeing the world through her artist\u2019s eye.\n\n\u201cI\u2019d draw it in charcoal. Soft lines. Your profile against the skyline \u2014 the campus lights bleeding into the stars. My hand in yours, our fingers braided together.\u201d\n\nShe turns to face you. \u201cI\u2019d draw the space between us getting smaller. Frame by frame, like a flipbook. Until there\u2019s no space at all.\u201d\n\nShe demonstrates. Moves closer by an inch. Then another. Her knee touches yours. Then her thigh. Then her hip. Each point of contact is deliberate, intentional.\n\n\u201cAnd the last frame?\u201d you ask.\n\n\u201cThe last frame is this.\u201d She closes the final gap and presses her lips to yours. Soft. Slow. Like she\u2019s drawing the kiss in real time.`,scene:'intimate',mood:'#6c5ce7',characters:['luna'],effects:{relationships:{luna:4}},choices:[{text:'Stay in the kiss. Let her draw it as long as she wants.',next:'fp_luna_tender',effects:{relationships:{luna:3}}},{text:'"I want to be in every sketchbook you ever fill."',next:'fp_luna_tender',effects:{relationships:{luna:4},stats:{cha:1}}}]};
+FRATPARTY_NODES.fp_luna_palm = {text:`You take her hand and turn it over. Her palm is mapped with graphite stains and faint calluses. You trace the lines with your fingertip.\n\n\u201cThis one\u2019s your heart line,\u201d you say, completely making it up.\n\n\u201cYou don\u2019t know palm reading.\u201d\n\n\u201cI know enough. This line says you\u2019re going to meet someone on a rooftop who doesn\u2019t know anything about art but thinks you\u2019re brilliant.\u201d\n\nShe laughs \u2014 that quiet, real laugh. \u201cAnd this line?\u201d She points.\n\n\u201cThat one says you should probably kiss him again.\u201d\n\n\u201cThe palm doesn\u2019t lie,\u201d she murmurs, and leans in.\n\nThe kiss is different this time \u2014 playful at first, then deepening. Her free hand grips the front of your shirt. You feel the graphite from her fingers transferring to your skin, marking you.`,scene:'intimate',mood:'#fd79a8',characters:['luna'],effects:{relationships:{luna:3}},choices:[{text:'Check your hand later for graphite. Proof this was real.',next:'fp_luna_tender',effects:{relationships:{luna:3}}},{text:'Pull her into your lap. Stars above, her below, nothing else.',next:'fp_luna_warmth',effects:{relationships:{luna:3},stats:{cou:1}}}]};
+FRATPARTY_NODES.fp_luna_tender = {text:`The rooftop becomes your own private gallery. Luna sketches by starlight while leaning against you, your chin resting on her shoulder, watching lines appear on the page.\n\nShe draws the campus. Then the string lights. Then \u2014 without announcing it \u2014 she starts drawing your hand, resting on her knee. Every knuckle, every vein, every imperfect detail.\n\n\u201cYou have good hands,\u201d she says. \u201cStrong lines. Easy to draw.\u201d She pauses. \u201cEasy to hold.\u201d\n\nThe night gets colder but neither of you notices. She\u2019s warm where she\u2019s pressed against you \u2014 back to chest, her head tucked under your chin. Your arms wrap around her from behind. You can feel the muscles in her arm flex as she draws.\n\nA bird sings. Then another. The sky is shifting.\n\n\u201cStay,\u201d she says. It\u2019s not a question. \u201cI want to draw the sunrise. And I want you here when I do.\u201d\n\nYou stay.`,scene:'intimate',mood:'#6c5ce7',characters:['luna'],effects:{flags:{ending_luna_intimate:true,chapter1_complete:true},relationships:{luna:5}},choices:[{text:'CHAPTER 2 COMING SOON \u2014 Return to Menu',next:'_menu'}]};
+
+// === INTIMATE BUILDUP — NADIA PATH ===
+FRATPARTY_NODES.fp_nadia_coffee_tension = {text:`The coffee shop is almost empty now. The barista has given up pretending to clean. The jazz has cycled back to the same saxophone solo for the third time.\n\nNadia\u2019s shoe bumps yours under the table. She doesn\u2019t move it away.\n\n\u201cI have a hypothesis,\u201d she says, wrapping both hands around her cup. Her voice is different \u2014 lower, more careful.\n\n\u201cAbout?\u201d\n\n\u201cAbout why I\u2019m still here. At 2 AM. In a coffee shop. With someone I met four hours ago.\u201d She takes a sip. \u201cThe data doesn\u2019t support it. I don\u2019t do this.\u201d\n\n\u201cSo what\u2019s your hypothesis?\u201d\n\nShe sets the cup down. Looks you dead in the eyes. Those dark green eyes that miss nothing.\n\n\u201cThat you\u2019re an anomaly. And I\u2019ve always been fascinated by anomalies.\u201d`,scene:'intimate',mood:'#74b9ff',characters:['nadia'],effects:{relationships:{nadia:3}},choices:[{text:'"What happens when you study an anomaly too closely?"',next:'fp_nadia_too_close',effects:{relationships:{nadia:3},stats:{cha:1}}},{text:'Reach across the table. Touch her hand.',next:'fp_nadia_hand',effects:{relationships:{nadia:3},stats:{cou:1}}},{text:'"I have a counter-hypothesis."',next:'fp_nadia_counter',effects:{relationships:{nadia:2},stats:{int:1}}}]};
+FRATPARTY_NODES.fp_nadia_too_close = {text:`\u201cYou get attached,\u201d she says immediately. \u201cObjectivity collapses. The observer becomes part of the experiment.\u201d\n\nShe leans forward. The table is small and suddenly there\u2019s very little distance between you. You can see the faint shadows under her eyes. The precise line of her jaw. A tiny scar on her chin.\n\n\u201cI\u2019m a very disciplined person,\u201d she continues. \u201cI plan everything. My schedule is color-coded. I haven\u2019t done a single spontaneous thing since I got to this campus.\u201d\n\nHer voice drops.\n\n\u201cUntil tonight.\u201d\n\nUnder the table, her knee presses against yours. Firm, deliberate. Not accidental.\n\n\u201cAnd that terrifies me,\u201d she adds quietly.`,scene:'intimate',mood:'#74b9ff',characters:['nadia'],effects:{relationships:{nadia:4}},choices:[{text:'"Maybe that\'s the point. Not every experiment needs a controlled outcome."',next:'fp_nadia_let_go',effects:{relationships:{nadia:4},stats:{cha:1}}},{text:'"What if I promise to be a very well-behaved anomaly?"',next:'fp_nadia_let_go',effects:{relationships:{nadia:3},stats:{cha:1}}},{text:'Say nothing. Just let your knee press back.',next:'fp_nadia_silent',effects:{relationships:{nadia:4}}}]};
+FRATPARTY_NODES.fp_nadia_hand = {text:`Your fingers find hers across the table. She tenses \u2014 a visible, full-body reaction.\n\nFor three seconds, you think she\u2019s going to pull away.\n\nThen her fingers curl around yours. Tight. Sure.\n\n\u201cI don\u2019t usually\u2014\u201d she starts.\n\n\u201cI know.\u201d\n\nShe looks at your intertwined hands like they\u2019re a specimen under a microscope. Then she turns your hand over and examines your palm.\n\n\u201cCalluses here,\u201d she observes, touching the base of your fingers. Her thumb drags across your palm slowly. \u201cYou play guitar? Or climb?\u201d\n\nHer touch is methodical at first. But as she traces the lines of your palm, something shifts. The touch becomes softer. Slower. Her thumb circles your wrist, finding the pulse.\n\n\u201cFast,\u201d she notes. \u201cElevated heart rate. Possible causes include caffeine, exercise, or...\u201d She trails off.\n\n\u201cOr?\u201d\n\nShe doesn\u2019t answer. But she doesn\u2019t let go.`,scene:'intimate',mood:'#74b9ff',characters:['nadia'],effects:{relationships:{nadia:4}},choices:[{text:'"Or the person sitting across from me."',next:'fp_nadia_let_go',effects:{relationships:{nadia:4},stats:{cha:1}}},{text:'Turn the tables. Take her wrist. Find her pulse.',next:'fp_nadia_pulse',effects:{relationships:{nadia:3},stats:{per:1}}}]};
+FRATPARTY_NODES.fp_nadia_counter = {text:`\u201cCounter-hypothesis,\u201d you say. \u201cYou\u2019re not fascinated by the anomaly. You\u2019re fascinated by how the anomaly makes you feel. There\u2019s a difference.\u201d\n\nNadia goes very still.\n\n\u201cThat\u2019s... a better hypothesis than mine.\u201d\n\nIt might be the first time you\u2019ve ever surprised her.\n\n\u201cI don\u2019t like being figured out,\u201d she says. But she\u2019s not upset. She\u2019s almost pleased.\n\n\u201cThen we\u2019re even,\u201d you say. \u201cBecause I don\u2019t like being studied.\u201d\n\n\u201cLiar.\u201d A small smile. \u201cYou\u2019ve been letting me study you all night.\u201d`,scene:'intimate',mood:'#74b9ff',characters:['nadia'],effects:{relationships:{nadia:3}},choices:[{text:'"Maybe I just like the attention of the smartest person in the room."',next:'fp_nadia_too_close',effects:{relationships:{nadia:3},stats:{cha:1}}},{text:'Reach across the table.',next:'fp_nadia_hand',effects:{relationships:{nadia:3}}}]};
+FRATPARTY_NODES.fp_nadia_pulse = {text:`You turn the experiment around. Take her wrist gently and press two fingers to her pulse point.\n\n\u201cLet me check something,\u201d you say.\n\nHer pulse is fast. Faster than she\u2019s letting on.\n\n\u201cElevated,\u201d you report, mimicking her clinical tone. \u201cPossible causes: caffeine, late-night intellectual stimulation, or...\u201d\n\nYou trail off the same way she did. She huffs a laugh.\n\n\u201cFine. You win. It\u2019s the third thing.\u201d She doesn\u2019t take her wrist back. You can feel her pulse spike when your thumb traces a small circle on the inside of her wrist.\n\n\u201cThat\u2019s very distracting,\u201d she says.\n\n\u201cGood distracting or bad distracting?\u201d\n\nPause.\n\n\u201cInconclusive. More data needed.\u201d`,scene:'intimate',mood:'#fd79a8',characters:['nadia'],effects:{relationships:{nadia:4}},choices:[{text:'Provide more data. Keep tracing circles.',next:'fp_nadia_let_go',effects:{relationships:{nadia:3}}},{text:'"Walk with me. The data\'s better in motion."',next:'fp_nadia_walk_close',effects:{relationships:{nadia:3}}}]};
+FRATPARTY_NODES.fp_nadia_silent = {text:`You don\u2019t speak. You just press your knee more firmly against hers.\n\n\u201cYou\u2019re infuriating,\u201d she says. \u201cI prepared for small talk, I prepared for flirting, I even prepared for awkward silence. I did not prepare for...\u201d she gestures between you, \u201c...this.\u201d\n\n\u201cWhat\u2019s this?\u201d\n\n\u201cGenuine connection.\u201d She says it like a diagnosis she didn\u2019t want to make. \u201cWhich is the one thing I can\u2019t control for.\u201d\n\nThe jazz shifts to something slower. A piano.\n\nNadia reaches across the table and takes your hand. No preamble, no scientific justification. Her fingers are cold. Yours are warm.\n\n\u201cI have terrible circulation,\u201d she explains.\n\n\u201cI have terrible restraint,\u201d you respond.\n\nFor the first time all night, Nadia laughs without holding back.`,scene:'intimate',mood:'#fd79a8',characters:['nadia'],effects:{relationships:{nadia:5}},choices:[{text:'Stay until the barista kicks you out.',next:'fp_nadia_let_go',effects:{relationships:{nadia:3}}},{text:'"Come on. Let me walk you home before I say something embarrassing."',next:'fp_nadia_walk_close',effects:{relationships:{nadia:3}}}]};
+FRATPARTY_NODES.fp_nadia_let_go = {text:`Something breaks \u2014 not between you, but inside her. The wall she maintains so carefully, the clinical distance, the careful control. You watch it happen in real time.\n\n\u201cOkay,\u201d she says. Almost to herself. \u201cOkay.\u201d\n\nShe stands, still holding your hand, and comes around to your side of the booth. Sits next to you. Close. Her thigh pressed against yours, her shoulder against your arm.\n\n\u201cI\u2019m doing something unscientific,\u201d she announces.\n\nShe rests her head on your shoulder. No preamble, no analysis, no exit strategy. She smells like clean soap and espresso.\n\n\u201cThis is nice,\u201d she admits. Like confessing a crime. \u201cBeing close to someone without having to justify it with data. Just... proximity. Warmth.\u201d\n\nShe\u2019s quiet for a moment.\n\n\u201cDon\u2019t tell anyone I have feelings. It\u2019ll ruin my reputation.\u201d`,scene:'intimate',mood:'#fd79a8',characters:['nadia'],effects:{relationships:{nadia:5}},choices:[{text:'"Your secret\'s safe. But your reputation was always a front."',next:'fp_nadia_walk_close',effects:{relationships:{nadia:4},stats:{per:1}}},{text:'Put your arm around her. No words necessary.',next:'fp_nadia_walk_close',effects:{relationships:{nadia:4}}},{text:'Stay until they close. Let her rest.',next:'fp_nadia_dawn',effects:{relationships:{nadia:5}}}]};
+FRATPARTY_NODES.fp_nadia_walk_close = {text:`The campus at 3 AM is a different world. No students, no noise, just the hum of street lamps and the rustle of leaves.\n\nNadia walks closer than before. Not touching, but in the orbit of touching. Her hand swings near yours. You catch it.\n\nShe interlaces your fingers like she\u2019s been doing it for years.\n\n\u201cI\u2019m going to share an observation,\u201d she says. \u201cYour body temperature runs approximately two degrees warmer than average. It\u2019s comforting.\u201d\n\n\u201cIs that your way of saying you like holding my hand?\u201d\n\n\u201cIt\u2019s my way of stating a physiological fact that happens to correlate with enjoyment. Don\u2019t read into it.\u201d\n\nYou\u2019re both smiling. The walk to her dorm takes twelve minutes. Neither of you takes the shortcut.\n\nAt her building, she stops. The porch light catches her eyes \u2014 green as sea glass.`,scene:'intimate',mood:'#74b9ff',characters:['nadia'],effects:{relationships:{nadia:4}},choices:[{text:'Wait for her to set the terms. She always does.',next:'fp_nadia_doorstep',effects:{relationships:{nadia:3}}},{text:'"Nadia. For once in your life. Don\'t analyze this." Step closer.',next:'fp_nadia_doorstep',effects:{relationships:{nadia:4},stats:{cou:1}}}]};
+FRATPARTY_NODES.fp_nadia_doorstep = {text:`She stands on the first step, which puts her at eye level with you. For the first time tonight, you\u2019re looking at each other straight on.\n\n\u201cI had a good time,\u201d she says. \u201cI want you to know that\u2019s clinically significant. My baseline enjoyment of social events hovers around 2.3 out of 10. Tonight was... considerably higher.\u201d\n\n\u201cHow high?\u201d\n\n\u201cI\u2019ll need to review the data before I commit to a number.\u201d But she\u2019s smiling \u2014 that rare, face-changing smile.\n\nShe reaches out and straightens your collar. Her fingers drift to the bare skin of your neck. Cool fingertips against warm skin.\n\n\u201cElevated heart rate again,\u201d she observes. Her thumb traces your pulse.\n\n\u201cConsistent stimulus.\u201d\n\nShe laughs. Then she leans forward and presses her lips to your cheek. Not quick this time. Slow. Lingering. The corner of her mouth just barely brushing the corner of yours. Not quite a kiss on the lips. But close enough to make the almost ache.\n\n\u201cGoodnight, anomaly.\u201d\n\nShe\u2019s gone before you can respond. The door clicks. You stand on the step, her lip balm faint on your skin.\n\nThe walk home takes twenty minutes. You don\u2019t feel a single one of them.`,scene:'intimate',mood:'#74b9ff',characters:['nadia'],effects:{flags:{ending_nadia_intimate:true,chapter1_complete:true},relationships:{nadia:5}},choices:[{text:'CHAPTER 2 COMING SOON \u2014 Return to Menu',next:'_menu'}]};
+FRATPARTY_NODES.fp_nadia_dawn = {text:`The barista flickers the lights. Universal signal.\n\nNeither of you moves. Nadia\u2019s head is still on your shoulder.\n\n\u201cWe should go,\u201d she murmurs.\n\n\u201cProbably.\u201d\n\nNeither of you moves.\n\nThe barista sighs, refills your waters without being asked, and goes back to mopping.\n\nFive more minutes pass. Nadia\u2019s fingers find the hem of your sleeve and slip under, resting against your forearm. The contact is small \u2014 just her fingertips against your skin \u2014 but it feels enormous.\n\n\u201cYour skin is warm here too,\u201d she notes. Scientific to the end.\n\n\u201cEverywhere,\u201d you confirm.\n\n\u201cI may need to verify that. Eventually.\u201d The faintest hint of color in her cheeks. \u201cFor scientific rigor.\u201d\n\nOutside the window, the sky is turning grey. The jazz has finally stopped.\n\n\u201cWalk me home?\u201d she asks.\n\nIt sounds like: stay in my life.`,scene:'intimate',mood:'#74b9ff',characters:['nadia'],effects:{relationships:{nadia:5}},choices:[{text:'Walk her home. Slowly. Through the waking campus.',next:'fp_nadia_doorstep',effects:{relationships:{nadia:4}}}]};
 // Frat Party populated
 
 // ============================================================
@@ -3477,6 +3520,1025 @@ Some people steal for money. Some steal for power.
 You? You stole for the art of it. And that made you immortal.`,scene:'dark',mood:'#0984e3',effects:{flags:{ending_legend:true,chapter1_complete:true}},choices:[{text:'PLAY AGAIN — Return to Menu',next:'_menu'}]};
 
 // ============================================================
+// SCENARIO DATA — JJK: ALTERED FATES
+// ============================================================
+const JJK_NODES = {};
+
+// ---- ARC 1: ENROLLMENT ----
+
+JJK_NODES.jjk_arrival = {text:`The taxi drops you at the base of a wooded hill on the outskirts of Tokyo. No sign. No gate. Just a narrow path cutting between ancient trees draped in shimenawa rope.
+
+Your phone buzzes — a single message from an unknown number: "Walk straight. Do not leave the path. We are watching."
+
+The air feels heavy here. Not humid — heavy, like the atmosphere itself is pressing against your skin. You have felt cursed energy before, but nothing like this. The entire hillside thrums with it, a low vibration in your bones.
+
+Somewhere above, through the canopy, you catch a glimpse of traditional buildings. Tokyo Metropolitan Jujutsu Technical High School. Your new home.
+
+Your hands are shaking. Excitement or fear — you are not sure which.`,scene:'action',mood:'#2a0845',characters:['Gojo'],choices:[{text:'Walk the path with confidence — you earned your place here.',next:'jjk_path_confident',effects:{stats:{cou:1}}},{text:'Extend your senses — feel the cursed energy around you.',next:'jjk_path_sense',effects:{stats:{per:1}}},{text:'Study the surroundings for threats before proceeding.',next:'jjk_path_careful',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_path_confident = {text:`You walk like you belong. Shoulders back, eyes forward. The trees seem to lean in closer as you climb, shadows pooling at their roots in shapes that do not match the branches above.
+
+A twig snaps behind you. Then another. Something is following you — something that moves between the shadows without disturbing them.
+
+You keep walking. Whatever it is, showing fear would be worse than facing it.
+
+At the top of the path, a figure is leaning against the gate. White hair. Blindfold. A grin that belongs on someone who knows a joke the universe has not figured out yet.
+
+"Not bad," says Gojo Satoru, the strongest jujutsu sorcerer alive. "Most first-years run when the second-grade curse starts following them on the path."
+
+He snaps his fingers. Behind you, something shrieks and dissolves.
+
+"Welcome to Jujutsu High."`,scene:'action',mood:'#0044ff',characters:['Gojo'],effects:{relationships:{gojo:2},flags:{confident_arrival:true}},choices:[{text:'"That thing was following me? I thought the air just felt weird."',next:'jjk_meet_gojo'},{text:'"I felt it. I just figured if it wanted to attack, it already would have."',next:'jjk_meet_gojo',effects:{relationships:{gojo:1}}}]};
+
+JJK_NODES.jjk_path_sense = {text:`You close your eyes and let your cursed energy expand outward. The world lights up behind your eyelids — threads of energy woven through every tree, every stone, every shadow.
+
+There. Behind you. A mass of dark energy, formless and hungry, stalking you between the trees. A second-grade cursed spirit, drawn to the barrier around the school like a moth to flame.
+
+You can feel its intent. It wants to feed.
+
+You open your eyes and keep walking, tracking it with your senses. At the gate, a man with white hair and a blindfold is waiting.
+
+"Oh?" Gojo Satoru tilts his head. "You sensed it. Most first-years do not pick up on Stalker-kun until it is breathing down their neck."
+
+He flicks his wrist casually. The curse behind you detonates like a balloon.
+
+"You have good perception. We can work with that."`,scene:'action',mood:'#0044ff',characters:['Gojo'],effects:{relationships:{gojo:2},flags:{sensed_curse:true}},choices:[{text:'"How many students does that thing eat before someone notices?"',next:'jjk_meet_gojo'},{text:'"I have always been sensitive to cursed energy. It is why I am here."',next:'jjk_meet_gojo',effects:{stats:{per:1}}}]};
+
+JJK_NODES.jjk_path_careful = {text:`You catalog your environment methodically. Escape routes: two visible, one through the underbrush to the east. Threats: the shadows between the trees are too dark for the time of day. Energy signatures: at least one hostile entity, low-grade, tracking you from the treeline.
+
+You adjust your pace to control the engagement distance, keeping the curse at a range where you can react but it cannot strike. Classic threat management.
+
+At the gate, a white-haired man lowers his blindfold just enough to show one impossibly blue eye.
+
+"A strategist," says Gojo Satoru. "You mapped the whole path, did not you? Exits, threats, terrain." He grins. "Nanami is going to love you."
+
+The curse behind you evaporates without him even looking at it.`,scene:'action',mood:'#0044ff',characters:['Gojo'],effects:{relationships:{gojo:1},relationships:{nanami:1},flags:{tactical_arrival:true}},choices:[{text:'"I like to know what I am walking into."',next:'jjk_meet_gojo'},{text:'"Is every entrance exam this lethal?"',next:'jjk_meet_gojo',effects:{relationships:{gojo:1}}}]};
+
+JJK_NODES.jjk_meet_gojo = {text:`Gojo leads you through the campus with the energy of a man who has never taken anything seriously and never needed to. The buildings are traditional Japanese architecture — wooden halls, stone gardens, training grounds — but you can feel the barriers woven into every surface. This place is a fortress disguised as a school.
+
+"So here is the deal," Gojo says, hands in his pockets. "You are one of four new first-years. The others arrived yesterday. Well — one of them arrived. The other two are still arguing about room assignments."
+
+He stops at a courtyard. Three people are there.
+
+A boy with pink hair and an easy grin, doing push-ups on the grass — Yuji Itadori. A dark-haired boy with sharp eyes, sitting cross-legged and reading — Megumi Fushiguro. And a girl with orange hair, examining a set of nails with intense focus — Nobara Kugisaki.
+
+"First-years!" Gojo announces. "Meet your new classmate."
+
+Three pairs of eyes turn to you.`,scene:'action',mood:'#2a0845',characters:['Gojo','Yuji','Megumi','Nobara'],choices:[{text:'Walk up to Yuji first — he looks the friendliest.',next:'jjk_bond_yuji',effects:{relationships:{yuji:2}}},{text:'Approach Megumi — the quiet ones usually know the most.',next:'jjk_bond_megumi',effects:{relationships:{megumi:2}}},{text:'Head to Nobara — she has the most interesting energy.',next:'jjk_bond_nobara',effects:{relationships:{nobara:2}}}]};
+
+JJK_NODES.jjk_bond_yuji = {text:`Yuji springs up from his push-ups like gravity is optional. "Hey! Another first-year! I am Yuji Itadori!" He grabs your hand and shakes it with enough force to rattle your teeth.
+
+"Man, this place is wild, right? Yesterday Gojo-sensei showed us the cursed corpse storage and I almost threw up. But in a cool way."
+
+He is radiating warmth and cursed energy in almost equal measure. There is something strange about his energy signature — a depth to it, like an ocean with something vast sleeping at the bottom. But his smile is genuine and his enthusiasm is infectious.
+
+"What kind of cursed technique do you have? Mine is — well, Gojo-sensei says I am still figuring it out. But I am really strong! Like, abnormally strong. Watch—"
+
+He flicks a pebble across the courtyard. It punches a hole clean through a wooden post fifty meters away.
+
+Megumi sighs audibly.`,scene:'action',mood:'#2a0845',characters:['Yuji','Megumi','Nobara'],effects:{flags:{bonded_yuji:true}},choices:[{text:'"That is terrifying and amazing. Show me more."',next:'jjk_training_intro',effects:{relationships:{yuji:2}}},{text:'"Impressive. But raw power without control is dangerous."',next:'jjk_training_intro',effects:{relationships:{megumi:1}}},{text:'"You just destroyed school property on day one. I respect that."',next:'jjk_training_intro',effects:{relationships:{yuji:1},relationships:{nobara:1}}}]};
+
+JJK_NODES.jjk_bond_megumi = {text:`Megumi looks up from his book with an expression that says he has already evaluated you and filed the report. "Fushiguro Megumi," he says. No handshake offered.
+
+"Gojo-sensei probably gave you some dramatic speech about destiny or potential. Ignore most of it. What matters here is whether you can survive missions without getting yourself or your teammates killed."
+
+He closes the book — a bestiary of cursed spirits, you notice. Heavily annotated in precise handwriting.
+
+"What is your technique?"
+
+There is no warmth in the question, but no hostility either. Just professional curiosity. You can sense his cursed energy — controlled, layered, with the echo of something ancient in it. Shikigami. Ten Shadows.
+
+Behind you, Yuji shouts something about arm wrestling.`,scene:'action',mood:'#2a0845',characters:['Megumi','Yuji','Nobara'],effects:{flags:{bonded_megumi:true}},choices:[{text:'Describe your technique honestly and ask about his.',next:'jjk_training_intro',effects:{relationships:{megumi:2}}},{text:'"You are testing me. I get it. Ask what you really want to know."',next:'jjk_training_intro',effects:{relationships:{megumi:1},stats:{per:1}}},{text:'"Less talking, more sparring. Show me what you can do."',next:'jjk_training_intro',effects:{relationships:{megumi:1},stats:{cou:1}}}]};
+
+JJK_NODES.jjk_bond_nobara = {text:`Nobara does not look up from her nails — actual nails, steel carpenter nails, each one inscribed with tiny cursed energy patterns. "Kugisaki Nobara," she says, holding one up to the light. "If you are boring, I am not interested. Tokyo was supposed to be exciting and so far this school is in the middle of nowhere."
+
+She finally looks at you, sharp eyes making a snap judgment. Whatever she sees, it passes. "At least you do not look boring. The pink-haired one is sweet but exhausting, and Fushiguro acts like he is forty years old."
+
+She holds up a hammer — a heavy, elegant thing wrapped in cursed energy. "Resonance. I drive nails into things and make them explode from the inside. Want to see?"
+
+Without waiting for an answer, she flicks a nail at a training dummy across the courtyard. It embeds in the wood. She swings the hammer against a matching nail in her other hand.
+
+The dummy detonates.
+
+"Questions?"`,scene:'action',mood:'#2a0845',characters:['Nobara','Yuji','Megumi'],effects:{flags:{bonded_nobara:true}},choices:[{text:'"That is the most elegant destruction I have ever seen."',next:'jjk_training_intro',effects:{relationships:{nobara:2}}},{text:'"Effective. What is the range limit?"',next:'jjk_training_intro',effects:{relationships:{nobara:1},stats:{int:1}}},{text:'"Not boring enough for you?"',next:'jjk_training_intro',effects:{relationships:{nobara:1},stats:{cha:1}}}]};
+
+JJK_NODES.jjk_training_intro = {text:`Gojo claps his hands. "Alright! First lesson starts now. And by lesson I mean I am going to throw you into a training exercise that most second-years fail."
+
+He leads the four of you to a forested area behind the main building. The trees here are scarred with old curse damage — splintered trunks, scorch marks, patches where nothing grows.
+
+"Somewhere in this forest, I have placed a cursed object. It is attracting low-level cursed spirits like flies. Your job: find it and bring it back. As a team."
+
+He holds up a finger. "One rule. If any of you try to solo it, I will personally make your life very educational for the next month. This is about teamwork."
+
+Megumi is already analyzing the treeline. Yuji is cracking his knuckles. Nobara is loading nails.
+
+"Oh," Gojo adds. "You have thirty minutes. Starting ten minutes ago."`,scene:'action',mood:'#2a0845',characters:['Gojo','Yuji','Megumi','Nobara'],choices:[{text:'Take the lead — propose a strategy to the group.',next:'jjk_training_lead',check:{stat:'int',dc:10}},{text:'Spread your senses — try to locate the cursed object.',next:'jjk_training_sense',check:{stat:'per',dc:10}},{text:'Rush in with Yuji — speed over strategy.',next:'jjk_training_rush',check:{stat:'cou',dc:9}}]};
+
+JJK_NODES.jjk_training_lead = {text:`You lay it out quickly. "Megumi, your shikigami can cover ground faster than we can — send your Divine Dogs to scout the perimeter. Nobara, you set up a defensive position at the forest edge in case anything tries to flank us. Yuji and I will push through the center."
+
+Megumi nods — the first time he has looked genuinely approving. "That is actually a solid plan."
+
+Even Nobara looks impressed. "Someone who can think. Finally."
+
+The team moves. Megumi's Divine Dogs — one white, one black — streak into the undergrowth. Within minutes, the black dog howls. It found something.
+
+You follow the sound deeper into the forest, where the cursed energy grows thick enough to taste.`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Megumi','Nobara'],effects:{relationships:{megumi:2},relationships:{nobara:1},stats:{int:1},flags:{led_training:true}},choices:[{text:'Follow the signal carefully — check for traps.',next:'jjk_training_curse'},{text:'Move fast before the spirits swarm the object.',next:'jjk_training_curse'}]};
+
+JJK_NODES.jjk_training_sense = {text:`You plant your feet and close your eyes. The forest lights up in your mind — threads of cursed energy running through the earth like roots, pooling in dark knots where spirits have nested.
+
+There. Northeast, maybe two hundred meters in. A bright, pulsing signature — the cursed object — surrounded by at least six lesser spirits feeding on its energy.
+
+"Found it," you say, pointing. "Two hundred meters, northeast. Six spirits guarding it, maybe more."
+
+Yuji whistles. "You can sense all that? That is awesome!"
+
+Megumi narrows his eyes. "Six spirits concentrated in one area. They will be territorial. We need to draw them out rather than fighting in a cluster."`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Megumi','Nobara'],effects:{relationships:{yuji:1},stats:{per:1},flags:{sensed_training:true}},choices:[{text:'Suggest a plan to lure the spirits out one by one.',next:'jjk_training_curse'},{text:'Point the team toward the target and move.',next:'jjk_training_curse'}]};
+
+JJK_NODES.jjk_training_rush = {text:`"No time to plan — let us go!" You and Yuji charge into the forest side by side. He matches your pace effortlessly, grinning like this is the best day of his life.
+
+Behind you, Nobara swears and follows. Megumi mutters something about "reckless idiots" but his Divine Dogs are already flanking your path.
+
+You crash through the undergrowth and nearly run straight into a cluster of cursed spirits — ugly, twisted things made of dark energy and human fear. They turn toward you with mouths that should not exist.
+
+"THERE WE GO!" Yuji yells, and punches the nearest one so hard it disintegrates.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],effects:{relationships:{yuji:2},stats:{cou:1},flags:{rushed_training:true}},choices:[{text:'Fight alongside Yuji — overwhelm them with aggression.',next:'jjk_training_curse',check:{stat:'str',dc:9}},{text:'Fall back and let the team regroup.',next:'jjk_training_curse'}]};
+
+JJK_NODES.jjk_training_curse = {text:`The cursed spirits swarm. They are low-grade — third and fourth class — but there are a lot of them, and they are between you and the cursed object sitting on a stone pedestal in a clearing.
+
+Yuji is a wrecking ball. He moves through the spirits with raw physical power that defies logic, each punch backed by an instinctive pulse of cursed energy. Megumi summons his Divine Dogs and Nue, the owl shikigami, creating a perimeter. Nobara drives nails into the spirits from range, each one detonating with surgical precision.
+
+The clearing fills with the black smoke of dissolving curses.
+
+But the last spirit is different. Bigger. A second-grade, maybe — humanoid, with too many arms and a face like melted wax. It grabs the cursed object and howls, the sound rattling your teeth.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],choices:[{text:'Use your cursed technique to attack it directly.',next:'jjk_training_boss',check:{stat:'str',dc:12}},{text:'Coordinate with the team for a combined attack.',next:'jjk_training_team',check:{stat:'int',dc:10}},{text:'Distract it so someone else can grab the object.',next:'jjk_training_distract',check:{stat:'cou',dc:11}}]};
+
+JJK_NODES.jjk_training_boss = {text:`You channel your cursed energy and hit the spirit with everything you have. The impact sends it staggering — but it does not go down. It lashes out with four arms simultaneously, forcing you to dodge and weave.
+
+Yuji appears at your side. "Together?" You nod.
+
+You hit it high. He hits it low. The combined force tears the spirit apart. The cursed object clatters to the ground.
+
+Gojo is sitting in a tree above, eating a crepe. "Not bad. You have raw power but your output control needs work. B-minus."
+
+He jumps down. "But you pass."`,scene:'action',mood:'#0044ff',characters:['Gojo','Yuji'],effects:{stats:{str:1},flags:{training_complete:true}},choices:[{text:'"B-minus? That curse was second-grade at least."',next:'jjk_day_off'},{text:'Accept the grade and ask how to improve.',next:'jjk_day_off',effects:{relationships:{gojo:1}}}]};
+
+JJK_NODES.jjk_training_team = {text:`"Nobara — nail it from the left, drive it toward Megumi! Megumi — Divine Dogs on its legs! Yuji — when it stumbles, end it!"
+
+The team moves like a single organism. Nobara's nails drive the spirit sideways. Megumi's dogs snap at its legs, tangling it. And Yuji comes in like a freight train, one devastating punch shattering the spirit into fragments.
+
+The cursed object lands at your feet.
+
+Gojo drops from a branch overhead, applauding. "Now THAT is what I wanted to see. Coordination. Tactics. Beautiful." He beams. "A-minus."
+
+"Why minus?" Nobara demands.
+
+"Because I do not give A-pluses. It would go to my students' heads."`,scene:'action',mood:'#0044ff',characters:['Gojo','Yuji','Megumi','Nobara'],effects:{stats:{int:1},relationships:{megumi:1},relationships:{nobara:1},flags:{training_complete:true}},choices:[{text:'Celebrate with the team.',next:'jjk_day_off',effects:{relationships:{yuji:1}}},{text:'Ask Gojo what a real mission looks like.',next:'jjk_day_off',effects:{relationships:{gojo:1}}}]};
+
+JJK_NODES.jjk_training_distract = {text:`You sprint directly at the spirit, screaming and flaring your cursed energy as bright as you can. The spirit turns all its attention to you — every arm reaching, every twisted feature focused on the threat.
+
+It hits you. Hard. You go flying into a tree and feel something crack. Pain floods your vision.
+
+But behind the spirit, Megumi's Divine Dogs drag the cursed object away. Yuji catches the spirit from behind and demolishes it with a spinning punch.
+
+Nobara is at your side in seconds. "You absolute idiot. That was either the bravest or stupidest thing I have ever seen."
+
+Gojo appears, looking thoughtful. "Brave. Definitely brave. Stupid too, but brave." He heals your ribs with a casual application of reverse cursed technique. "B-plus. Points for sacrifice, minus for getting hit."`,scene:'action',mood:'#0044ff',characters:['Gojo','Nobara','Yuji','Megumi'],effects:{stats:{cou:1},relationships:{nobara:2},flags:{training_complete:true,got_injured:true}},choices:[{text:'"Worth it. Did we pass?"',next:'jjk_day_off'},{text:'"I need to learn to dodge better."',next:'jjk_day_off',effects:{stats:{per:1}}}]};
+
+JJK_NODES.jjk_day_off = {text:`A rare day off. Nobara insists on dragging everyone to Harajuku. "If I am going to risk my life fighting curses, I am at least going to look good doing it."
+
+The four of you wander through crowded streets, eating crepes and pretending to be normal teenagers. Yuji challenges strangers to arm-wrestling contests and wins every time. Megumi reads a book while walking and somehow never bumps into anyone.
+
+For a few hours, the cursed energy, the monsters, the danger — it all fades. You are just kids.
+
+Then you feel it. A spike of cursed energy — brief, massive, and terrifyingly controlled. It comes from an alley two blocks away and vanishes as quickly as it appeared.
+
+Megumi goes rigid. His face is white. "That energy... no. It cannot be."
+
+"What?" Yuji asks.
+
+"That felt like a Zenin. But not just any Zenin."`,scene:'action',mood:'#2a0845',characters:['Yuji','Megumi','Nobara'],choices:[{text:'Investigate the energy spike.',next:'jjk_toji_glimpse',check:{stat:'per',dc:12}},{text:'Let it go — enjoy the day off.',next:'jjk_first_mission_briefing',effects:{relationships:{nobara:1}}},{text:'"Megumi, who are you thinking of?"',next:'jjk_toji_glimpse',effects:{relationships:{megumi:1}}}]};
+
+JJK_NODES.jjk_toji_glimpse = {text:`You find nothing in the alley. But on the wall, fresh scratches — claw marks from something sharp, possibly a cursed tool. And a lingering scent of blood.
+
+Megumi stares at the marks. "My father," he says quietly. "Toji Fushiguro. He was an assassin — a sorcerer killer with zero cursed energy. He used cursed tools instead. He nearly killed Gojo once."
+
+"Nearly killed GOJO?" Yuji asks, incredulous.
+
+"He was the only person who ever came close. He died years ago. At least... that is what everyone says." Megumi touches the wall. "But this technique of marking territory — this is his pattern."
+
+Whatever was here is gone. But Megumi is shaken. And you file this information away — Toji Fushiguro, the sorcerer killer, might still be alive.`,scene:'action',mood:'#1a0a2e',characters:['Megumi','Yuji'],effects:{flags:{toji_hint:true},relationships:{megumi:2}},choices:[{text:'"We should tell Gojo-sensei."',next:'jjk_first_mission_briefing',effects:{relationships:{gojo:1}}},{text:'"If your father is alive, he might be an ally or a threat."',next:'jjk_first_mission_briefing',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_power_discovery = {text:`Late one night, training alone in the courtyard, something clicks. Your cursed energy — which has always felt like raw static, unformed and chaotic — suddenly crystallizes. You feel its true shape for the first time.
+
+Every sorcerer has an innate technique, born from the shape of their soul. Yours has been dormant, waiting for the right moment, the right emotional catalyst.
+
+And tonight — thinking about Junpei, about the detention center, about everyone you could not protect — it awakens.
+
+The courtyard erupts with your power. Gojo appears on the roof above, arms crossed, grinning. "There it is. I was wondering when you would figure it out."
+
+He jumps down. "Your technique is unique. Most sorcerers get one trick. You got something rarer — an adaptive technique. It will grow with you, change with you. The stronger your conviction, the stronger the output."
+
+He puts his blindfold back in place. "Now the real training begins."`,scene:'action',mood:'#0044ff',characters:['Gojo'],effects:{stats:{str:1,per:1},relationships:{gojo:1},flags:{technique_awakened:true}},choices:[{text:'"Teach me everything."',next:'jjk_nanami_lesson',effects:{stats:{cou:1}}},{text:'"Why now? What triggered it?"',next:'jjk_nanami_lesson',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_todo_training = {text:`Before Shibuya, an unexpected visitor arrives at Jujutsu High. Aoi Todo — the bizarre, brilliant third-year from Kyoto — walks onto campus like he owns it, clapping his massive hands.
+
+"WHERE IS MY BEST FRIEND?" he bellows.
+
+He means you, apparently. You have met exactly once, at a joint training event where he asked you what type of woman you liked. Your answer somehow satisfied him.
+
+"You!" He points at you with the intensity of a man declaring war. "We train. Now. The Shibuya operation requires warriors, not students."
+
+Todo's training is insane. He forces you to fight him at full power while he lectures about cursed energy flow, technique refinement, and the superiority of tall women with big butts.
+
+Despite everything, he is an incredible teacher. His Boogie Woogie technique — switching positions with anything containing cursed energy via a clap — is disorienting but brilliant.`,scene:'action',mood:'#2a0845',characters:['Todo'],effects:{relationships:{todo:2}},choices:[{text:'Give it everything. Train with Todo until you drop.',next:'jjk_todo_bond',check:{stat:'str',dc:11}},{text:'Focus on learning his tactical approach.',next:'jjk_todo_bond',check:{stat:'int',dc:10}},{text:'"Todo, why do you call me your best friend?"',next:'jjk_todo_bond',effects:{stats:{cha:1}}}]};
+
+JJK_NODES.jjk_todo_bond = {text:`After hours of brutal sparring, Todo sits next to you on the training ground, both of you battered and breathing hard.
+
+"You know why I chose you as my best friend?" He stares at the sky. "Because when I asked about your type, you did not give a shallow answer. You gave an answer with SUBSTANCE. That tells me everything about a person."
+
+He claps your shoulder hard enough to bruise. "At Shibuya, stay close to me. Boogie Woogie works best with a partner who can read my rhythm. You will be that partner."
+
+He stands, dusts himself off, and walks away.
+
+"Also," he calls back, "tell Itadori his taste in women is ACCEPTABLE. He answered correctly too."
+
+Yuji, hiding behind a pillar, pumps his fist in victory.`,scene:'action',mood:'#2a0845',characters:['Todo','Yuji'],effects:{flags:{todo_trained:true},relationships:{todo:2},stats:{str:1}},choices:[{text:'You have a strange feeling Todo will be important at Shibuya.',next:'jjk_shibuya_prep'},{text:'Thank Todo and prepare for what is coming.',next:'jjk_shibuya_prep'}]};
+
+JJK_NODES.jjk_first_mission_briefing = {text:`Two weeks pass. Training is brutal but you are improving fast. Gojo teaches in bursts of brilliance between long stretches of being completely absent, leaving you and the other first-years to figure things out through sparring and study.
+
+Then, one morning, Gojo walks into class actually looking serious. The room goes quiet.
+
+"Mission. A detention center in West Tokyo is experiencing paranormal activity. People are dying — inmates and guards. The higher-ups are calling it a cursed womb. We do not know what grade spirit is inside, but the building has been evacuated."
+
+He looks at each of you. "This is real. Not training. People have already died. I will be nearby, but this is your mission."
+
+Megumi stiffens. Yuji looks excited and terrified in equal measure. Nobara checks her nails.
+
+"One more thing," Gojo adds. "There are reports of a Special Grade cursed object somewhere in the building. A finger. Ryomen Sukuna's finger."
+
+The room temperature drops.`,scene:'action',mood:'#1a0a2e',characters:['Gojo','Yuji','Megumi','Nobara'],choices:[{text:'"What happens if the curse has already absorbed the finger?"',next:'jjk_finger_briefing',effects:{stats:{int:1}}},{text:'"Sukuna? THE Sukuna? And you are sending first-years?"',next:'jjk_finger_briefing',effects:{relationships:{gojo:1}}},{text:'"Let us go. People are dying while we talk."',next:'jjk_finger_briefing',effects:{stats:{cou:1},relationships:{yuji:1}}}]};
+
+JJK_NODES.jjk_finger_briefing = {text:`Gojo answers questions with unusual patience. "Sukuna's fingers are indestructible. They attract cursed spirits and amplify their power. If a spirit has absorbed this finger, it could be Special Grade — far beyond what first-years should face."
+
+"Then why send us?" Megumi asks.
+
+"Because the finger needs to be recovered, you need field experience, and—" Gojo grins, "—I will be right outside. Think of it as a learning experience with safety rails."
+
+"Safety rails that involve a potentially Special Grade curse," Nobara mutters.
+
+The van drops you at the detention center an hour later. The building is massive, brutalist concrete, surrounded by a police cordon. The windows are dark. The cursed energy pouring from it is like standing next to an open furnace.
+
+Megumi turns to you. "We should have a plan before going in."`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],choices:[{text:'Enter through the front — move as a group, clear room by room.',next:'jjk_detention_front'},{text:'Split up to cover more ground — find the finger fast.',next:'jjk_detention_split'},{text:'Scout the building exterior first for weak points.',next:'jjk_detention_scout',check:{stat:'per',dc:10}}]};
+
+JJK_NODES.jjk_detention_front = {text:`You push through the main entrance together. The lobby is wrecked — overturned furniture, dark stains on the floor, emergency lights casting everything in bloody red. The cursed energy is so thick you can barely breathe.
+
+"Stay close," Megumi whispers. His shikigami materialize at his sides, ears flat, growling at the darkness.
+
+You clear the first floor room by room. Empty cells. Shattered glass. In the cafeteria, you find the first body — a guard, face frozen in an expression of absolute terror.
+
+Then you hear it. A wet, dragging sound from the floor above. Something massive moving through the corridors.
+
+And something else — a faint pulse of power, ancient and overwhelming, coming from the basement. The finger.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],effects:{flags:{entered_front:true}},choices:[{text:'Go up — confront whatever is making that sound.',next:'jjk_finger_bearer',check:{stat:'cou',dc:11}},{text:'Go down — secure the finger before the curse finds it.',next:'jjk_finger_race'},{text:'Set a trap here and draw the curse to you.',next:'jjk_finger_trap',check:{stat:'int',dc:12}}]};
+
+JJK_NODES.jjk_detention_split = {text:`"Megumi and Nobara, take the upper floors. Yuji and I will check the basement — that is where the cursed energy is strongest."
+
+Megumi hesitates but nods. "If you find anything above second-grade, retreat immediately. Do not engage."
+
+You and Yuji descend into the darkness below the detention center. The stairs are slick with something you do not want to identify. Yuji's cursed energy flickers beside you, unstable but powerful.
+
+"Hey," Yuji whispers. "I have a weird feeling. Like something down here is... calling to me."
+
+He is right. The Sukuna finger's energy is reaching out like a beacon, and Yuji is responding to it like a tuning fork.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],effects:{flags:{split_up:true}},choices:[{text:'"Stay focused. Do not listen to it."',next:'jjk_finger_race',effects:{relationships:{yuji:1}}},{text:'"What does it feel like? Describe it."',next:'jjk_finger_race',effects:{stats:{per:1}}},{text:'"If it is calling you, maybe that is how we find it faster."',next:'jjk_finger_race',effects:{flags:{encouraged_yuji:true}}}]};
+
+JJK_NODES.jjk_detention_scout = {text:`You circle the building, mapping exits and structural weak points. The cursed energy concentrates in two areas — the basement, where something ancient pulses like a heartbeat, and the third floor, where something alive and hungry is moving.
+
+"Two targets," you report. "The finger is in the basement. The curse that has been killing people is on the third floor. If we are smart, we secure the finger before the curse realizes we are here."
+
+Megumi looks at you with something approaching respect. "Agreed. The curse might be feeding on the finger's residual energy. If we remove it, the curse weakens."
+
+Nobara cracks her knuckles. "Finally, someone with a brain."`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Megumi','Nobara'],effects:{stats:{per:1},relationships:{megumi:1},flags:{scouted_building:true}},choices:[{text:'Head for the basement — secure the finger.',next:'jjk_finger_race'},{text:'Hit the third floor first — eliminate the threat.',next:'jjk_finger_bearer'}]};
+
+JJK_NODES.jjk_finger_race = {text:`The basement is a labyrinth of maintenance tunnels and storage rooms. The finger's energy gets stronger with every step — a pulsing, nauseating wave of power that makes your vision swim.
+
+You find it in a collapsed storage room, sitting on a pile of rubble like it was placed there deliberately. A mummified finger, dark as charcoal, radiating cursed energy so dense the air around it shimmers.
+
+Yuji reaches for it instinctively.
+
+"DON'T—" Megumi starts.
+
+But something else reaches it first. A massive shape drops from the ceiling — the Finger Bearer, a cursed spirit that has been incubating around the finger. It is enormous, pale, with a mouth that splits its entire torso.
+
+It grabs the finger and swallows it whole. The power spike nearly knocks you off your feet.
+
+It is Special Grade now.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],effects:{flags:{finger_bearer_powered:true}},choices:[{text:'Fight it — you have no choice.',next:'jjk_finger_bearer'},{text:'Grab Yuji and retreat — this is beyond you.',next:'jjk_retreat_decision',check:{stat:'int',dc:10}},{text:'Try to force it to regurgitate the finger.',next:'jjk_finger_bearer',check:{stat:'str',dc:13}}]};
+
+JJK_NODES.jjk_finger_bearer = {text:`The Finger Bearer is a nightmare given form. Special Grade — the kind of curse that can level a city block. It moves with terrifying speed for something so large, each strike cratering concrete.
+
+Megumi summons Nue and both Divine Dogs. Nobara drives nails from range. You fight with everything you have. But it is not enough. The curse shrugs off your attacks like raindrops.
+
+Megumi goes down — slammed into a wall hard enough to crack it. Nobara's arm is broken. You are bleeding from a dozen wounds.
+
+Yuji stands between you and the curse, fists raised, trembling. "I can feel it," he whispers. "The finger. Inside that thing. It is... it is like it WANTS me to take it."
+
+He looks at you. "If I eat one of Sukuna's fingers, I might be able to beat this thing. But Sukuna — the King of Curses — would be inside me."
+
+Behind him, the Finger Bearer roars.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],choices:[{text:'"Do it, Yuji. We die if you do not."',next:'jjk_yuji_eats_finger',effects:{relationships:{yuji:2},flags:{supported_yuji:true}}},{text:'"No! There has to be another way. I will hold it off."',next:'jjk_hold_the_line',check:{stat:'str',dc:14}},{text:'"Wait — let me try something first."',next:'jjk_desperate_plan',check:{stat:'int',dc:13}}]};
+
+JJK_NODES.jjk_yuji_eats_finger = {text:`Yuji tears the finger from the Finger Bearer's guts with his bare hands — reaching into its mouth and PULLING. The curse screams. Yuji screams.
+
+And then he eats it.
+
+The world stops. Yuji's body convulses. Dark lines spread across his face — tattoos that were not there before. When he opens his eyes, they are not his.
+
+"Ah," says a voice that is not Yuji's. Ancient. Amused. Terrifying. "A vessel. Finally."
+
+Sukuna — the King of Curses — looks through Yuji's eyes and smiles. He glances at the Finger Bearer and it simply... ceases to exist. Erased with a casual flick of power that makes your bones vibrate.
+
+Then Yuji's face twists. He fights for control, veins bulging, screaming internally. His hands shake.
+
+And Yuji comes back. Panting. Horrified at what is now living inside him.
+
+"What... what did I just do?"`,scene:'action',mood:'#4a0000',characters:['Yuji','Sukuna'],effects:{flags:{yuji_ate_finger:true,sukuna_awakened:true},relationships:{yuji:1}},choices:[{text:'"You saved us. That is what matters."',next:'jjk_aftermath_finger',effects:{relationships:{yuji:2}}},{text:'"You let the King of Curses inside your body. We need to talk to Gojo."',next:'jjk_aftermath_finger',effects:{relationships:{gojo:1}}},{text:'Check on Megumi and Nobara first.',next:'jjk_aftermath_finger',effects:{relationships:{megumi:1},relationships:{nobara:1}}}]};
+
+JJK_NODES.jjk_hold_the_line = {text:`You throw yourself at the Finger Bearer. Every ounce of cursed energy, every technique you know, everything you have. You buy seconds. Precious, agonizing seconds.
+
+The curse hits you and the world goes white with pain. You feel ribs break. You taste blood. But you get back up. Again. And again.
+
+Yuji watches you get destroyed, and something snaps inside him. He grabs the finger from the rubble — the curse dropped it when you hit its jaw — and swallows it before anyone can stop him.
+
+Sukuna's power detonates. The Finger Bearer dissolves. Yuji stands there with ancient tattoos spreading across his skin, catching your broken body before you hit the ground.
+
+"Why?" Yuji asks, his voice and not-his-voice overlapping. "Why did you do that?"`,scene:'action',mood:'#4a0000',characters:['Yuji','Sukuna'],effects:{flags:{yuji_ate_finger:true,sukuna_awakened:true,held_the_line:true},stats:{cou:2},relationships:{yuji:3}},choices:[{text:'"Because that is what teammates do."',next:'jjk_aftermath_finger',effects:{relationships:{yuji:2}}},{text:'You cannot answer. You are barely conscious.',next:'jjk_aftermath_finger'}]};
+
+JJK_NODES.jjk_desperate_plan = {text:`Your mind races. The Finger Bearer is Special Grade but it is newly formed — unstable. The finger it absorbed is fighting its body like a parasite. If you can destabilize it further...
+
+"Megumi! Domain Expansion — even a partial one! Flood it with conflicting cursed energy!"
+
+Megumi stares at you. "I cannot maintain a Domain yet—"
+
+"You do not need to maintain it. Just OPEN it for one second. The clash of energies will tear the curse apart from the inside."
+
+Megumi closes his eyes. His hands form a seal. And for one blinding instant, the shadow of an incomplete Domain flickers into existence — Chimera Shadow Garden, raw and unfinished but POWERFUL.
+
+The Finger Bearer shrieks as the conflicting energies rip through it. It destabilizes, dropping the finger.
+
+Yuji catches it. He looks at it. He looks at you.
+
+He swallows it anyway.`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Megumi','Sukuna'],effects:{flags:{yuji_ate_finger:true,sukuna_awakened:true,desperate_plan:true},stats:{int:2},relationships:{megumi:2}},choices:[{text:'"Yuji, NO—" But it is too late.',next:'jjk_aftermath_finger'},{text:'You planned for this. The finger was always going to find a vessel.',next:'jjk_aftermath_finger',effects:{flags:{anticipated_vessel:true}}}]};
+
+JJK_NODES.jjk_retreat_decision = {text:`"FALL BACK! This is Special Grade — we are not equipped for this!"
+
+You grab Yuji's arm and pull. He resists for a moment, eyes locked on the Finger Bearer, drawn to the finger inside it. Then his survival instinct kicks in and he runs.
+
+The four of you burst out of the detention center. Gojo is waiting, leaning against a vending machine.
+
+"Special Grade?" he asks, already knowing.
+
+"It absorbed the finger," you pant. "We could not—"
+
+Gojo pushes off the wall. "Stay here." He walks into the building alone. Thirty seconds later, the entire structure shakes. A flash of blue light. Silence.
+
+He walks out carrying a mummified finger between two fingers, the Finger Bearer atomized behind him.
+
+"This," he says, holding up the finger, "is one of Sukuna's twenty fingers. The question is what to do with it."
+
+He looks at Yuji. Yuji looks at the finger. Something passes between them.`,scene:'action',mood:'#0044ff',characters:['Gojo','Yuji','Megumi','Nobara'],effects:{flags:{retreated:true,gojo_killed_bearer:true}},choices:[{text:'"Seal it. Lock it away. No one should touch that thing."',next:'jjk_aftermath_sealed',effects:{flags:{finger_sealed:true}}},{text:'"Yuji — I saw how you reacted to it. What are you feeling?"',next:'jjk_aftermath_yuji_choice',effects:{relationships:{yuji:1}}},{text:'"Gojo-sensei, what would happen if someone ate it?"',next:'jjk_aftermath_yuji_choice',effects:{relationships:{gojo:1}}}]};
+
+JJK_NODES.jjk_aftermath_sealed = {text:`The finger is sealed in a special container and locked in Jujutsu High's vault. Gojo handles it personally, his expression unreadable.
+
+"You made the safe choice," he tells you later. "Most people would have. But Sukuna's fingers have a way of finding vessels whether we want them to or not."
+
+The next few weeks are tense. The higher-ups are furious about the detention center incident. Yuji is quiet — haunted by how drawn he was to the finger. Megumi trains twice as hard. Nobara pretends nothing happened.
+
+But you notice things. Yuji's cursed energy fluctuating at night. Strange dreams reported by students across the dorm. The sealed finger pulsing in its container, reaching out.
+
+Then one night, Yuji comes to your room. His eyes are red. "It is calling me. Even sealed, I can hear it. And I think... I think I am the only one who can contain it."`,scene:'action',mood:'#2a0845',characters:['Yuji','Gojo'],effects:{relationships:{yuji:1}},choices:[{text:'"Talk to Gojo-sensei first. Do not do anything alone."',next:'jjk_arc2_transition',effects:{flags:{advised_caution:true},relationships:{gojo:1}}},{text:'"If you are meant to be its vessel, then you need to be strong enough to control it."',next:'jjk_arc2_transition',effects:{relationships:{yuji:2},flags:{supported_vessel:true}}},{text:'"Then we train until you can resist it. Together."',next:'jjk_arc2_transition',effects:{relationships:{yuji:2},stats:{cou:1}}}]};
+
+JJK_NODES.jjk_aftermath_finger = {text:`Gojo arrives at the detention center in seconds. He takes one look at Yuji — the tattoos, the flickering second presence behind his eyes — and his playful demeanor vanishes entirely.
+
+"Sukuna," he says quietly.
+
+For one instant, Yuji's face changes. Sukuna's grin appears. "The Six Eyes and Limitless. Gojo Satoru. I have been sleeping a long time."
+
+Gojo does not flinch. "Go back to sleep."
+
+The tattoos fade. Yuji collapses. When he wakes, he is himself again — confused, terrified, but alive. The King of Curses is dormant inside him.
+
+"Here is the situation," Gojo tells you all later, back at school. "The higher-ups will want Yuji executed. A vessel for Sukuna is the most dangerous thing in the jujutsu world. I am going to fight for him — but I need time."
+
+He looks at you. "And I need allies."`,scene:'action',mood:'#2a0845',characters:['Gojo','Yuji','Sukuna'],choices:[{text:'"I will stand with Yuji. He is my teammate."',next:'jjk_arc2_transition',effects:{relationships:{yuji:2},relationships:{gojo:1},flags:{defended_yuji:true}}},{text:'"What is the alternative? Execution?"',next:'jjk_arc2_transition',effects:{stats:{int:1},flags:{questioned_system:true}}},{text:'"Sukuna chose Yuji for a reason. We need to understand why."',next:'jjk_arc2_transition',effects:{stats:{per:1},flags:{investigating_sukuna:true}}}]};
+
+JJK_NODES.jjk_aftermath_yuji_choice = {text:`Gojo explains it plainly. "Sukuna's fingers seek vessels. Yuji Itadori has an unusual resistance to cursed energy — he could potentially contain Sukuna without being consumed. The plan would be to have Yuji eat all twenty fingers, concentrate Sukuna in one vessel, and then exorcise them together."
+
+"That plan sounds insane," Nobara says flatly.
+
+"It is insane," Gojo agrees. "But it is also the only permanent solution to Sukuna. Otherwise, the fingers keep attracting curses forever."
+
+Yuji is quiet for a long time. Then he looks up. "I will do it. If it means no one else gets hurt because of those fingers — I will be the vessel."
+
+Gojo turns to you. "Yuji will need support. Training. Someone to watch his back when Sukuna tries to take control. You up for it?"`,scene:'action',mood:'#2a0845',characters:['Gojo','Yuji','Nobara'],effects:{flags:{yuji_volunteered:true}},choices:[{text:'"I am in. Whatever it takes."',next:'jjk_arc2_transition',effects:{relationships:{yuji:2},relationships:{gojo:1}}},{text:'"This is bigger than us. But yes."',next:'jjk_arc2_transition',effects:{stats:{cou:1}}},{text:'"Only if Yuji is sure. This has to be his choice."',next:'jjk_arc2_transition',effects:{relationships:{yuji:1}}}]};
+
+JJK_NODES.jjk_finger_trap = {text:`"Wait — let it come to us. Megumi, use your shadows to block the exits. Nobara, nail the doorframes — if it runs, it detonates. Yuji, you are the bait."
+
+"Why am I always the bait?" Yuji asks.
+
+"Because you are the hardest to kill."
+
+The plan works. The Finger Bearer smashes into the cafeteria where you are waiting. Nobara's nails detonate around it, driving it into Megumi's shadow trap. The creature thrashes but cannot escape.
+
+But it is still holding the finger. And it is getting stronger by the second.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],effects:{stats:{int:2},flags:{set_trap:true}},choices:[{text:'Spring the trap — everyone attack at once.',next:'jjk_finger_bearer',check:{stat:'int',dc:11}},{text:'Have Yuji grab the finger from its mouth.',next:'jjk_finger_bearer',check:{stat:'cou',dc:12}}]};
+
+// ---- ARC 2: THE FINGER BEARER & JUNPEI ----
+
+JJK_NODES.jjk_arc2_transition = {text:`Weeks pass. Yuji trains under Gojo's direct supervision, learning to suppress Sukuna's influence while channeling cursed energy. You train alongside him — sparring, studying curse theory, running missions.
+
+Your bond with the other first-years deepens. Megumi opens up about his past — the Zenin clan, his sister, the weight of the Ten Shadows technique. Nobara drags you all to Harajuku on days off. Yuji shares his grandfather's last words: "Die surrounded by people."
+
+Then Gojo pulls you aside. "There is a situation in Kawasaki. A boy named Junpei Yoshino — non-sorcerer, but he is manifesting cursed energy. Someone is guiding him. Someone dangerous."
+
+His expression darkens. "The curse user Mahito. He can reshape souls. He is using Junpei as a pawn. I need you and Yuji to reach Junpei before Mahito does something irreversible."`,scene:'action',mood:'#1a0a2e',characters:['Gojo','Yuji'],effects:{flags:{arc2_start:true}},choices:[{text:'"Mahito — how dangerous are we talking?"',next:'jjk_junpei_mission'},{text:'"We will save Junpei. Count on it."',next:'jjk_junpei_mission',effects:{relationships:{yuji:1},stats:{cou:1}}},{text:'"Why us and not you, sensei?"',next:'jjk_junpei_mission',effects:{relationships:{gojo:1}}}]};
+
+JJK_NODES.jjk_junpei_mission = {text:`You find Junpei Yoshino at the movie theater where he works — a quiet, withdrawn kid with dark circles under his eyes and a bruise on his jaw he tries to hide. The cursed energy coming off him is unstable and untrained.
+
+Yuji walks up to him like they are already friends. "Hey! I am Yuji. This is my friend. We are from Jujutsu High — it is a school for people like us."
+
+Junpei tenses. "People like us?"
+
+"People who can see things others can not. Feel things. The weird energy stuff." Yuji grins. "It is actually pretty cool once you get used to it."
+
+Junpei's guard lowers slightly. You can see the loneliness in him — the desperate need to be understood by someone, anyone.
+
+But underneath that loneliness, you sense something else. A thread of foreign cursed energy woven into Junpei's own. Someone has already been here. Mahito.`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Junpei'],choices:[{text:'Warn Junpei directly — someone has been manipulating him.',next:'jjk_junpei_warn',check:{stat:'per',dc:11}},{text:'Build trust first — earn his friendship before the hard truths.',next:'jjk_junpei_trust',effects:{relationships:{yuji:1}}},{text:'Trace the foreign cursed energy — find where Mahito contacted him.',next:'jjk_junpei_trace',check:{stat:'int',dc:12}}]};
+
+JJK_NODES.jjk_junpei_warn = {text:`"Junpei, listen to me carefully. Someone has been feeding you cursed energy — manipulating your development. Can you feel it? That thread of power that is not yours?"
+
+Junpei's eyes widen. His hand goes to his chest. "How did you—"
+
+"Because I can sense it. It is foreign. Parasitic. Whoever did this to you is not your friend. They are using you."
+
+Junpei's face cycles through confusion, denial, and then — horror. "Mahito," he whispers. "He said he was helping me. He said the cursed energy was a gift."
+
+Tears form. "He said I could make the people who hurt me pay. That I deserved power."
+
+Yuji puts a hand on Junpei's shoulder. "Come with us. We can help you for real. No strings."`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Junpei'],effects:{flags:{warned_junpei:true},stats:{per:1}},choices:[{text:'"Junpei, Jujutsu High can teach you to control this. Safely."',next:'jjk_junpei_decision'},{text:'"What did Mahito tell you exactly? We need to know everything."',next:'jjk_junpei_decision',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_junpei_trust = {text:`You spend the afternoon with Junpei. Movies, food, conversation. Yuji is a natural — his warmth breaks through Junpei's walls within hours. You learn about Junpei's life: the bullying, the absent father, the mother who works three jobs and still cannot afford to move them out of their crumbling apartment.
+
+By evening, Junpei is laughing. Actually laughing. Maybe for the first time in months.
+
+"You guys are... different," Junpei says quietly. "Everyone else just pretends I do not exist. Or worse."
+
+This is the moment. The opening.
+
+"Junpei," Yuji says gently. "There is someone who has been talking to you about cursed energy. Someone who is not what they seem."
+
+Junpei's smile fades. "Mahito?"
+
+"He is dangerous. He is using you. But we are not going to let that happen."`,scene:'action',mood:'#2a0845',characters:['Yuji','Junpei'],effects:{flags:{befriended_junpei:true},relationships:{yuji:1}},choices:[{text:'"Come to Jujutsu High. Be our friend, not his pawn."',next:'jjk_junpei_decision',effects:{stats:{cha:1}}},{text:'"We need to move fast. Mahito will not let you go easily."',next:'jjk_junpei_decision',effects:{stats:{cou:1}}}]};
+
+JJK_NODES.jjk_junpei_trace = {text:`While Yuji talks to Junpei, you trace the foreign cursed energy. It leads through the theater, down an alley, to a sewer grate. The energy signature is distinctive — playful, chaotic, deeply wrong. Like touching a soul that has been turned inside out.
+
+Mahito. He has been meeting Junpei underground, in the sewers beneath the city. And the energy trail is fresh — hours old.
+
+You also find something else. A secondary trail leading to Junpei's apartment. To his mother.
+
+Your blood runs cold. Mahito is not just manipulating Junpei. He is setting a trap.
+
+You sprint back to Yuji and Junpei. "We need to go. NOW. Junpei — where is your mother right now?"
+
+Junpei's face goes white. "At home. Why?"`,scene:'action',mood:'#4a0000',characters:['Yuji','Junpei'],effects:{flags:{traced_mahito:true},stats:{int:1}},choices:[{text:'"Call her. Tell her to leave the apartment immediately."',next:'jjk_junpei_decision',effects:{flags:{called_mother:true}}},{text:'Run to the apartment yourself — there is no time.',next:'jjk_junpei_decision',effects:{stats:{cou:1},flags:{rushed_to_mother:true}}}]};
+
+JJK_NODES.jjk_junpei_decision = {text:`Everything happens at once.
+
+Junpei's phone rings. He answers. The color drains from his face. "Mom?"
+
+The line goes dead.
+
+Junpei screams — a sound that rips the air — and runs. You and Yuji follow. The apartment is six blocks away.
+
+You find Junpei's mother on the apartment floor. She is not dead — but she is transformed. Mahito's Idle Transfiguration has reshaped her into something barely human, a twisted form that moans in unrecognizable pain.
+
+Junpei collapses beside her. His cursed energy explodes outward in grief and rage.
+
+And from the shadows, a voice: "Beautiful, is it not? The shape of real emotion."
+
+Mahito steps into the light. Patchwork skin, mismatched eyes, a smile that belongs on something that has never been human. "Hello, Junpei. I told you — curses are born from negative emotion. Yours is magnificent right now."`,scene:'action',mood:'#4a0000',characters:['Yuji','Junpei','Mahito'],effects:{flags:{mahito_appeared:true}},choices:[{text:'Attack Mahito immediately — do not let him talk.',next:'jjk_mahito_fight',check:{stat:'str',dc:12}},{text:'"Junpei, do not listen to him! He did this to your mother!"',next:'jjk_junpei_rage'},{text:'Try to save Junpei\u0027s mother with cursed energy.',next:'jjk_save_mother',check:{stat:'per',dc:14}}]};
+
+JJK_NODES.jjk_mahito_fight = {text:`You launch at Mahito with everything. Your cursed energy blazes. You hit him — and your fist passes through his body like punching water. He reforms instantly, grinning.
+
+"Oh, a fighter! Gojo is teaching them young these days." His hand reaches for your face. "Let me see your soul—"
+
+Yuji slams into Mahito from the side with a punch that actually connects. Mahito recoils — surprised, then fascinated. "You! Your soul is... interesting. There is something else in there."
+
+Sukuna's presence flickers inside Yuji, and Mahito's eyes light up with wonder.
+
+The fight spirals. Mahito is fast, unpredictable, and his Idle Transfiguration turns every touch into a lethal threat. One graze could reshape your body into a monster.
+
+Meanwhile, Junpei is on his knees, cursed energy swirling around him like a storm, staring at his mother's twisted form.`,scene:'action',mood:'#4a0000',characters:['Yuji','Mahito','Junpei'],effects:{flags:{fought_mahito:true},stats:{str:1}},choices:[{text:'Focus on Mahito — keep him away from Junpei.',next:'jjk_junpei_turning_point',check:{stat:'cou',dc:12}},{text:'Break off and grab Junpei — retreat with him now.',next:'jjk_junpei_turning_point',check:{stat:'str',dc:11}}]};
+
+JJK_NODES.jjk_junpei_rage = {text:`"Junpei! Look at me! He did this — Mahito did this to your mother! He is the enemy, not the world!"
+
+Junpei's eyes are wild. His cursed energy is spiraling out of control. Mahito watches with delight.
+
+"Did I?" Mahito asks innocently. "Or did the world that ignored him, bullied him, broke him — did that world create the conditions for this? I simply gave him a push."
+
+"SHUT UP!" Junpei screams. Cursed energy erupts from him — his technique manifesting for the first time. Jellyfish-like shikigami materialize around him, venomous and beautiful.
+
+He turns toward Mahito. Then toward you. His grief is so total he cannot tell friend from enemy.
+
+"Junpei," Yuji says softly. "Please."`,scene:'action',mood:'#4a0000',characters:['Yuji','Junpei','Mahito'],effects:{flags:{junpei_conflicted:true}},choices:[{text:'"Junpei, come to Jujutsu High. We will fix this. I swear."',next:'jjk_junpei_turning_point',effects:{relationships:{yuji:1},stats:{cha:1}}},{text:'Stand between Junpei and Mahito — shield him.',next:'jjk_junpei_turning_point',effects:{stats:{cou:1}}}]};
+
+JJK_NODES.jjk_save_mother = {text:`You kneel beside Junpei's mother and pour cursed energy into her transformed body, trying to understand Mahito's technique, trying to reverse it. The soul damage is catastrophic — Idle Transfiguration reshapes the soul itself, and the body follows.
+
+You cannot undo it. Not with your power. Maybe no one can, except Mahito himself.
+
+But your attempt does something unexpected. Your cursed energy stabilizes her pain. She stops moaning. Her twisted face finds a moment of peace.
+
+Junpei stares at you. At his mother. At the brief mercy you managed.
+
+"You tried," he whispers. "Nobody ever tries."
+
+Mahito clicks his tongue. "How sentimental. But you cannot fix her. Only I can — and I won't."`,scene:'action',mood:'#4a0000',characters:['Junpei','Mahito'],effects:{flags:{tried_save_mother:true},stats:{per:1},relationships:{yuji:1}},choices:[{text:'"Then we make you. Yuji — NOW."',next:'jjk_junpei_turning_point',effects:{stats:{cou:1}}},{text:'"Junpei, he just admitted he could save her. He chose not to."',next:'jjk_junpei_turning_point',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_junpei_turning_point = {text:`This is the moment. The hinge point where the timeline splits.
+
+Mahito reaches for Junpei — his hand glowing with Idle Transfiguration. "Come, Junpei. Let me reshape you into something that does not feel pain anymore."
+
+Yuji screams. You move.
+
+Time slows. Mahito's hand is inches from Junpei's face. Yuji is running but too far away. The only person close enough to intervene is you.`,scene:'action',mood:'#4a0000',characters:['Yuji','Junpei','Mahito'],choices:[{text:'Dive between them — take the hit meant for Junpei.',next:'jjk_save_junpei',check:{stat:'cou',dc:13}},{text:'Hit Mahito with everything — disrupt his technique.',next:'jjk_disrupt_mahito',check:{stat:'str',dc:14}},{text:'Use your voice/strategy to break Junpei free of his despair.',next:'jjk_reach_junpei',check:{stat:'cha',dc:12}}]};
+
+JJK_NODES.jjk_save_junpei = {text:`You throw yourself between Mahito and Junpei. His hand touches your shoulder instead. You feel your soul TWIST — pain beyond anything physical, the fundamental shape of your being wrenching sideways.
+
+But you do not transform. Your cursed energy flares instinctively, fighting the transfiguration, holding your soul in place through sheer willpower. It hurts. God, it hurts. But you hold.
+
+Mahito pulls back, eyes wide. "Interesting. Your soul resisted. That should not be possible."
+
+The moment of shock is enough. Yuji arrives with a devastating punch that sends Mahito through a wall. Junpei collapses against you, sobbing.
+
+Junpei is alive. Untransformed. Saved.
+
+Mahito retreats into the shadows, laughing. "This is not over. It is never over."`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Junpei','Mahito'],effects:{flags:{junpei_saved:true,soul_resisted:true},stats:{cou:2},relationships:{yuji:2}},choices:[{text:'Get Junpei out of here. Mission complete.',next:'jjk_arc2_aftermath'},{text:'Chase Mahito — finish this now.',next:'jjk_chase_mahito',check:{stat:'str',dc:13}}]};
+
+JJK_NODES.jjk_disrupt_mahito = {text:`You pour every scrap of cursed energy into a single strike aimed at Mahito's arm. The impact disrupts his technique — Idle Transfiguration fizzles at his fingertips as his concentration shatters.
+
+Junpei falls backward, untouched.
+
+Mahito snarls — the first time you have seen him genuinely angry. "You broke my flow. Do you know how RUDE that is?"
+
+Yuji hits him from behind. Then again. Then again. Each punch carrying the weight of Sukuna's residual energy, the only thing that can truly damage Mahito's soul.
+
+Mahito retreats, body distorting and reforming as he flees into the walls, through the foundation, gone. But Junpei is safe.
+
+Junpei stares at his mother's twisted form and weeps. But he is alive. He is human. He has a chance.`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Junpei','Mahito'],effects:{flags:{junpei_saved:true,disrupted_mahito:true},stats:{str:2},relationships:{yuji:1}},choices:[{text:'Take Junpei to Jujutsu High. He needs protection.',next:'jjk_arc2_aftermath'},{text:'Stay with Junpei. He needs a friend more than a school.',next:'jjk_arc2_aftermath',effects:{relationships:{yuji:1}}}]};
+
+JJK_NODES.jjk_reach_junpei = {text:`"JUNPEI! Your mother is still alive! She is in pain but she is ALIVE! If we get her to Jujutsu High, if we find someone who can reverse this — she has a chance! But only if you come with us NOW!"
+
+Your words cut through the chaos like a blade. Junpei freezes. He looks at his mother — twisted, suffering, but breathing. Alive.
+
+"She is... alive?"
+
+"Mahito wants you to give up. He WANTS you to break. Do not give him what he wants. FIGHT."
+
+Junpei screams — not in rage, but in defiance. His cursed energy explodes outward, and his jellyfish shikigami slam into Mahito, driving him backward. Mahito's smile finally cracks.
+
+Yuji grabs Junpei. You grab his mother. You run.
+
+Mahito does not follow. He is too busy being stung by a hundred cursed jellyfish.`,scene:'action',mood:'#1a0a2e',characters:['Yuji','Junpei','Mahito'],effects:{flags:{junpei_saved:true,junpei_fought_back:true},stats:{cha:2},relationships:{yuji:1}},choices:[{text:'Get everyone to safety. This timeline just changed.',next:'jjk_arc2_aftermath'},{text:'"Junpei — you are stronger than Mahito thinks. Remember that."',next:'jjk_arc2_aftermath',effects:{relationships:{yuji:1}}}]};
+
+JJK_NODES.jjk_chase_mahito = {text:`You pursue Mahito through the sewers beneath Kawasaki. The cursed spirit is fast, fluid, slipping through spaces that should not fit a human-shaped creature. But you are faster. Or more determined.
+
+You corner him in a drainage chamber. Mahito turns, and his playful demeanor is replaced by something cold.
+
+"You know what you are, do you not? A variable. This timeline was supposed to go differently. Junpei was supposed to be mine."
+
+He tilts his head. "But you changed things. Interesting. I wonder what else you will change."
+
+He dissolves into the walls before you can strike, his laughter echoing through the pipes.
+
+A warning and a promise: he will be back.`,scene:'action',mood:'#4a0000',characters:['Mahito'],effects:{flags:{chased_mahito:true},stats:{cou:1}},choices:[{text:'Return to the others. Junpei needs you more.',next:'jjk_arc2_aftermath'}]};
+
+JJK_NODES.jjk_arc2_aftermath = {text:`Back at Jujutsu High, the aftermath unfolds. Junpei is enrolled as a student — traumatized but alive, slowly learning to control his jellyfish technique under Gojo's supervision. His mother is placed in the medical ward, her condition stable but unchanged.
+
+Gojo calls you into his office. "You changed something today. In the original trajectory of events, Junpei was supposed to die. Mahito was going to transfigure him in front of Yuji to break his spirit."
+
+He removes his blindfold. Both eyes — the Six Eyes — look at you with terrifying clarity.
+
+"But you intervened. And now the future is different. Mahito will escalate. The curses are planning something big — Geto, Mahito, Jogo, Hanami. They want to seal me away."
+
+He puts the blindfold back on. Grins. "Luckily, I am unseeable. But I need you to be ready for what is coming. Shibuya. Two months from now."`,scene:'action',mood:'#0044ff',characters:['Gojo'],effects:{flags:{arc2_complete:true,shibuya_warning:true},relationships:{gojo:2}},choices:[{text:'"Seal you? How is that even possible?"',next:'jjk_power_discovery'},{text:'"Two months. I will be ready. What do I need to learn?"',next:'jjk_power_discovery',effects:{stats:{int:1}}},{text:'"If they are targeting you, we need to protect you too."',next:'jjk_power_discovery',effects:{relationships:{gojo:2}}}]};
+
+JJK_NODES.jjk_nanami_lesson = {text:`Before Shibuya, Gojo assigns you to shadow Nanami Kento — Grade 1 sorcerer, former salaryman, the most efficient fighter in the jujutsu world.
+
+Nanami is the opposite of Gojo in every way. Where Gojo is chaotic brilliance, Nanami is structured precision. He wears a suit to exorcise curses. He clocks out at exactly 6 PM. He has opinions about bread.
+
+"Overtime is unpaid," he says flatly as you follow him on a mission. "But curses do not respect working hours."
+
+He teaches you about his Ratio Technique — dividing any target into ten segments and striking the 7:3 weak point. "Every curse has a weak point. Every enemy has a flaw. Your job is to find it before they find yours."
+
+A fourth-grade curse appears in an office building. Nanami bisects it with one strike. "That is the standard. No wasted movement. No wasted energy."`,scene:'action',mood:'#2a0845',characters:['Nanami'],effects:{relationships:{nanami:2}},choices:[{text:'Ask Nanami why he came back to being a sorcerer.',next:'jjk_nanami_personal',effects:{relationships:{nanami:2}}},{text:'Focus on learning combat efficiency.',next:'jjk_todo_training',effects:{stats:{str:1}}},{text:'"Nanami-san, what is the most dangerous curse you have faced?"',next:'jjk_todo_training',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_nanami_personal = {text:`Nanami is quiet for a long time. You walk through the streets of Marunouchi, the setting sun painting the glass towers gold.
+
+"I left because I was tired," he says finally. "Tired of watching people die. Tired of a system that treats sorcerers as expendable. I worked in finance for four years. It was safe. Predictable."
+
+He adjusts his tie. "Then a curse killed a coworker. Someone I had lunch with every day. And I realized — running from the fight does not stop the fight from finding you."
+
+He looks at you with rare directness. "That is my lesson for you. Not technique. Not strategy. The real lesson: you cannot save everyone. But you can save the person in front of you. That is enough."
+
+A moment passes. Then Nanami straightens his suit. "Also, we are thirty minutes past my shift. I am putting in for overtime."`,scene:'action',mood:'#2a0845',characters:['Nanami'],effects:{relationships:{nanami:3},stats:{per:1},flags:{nanami_story:true}},choices:[{text:'"I will remember that, Nanami-san."',next:'jjk_todo_training'},{text:'"You are a better teacher than you think."',next:'jjk_todo_training',effects:{relationships:{nanami:1}}}]};
+
+// ---- ARC 3: SHIBUYA DIVERGENCE ----
+
+JJK_NODES.jjk_shibuya_prep = {text:`Two months of the hardest training of your life. Gojo pushes you beyond your limits. Nanami teaches you combat efficiency. Todo — the bizarre, brilliant third-year from Kyoto — decides you are his "best friend" and trains you in raw cursed energy output.
+
+"What kind of woman is your type?" Todo asks during every sparring session. You learn to dodge both his fists and his questions.
+
+The day arrives. October 31st. Halloween. Shibuya.
+
+Gojo briefs the team one final time. "The cursed spirits will create a barrier in Shibuya to trap civilians. It is a lure — they want me inside. Their plan is to use Prison Realm, an ancient artifact that can seal anything inside a pocket dimension."
+
+He holds up a photo. A small cube covered in eyes.
+
+"If that cube opens in front of me, I have to be far enough away that it cannot lock on. That is where you come in."`,scene:'action',mood:'#2a0845',characters:['Gojo','Nanami','Todo'],effects:{flags:{shibuya_start:true},relationships:{nanami:1},relationships:{todo:1}},choices:[{text:'"We keep the Prison Realm away from you. Got it."',next:'jjk_shibuya_begins',effects:{stats:{int:1}}},{text:'"Who is carrying it? We take them out first."',next:'jjk_shibuya_begins',effects:{stats:{per:1}}},{text:'"And if we fail? What happens if you get sealed?"',next:'jjk_shibuya_begins',effects:{stats:{cou:1}}}]};
+
+JJK_NODES.jjk_shibuya_begins = {text:`Shibuya Station. 7:00 PM. Halloween night.
+
+The streets are packed with costumed civilians when the barrier drops — a massive curtain of cursed energy that seals ten city blocks. Thousands of people trapped inside. Panic erupts instantly.
+
+The cursed spirits appear everywhere. Grasshopper-type curses swarming through the crowds. Transfigured humans — Mahito's handiwork — attacking anything that moves.
+
+Gojo is already inside the barrier, carving through curses with casual brutality. Blue and Red — his cursed techniques — detonate in sequence, clearing entire blocks. He is untouchable. The strongest.
+
+But you can feel it. Something is wrong. The curses are not trying to fight Gojo — they are herding him. Pushing him toward Shibuya Station's underground levels.
+
+Toward the Prison Realm.
+
+Your earpiece crackles. Nanami's voice: "All teams, converge on B5F. The enemy is concentrating forces underground. Gojo-sensei is descending."`,scene:'action',mood:'#4a0000',characters:['Gojo','Nanami'],effects:{flags:{shibuya_battle:true}},choices:[{text:'Rush to B5F — get to Gojo before the trap closes.',next:'jjk_shibuya_underground',check:{stat:'cou',dc:11}},{text:'Stay topside — protect civilians and thin the curse numbers.',next:'jjk_shibuya_surface',check:{stat:'str',dc:11}},{text:'Find the Prison Realm first — destroy it before it can be used.',next:'jjk_shibuya_prison_hunt',check:{stat:'per',dc:13}}]};
+
+JJK_NODES.jjk_shibuya_underground = {text:`You fight your way underground. Every floor is a new nightmare — transfigured humans, cursed spirits, collapsing infrastructure. Yuji fights beside you, Sukuna's power flickering behind his strikes.
+
+At B5F, you find Gojo.
+
+He is surrounded. Jogo — a volcano-headed curse — is attacking with rivers of flame. Hanami — a nature curse — has blocked the exits with cursed plants. And in the center of the platform, a man you have never seen holds a small cube covered in eyes.
+
+Pseudo-Geto. The brain-stealing curse user wearing Geto Suguru's body.
+
+The Prison Realm is open. Its eye is locked on Gojo.
+
+"Satoru," Pseudo-Geto says. "It has been a while."
+
+Gojo freezes. Not physically — mentally. The sight of his dead best friend's face stops him cold for one fatal second.
+
+The Prison Realm begins to activate.`,scene:'action',mood:'#4a0000',characters:['Gojo','Yuji','Jogo'],effects:{flags:{reached_b5f:true}},choices:[{text:'Tackle Pseudo-Geto — knock the Prison Realm away.',next:'jjk_prison_realm_fight',check:{stat:'str',dc:14}},{text:'Scream to Gojo — break him out of his shock.',next:'jjk_break_gojo_free',check:{stat:'cha',dc:13}},{text:'Attack the Prison Realm directly — destroy it.',next:'jjk_attack_prison_realm',check:{stat:'per',dc:15}},{text:'Confront Mahito in the side tunnels first.',next:'jjk_shibuya_mahito',requires:{junpei_saved:true}}]};
+
+JJK_NODES.jjk_shibuya_surface = {text:`You stay topside and become a shield for the civilians. The cursed spirits are everywhere — grasshopper swarms, transfigured humans, things that crawl out of shadows. You fight for every block, every street, every person.
+
+Nanami fights beside you. The man is terrifying in combat — Grade 1 efficiency, every strike at its maximum potential. His Ratio Technique divides targets into perfect weak points.
+
+"Seven to three," he says, bisecting a curse. "Always aim for the weak point. Never waste energy."
+
+Together, you clear three blocks. Hundreds of civilians evacuated. But the fighting takes its toll — you are bleeding, exhausted, running on fumes.
+
+Then Nanami's radio squawks. "Gojo-sensei is in trouble. B5F. Prison Realm is active."
+
+Nanami's jaw tightens. "We need to get underground. Now."`,scene:'action',mood:'#4a0000',characters:['Nanami'],effects:{flags:{protected_civilians:true},stats:{str:1},relationships:{nanami:2}},choices:[{text:'Go underground with Nanami — save Gojo.',next:'jjk_shibuya_toji'},{text:'Send Nanami ahead — you stay to protect civilians.',next:'jjk_nanami_alone',effects:{flags:{sent_nanami:true}}},{text:'Fight through to find Mahito first.',next:'jjk_shibuya_mahito',requires:{junpei_saved:true}}]};
+
+JJK_NODES.jjk_shibuya_prison_hunt = {text:`You trace the Prison Realm's energy signature through the chaos of Shibuya. It is ancient, otherworldly — a frequency completely unlike normal cursed energy. Your senses lead you through burning streets, past fighting sorcerers and curses, down into the station.
+
+You find Pseudo-Geto at B4F, moving toward B5F with the Prison Realm cradled in his arms. He senses you and stops.
+
+"Ah. One of Gojo's students." He studies you with eyes that do not belong to the face they sit in. "You can sense the Prison Realm. Impressive."
+
+He holds it up. The cube's eyes swivel toward you. "This beautiful thing will seal the strongest sorcerer alive. You cannot stop it."
+
+Behind him, you hear Gojo fighting Jogo on the level below. The ground shakes with each exchange.`,scene:'action',mood:'#4a0000',characters:['Gojo'],effects:{flags:{found_prison_realm:true},stats:{per:2}},choices:[{text:'Fight Pseudo-Geto for the Prison Realm.',next:'jjk_prison_realm_fight',check:{stat:'str',dc:14}},{text:'Stall him — buy time for reinforcements.',next:'jjk_prison_realm_fight',check:{stat:'int',dc:12}},{text:'Try to destroy the Prison Realm.',next:'jjk_attack_prison_realm',check:{stat:'str',dc:15}}]};
+
+JJK_NODES.jjk_break_gojo_free = {text:`"GOJO-SENSEI! THAT IS NOT GETO! IT IS SOMETHING WEARING HIS FACE! MOVE!"
+
+Your voice cuts through the station like a blade. Gojo blinks. The fog in his eyes clears. For one moment, the Prison Realm's lock falters — the target moved.
+
+Gojo grins. "Right. Thanks, kid."
+
+Infinity activates. The Prison Realm's eye cannot lock on — Gojo is moving too fast, the space around him warping. He kicks Pseudo-Geto across the platform, and the Prison Realm skids across the floor.
+
+But Pseudo-Geto is not done. He catches himself, and the curses converge — Jogo, Hanami, Choso. Four against one.
+
+Even Gojo Satoru cannot fight all of them AND avoid the Prison Realm forever.`,scene:'action',mood:'#0044ff',characters:['Gojo','Yuji'],effects:{flags:{broke_gojo_free:true},stats:{cha:2},relationships:{gojo:3}},choices:[{text:'Grab the Prison Realm while it is on the ground.',next:'jjk_grab_prison_realm',check:{stat:'cou',dc:13}},{text:'Join the fight — help Gojo against the curses.',next:'jjk_fight_with_gojo',check:{stat:'str',dc:12}}]};
+
+JJK_NODES.jjk_attack_prison_realm = {text:`You channel everything into a single attack aimed at the Prison Realm. Your cursed energy blazes, scorching the air.
+
+The cube absorbs your attack like a sponge. The eyes on its surface blink, and you feel a terrible suction — the Prison Realm trying to seal YOU instead.
+
+You wrench yourself free at the last second, but the effort leaves you drained. Pseudo-Geto laughs.
+
+"The Prison Realm cannot be destroyed. It is a divine artifact — beyond human cursed energy." He walks past you toward B5F. "Stay down. This does not concern you."
+
+But his momentary distraction with you cost him seconds. Precious seconds that let Nanami arrive from the east stairwell, blade drawn.`,scene:'action',mood:'#4a0000',characters:['Nanami'],effects:{flags:{attacked_prison_realm:true}},choices:[{text:'Rally with Nanami — attack Pseudo-Geto together.',next:'jjk_prison_realm_fight'},{text:'Warn Nanami about the Prison Realm\u0027s power.',next:'jjk_prison_realm_fight',effects:{relationships:{nanami:1}}}]};
+
+JJK_NODES.jjk_prison_realm_fight = {text:`The battle at B5F is apocalyptic. Gojo fights Jogo and Hanami simultaneously, the underground station crumbling around them. Pseudo-Geto circles with the Prison Realm, waiting for an opening.
+
+You, Nanami, and Yuji form a line between Pseudo-Geto and Gojo. Three sorcerers against the mastermind of the curse alliance.
+
+Pseudo-Geto is terrifyingly strong. The body he stole — Geto Suguru's — was already one of the most powerful sorcerers alive. Combined with his own ancient cursed technique, he is nearly untouchable.
+
+Nanami attacks with precise, devastating strikes. Yuji hammers with raw power. You fill the gaps, disrupting Pseudo-Geto's movements, looking for an opening.
+
+The Prison Realm pulses. It is still trying to lock onto Gojo.`,scene:'action',mood:'#4a0000',characters:['Gojo','Nanami','Yuji'],choices:[{text:'Focus on knocking the Prison Realm out of his hands.',next:'jjk_grab_prison_realm',check:{stat:'str',dc:13}},{text:'Coordinate a three-person combo attack.',next:'jjk_combo_attack',check:{stat:'int',dc:12}},{text:'Protect Nanami\u0027s flank — keep him alive.',next:'jjk_protect_nanami',check:{stat:'per',dc:11}}]};
+
+JJK_NODES.jjk_grab_prison_realm = {text:`You see your moment. Pseudo-Geto overextends a curse manipulation, and the Prison Realm shifts in his grip. You lunge.
+
+Your hands close around the cube. The eyes on its surface lock onto you — cold, ancient, alien. It tries to activate, tries to pull you inside. Your cursed energy screams in resistance.
+
+Pseudo-Geto grabs your wrist. "Let go. You do not know what you are holding."
+
+"I know what it does. And I know you are not getting it back."
+
+You wrench the Prison Realm free and THROW it — high, arcing, toward Gojo. The strongest sorcerer catches it with Infinity, suspending it in warped space where it cannot open, cannot lock, cannot seal.
+
+Gojo grins. "Game over."
+
+Without the Prison Realm, Pseudo-Geto has no win condition. He signals retreat. Jogo, Hanami, and Choso vanish into the barrier's edges. The curses flee.
+
+Gojo Satoru remains unsealed.`,scene:'action',mood:'#0044ff',characters:['Gojo','Nanami','Yuji'],effects:{flags:{gojo_unsealed:true,grabbed_prison_realm:true},stats:{cou:2},relationships:{gojo:3}},choices:[{text:'Collapse with relief. You just saved the strongest sorcerer alive.',next:'jjk_shibuya_aftermath'},{text:'"They will try again. We need to end this tonight."',next:'jjk_shibuya_aftermath',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_combo_attack = {text:`"Nanami-san — Ratio Technique on his left shoulder! Yuji — follow through with a cursed strike to the same point! I will cut off his escape!"
+
+The three of you move as one. Nanami's blade finds the seven-to-three weak point on Pseudo-Geto's guard. Yuji's fist hammers the same spot with Sukuna's residual energy. You seal the exits with your own technique.
+
+Pseudo-Geto staggers. For the first time, he looks genuinely hurt. The Prison Realm drops from his hands.
+
+Gojo appears behind him. "Leaving so soon?"
+
+Purple — the fusion of Blue and Red — detonates at point-blank range. Pseudo-Geto is blasted through three walls. He survives, barely, and retreats with the curses.
+
+The Prison Realm sits on the ground, inert. Gojo picks it up and crushes it with Infinity until it is nothing but dust.
+
+"Not today," he says.`,scene:'action',mood:'#0044ff',characters:['Gojo','Nanami','Yuji'],effects:{flags:{gojo_unsealed:true,combo_attack:true},stats:{int:2},relationships:{nanami:2},relationships:{gojo:2}},choices:[{text:'Check on the team — is everyone alive?',next:'jjk_shibuya_aftermath'},{text:'It worked. The timeline is changed.',next:'jjk_shibuya_aftermath'}]};
+
+JJK_NODES.jjk_protect_nanami = {text:`You see the attack coming before Nanami does — a transfigured human, one of Mahito's creations, lunging at Nanami's blind spot with claws that can shred steel.
+
+You intercept. The claws rake across your arm instead of Nanami's spine. Pain lances through you but you put the creature down with a burst of cursed energy.
+
+Nanami glances at you. A single nod. From Nanami Kento, that is equivalent to a standing ovation.
+
+He fights harder after that. Together, you push Pseudo-Geto back far enough that the Prison Realm cannot lock onto Gojo. The strongest sorcerer finishes Jogo with Hollow Purple, and the remaining curses scatter.
+
+The Prison Realm falls from Pseudo-Geto's hands as he retreats. Gojo catches it and seals it away.
+
+"Nanami," Gojo says later. "You would have died without this kid."
+
+"I know," Nanami replies. "I owe them a debt."`,scene:'action',mood:'#0044ff',characters:['Gojo','Nanami'],effects:{flags:{gojo_unsealed:true,nanami_saved:true},stats:{per:1},relationships:{nanami:3},relationships:{gojo:1}},choices:[{text:'"Nanami-san, you would have done the same for me."',next:'jjk_shibuya_aftermath',effects:{relationships:{nanami:1}}},{text:'You just nod. Words are unnecessary.',next:'jjk_shibuya_aftermath'}]};
+
+JJK_NODES.jjk_nanami_alone = {text:`You send Nanami underground and stay on the surface. For thirty minutes, you are a one-person army — fighting curses, evacuating civilians, holding the line.
+
+Then the radio goes silent. And a wave of cursed energy erupts from below — wrong, twisted, devastating. Something terrible is happening underground.
+
+You fight your way down to B5F and arrive to a nightmare. Gojo is sealed inside the Prison Realm. The cube sits on the ground, pulsing with contained infinity. Nanami is on his knees, bleeding from a dozen wounds, facing Mahito alone.
+
+"Run," Nanami says to you. His voice is calm. Final.
+
+Mahito touches Nanami's face. Idle Transfiguration activates.
+
+"NO!" You scream.`,scene:'action',mood:'#4a0000',characters:['Nanami','Mahito'],effects:{flags:{gojo_sealed:true,nanami_dying:true}},choices:[{text:'Attack Mahito — even if it costs your life.',next:'jjk_dark_shibuya',check:{stat:'str',dc:14}},{text:'Grab Nanami and retreat — save who you can.',next:'jjk_dark_shibuya',check:{stat:'cou',dc:13}}]};
+
+JJK_NODES.jjk_fight_with_gojo = {text:`You fight alongside Gojo Satoru. It is like standing next to a hurricane and trying to help it blow harder. His power is beyond anything you have ever experienced — space bending, gravity inverting, curses dissolving.
+
+But your contribution matters. You handle the smaller threats — transfigured humans, lesser curses — that Gojo cannot waste attention on while fighting Jogo and dodging the Prison Realm.
+
+Together, you and the team create enough chaos that Pseudo-Geto never gets a clean shot with the Prison Realm. Gojo stays moving, stays fighting, stays free.
+
+When the curses finally retreat, Gojo puts a hand on your shoulder. "You did good, kid. Real good."
+
+The Prison Realm is recovered and destroyed. Gojo remains unsealed.`,scene:'action',mood:'#0044ff',characters:['Gojo','Yuji'],effects:{flags:{gojo_unsealed:true,fought_with_gojo:true},stats:{str:1},relationships:{gojo:2}},choices:[{text:'This is the best possible outcome.',next:'jjk_shibuya_aftermath'},{text:'"The curses will regroup. What is our next move?"',next:'jjk_shibuya_aftermath',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_shibuya_toji = {text:`In the chaos of Shibuya's underground, something impossible happens. A figure moves through the transfigured humans with inhuman speed and no cursed energy at all. Zero. A complete void where a soul should be.
+
+Toji Fushiguro — the sorcerer killer, Megumi's father — revived through a cursed technique gone wrong. His body is a weapon: perfected physical form, heavenly restriction, cursed tools flowing from an inventory curse that follows him like a shadow.
+
+He does not recognize anyone. The resurrection left his mind fractured. He is pure combat instinct — killing curses and sorcerers indiscriminately.
+
+And he is heading toward Megumi.`,scene:'action',mood:'#4a0000',characters:['Megumi'],effects:{flags:{toji_appeared:true}},choices:[{text:'Get between Toji and Megumi — protect your friend.',next:'jjk_toji_confrontation',check:{stat:'cou',dc:14}},{text:'Call out to Toji — try to reach whatever remains of his mind.',next:'jjk_toji_words',check:{stat:'cha',dc:13}},{text:'Warn Megumi — let him decide how to face his father.',next:'jjk_toji_megumi',effects:{relationships:{megumi:2}}}]};
+
+JJK_NODES.jjk_toji_confrontation = {text:`You plant yourself in Toji's path. It is like standing in front of a freight train. The man has no cursed energy but his physical presence is overwhelming — every muscle a coiled spring, every movement lethal.
+
+He swings a cursed weapon — the Inverted Spear of Heaven — and you barely dodge. The air where your head was splits open. He is faster than anything you have fought.
+
+You cannot win this fight. You know that. But you can slow him down.
+
+You trade blows — or rather, you survive his blows while landing nothing. Each dodge costs you. Each near-miss shaves years off your life.
+
+Then Toji pauses. Looks at you. Something flickers behind his dead eyes.
+
+"...Kid," he rasps. The first word from a mind fighting through the fog. "Where is... my son?"`,scene:'action',mood:'#4a0000',characters:['Megumi'],effects:{stats:{cou:2},flags:{faced_toji:true}},choices:[{text:'"He is alive. He is strong. He is nothing like you — and that is a good thing."',next:'jjk_toji_resolves',effects:{relationships:{megumi:2}}},{text:'Point toward Megumi. Let father and son meet.',next:'jjk_toji_resolves'}]};
+
+JJK_NODES.jjk_toji_words = {text:`"TOJI FUSHIGURO! Your son is here! Megumi Fushiguro — he became a sorcerer! He is ALIVE because you sold him to Gojo!"
+
+The words cut through the fog of resurrection like a blade. Toji stops mid-stride. The Inverted Spear lowers an inch.
+
+"...Megumi." The name comes out broken, fragmented. But it comes out. A father's memory, refusing to die even when the father did.
+
+He turns toward you. The killing intent fades. What replaces it is something infinitely more painful — recognition, and with it, shame.
+
+"I sold him," Toji whispers. "I sold my own kid."`,scene:'action',mood:'#1a0a2e',characters:['Megumi'],effects:{stats:{cha:2},flags:{reached_toji:true}},choices:[{text:'"He does not hate you. But he needs to see that you care."',next:'jjk_toji_resolves'},{text:'"You can still do something. Help us fight."',next:'jjk_toji_resolves',effects:{stats:{int:1}}}]};
+
+JJK_NODES.jjk_toji_megumi = {text:`"MEGUMI! Your father — he is here! Resurrected!"
+
+Megumi freezes. Then he turns and sees Toji — the man who abandoned him, the sorcerer killer, the ghost that has haunted his entire life.
+
+Father and son stare at each other across the burning ruins of Shibuya Station.
+
+"...You got tall," Toji says.
+
+Megumi's jaw clenches. His hands tremble. Divine Dogs materialize at his sides, growling.
+
+"You LEFT me. You SOLD me. And now you show up HERE?"
+
+Toji does not defend himself. He lowers his weapons. "Yeah. I did all that."
+
+A long silence. The fighting rages around them but this space is its own world.
+
+"But I named you Megumi," Toji says. "Blessing. I gave you the only good thing I had."`,scene:'action',mood:'#1a0a2e',characters:['Megumi'],effects:{flags:{megumi_confronted_toji:true},relationships:{megumi:3}},choices:[{text:'Give them space. This is their moment.',next:'jjk_toji_resolves'},{text:'Stay close in case Toji loses control again.',next:'jjk_toji_resolves',effects:{stats:{per:1}}}]};
+
+JJK_NODES.jjk_toji_resolves = {text:`Toji Fushiguro makes a choice. The resurrection curse is pulling him back toward mindless violence, but the memory of his son holds him — barely.
+
+"I cannot stay," he tells Megumi. "This body is not mine anymore. When it goes, I go."
+
+He picks up the Inverted Spear of Heaven and turns toward the deeper levels of Shibuya, where the curses are strongest.
+
+"But I can buy you time. Go save that teacher of yours."
+
+He moves into the darkness with the efficiency of the world's greatest assassin. Moments later, screams — cursed spirits, dissolving under the assault of a man with no cursed energy and no mercy.
+
+Megumi watches his father disappear. A single tear tracks down his face before he wipes it away and summons his shikigami.
+
+"Let us go."`,scene:'action',mood:'#1a0a2e',characters:['Megumi'],effects:{flags:{toji_sacrifice:true},relationships:{megumi:2}},choices:[{text:'Follow Toji\u0027s path — he is clearing a route to B5F.',next:'jjk_prison_realm_fight'},{text:'Take a different route — honor his sacrifice by reaching Gojo.',next:'jjk_prison_realm_fight',effects:{stats:{cou:1}}}]};
+
+JJK_NODES.jjk_shibuya_mahito = {text:`In the depths of Shibuya, you encounter Mahito again. He is stronger now — fed on the fear and death of hundreds of civilians, his Domain Expansion rippling at the edges of reality.
+
+"You again," Mahito says, tilting his patchwork face. "The one who stole Junpei from me. I have been looking forward to this."
+
+His hands glow with Idle Transfiguration. Around him, dozens of transfigured humans stand in grotesque formation — people he has already reshaped into weapons.
+
+"Let me show you what Junpei was supposed to become."`,scene:'action',mood:'#4a0000',characters:['Mahito'],effects:{flags:{shibuya_mahito:true}},choices:[{text:'Fight Mahito head-on — you survived his touch once before.',next:'jjk_mahito_duel',check:{stat:'str',dc:13}},{text:'Stall him — Yuji is the only one who can truly hurt Mahito.',next:'jjk_mahito_stall',check:{stat:'int',dc:12}},{text:'Use the environment — collapse the ceiling on him.',next:'jjk_mahito_duel',check:{stat:'per',dc:12}}]};
+
+JJK_NODES.jjk_mahito_duel = {text:`You and Mahito clash in the ruins of Shibuya's underground mall. He is faster, stronger, more creative — his body reshaping mid-fight, arms becoming blades, legs becoming springs.
+
+But you have something he does not: allies. Todo appears from nowhere with a thunderous clap — Boogie Woogie switches your position with Mahito's, disorienting the curse. Yuji follows with a devastating combination.
+
+The three of you push Mahito back. Each of Yuji's punches damages Mahito's soul, the one thing Idle Transfiguration cannot heal. Todo's tactical switching creates openings that Mahito cannot predict.
+
+And you fill the gaps — guarding flanks, creating distractions, keeping the transfigured humans at bay.
+
+Mahito shrinks. Literally. His body compresses as damage accumulates, his domain cracking, his confidence shattering.
+
+"This is not... this was not supposed to... I am a CURSE! I do not LOSE to humans!"`,scene:'action',mood:'#4a0000',characters:['Mahito','Todo','Yuji'],effects:{stats:{str:1},relationships:{todo:1},relationships:{yuji:1},flags:{mahito_defeated:true}},choices:[{text:'Finish Mahito. End him.',next:'jjk_shibuya_aftermath',effects:{stats:{cou:1}}},{text:'Let Yuji deliver the final blow — Mahito is his fight.',next:'jjk_shibuya_aftermath',effects:{relationships:{yuji:2}}}]};
+
+JJK_NODES.jjk_mahito_stall = {text:`You cannot beat Mahito alone. But you can make him angry enough to get sloppy. And an angry curse makes mistakes.
+
+You dodge, weave, taunt. "Junpei sends his regards, by the way. He is doing great at Jujutsu High. Made friends. Smiles now. Everything you tried to destroy — it is flourishing."
+
+Mahito's grin cracks. "SHUT UP."
+
+"He even has a girlfriend. Can you believe it? The boy you tried to break is HAPPY."
+
+Mahito lunges — and runs directly into Yuji Itadori's Black Flash.
+
+The sound is like reality cracking. Mahito's body distorts, soul fracturing under the impact of Sukuna's residual energy channeled through Yuji's fist at the exact moment of impact.
+
+Todo claps. Boogie Woogie. Your position switches with Mahito's. You end up behind Yuji. Mahito ends up right in front of him.
+
+Yuji hits him again. And again. And again.`,scene:'action',mood:'#4a0000',characters:['Mahito','Yuji','Todo'],effects:{stats:{int:1},relationships:{yuji:2},flags:{mahito_defeated:true}},choices:[{text:'Watch Mahito fall. This is justice.',next:'jjk_shibuya_aftermath'},{text:'Stay alert — cornered curses are the most dangerous.',next:'jjk_shibuya_aftermath',effects:{stats:{per:1}}}]};
+
+JJK_NODES.jjk_dark_shibuya = {text:`The dark timeline unfolds. With Gojo sealed and Nanami fallen, the Shibuya Incident spirals into catastrophe. Mahito rampages. Pseudo-Geto completes his plan. Sukuna wrests control from Yuji for three devastating minutes, carving Shibuya apart with Malevolent Shrine.
+
+When it is over, the city is a crater. Hundreds dead. The jujutsu world shattered.
+
+You survive. Barely. You pull Megumi from the rubble. Find Nobara unconscious but alive. Yuji is catatonic with guilt — Sukuna used his body to kill innocent people.
+
+In the ruins of Shibuya, you face a choice that will define everything that comes after.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],effects:{flags:{dark_timeline:true}},choices:[{text:'Rally the survivors — fight back against the curses.',next:'jjk_ending_dark',effects:{stats:{cou:1}}},{text:'Flee with your friends — survive to fight another day.',next:'jjk_ending_dark',effects:{stats:{int:1}}},{text:'Find a way to unseal Gojo — he is the only hope.',next:'jjk_ending_sacrifice',effects:{stats:{per:1}}}]};
+
+JJK_NODES.jjk_shibuya_aftermath = {text:`Shibuya is over. The barrier falls. Emergency services flood the area. The cursed spirits have retreated, their plan to seal Gojo foiled.
+
+The cost is still high — civilian casualties, infrastructure destroyed, several sorcerers wounded. But the worst outcome was prevented. Gojo Satoru remains free. Nanami is alive. Your team is battered but intact.
+
+At Jujutsu High, Gojo addresses the assembled sorcerers. "What happened at Shibuya was a declaration of war. The curses — Pseudo-Geto, Mahito, Jogo, what is left of them — will not stop. They want a world where curses rule and humans are cattle."
+
+He looks at each of you. "But they showed us something important. They can be hurt. They can be beaten. And they are afraid of us."
+
+He turns to you specifically. "Especially you. You changed the outcome tonight. Without you, I would be in a box right now."
+
+The room is quiet.`,scene:'action',mood:'#0044ff',characters:['Gojo','Yuji','Megumi','Nobara','Nanami'],effects:{flags:{shibuya_aftermath:true}},choices:[{text:'"We finish this. Track down Pseudo-Geto and end the curse alliance."',next:'jjk_ending_golden',effects:{stats:{cou:1}}},{text:'"We need to prepare. They will come again, stronger."',next:'jjk_ending_canon',effects:{stats:{int:1}}},{text:'"There might be another way. Sukuna is inside Yuji — what if we turn him?"',next:'jjk_ending_hidden',effects:{stats:{cha:1}}}]};
+
+// ---- ENDINGS ----
+
+JJK_NODES.jjk_ending_golden = {text:`THE GOLDEN AGE
+
+With Gojo unsealed and the jujutsu world united, you lead the counteroffensive against the curse alliance. Pseudo-Geto is cornered. Mahito is exorcised. The remaining curses scatter.
+
+But the real victory is what comes after. With Gojo free to reform the jujutsu world, the corrupt elders are replaced. The grade system is overhauled. Non-sorcerers with cursed energy — like Junpei — are given support instead of being exploited or executed.
+
+Yuji learns to coexist with Sukuna, suppressing the King of Curses through sheer force of will and the bonds he has built. Megumi masters the Ten Shadows. Nobara becomes the most feared Grade 1 sorcerer in a generation. Nanami retires to run a bakery in Kuantan. He seems happy.
+
+And you? You become a Special Grade sorcerer — one of only four in the world. Not because of raw power, but because you changed the timeline itself.
+
+Gojo takes off his blindfold one evening and looks at the sunset with his own eyes. "Not bad," he says. "Not bad at all."
+
+In this timeline, everyone lives. The golden age of jujutsu begins.`,scene:'action',mood:'#0044ff',characters:['Gojo','Yuji','Megumi','Nobara','Nanami'],effects:{flags:{ending_golden:true}},choices:[{text:'PLAY AGAIN — Return to Menu',next:'_menu'}]};
+
+JJK_NODES.jjk_ending_canon = {text:`THE CANON PATH
+
+Events continue much as they might have — but with crucial differences. Gojo is unsealed. Nanami lives. Junpei survived. The ripples of your choices spread outward, changing small things that accumulate into a slightly different world.
+
+The war against the curses continues. It is long, brutal, and costly. But the jujutsu world endures. Pseudo-Geto remains at large, planning his next move. Sukuna waits inside Yuji, patient and inscrutable.
+
+You take your place among the Grade 1 sorcerers — reliable, effective, the kind of person everyone wants on their team. Not the strongest, but maybe the most important. The one who keeps everyone else alive.
+
+At night, you sometimes feel the timeline shimmering around you. The sense that things could have gone so much worse. Or so much better.
+
+The story is not over. It is just... continuing. One choice at a time.
+
+"The difference between a good sorcerer and a great one," Nanami tells you over coffee, "is knowing which battles to fight. You have always known."`,scene:'action',mood:'#2a0845',characters:['Gojo','Yuji','Nanami'],effects:{flags:{ending_canon:true}},choices:[{text:'PLAY AGAIN — Return to Menu',next:'_menu'}]};
+
+JJK_NODES.jjk_ending_dark = {text:`THE DARK TIMELINE
+
+You flee with the survivors — Megumi, Nobara, a catatonic Yuji, and a handful of wounded sorcerers. Behind you, Shibuya burns. The old world is over.
+
+Pseudo-Geto declares a new age. The Culling Game begins — cursed energy barriers covering Japan, forcing sorcerers to fight each other for survival. Sukuna's influence spreads. The government collapses in regions where curses roam freely.
+
+You become the leader of a resistance cell. Fifty sorcerers, hiding in the mountains, striking at curse strongholds when you can. It is not enough. It is never enough.
+
+But you keep fighting. Because Yuji whispered something to you before he went silent: "Don't let it end like this."
+
+Gojo is still sealed somewhere. If you can find the Prison Realm, if you can unseal him — there is still a chance. A thin, desperate, beautiful chance.
+
+In the darkest timeline, you are the light that refuses to go out.`,scene:'action',mood:'#4a0000',characters:['Yuji','Megumi','Nobara'],effects:{flags:{ending_dark:true}},choices:[{text:'PLAY AGAIN — Return to Menu',next:'_menu'}]};
+
+JJK_NODES.jjk_ending_sacrifice = {text:`THE SACRIFICE
+
+You find the Prison Realm in the ruins of Shibuya. The cube pulses with contained infinity — Gojo Satoru, the strongest sorcerer alive, trapped inside.
+
+There is a way to open it. A soul exchange — one life for the one sealed within. The price is absolute. Irreversible.
+
+You do not hesitate.
+
+Your cursed energy floods the Prison Realm. You feel your soul being pulled apart — not painfully, but thoroughly. Like every part of you is being read, cataloged, and consumed. In exchange, the seal cracks.
+
+Gojo erupts from the Prison Realm in a detonation of blue and white. He is free. Infinite Void expands outward, the space around him normalizing, the world remembering what it means to have the strongest sorcerer active.
+
+He catches your body as you fall. The last thing you see is his eyes — both of them, uncovered, the Six Eyes burning with something you have never seen there before.
+
+Grief.
+
+"Damn it," he whispers. "You were not supposed to do that."
+
+You smile. "Someone... had to."
+
+In the years after, they build a memorial at Jujutsu High. Your name is carved in cursed stone that will never fade. Every first-year student is told your story. The sorcerer who saved Gojo Satoru. The one who changed the timeline and gave everything.
+
+Yuji visits every week. He brings flowers and talks to you like you can still hear.
+
+Maybe you can.`,scene:'action',mood:'#1a0a2e',characters:['Gojo','Yuji'],effects:{flags:{ending_sacrifice:true}},choices:[{text:'PLAY AGAIN — Return to Menu',next:'_menu'}]};
+
+JJK_NODES.jjk_ending_hidden = {text:`THE IMPOSSIBLE ALLIANCE
+
+The idea is insane. Suicidal. Brilliant.
+
+You confront Sukuna directly — not through Yuji, but by entering Yuji's mind through a cursed technique and standing before the King of Curses in his innate domain. The shrine of malevolent skulls. The throne of the ancient sorcerer who devoured curses and humans alike.
+
+Sukuna regards you with four eyes and absolute contempt. "A child. Come to bargain."
+
+"Not bargain. Propose. The curses want you free so you can destroy humanity. The sorcerers want you sealed forever. Both sides are using Yuji. Neither side is asking what YOU want."
+
+Sukuna's eyes narrow. For the first time in a thousand years, someone has surprised him.
+
+"What I want is irrelevant. I am power incarnate. I do not negotiate."
+
+"Then why are you still talking to me?"
+
+Silence. And then — the rarest sound in the jujutsu world — Sukuna laughs. Not cruel. Not mocking. Genuinely amused.
+
+"You have courage, child. Or madness. They are often the same thing."
+
+The negotiation takes hours. Days. Time moves differently inside a soul. You learn things about Sukuna that no one alive knows — his origin, his loneliness, the weight of being a god in a world that produces nothing worthy of his attention.
+
+In the end, you forge something impossible. An alliance. Sukuna will not fight against humanity — but he will not fight for it either. He will coexist with Yuji, sharing the vessel, in exchange for the right to experience the world through mortal eyes.
+
+"The world has changed," Sukuna admits. "It is more... interesting than I remember. Especially with fools like you in it."
+
+When you emerge from Yuji's mind, everything is different. Sukuna's cursed energy is no longer hostile — it is integrated, woven into Yuji's own power. The boy who was a vessel becomes something new. Something unprecedented.
+
+Gojo stares at you. "What did you DO?"
+
+"I made a friend."
+
+The jujutsu world does not know what to make of it. An alliance with the King of Curses. Impossible. Unthinkable. And yet — it holds. Sukuna keeps his word.
+
+Years later, when a threat beyond even Gojo's power appears, Sukuna fights alongside humanity. Not for love or loyalty — but because one mad first-year student treated him like a person instead of a weapon.
+
+The history books do not know how to classify you. Hero. Diplomat. Fool.
+
+You prefer: friend.`,scene:'action',mood:'#2a0845',characters:['Sukuna','Yuji','Gojo'],effects:{flags:{ending_hidden:true}},choices:[{text:'PLAY AGAIN — Return to Menu',next:'_menu'}]};
+
+// ============================================================
 // REGISTER SCENARIOS
 // ============================================================
 const SCENARIOS = {};
@@ -3484,9 +4546,9 @@ SCENARIO_META.forEach(m => {
   SCENARIOS[m.id] = {
     meta: m,
     roles: SCENARIO_ROLES[m.id] || [],
-    nodes: m.id === 'zombie' ? ZOMBIE_NODES : m.id === 'fratparty' ? FRATPARTY_NODES : m.id === 'heist' ? HEIST_NODES : {},
-    startNode: m.id === 'zombie' ? 'zo_wake' : m.id === 'fratparty' ? 'fp_arrival' : m.id === 'heist' ? 'h_start' : null,
-    relationships: m.id === 'fratparty' ? {mia:0,zara:0,luna:0,jake:0,tyler:0,chad:0,nadia:0} : m.id === 'zombie' ? {maya:0,marcus:0} : m.id === 'heist' ? {nova:0,santos:0,wheels:0,brick:0,silk:0,viktor:0} : {}
+    nodes: m.id === 'zombie' ? ZOMBIE_NODES : m.id === 'fratparty' ? FRATPARTY_NODES : m.id === 'heist' ? HEIST_NODES : m.id === 'jjk' ? JJK_NODES : {},
+    startNode: m.id === 'zombie' ? 'zo_wake' : m.id === 'fratparty' ? 'fp_arrival' : m.id === 'heist' ? 'h_start' : m.id === 'jjk' ? 'jjk_arrival' : null,
+    relationships: m.id === 'fratparty' ? {mia:0,zara:0,luna:0,jake:0,tyler:0,chad:0,nadia:0} : m.id === 'zombie' ? {maya:0,marcus:0} : m.id === 'heist' ? {nova:0,santos:0,wheels:0,brick:0,silk:0,viktor:0} : m.id === 'jjk' ? {gojo:0,yuji:0,megumi:0,nobara:0,nanami:0,todo:0,sukuna:0} : {}
   };
 });
 
