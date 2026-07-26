@@ -17,7 +17,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// WHEEL OF FAITH v2.14.0 — Cinematic spin: celebration particles, screen flash, scale-in result, dramatic slowdown
+// WHEEL OF FAITH v2.15.0 — Cinematic spin: celebration particles, screen flash, scale-in result, dramatic slowdown
 // 17+ spin categories, 50+ races, 100s of options, full-screen wheels,
 // conditional spins, neon glow, segment weighting, rainbow wheels
 // ============================================================
@@ -106,6 +106,9 @@ const SFX={
   hit(){this._tone(200,0.12,'sine',0.15)},
   crit(){this._tone(600,0.1,'sawtooth',0.2);this._tone(900,0.12,'square',0.18,0.05)},
   block(){this._tone(150,0.08,'square',0.1)},
+  heartbeat(){this._tone(60,0.15,'sine',0.2);this._tone(65,0.12,'sine',0.15,0.12)},
+  reveal(){for(let i=0;i<4;i++)this._tone(200+i*150,0.3,'sine',0.1+i*0.03,i*0.15);this._tone(900,0.5,'sine',0.18,0.6)},
+  whoosh(){this._init();if(!this.ctx)return;const dur=0.3,bufSz=this.ctx.sampleRate*dur,buf=this.ctx.createBuffer(1,bufSz,this.ctx.sampleRate),d=buf.getChannelData(0);for(let i=0;i<bufSz;i++){const t=i/bufSz;d[i]=(Math.random()*2-1)*0.08*Math.sin(t*Math.PI);}const s=this.ctx.createBufferSource(),g=this.ctx.createGain();s.buffer=buf;g.gain.setValueAtTime(0.08,this.ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+dur);s.connect(g);g.connect(this.ctx.destination);s.start();s.stop(this.ctx.currentTime+dur);},
 };
 
 // ============================================================
@@ -956,6 +959,10 @@ let spin={phase:'idle',angle:0,speed:0,targetIdx:-1,result:null,landedIdx:-1,lan
 let bgParticles=[]; // ambient background particles
 let screenFlash=0; // screen flash intensity
 let resultScale=0; // result text scale-in animation
+let lastHeartbeat=0; // timestamp of last heartbeat SFX
+let interSpinNarration=null; // {text, startTime, duration} for between-spin narration
+let emberParticles=[]; // dramatic ember/spark particles during spin
+let charDoneEnteredAt=0; // timestamp for character reveal animation
 
 // Background ambient particles
 function spawnBgParticles(){
@@ -977,6 +984,83 @@ function drawBgParticles(){
     X.beginPath();X.arc(p.x,p.y,p.size,0,Math.PI*2);X.fill();
   });
   X.globalAlpha=1;
+}
+
+// Lore narration lines — between spins, the Wheel "speaks"
+const LORE_NARRATIONS=[
+  'The Wheel has spoken...',
+  'Fate turns once more...',
+  'The Architect watches...',
+  'Destiny unfolds...',
+  'The cosmos aligns...',
+  'A new thread is woven...',
+  'The universe decides...',
+  'Power stirs within the Wheel...',
+  'Another layer of fate...',
+  'The stars have chosen...',
+  'What was written shall be...',
+  'The ancient mechanism turns...',
+  'So it is decreed...',
+  'The Wheel remembers...',
+  'A soul takes shape...',
+  'The threads of fate converge...',
+  'Destiny cannot be denied...',
+];
+
+// Ember/spark particles for dramatic spin visuals
+function spawnEmbers(cx,cy,radius){
+  for(let i=0;i<3;i++){
+    const angle=Math.random()*Math.PI*2;
+    const dist=radius+Math.random()*20;
+    emberParticles.push({
+      x:cx+Math.cos(angle)*dist, y:cy+Math.sin(angle)*dist,
+      vx:(Math.random()-0.5)*2, vy:-1-Math.random()*2,
+      life:30+Math.random()*40, maxLife:70,
+      size:1+Math.random()*2, color:pick(['#ff4400','#ff6600','#ffaa00','#ff2200','#ffcc00'])
+    });
+  }
+}
+function updateEmbers(){
+  for(let i=emberParticles.length-1;i>=0;i--){
+    const e=emberParticles[i];
+    e.x+=e.vx;e.y+=e.vy;e.vy-=0.01;e.vx*=0.98;e.life--;
+    if(e.life<=0)emberParticles.splice(i,1);
+  }
+}
+function drawEmbers(){
+  emberParticles.forEach(e=>{
+    const alpha=e.life/e.maxLife;
+    X.globalAlpha=alpha;
+    X.shadowColor=e.color;X.shadowBlur=6;
+    X.fillStyle=e.color;
+    X.beginPath();X.arc(e.x,e.y,e.size*alpha,0,Math.PI*2);X.fill();
+    X.shadowBlur=0;
+  });
+  X.globalAlpha=1;
+}
+
+// Draw inter-spin narration overlay
+function drawNarration(){
+  if(!interSpinNarration)return;
+  const elapsed=Date.now()-interSpinNarration.startTime;
+  const dur=interSpinNarration.duration;
+  if(elapsed>dur){interSpinNarration=null;return;}
+  const t=elapsed/dur;
+  // fade in (0-0.2), hold (0.2-0.7), fade out (0.7-1)
+  let alpha=1;
+  if(t<0.2)alpha=t/0.2;
+  else if(t>0.7)alpha=1-(t-0.7)/0.3;
+  X.save();
+  X.globalAlpha=alpha*0.85;
+  X.fillStyle='#000';X.fillRect(0,0,VW,VH);
+  X.globalAlpha=alpha;
+  X.font='italic bold '+(isMobile?20:28)+'px "Georgia","Segoe UI",serif';
+  X.textAlign='center';X.textBaseline='middle';
+  X.shadowColor='#af1111';X.shadowBlur=20;
+  X.fillStyle='#e0c0a0';
+  X.fillText(interSpinNarration.text,VW/2,VH/2);
+  X.shadowBlur=0;
+  X.restore();
 }
 
 // Landing celebration burst
@@ -1059,7 +1143,9 @@ let lastTickAngle=0;
 function updateSpin(){
   if(spin.phase!=='spinning')return;
   spin.angle+=spin.speed;
-  spin.speed*=0.988;
+  // More dramatic deceleration — slower decay when speed is low for extended suspense
+  const decay=spin.speed<0.03?0.992:spin.speed<0.06?0.990:0.988;
+  spin.speed*=decay;
 
   // Tick sound as segments pass (respects weighted segment sizes)
   const cat=getCurrentWheel();
@@ -1075,6 +1161,15 @@ function updateSpin(){
       if(spin.speed<0.03)SFX.tickLoud();
       else if(spin.speed<0.06)SFX.tick(0.14);
       else SFX.tick();
+    }
+    // Heartbeat effect during final moments — dramatic tension builder
+    if(spin.speed<0.02&&spin.speed>0.001){
+      const now=Date.now();
+      const heartbeatInterval=Math.max(300,spin.speed*15000); // faster as wheel slows
+      if(now-lastHeartbeat>heartbeatInterval){
+        SFX.heartbeat();
+        lastHeartbeat=now;
+      }
     }
   }
   lastTickAngle=spin.angle;
@@ -1167,7 +1262,7 @@ function drawTitle(){
   }
 
   X.font='11px "Segoe UI",sans-serif';X.fillStyle='#333';X.textAlign='center';
-  X.fillText('WoF v2.14.0 // soloforte.ai',cx,VH-15);
+  X.fillText('WoF v2.15.0 // soloforte.ai',cx,VH-15);
   buttons.forEach(drawBtn);
 }
 
@@ -1182,6 +1277,17 @@ function drawSpin(){
   if(spin.phase==='spinning'){spawnBgParticles();}
   updateBgParticles();
   drawBgParticles();
+
+  // Ember/spark particles during spin for dramatic effect
+  if(spin.phase==='spinning'){
+    const cat2=getCurrentWheel();
+    if(cat2){
+      const wr2=Math.min(VW*0.42,VH*0.32);
+      spawnEmbers(VW/2,VH*0.52,wr2);
+    }
+  }
+  updateEmbers();
+  drawEmbers();
 
   // Dramatic slowdown glow — wheel glows brighter as it slows
   if(spin.phase==='spinning'&&spin.speed<0.05&&spin.speed>0.001){
@@ -1463,8 +1569,17 @@ function drawSpin(){
     const btnW=160,btnH=45;
     addBtn('next',cx-btnW/2,VH-btnH-25,btnW,btnH,'NEXT >>',cat.color||'#2196F3',()=>{
       wheelIdx++;
-      spin={phase:'idle',angle:Math.random()*Math.PI*2,speed:0,result:null,landedIdx:-1};
-      if(wheelIdx>=wheelQueue.length)screen='charDone';
+      if(wheelIdx>=wheelQueue.length){
+        screen='charDone';SFX.reveal();
+      }else{
+        // Show lore narration between spins
+        interSpinNarration={text:pick(LORE_NARRATIONS),startTime:Date.now(),duration:1600};
+        SFX.whoosh();
+        setTimeout(()=>{
+          spin={phase:'idle',angle:Math.random()*Math.PI*2,speed:0,result:null,landedIdx:-1};
+          emberParticles=[];
+        },800);
+      }
     },{fontSize:16});
   }
 
@@ -1931,7 +2046,26 @@ function drawCharacterPortrait(X,cx,y,h,raceColor,cr,t){
 // ============================================================
 function drawCharDone(){
   clearBtns();
+  if(!charDoneEnteredAt)charDoneEnteredAt=Date.now();
+  const revealElapsed=(Date.now()-charDoneEnteredAt)/1000;
+  const revealAlpha=Math.min(1,revealElapsed/1.2); // 1.2s fade-in
+
   X.fillStyle='#000';X.fillRect(0,0,VW,VH);
+
+  // Dramatic reveal title during fade-in
+  if(revealAlpha<0.8){
+    const titleAlpha=revealAlpha<0.3?revealAlpha/0.3:revealAlpha>0.5?1-(revealAlpha-0.5)/0.3:1;
+    X.save();X.globalAlpha=titleAlpha;
+    X.font='italic bold '+(isMobile?22:32)+'px "Georgia","Segoe UI",serif';
+    X.textAlign='center';X.textBaseline='middle';
+    X.shadowColor='#af1111';X.shadowBlur=25;
+    X.fillStyle='#e0c0a0';
+    X.fillText('Your fate is sealed.',VW/2,VH/2);
+    X.shadowBlur=0;X.restore();
+    if(revealAlpha<0.5)return; // hold on reveal text briefly
+  }
+
+  X.save();X.globalAlpha=Math.min(1,(revealAlpha-0.4)/0.8);
 
   // Fantasy background gradient based on race/element
   const raceColor=CAT_COLORS.race;
@@ -2170,7 +2304,7 @@ function drawCharDone(){
       charResult._name=name.trim().substring(0,25);
       savedChars.push({...charResult,_saved:Date.now()});
       saveChars();
-      screen='title';
+      screen='title';charDoneEnteredAt=0;
     }
   },{fontSize:14});
 
@@ -2179,7 +2313,7 @@ function drawCharDone(){
     charResult._name=pick(names);
     savedChars.push({...charResult,_saved:Date.now()});
     saveChars();
-    screen='title';
+    screen='title';charDoneEnteredAt=0;
   },{fontSize:14});
 
   addBtn('copyBuild',VW/2-btnW/2,sy+50,btnW*2+20,36,'COPY BUILD','#2196F3',()=>{
@@ -2195,8 +2329,9 @@ function drawCharDone(){
     X.fillText('Copied!',VW/2,sy+94);
   }
 
-  addBtn('back',10,10,60,30,'< Back','#666',()=>{screen='title';},{fontSize:12});
+  addBtn('back',10,10,60,30,'< Back','#666',()=>{screen='title';charDoneEnteredAt=0;},{fontSize:12});
 
+  X.restore(); // close reveal fade-in save
   buttons.forEach(drawBtn);
 }
 
@@ -2606,7 +2741,7 @@ C.addEventListener('mousemove',e=>{
 function gameLoop(){
   switch(screen){
     case 'title':drawTitle();break;
-    case 'spin':updateSpin();drawSpin();break;
+    case 'spin':updateSpin();drawSpin();drawNarration();break;
     case 'charDone':drawCharDone();break;
     case 'roster':drawRoster();break;
     case 'battleSelect':drawBattleSelect();break;
