@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// DUNGEONS OF FATE v2.0 — D&D Dungeon Crawler Phase 2
+// DUNGEONS OF FATE v2.1 — D&D Dungeon Crawler Phase 2: Evolution + Reputation
 // ============================================================
 
 const C = document.getElementById('g'), X = C.getContext('2d');
@@ -97,7 +97,7 @@ const SFX = {
 // ============================================================
 // GAME STATE
 // ============================================================
-const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10, NPC_TALK: 11 };
+const STATE = { TITLE: 0, CHAR_CREATE: 1, DUNGEON: 2, COMBAT: 3, INVENTORY: 4, CHAR_SHEET: 5, GAME_OVER: 6, VICTORY: 7, HELP: 8, LEVEL_UP: 9, SHOP: 10, NPC_TALK: 11, EVOLUTION: 12 };
 let gameState = STATE.TITLE;
 let player = null;
 let dungeon = null;
@@ -112,6 +112,7 @@ let helpOpen = false;
 let shopRoom = null;
 let shopScrollY = 0;
 let npcRoom = null;
+let evolutionRoom = null; // current evolution quest room
 
 // ============================================================
 // DATA DEFINITIONS
@@ -355,6 +356,178 @@ const COMPANION_POOL = [
     color: '#f0d060', symbol: 'S', personality: 'A paladin on a sacred quest to cleanse the dungeon.',
     greeting: '"By my oath, I shall not let evil stand. Join me?"', loyalty: 50, canHeal: true },
 ];
+
+// -- Class Evolution Paths --
+const EVOLUTION_PATHS = {
+  Fighter: [
+    { name: 'Champion', color: '#e05050', desc: 'Master of raw martial prowess. Critical hits on 19-20, improved fighting style.',
+      trialDesc: 'Prove your martial supremacy by defeating a gauntlet of arena warriors.',
+      trialType: 'combat', trialEnemy: 'Arena Champion',
+      abilities: ['Improved Critical (crit on 19-20)', 'Remarkable Athlete (+half prof to STR/DEX/CON checks)'],
+      bonuses: { maxHp: 8, critRange: 19 } },
+    { name: 'Battle Master', color: '#c04040', desc: 'Tactical genius wielding superiority dice to control the battlefield.',
+      trialDesc: 'Outmaneuver a cunning war strategist in a battle of wits and blades.',
+      trialType: 'combat', trialEnemy: 'War Strategist',
+      abilities: ['Superiority Dice (4d8, regain on rest)', 'Maneuvers: Trip, Riposte, Precision (+d8 to hit/damage)'],
+      bonuses: { maxHp: 5, superiorityDice: 4 } },
+  ],
+  Rogue: [
+    { name: 'Assassin', color: '#606060', desc: 'Deadly killer who strikes from the shadows. Auto-crit on surprised foes, poison expertise.',
+      trialDesc: 'Eliminate a heavily guarded target without being detected.',
+      trialType: 'skill', trialDC: 15, trialStat: 'DEX',
+      abilities: ['Assassinate (auto-crit vs surprised enemies)', 'Poison Expertise (+d6 poison damage on sneak attacks)'],
+      bonuses: { autoCritSurprise: true, poisonDmg: [1,6] } },
+    { name: 'Arcane Trickster', color: '#7070b0', desc: 'A rogue who blends magic with cunning. Mage hand and limited spellcasting.',
+      trialDesc: 'Solve an arcane puzzle box while evading magical wards.',
+      trialType: 'skill', trialDC: 14, trialStat: 'INT',
+      abilities: ['Mage Hand Legerdemain (invisible mage hand)', 'Spellcasting (gain Magic Missile, Shield)'],
+      bonuses: { gainSpells: ['Magic Missile', 'Shield'], maxSpellSlots: 2 } },
+  ],
+  Wizard: [
+    { name: 'Evoker', color: '#8060e0', desc: 'Master of destructive magic. Empowered damage spells tear through foes.',
+      trialDesc: 'Channel raw elemental power to destroy an indestructible arcane construct.',
+      trialType: 'skill', trialDC: 14, trialStat: 'INT',
+      abilities: ['Sculpt Spells (allies auto-save vs your evocations)', 'Empowered Evocation (+INT mod to damage spells)'],
+      bonuses: { empoweredEvocation: true } },
+    { name: 'Abjurer', color: '#4060c0', desc: 'Protective ward master. Arcane ward absorbs damage, shields are stronger.',
+      trialDesc: 'Withstand a barrage of forbidden magic using only your protective wards.',
+      trialType: 'skill', trialDC: 14, trialStat: 'INT',
+      abilities: ['Arcane Ward (absorbs damage = 2x wizard level)', 'Improved Abjuration (+prof to dispel checks)'],
+      bonuses: { arcaneWard: true, tempShield: 10 } },
+  ],
+  Cleric: [
+    { name: 'Life Domain', color: '#f0e060', desc: 'Supreme healer blessed by the divine. Enhanced healing restores the fallen.',
+      trialDesc: 'Save a dying celestial spirit by channeling pure healing energy.',
+      trialType: 'skill', trialDC: 13, trialStat: 'WIS',
+      abilities: ['Disciple of Life (+2+spell level to healing)', 'Preserve Life (mass heal, 1/rest)'],
+      bonuses: { healingBonus: 3, preserveLife: true } },
+    { name: 'War Domain', color: '#c0a030', desc: 'Holy warrior of the gods. Martial prowess backed by divine might.',
+      trialDesc: 'Defeat a champion of a rival war god in single combat.',
+      trialType: 'combat', trialEnemy: 'War Priest',
+      abilities: ['War Priest (bonus attack after Attack action)', 'Guided Strike (+10 to one attack roll, 1/rest)'],
+      bonuses: { warPriest: true, guidedStrike: true } },
+  ],
+  Ranger: [
+    { name: 'Beast Master', color: '#50b050', desc: 'Bond with a primal companion. Your animal ally fights alongside you.',
+      trialDesc: 'Calm and bond with a ferocious dire wolf in the wilds.',
+      trialType: 'skill', trialDC: 14, trialStat: 'WIS',
+      abilities: ['Primal Companion (dire wolf fights with you)', 'Bestial Fury (companion attacks twice)'],
+      bonuses: { beastCompanion: { name: 'Dire Wolf', hp: 20, maxHp: 20, ac: 13, attacks: [{name:'Bite',bonus:4,damage:[2,6],damageBonus:2}], color: '#709070', symbol: 'W' } } },
+    { name: 'Gloom Stalker', color: '#305030', desc: 'Invisible in darkness. Ambush predator with devastating first strikes.',
+      trialDesc: 'Navigate a pitch-black labyrinth and eliminate shadow lurkers.',
+      trialType: 'combat', trialEnemy: 'Shadow Lurker',
+      abilities: ['Dread Ambusher (+d8 damage on first attack each combat)', 'Umbral Sight (invisible in darkness to darkvision)'],
+      bonuses: { dreadAmbush: [1,8], initiative: 3 } },
+  ],
+  Bard: [
+    { name: 'College of Valor', color: '#d080e0', desc: 'Warrior poet who inspires through martial deeds. Medium armor and extra attacks.',
+      trialDesc: 'Compose a battle hymn while fighting off waves of enemies.',
+      trialType: 'combat', trialEnemy: 'Bardic Challenger',
+      abilities: ['Combat Inspiration (allies add insp. to damage/AC)', 'Extra Attack'],
+      bonuses: { maxHp: 6, extraAttack: true } },
+    { name: 'College of Lore', color: '#c060c0', desc: 'Master of knowledge and cutting wit. Expertise and the sharpest tongue.',
+      trialDesc: 'Win a riddle contest against an ancient sphinx.',
+      trialType: 'skill', trialDC: 14, trialStat: 'CHA',
+      abilities: ['Cutting Words (subtract d6 from enemy rolls)', 'Additional Expertise (2 more skill proficiencies)'],
+      bonuses: { cuttingWords: true } },
+  ],
+  Paladin: [
+    { name: 'Oath of Vengeance', color: '#e0c030', desc: 'Relentless avenger who hunts the wicked. Vow of enmity marks your prey.',
+      trialDesc: 'Swear an oath and hunt down a fleeing fiend through the dungeon.',
+      trialType: 'combat', trialEnemy: 'Fleeing Fiend',
+      abilities: ['Vow of Enmity (advantage vs one foe, 1/rest)', 'Relentless Avenger (bonus move after opportunity attack)'],
+      bonuses: { vowOfEnmity: true } },
+    { name: 'Oath of Devotion', color: '#f0e870', desc: 'Paragon of virtue. Sacred weapon glows with radiant power, turns the unholy.',
+      trialDesc: 'Purify a corrupted holy relic by channeling unwavering devotion.',
+      trialType: 'skill', trialDC: 13, trialStat: 'CHA',
+      abilities: ['Sacred Weapon (+CHA to attack rolls for 1 combat)', 'Turn the Unholy (frighten undead/fiends)'],
+      bonuses: { sacredWeapon: true, turnUnholy: true } },
+  ],
+  Warlock: [
+    { name: 'Fiend Pact', color: '#8050b0', desc: 'Pact with a fiend grants hellfire and vitality. Temp HP on kills, fire spells.',
+      trialDesc: 'Bargain with a demon lord and survive a trial of hellfire.',
+      trialType: 'skill', trialDC: 15, trialStat: 'CHA',
+      abilities: ["Dark One's Blessing (gain temp HP = CHA mod + level on kill)", 'Hellfire (fire spells deal +CHA mod damage)'],
+      bonuses: { darkBlessing: true, fireBonus: true } },
+    { name: 'Great Old One', color: '#5040a0', desc: 'Pact with an alien entity grants psychic power. Telepathy and mind blasts.',
+      trialDesc: 'Survive psychic contact with an eldritch entity without losing your mind.',
+      trialType: 'skill', trialDC: 15, trialStat: 'WIS',
+      abilities: ['Awakened Mind (telepathy 30ft)', 'Mind Blast (bonus action d8 psychic damage, WIS save or stunned)'],
+      bonuses: { mindBlast: [1,8], telepathy: true } },
+  ],
+  Barbarian: [
+    { name: 'Berserker', color: '#b04820', desc: 'Unstoppable frenzy fuels your rage. Extra attacks and immunity to fear.',
+      trialDesc: 'Survive a gauntlet of relentless foes while in a berserker trance.',
+      trialType: 'combat', trialEnemy: 'Berserker Champion',
+      abilities: ['Frenzy (bonus attack while raging)', 'Mindless Rage (immune to charm/frighten while raging)'],
+      bonuses: { frenzy: true, fearImmune: true } },
+    { name: 'Totem Warrior', color: '#906030', desc: 'Spirit totem grants primal power. Bear totem resists all damage, wolf grants pack tactics.',
+      trialDesc: 'Complete a spirit quest to bond with your totem animal.',
+      trialType: 'skill', trialDC: 13, trialStat: 'CON',
+      abilities: ['Bear Totem (resist ALL damage while raging)', 'Wolf Spirit (allies have advantage vs enemies near you)'],
+      bonuses: { bearTotem: true, resistAll: true } },
+  ],
+  Monk: [
+    { name: 'Way of the Open Hand', color: '#60b0d0', desc: 'Flurry of blows can stun, push, or knock prone. Supreme martial technique.',
+      trialDesc: 'Defeat a grandmaster in unarmed combat using only your fists.',
+      trialType: 'combat', trialEnemy: 'Grandmaster Monk',
+      abilities: ['Open Hand Technique (flurry can knock prone/push/prevent reactions)', 'Wholeness of Body (heal 3x monk level, 1/rest)'],
+      bonuses: { openHandTechnique: true, wholenessOfBody: true } },
+    { name: 'Way of Shadow', color: '#404060', desc: 'Shadow step through darkness. Strike unseen, vanish without trace.',
+      trialDesc: 'Navigate a shadow realm and defeat your own dark reflection.',
+      trialType: 'combat', trialEnemy: 'Shadow Self',
+      abilities: ['Shadow Step (teleport 60ft between shadows, advantage on next attack)', 'Shadow Arts (cast Darkness, 2 ki)'],
+      bonuses: { shadowStep: true, shadowArts: true } },
+  ],
+  Druid: [
+    { name: 'Circle of the Moon', color: '#509050', desc: 'Enhanced wild shape for combat. Transform into powerful beasts mid-fight.',
+      trialDesc: 'Survive in wild shape form against a pack of dire beasts.',
+      trialType: 'combat', trialEnemy: 'Alpha Dire Bear',
+      abilities: ['Combat Wild Shape (transform as bonus action)', 'Primal Strike (wild shape attacks count as magical)'],
+      bonuses: { combatWildShape: true, wildShapeHp: 20 } },
+    { name: 'Circle of the Land', color: '#308030', desc: 'Nature magic recovery and an extra cantrip. Deep connection to the land.',
+      trialDesc: 'Commune with an ancient grove and channel its primordial energy.',
+      trialType: 'skill', trialDC: 13, trialStat: 'WIS',
+      abilities: ['Natural Recovery (regain spell slots on short rest)', 'Bonus Cantrip (Produce Flame enhanced)'],
+      bonuses: { naturalRecovery: true, bonusSpellSlots: 2 } },
+  ],
+  Sorcerer: [
+    { name: 'Draconic Bloodline', color: '#e05090', desc: 'Dragon blood grants wings, extra HP, and elemental affinity.',
+      trialDesc: 'Awaken the dragon blood within by surviving a draconic crucible.',
+      trialType: 'skill', trialDC: 14, trialStat: 'CHA',
+      abilities: ['Draconic Resilience (+1 HP per level, natural AC 13)', 'Elemental Affinity (+CHA mod to element damage)'],
+      bonuses: { maxHp: 8, naturalAC: 13, elementalAffinity: true } },
+    { name: 'Wild Magic', color: '#d040a0', desc: 'Chaos magic surges through you. Wild surges can help or harm unpredictably.',
+      trialDesc: 'Survive a wild magic storm by riding the chaos.',
+      trialType: 'skill', trialDC: 14, trialStat: 'CHA',
+      abilities: ['Wild Magic Surge (random effect on spell cast)', 'Tides of Chaos (gain advantage, trigger surge)'],
+      bonuses: { wildMagicSurge: true, tidesOfChaos: true } },
+  ],
+};
+
+// Evolution trial enemies (for combat-type trials)
+const EVOLUTION_TRIAL_ENEMIES = {
+  'Arena Champion': { name: 'Arena Champion', hp: 40, ac: 16, str: 16, dex: 14, con: 15, wis: 12, xp: 200,
+    attacks: [{name:'Greatsword',bonus:6,damage:[2,6],damageBonus:3}], color: '#d04040', symbol: 'A', boss: false },
+  'War Strategist': { name: 'War Strategist', hp: 35, ac: 17, str: 14, dex: 16, con: 14, wis: 14, xp: 200,
+    attacks: [{name:'Tactical Blade',bonus:6,damage:[1,8],damageBonus:3},{name:'Shield Bash',bonus:5,damage:[1,6],damageBonus:2}], color: '#c04040', symbol: 'S', boss: false },
+  'War Priest': { name: 'War Priest', hp: 45, ac: 18, str: 16, dex: 12, con: 14, wis: 16, xp: 200,
+    attacks: [{name:'Holy Mace',bonus:6,damage:[1,8],damageBonus:3}], color: '#c0a030', symbol: 'W', boss: false },
+  'Shadow Lurker': { name: 'Shadow Lurker', hp: 30, ac: 14, str: 12, dex: 18, con: 12, wis: 14, xp: 200,
+    attacks: [{name:'Shadow Strike',bonus:7,damage:[1,8],damageBonus:4}], color: '#305030', symbol: 'L', boss: false },
+  'Bardic Challenger': { name: 'Bardic Challenger', hp: 35, ac: 15, str: 14, dex: 16, con: 13, wis: 12, xp: 200,
+    attacks: [{name:'Rapier',bonus:6,damage:[1,8],damageBonus:3}], color: '#d080e0', symbol: 'B', boss: false },
+  'Fleeing Fiend': { name: 'Fleeing Fiend', hp: 42, ac: 15, str: 16, dex: 14, con: 16, wis: 12, xp: 250,
+    attacks: [{name:'Fiendish Claw',bonus:6,damage:[2,6],damageBonus:3}], color: '#a03030', symbol: 'F', boss: false },
+  'Berserker Champion': { name: 'Berserker Champion', hp: 50, ac: 13, str: 18, dex: 14, con: 16, wis: 10, xp: 200,
+    attacks: [{name:'Raging Axe',bonus:7,damage:[1,12],damageBonus:4}], color: '#b04820', symbol: 'B', boss: false },
+  'Grandmaster Monk': { name: 'Grandmaster Monk', hp: 35, ac: 17, str: 14, dex: 18, con: 14, wis: 16, xp: 200,
+    attacks: [{name:'Flurry of Fists',bonus:7,damage:[2,6],damageBonus:4}], color: '#60b0d0', symbol: 'M', boss: false },
+  'Shadow Self': { name: 'Shadow Self', hp: 32, ac: 16, str: 14, dex: 18, con: 12, wis: 14, xp: 200,
+    attacks: [{name:'Shadow Strike',bonus:7,damage:[1,8],damageBonus:4}], color: '#404060', symbol: 'S', boss: false },
+  'Alpha Dire Bear': { name: 'Alpha Dire Bear', hp: 55, ac: 14, str: 20, dex: 10, con: 18, wis: 13, xp: 250,
+    attacks: [{name:'Claws',bonus:7,damage:[2,8],damageBonus:5},{name:'Bite',bonus:7,damage:[1,10],damageBonus:5}], color: '#509050', symbol: 'B', boss: false },
+};
 
 // XP thresholds for leveling
 const XP_THRESHOLDS = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000];
@@ -1264,6 +1437,9 @@ function createCharacter() {
   player.exploredTiles = [[], [], [], [], []];
   player.companion = null; // recruited companion NPC
   player.companionsSeen = []; // track which NPCs have been encountered
+  player.evolution = null; // evolved subclass name (e.g., 'Champion', 'Assassin')
+  player.evolutionData = null; // full evolution path data (abilities, bonuses)
+  player.reputation = 0; // -100 (Despised) to +100 (Legendary)
 }
 
 function autoEquip() {
@@ -1275,6 +1451,28 @@ function autoEquip() {
     } else if (item.type === ITEM_TYPES.SHIELD && !player.equipped.shield) {
       player.equipped.shield = item.id;
     }
+  }
+}
+
+// ============================================================
+// REPUTATION SYSTEM
+// ============================================================
+function getRepTier(rep) {
+  if (rep <= -50) return { name: 'Despised', color: '#8b0000', shopMod: 1.5, desc: 'NPCs refuse aid. Prices +50%' };
+  if (rep <= -10) return { name: 'Mistrusted', color: '#c04040', shopMod: 1.2, desc: 'Prices +20%' };
+  if (rep <= 9) return { name: 'Unknown', color: '#888', shopMod: 1.0, desc: 'No reputation effects' };
+  if (rep <= 49) return { name: 'Respected', color: '#40a040', shopMod: 0.9, desc: 'Prices -10%' };
+  if (rep <= 89) return { name: 'Honored', color: '#ffd700', shopMod: 0.8, desc: 'Prices -20%, rare items available' };
+  return { name: 'Legendary', color: '#ff4500', shopMod: 0.7, desc: 'Prices -30%, legendary gear in shops' };
+}
+function changeRep(amount, reason) {
+  if (!player) return;
+  const old = player.reputation;
+  player.reputation = clamp(player.reputation + amount, -100, 100);
+  if (player.reputation !== old) {
+    const sign = amount > 0 ? '+' : '';
+    const color = amount > 0 ? '#ffd700' : '#c04040';
+    addFloatingText(canvasW / 2, canvasH / 2 - 60, `${sign}${amount} Rep`, color);
   }
 }
 
@@ -1326,6 +1524,31 @@ function calcDamage(critical) {
     const sneakDice = Math.ceil(player.level / 2);
     dmg += rollDice(sneakDice, 6);
   }
+  // Evolution bonuses
+  if (player.evolutionData?.bonuses) {
+    const eb = player.evolutionData.bonuses;
+    // Assassin poison damage on sneak attacks
+    if (eb.poisonDmg && player.class === 'Rogue') {
+      dmg += rollDice(eb.poisonDmg[0], eb.poisonDmg[1]);
+    }
+    // Evoker empowered evocation (applies to spell damage too via this path)
+    if (eb.empoweredEvocation) {
+      dmg += mod(player.stats.INT);
+    }
+    // Battle Master superiority dice (chance to add)
+    if (eb.superiorityDice && Math.random() < 0.4) {
+      const supDmg = rollDice(1, 8);
+      dmg += supDmg;
+    }
+    // Gloom Stalker dread ambush (first attack bonus)
+    if (eb.dreadAmbush && combatState && combatState.combatRound === 1) {
+      dmg += rollDice(eb.dreadAmbush[0], eb.dreadAmbush[1]);
+    }
+    // Berserker frenzy (bonus while raging)
+    if (eb.frenzy && player.rageActive) {
+      dmg += rollDice(1, 6);
+    }
+  }
   return Math.max(1, dmg);
 }
 
@@ -1338,7 +1561,7 @@ function getPassivePerception() {
 // DUNGEON GENERATION
 // ============================================================
 const TILE = { VOID: 0, WALL: 1, FLOOR: 2, DOOR: 3, STAIRS_DOWN: 4, STAIRS_UP: 5, CORRIDOR: 6 };
-const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start', BOSS: 'boss', SHOP: 'shop', NPC: 'npc' };
+const ROOM_TYPE = { COMBAT: 'combat', TREASURE: 'treasure', TRAP: 'trap', EMPTY: 'empty', SHRINE: 'shrine', STAIRS: 'stairs', START: 'start', BOSS: 'boss', SHOP: 'shop', NPC: 'npc', EVOLUTION_QUEST: 'evolution_quest' };
 const MAP_W = 48, MAP_H = 48;
 const TILE_SIZE = 24;
 
@@ -1421,6 +1644,14 @@ function generateFloor(floorNum) {
   const npcIdx = Math.floor(rooms.length / 3);
   if (rooms.length >= 6 && !rooms[npcIdx].type) {
     rooms[npcIdx].type = ROOM_TYPE.NPC;
+  }
+
+  // Evolution quest room: appears on floors 2+ (index 1+), one per floor, if player is level 3+ and not yet evolved
+  if (floorNum >= 1 && player && player.level >= 3 && !player.evolution) {
+    const evoIdx = Math.floor(rooms.length * 2 / 3);
+    if (rooms.length >= 7 && !rooms[evoIdx].type) {
+      rooms[evoIdx].type = ROOM_TYPE.EVOLUTION_QUEST;
+    }
   }
 
   // Assign remaining rooms
@@ -1547,6 +1778,10 @@ function generateFloor(floorNum) {
       for (const w of SHOP_ITEMS.weapons[weaponTier]) {
         if (Math.random() < 0.7) room.shopStock.push({ ...w, qty: 1 });
       }
+    } else if (room.type === ROOM_TYPE.EVOLUTION_QUEST) {
+      room.evolutionTrialComplete = false;
+      room.evolutionTrialStarted = false;
+      // The trial details are determined by player class at interaction time
     }
   }
 
@@ -1857,6 +2092,16 @@ function enterRoom(room) {
         SFX.click();
       }
       break;
+    case ROOM_TYPE.EVOLUTION_QUEST:
+      if (!room.evolutionTrialComplete && !player.evolution) {
+        const paths = EVOLUTION_PATHS[player.class];
+        if (paths) {
+          dungeonMessage = 'A mystical trial chamber pulses with power. Your class evolution awaits!';
+          dungeonMessageTimer = 3;
+          SFX.spell();
+        }
+      }
+      break;
   }
 }
 
@@ -1885,6 +2130,7 @@ function handleInteract(floor, room) {
     dungeonMessage = `Descended to Floor ${currentFloor + 1}`;
     dungeonMessageTimer = 2;
     SFX.stairs();
+    changeRep(5, 'Floor Cleared');
     saveGame();
   } else if (tile === TILE.STAIRS_DOWN && currentFloor === 4) {
     // Victory!
@@ -1926,6 +2172,7 @@ function handleInteract(floor, room) {
       dungeonMessageTimer = 2.5;
       SFX.heal();
       addFloatingText(canvasW/2, canvasH/2 - 40, 'FULLY RESTORED', '#44ff44');
+      changeRep(1, 'Shrine Offering');
       saveGame();
     }
 
@@ -1955,6 +2202,12 @@ function handleInteract(floor, room) {
       npcRoom = room;
       gameState = STATE.NPC_TALK;
       SFX.click();
+    }
+
+    if (room.type === ROOM_TYPE.EVOLUTION_QUEST && !room.evolutionTrialComplete && !player.evolution && player.level >= 3) {
+      evolutionRoom = room;
+      gameState = STATE.EVOLUTION;
+      SFX.spell();
     }
   }
 }
@@ -2229,6 +2482,12 @@ function renderDungeon(floor) {
       X.textAlign = 'center';
       X.fillText('? NPC ?', rx, ry);
     }
+    if (room.type === ROOM_TYPE.EVOLUTION_QUEST && !room.evolutionTrialComplete && isVisible(room.cx, room.cy)) {
+      X.fillStyle = '#ff66ff';
+      X.font = 'bold 12px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('* EVOLUTION *', rx, ry);
+    }
   }
 
   // Draw player
@@ -2357,11 +2616,14 @@ function renderUI() {
   X.fillStyle = '#ffd700';
   X.font = '11px Consolas, monospace';
   X.textAlign = 'left'; X.textBaseline = 'top';
-  X.fillText(`Lv ${player.level} ${player.class}`, barX + 4, infoY + 4);
+  X.fillText(`Lv ${player.level} ${player.evolution || player.class}`, barX + 4, infoY + 4);
   X.fillStyle = '#aaa';
   X.fillText(`XP: ${player.xp}/${XP_THRESHOLDS[player.level] || '---'}`, barX + 4, infoY + 18);
   X.fillStyle = '#ffd700';
   X.fillText(`Gold: ${player.gold}`, barX + 4, infoY + 32);
+  const repTier = getRepTier(player.reputation);
+  X.fillStyle = repTier.color;
+  X.fillText(`${repTier.name} (${player.reputation >= 0 ? '+' : ''}${player.reputation})`, barX + 4, infoY + 46);
 
   // Conditions
   if (player.conditions.length > 0) {
@@ -2511,7 +2773,11 @@ function startCombat(room) {
   if (enemies.length === 0) { room.cleared = true; return; }
 
   // Roll initiative
-  const playerInit = d20() + mod(player.stats.DEX);
+  let playerInit = d20() + mod(player.stats.DEX);
+  // Gloom Stalker initiative bonus
+  if (player.evolutionData?.bonuses?.initiative) {
+    playerInit += player.evolutionData.bonuses.initiative;
+  }
   const combatants = [];
   combatants.push({ type: 'player', initiative: playerInit, entity: player });
 
@@ -2647,11 +2913,15 @@ function playerAttack() {
   const weapon = getEquippedItem('weapon');
   const weaponName = weapon ? weapon.name : 'Fists';
 
-  if (roll === 20) {
+  // Champion improved critical: crit on 19-20
+  const critThreshold = (player.evolution === 'Champion' && player.evolutionData?.bonuses?.critRange) ? player.evolutionData.bonuses.critRange : 20;
+
+  if (roll >= critThreshold) {
     // Critical hit!
     const dmg = calcDamage(true);
     target.hp = Math.max(0, target.hp - dmg);
-    addCombatLog(`${player.name} attacks ${target.name} with ${weaponName}: NAT 20! CRITICAL HIT for ${dmg} damage!`);
+    const critLabel = roll === 20 ? 'NAT 20!' : `${roll} - IMPROVED CRITICAL!`;
+    addCombatLog(`${player.name} attacks ${target.name} with ${weaponName}: ${critLabel} CRITICAL HIT for ${dmg} damage!`);
     addFloatingText(canvasW/2, canvasH * 0.3, `CRIT! -${dmg}`, '#ff4444');
     SFX.crit();
     spawnParticles(canvasW/2, canvasH * 0.3, '#ff4444', 15);
@@ -2675,10 +2945,18 @@ function playerAttack() {
   if (target.hp <= 0) {
     addCombatLog(`${target.name} is defeated!`);
     addFloatingText(canvasW/2, canvasH * 0.3 - 20, 'DEFEATED!', '#ffd700');
+    // Fiend Pact: Dark One's Blessing - gain temp HP on kill
+    if (player.evolutionData?.bonuses?.darkBlessing) {
+      const tempHp = mod(player.stats.CHA) + player.level;
+      player.hp = Math.min(player.maxHp + tempHp, player.hp + tempHp);
+      addCombatLog(`Dark One's Blessing! +${tempHp} temp HP!`);
+      addFloatingText(canvasW/2, canvasH * 0.3 - 40, `+${tempHp} HP`, '#aa44ff');
+    }
   }
 
-  // Extra Attack (Fighter/Ranger level 5+)
-  if ((player.class === 'Fighter' || player.class === 'Ranger') && player.level >= 5 && !combatState._extraAttackUsed) {
+  // Extra Attack (Fighter/Ranger level 5+, Paladin level 5+, or College of Valor)
+  const hasEvoExtraAttack = player.evolutionData?.bonuses?.extraAttack;
+  if (((player.class === 'Fighter' || player.class === 'Ranger' || player.class === 'Paladin') && player.level >= 5 || hasEvoExtraAttack) && !combatState._extraAttackUsed) {
     combatState._extraAttackUsed = true;
     addCombatLog('Extra Attack!');
     setTimeout(() => playerAttack(), 200);
@@ -2822,7 +3100,11 @@ function playerCastSpell(spell) {
 
     case 'heal': {
       const healStat = spellData.healStat || 'WIS';
-      const heal = rollDice(spellData.healDice[0], spellData.healDice[1]) + Math.max(0, mod(player.stats[healStat]));
+      let heal = rollDice(spellData.healDice[0], spellData.healDice[1]) + Math.max(0, mod(player.stats[healStat]));
+      // Life Domain: Disciple of Life healing bonus
+      if (player.evolutionData?.bonuses?.healingBonus) {
+        heal += player.evolutionData.bonuses.healingBonus;
+      }
       player.hp = Math.min(player.maxHp, player.hp + heal);
       addCombatLog(`${player.name} casts ${spell}: healed ${heal} HP!`);
       addFloatingText(canvasW/2, canvasH * 0.6, `+${heal}`, '#44ff44');
@@ -2974,6 +3256,11 @@ function enemyTurn(enemy) {
       finalDmg = Math.floor(dmg / 2);
       addCombatLog('Uncanny Dodge: halved damage!');
     }
+    // Bear Totem: resist all damage while raging
+    if (player.evolutionData?.bonuses?.resistAll && player.rageActive) {
+      finalDmg = Math.floor(finalDmg / 2);
+      addCombatLog('Bear Totem: damage resisted!');
+    }
     player.hp = Math.max(0, player.hp - finalDmg);
     addCombatLog(`${enemy.name} uses ${attack.name}: NAT 20! CRIT for ${finalDmg} damage!`);
     addFloatingText(canvasW/2, canvasH * 0.65, `-${finalDmg}`, '#ff0000');
@@ -2986,6 +3273,11 @@ function enemyTurn(enemy) {
     // Fire resistance for Tiefling
     if (player.race === 'Tiefling' && attack.name.toLowerCase().includes('fire')) {
       dmg = Math.floor(dmg / 2);
+    }
+    // Bear Totem: resist all damage while raging
+    if (player.evolutionData?.bonuses?.resistAll && player.rageActive) {
+      dmg = Math.floor(dmg / 2);
+      addCombatLog('Bear Totem: damage resisted!');
     }
     player.hp = Math.max(0, player.hp - dmg);
     addCombatLog(`${enemy.name} uses ${attack.name}: ${totalRoll} vs AC ${ac} - HIT for ${dmg}!`);
@@ -3263,15 +3555,37 @@ function updateCombat(dt) {
   } else if (combatState.phase === 'victory') {
     renderCombatVictory(btnAreaY);
   } else if (combatState.phase === 'defeat') {
-    X.fillStyle = '#ff4444';
-    X.font = 'bold 24px Consolas, monospace';
-    X.textAlign = 'center';
-    X.fillText('DEFEATED', canvasW/2, btnAreaY + 20);
-    const bw = 160, bh = 40;
-    drawButton(canvasW/2 - bw/2, btnAreaY + 40, bw, bh, 'Main Menu', false, '#4a1a1a');
-    if (clickedInRect(canvasW/2 - bw/2, btnAreaY + 40, bw, bh)) {
-      SFX.click();
-      gameState = STATE.GAME_OVER;
+    if (combatState.isEvolutionTrial) {
+      // Evolution trial defeat: don't kill the player, just fail the trial
+      X.fillStyle = '#ff6644';
+      X.font = 'bold 24px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('TRIAL FAILED', canvasW/2, btnAreaY + 20);
+      X.fillStyle = '#aaa';
+      X.font = '13px Consolas, monospace';
+      X.fillText('You were not ready. The trial spares your life.', canvasW/2, btnAreaY + 45);
+      const bw = 160, bh = 40;
+      drawButton(canvasW/2 - bw/2, btnAreaY + 60, bw, bh, 'Continue', false, '#333');
+      if (clickedInRect(canvasW/2 - bw/2, btnAreaY + 60, bw, bh)) {
+        SFX.click();
+        player.hp = Math.max(1, Math.floor(player.maxHp * 0.25)); // Restore to 25% HP
+        combatState = null;
+        evolutionPhase = 'intro';
+        gameState = STATE.DUNGEON;
+        dungeonMessage = 'The trial spares you. Grow stronger and return.';
+        dungeonMessageTimer = 3;
+      }
+    } else {
+      X.fillStyle = '#ff4444';
+      X.font = 'bold 24px Consolas, monospace';
+      X.textAlign = 'center';
+      X.fillText('DEFEATED', canvasW/2, btnAreaY + 20);
+      const bw = 160, bh = 40;
+      drawButton(canvasW/2 - bw/2, btnAreaY + 40, bw, bh, 'Main Menu', false, '#4a1a1a');
+      if (clickedInRect(canvasW/2 - bw/2, btnAreaY + 40, bw, bh)) {
+        SFX.click();
+        gameState = STATE.GAME_OVER;
+      }
     }
   } else if (combatState.phase === 'flee_success') {
     combatState.turnDelay -= dt;
@@ -3471,6 +3785,10 @@ function renderCombatVictory(btnAreaY) {
       addFloatingText(canvasW/2, canvasH/2, `+${bonusItem.name}!`, RARITY_COLORS[bonusItem.rarity]);
     }
 
+    // Reputation: boss kills
+    if (wasBoss) changeRep(10, 'Boss Slain');
+    else changeRep(1, 'Enemy Defeated');
+
     // Drop gold
     const goldDrop = wasBoss ? rand(30 + currentFloor * 15, 60 + currentFloor * 25) : rand(2 + currentFloor * 3, 10 + currentFloor * 8);
     player.gold += goldDrop;
@@ -3479,9 +3797,27 @@ function renderCombatVictory(btnAreaY) {
     player.huntersMark = false;
     player.conditions = player.conditions.filter(c => c.type !== 'dodging');
 
+    // Check if this was an evolution trial combat
+    const wasEvolutionTrial = combatState.isEvolutionTrial;
+
+    // If evolution trial won, mark the room and set pending flag
+    if (wasEvolutionTrial && !player.evolution) {
+      if (evolutionRoom) {
+        evolutionRoom.evolutionTrialComplete = true;
+        evolutionRoom.cleared = true;
+      }
+      player._pendingEvolution = true;
+    }
+
     // Check level up
     if (player.level < 10 && player.xp >= XP_THRESHOLDS[player.level]) {
       gameState = STATE.LEVEL_UP;
+    } else if (player._pendingEvolution) {
+      // Evolution trial combat won - go to path selection
+      player._pendingEvolution = false;
+      evolutionTrialResult = { success: true };
+      evolutionPhase = 'trial_result';
+      gameState = STATE.EVOLUTION;
     } else {
       gameState = STATE.DUNGEON;
     }
@@ -3570,9 +3906,423 @@ function updateLevelUp() {
     // Check if still need to level up more
     if (player.level < 10 && player.xp >= XP_THRESHOLDS[player.level]) {
       // Keep showing level up
+    } else if (player._pendingEvolution) {
+      // Evolution trial was passed during combat, show evolution choice after level-up
+      player._pendingEvolution = false;
+      evolutionTrialResult = { success: true };
+      evolutionPhase = 'trial_result';
+      gameState = STATE.EVOLUTION;
     } else {
       gameState = STATE.DUNGEON;
     }
+  }
+}
+
+// ============================================================
+// CLASS EVOLUTION SCREEN
+// ============================================================
+let evolutionPhase = 'intro'; // 'intro', 'trial', 'trial_result', 'choose', 'complete'
+let evolutionTrialResult = null; // { success: bool, roll: num, dc: num }
+let evolutionScrollY = 0;
+
+function updateEvolution() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, canvasW, canvasH);
+
+  if (!evolutionRoom || player.evolution) {
+    gameState = STATE.DUNGEON;
+    return;
+  }
+
+  const cx = canvasW / 2;
+  const paths = EVOLUTION_PATHS[player.class];
+  if (!paths) { gameState = STATE.DUNGEON; return; }
+
+  if (evolutionPhase === 'intro') {
+    // Show evolution trial intro
+    X.fillStyle = '#ff66ff';
+    X.font = `bold ${isMobile ? 22 : 28}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText('CLASS EVOLUTION', cx, 60);
+
+    X.fillStyle = '#ccc';
+    X.font = `${isMobile ? 13 : 16}px Consolas, monospace`;
+    X.fillText(`Your ${player.class} has reached a turning point.`, cx, 100);
+    X.fillText('A mystical trial awaits to unlock your true potential.', cx, 125);
+
+    X.fillStyle = '#ffaa44';
+    X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+    X.fillText('Two paths lie before you:', cx, 165);
+
+    // Show both paths preview
+    const cardW = Math.min(canvasW - 40, 380);
+    const cardH = isMobile ? 70 : 80;
+
+    for (let i = 0; i < 2; i++) {
+      const path = paths[i];
+      const cardY = 190 + i * (cardH + 15);
+
+      X.fillStyle = '#1a1a2e';
+      X.fillRect(cx - cardW/2, cardY, cardW, cardH);
+      X.strokeStyle = path.color;
+      X.lineWidth = 2;
+      X.strokeRect(cx - cardW/2, cardY, cardW, cardH);
+
+      X.fillStyle = path.color;
+      X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+      X.textAlign = 'center';
+      X.fillText(path.name, cx, cardY + 20);
+
+      X.fillStyle = '#aaa';
+      X.font = `${isMobile ? 11 : 12}px Consolas, monospace`;
+      const descLines = wrapText(path.desc, cardW - 20, isMobile ? 11 : 12);
+      descLines.forEach((line, li) => {
+        X.fillText(line, cx, cardY + 38 + li * 15);
+      });
+    }
+
+    // Trial description
+    const trialY = 190 + 2 * (cardH + 15) + 15;
+    X.fillStyle = '#ff6666';
+    X.font = `bold ${isMobile ? 12 : 14}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText('The Trial:', cx, trialY);
+
+    X.fillStyle = '#ccc';
+    X.font = `${isMobile ? 11 : 13}px Consolas, monospace`;
+    // Use the first path's trial desc as preview (both are similar thematically)
+    const trialLines = wrapText(paths[0].trialDesc, canvasW - 60, isMobile ? 11 : 13);
+    trialLines.forEach((line, i) => {
+      X.fillText(line, cx, trialY + 20 + i * 16);
+    });
+
+    // Begin trial / Leave buttons
+    const btnW = isMobile ? 150 : 180;
+    const btnH = 42;
+    const btnY = canvasH - 110;
+
+    drawButton(cx - btnW - 10, btnY, btnW, btnH, 'Begin Trial', false, '#2a1a4a');
+    if (clickedInRect(cx - btnW - 10, btnY, btnW, btnH)) {
+      SFX.click();
+      startEvolutionTrial(paths);
+    }
+
+    drawButton(cx + 10, btnY, btnW, btnH, 'Not Yet', false, '#333');
+    if (clickedInRect(cx + 10, btnY, btnW, btnH)) {
+      SFX.click();
+      evolutionPhase = 'intro';
+      gameState = STATE.DUNGEON;
+    }
+
+  } else if (evolutionPhase === 'trial_result') {
+    // Show trial result
+    X.fillStyle = evolutionTrialResult.success ? '#44ff44' : '#ff4444';
+    X.font = `bold ${isMobile ? 24 : 30}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText(evolutionTrialResult.success ? 'TRIAL COMPLETE!' : 'TRIAL FAILED', cx, 80);
+
+    if (evolutionTrialResult.roll !== undefined) {
+      X.fillStyle = '#aaa';
+      X.font = `${isMobile ? 14 : 16}px Consolas, monospace`;
+      X.fillText(`Roll: ${evolutionTrialResult.roll} vs DC ${evolutionTrialResult.dc}`, cx, 120);
+    }
+
+    if (evolutionTrialResult.success) {
+      X.fillStyle = '#ccc';
+      X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
+      X.fillText('You have proven yourself worthy!', cx, 160);
+      X.fillText('Choose your evolution path:', cx, 185);
+
+      const btnW = isMobile ? 150 : 200;
+      const btnH = 45;
+      drawButton(cx - btnW/2, canvasH - 100, btnW, btnH, 'Choose Path', false, '#2a1a4a');
+      if (clickedInRect(cx - btnW/2, canvasH - 100, btnW, btnH)) {
+        SFX.click();
+        evolutionPhase = 'choose';
+        evolutionScrollY = 0;
+      }
+    } else {
+      X.fillStyle = '#ccc';
+      X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
+      X.fillText('The trial has bested you... for now.', cx, 160);
+      X.fillText('You may attempt again when you find another trial chamber.', cx, 185);
+
+      const btnW = isMobile ? 150 : 180;
+      const btnH = 42;
+      drawButton(cx - btnW/2, canvasH - 100, btnW, btnH, 'Continue', false, '#333');
+      if (clickedInRect(cx - btnW/2, canvasH - 100, btnW, btnH)) {
+        SFX.click();
+        evolutionPhase = 'intro';
+        gameState = STATE.DUNGEON;
+      }
+    }
+
+  } else if (evolutionPhase === 'choose') {
+    // Evolution path selection
+    X.fillStyle = '#ff66ff';
+    X.font = `bold ${isMobile ? 22 : 28}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText('CHOOSE YOUR PATH', cx, 50);
+
+    X.fillStyle = '#aaa';
+    X.font = `${isMobile ? 12 : 14}px Consolas, monospace`;
+    X.fillText(`${player.class} Evolution`, cx, 75);
+
+    const cardW = Math.min(canvasW - 30, 400);
+    const cardH = isMobile ? 180 : 200;
+
+    for (let i = 0; i < 2; i++) {
+      const path = paths[i];
+      const cardY = 95 + i * (cardH + 20);
+
+      // Card background
+      X.fillStyle = '#1a1a2e';
+      X.fillRect(cx - cardW/2, cardY, cardW, cardH);
+      X.strokeStyle = path.color;
+      X.lineWidth = 2;
+      X.strokeRect(cx - cardW/2, cardY, cardW, cardH);
+
+      // Path name
+      X.fillStyle = path.color;
+      X.font = `bold ${isMobile ? 16 : 20}px Consolas, monospace`;
+      X.textAlign = 'center';
+      X.fillText(path.name, cx, cardY + 25);
+
+      // Description
+      X.fillStyle = '#ccc';
+      X.font = `${isMobile ? 11 : 12}px Consolas, monospace`;
+      const descLines = wrapText(path.desc, cardW - 20, isMobile ? 11 : 12);
+      descLines.forEach((line, li) => {
+        X.fillText(line, cx, cardY + 45 + li * 15);
+      });
+
+      // Abilities
+      const abY = cardY + 45 + descLines.length * 15 + 10;
+      X.fillStyle = '#ffaa44';
+      X.font = `bold ${isMobile ? 11 : 12}px Consolas, monospace`;
+      X.fillText('Abilities:', cx, abY);
+
+      X.fillStyle = '#8f8';
+      X.font = `${isMobile ? 10 : 11}px Consolas, monospace`;
+      path.abilities.forEach((ab, ai) => {
+        const abLines = wrapText(ab, cardW - 30, isMobile ? 10 : 11);
+        abLines.forEach((line, li) => {
+          X.fillText(line, cx, abY + 16 + ai * 30 + li * 13);
+        });
+      });
+
+      // Choose button inside card
+      const btnW = isMobile ? 100 : 120;
+      const btnH = 32;
+      const btnX = cx - btnW/2;
+      const btnY = cardY + cardH - btnH - 8;
+
+      drawButton(btnX, btnY, btnW, btnH, `Evolve`, false, path.color.replace('#', '#2a'));
+      if (clickedInRect(btnX, btnY, btnW, btnH)) {
+        SFX.levelUp();
+        applyEvolution(path);
+        evolutionPhase = 'complete';
+      }
+    }
+
+  } else if (evolutionPhase === 'complete') {
+    // Evolution complete screen
+    const evoData = player.evolutionData;
+
+    X.fillStyle = '#ffd700';
+    X.font = `bold ${isMobile ? 26 : 34}px Consolas, monospace`;
+    X.textAlign = 'center';
+    X.fillText('EVOLVED!', cx, 70);
+
+    X.fillStyle = evoData.color || '#ff66ff';
+    X.font = `bold ${isMobile ? 20 : 26}px Consolas, monospace`;
+    X.fillText(`${player.class} -> ${player.evolution}`, cx, 115);
+
+    X.fillStyle = '#ccc';
+    X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
+    const descLines = wrapText(evoData.desc || '', canvasW - 60, isMobile ? 13 : 15);
+    descLines.forEach((line, i) => {
+      X.fillText(line, cx, 150 + i * 20);
+    });
+
+    const abStartY = 150 + descLines.length * 20 + 20;
+    X.fillStyle = '#ffaa44';
+    X.font = `bold ${isMobile ? 14 : 16}px Consolas, monospace`;
+    X.fillText('New Abilities:', cx, abStartY);
+
+    X.fillStyle = '#44ff88';
+    X.font = `${isMobile ? 12 : 14}px Consolas, monospace`;
+    (evoData.abilities || []).forEach((ab, i) => {
+      const abLines = wrapText(ab, canvasW - 60, isMobile ? 12 : 14);
+      abLines.forEach((line, li) => {
+        X.fillText(line, cx, abStartY + 25 + i * 40 + li * 18);
+      });
+    });
+
+    // Spawn particles
+    if (Math.random() < 0.3) {
+      for (let i = 0; i < 3; i++) {
+        particles.push({
+          x: cx + rand(-100, 100), y: rand(50, canvasH - 100),
+          vx: rand(-30, 30), vy: rand(-60, -20),
+          life: 1.5, maxLife: 1.5,
+          color: evoData.color || '#ff66ff', size: rand(2, 5)
+        });
+      }
+    }
+
+    const btnW = isMobile ? 160 : 200;
+    const btnH = 45;
+    drawButton(cx - btnW/2, canvasH - 100, btnW, btnH, 'Continue', false, '#2a4a2a');
+    if (clickedInRect(cx - btnW/2, canvasH - 100, btnW, btnH)) {
+      SFX.click();
+      evolutionPhase = 'intro';
+      evolutionRoom = null;
+      gameState = STATE.DUNGEON;
+      saveGame();
+    }
+  }
+}
+
+function startEvolutionTrial(paths) {
+  // Determine trial type from paths: use the first path that has a combat trial, or default to skill
+  // For simplicity, run one trial that qualifies for both paths
+  const combatPath = paths.find(p => p.trialType === 'combat');
+  const skillPath = paths.find(p => p.trialType === 'skill');
+
+  if (combatPath && Math.random() < 0.5) {
+    // Combat trial: start a special combat
+    const enemyName = combatPath.trialEnemy;
+    const template = EVOLUTION_TRIAL_ENEMIES[enemyName];
+    if (template) {
+      const enemy = {
+        ...deepClone(template),
+        maxHp: template.hp,
+        id: Math.random().toString(36).substr(2, 9),
+        conditions: [],
+        px: 0, py: 0,
+      };
+      enemy.hp = enemy.maxHp;
+
+      // Create a temporary room for the trial combat
+      evolutionRoom.enemies = [enemy];
+      evolutionRoom.evolutionTrialStarted = true;
+
+      // Start combat; on victory we'll check for evolution
+      combatState = null;
+      startCombat(evolutionRoom);
+
+      // Mark that this combat is an evolution trial
+      if (combatState) {
+        combatState.isEvolutionTrial = true;
+      }
+    } else {
+      // Fallback to skill check
+      runEvolutionSkillTrial(skillPath || paths[0]);
+    }
+  } else if (skillPath) {
+    // Skill check trial
+    runEvolutionSkillTrial(skillPath);
+  } else {
+    // Fallback: always run combat
+    const enemyName = combatPath.trialEnemy;
+    const template = EVOLUTION_TRIAL_ENEMIES[enemyName];
+    if (template) {
+      const enemy = {
+        ...deepClone(template),
+        maxHp: template.hp,
+        id: Math.random().toString(36).substr(2, 9),
+        conditions: [],
+        px: 0, py: 0,
+      };
+      enemy.hp = enemy.maxHp;
+      evolutionRoom.enemies = [enemy];
+      evolutionRoom.evolutionTrialStarted = true;
+      combatState = null;
+      startCombat(evolutionRoom);
+      if (combatState) {
+        combatState.isEvolutionTrial = true;
+      }
+    }
+  }
+}
+
+function runEvolutionSkillTrial(path) {
+  const stat = path.trialStat || 'INT';
+  const dc = path.trialDC || 14;
+  const roll = d20();
+  const bonus = mod(player.stats[stat]) + PROF_BONUS[player.level];
+  const total = roll + bonus;
+  const success = total >= dc;
+
+  evolutionTrialResult = { success, roll: total, dc, stat };
+
+  if (success) {
+    evolutionRoom.evolutionTrialComplete = true;
+    evolutionRoom.cleared = true;
+    addFloatingText(canvasW/2, canvasH/2, 'TRIAL PASSED!', '#44ff44');
+  } else {
+    // Trial failed - player can try again later at another chamber
+    addFloatingText(canvasW/2, canvasH/2, 'TRIAL FAILED', '#ff4444');
+  }
+
+  evolutionPhase = 'trial_result';
+}
+
+function applyEvolution(path) {
+  player.evolution = path.name;
+  player.evolutionData = {
+    name: path.name,
+    color: path.color,
+    desc: path.desc,
+    abilities: path.abilities,
+    bonuses: deepClone(path.bonuses),
+  };
+
+  // Apply stat bonuses
+  const b = path.bonuses;
+  if (b.maxHp) player.maxHp += b.maxHp;
+  if (b.maxHp) player.hp = Math.min(player.hp + b.maxHp, player.maxHp);
+  if (b.gainSpells) {
+    b.gainSpells.forEach(sp => { if (!player.spells.includes(sp)) player.spells.push(sp); });
+  }
+  if (b.maxSpellSlots) {
+    player.maxSpellSlots = Math.max(player.maxSpellSlots, b.maxSpellSlots);
+    player.spellSlots = Math.max(player.spellSlots, b.maxSpellSlots);
+  }
+  if (b.bonusSpellSlots) {
+    player.maxSpellSlots += b.bonusSpellSlots;
+    player.spellSlots += b.bonusSpellSlots;
+  }
+  if (b.tempShield) {
+    player.tempAc += 1;
+  }
+  if (b.naturalAC) {
+    // Only apply if better than current armor
+    const currentAC = calcAC();
+    if (b.naturalAC > currentAC) player.tempAc += (b.naturalAC - currentAC);
+  }
+  if (b.initiative) {
+    // Stored in evolutionData for combat use
+  }
+  if (b.beastCompanion && !player.companion) {
+    player.companion = deepClone(b.beastCompanion);
+  }
+
+  // Mark the room complete
+  if (evolutionRoom) {
+    evolutionRoom.evolutionTrialComplete = true;
+    evolutionRoom.cleared = true;
+  }
+
+  // Emit particles
+  for (let i = 0; i < 20; i++) {
+    particles.push({
+      x: canvasW/2 + rand(-80, 80), y: canvasH/2 + rand(-80, 80),
+      vx: rand(-50, 50), vy: rand(-80, -20),
+      life: 2, maxLife: 2,
+      color: path.color, size: rand(2, 6)
+    });
   }
 }
 
@@ -3775,7 +4525,7 @@ function updateCharSheet() {
 
   X.fillStyle = race.color;
   X.font = `${isMobile ? 13 : 15}px Consolas, monospace`;
-  X.fillText(`${player.race} ${player.class} | Level ${player.level}`, cx, 52);
+  X.fillText(`${player.race} ${player.evolution || player.class} | Level ${player.level}`, cx, 52);
 
   // Stats
   let y = 75;
@@ -3821,6 +4571,7 @@ function updateCharSheet() {
     { label: 'Prof Bonus', value: `+${PROF_BONUS[player.level]}`, color: '#aaa' },
     { label: 'XP', value: `${player.xp}/${XP_THRESHOLDS[player.level] || 'MAX'}`, color: '#ffd700' },
     { label: 'Initiative', value: `+${mod(player.stats.DEX)}`, color: '#aaa' },
+    { label: 'Reputation', value: `${getRepTier(player.reputation).name} (${player.reputation})`, color: getRepTier(player.reputation).color },
   ];
 
   const infoColW = panelW / 3;
@@ -3882,6 +4633,24 @@ function updateCharSheet() {
   for (const [lv, feat] of Object.entries(player.features)) {
     X.fillText(`Lv${lv}: ${feat}`, panelX + 5, featY);
     featY += 14;
+  }
+
+  // Evolution abilities
+  if (player.evolution && player.evolutionData) {
+    featY += 6;
+    X.fillStyle = player.evolutionData.color || '#ff66ff';
+    X.font = 'bold 12px Consolas, monospace';
+    X.fillText(`${player.evolution} Abilities:`, panelX + 5, featY);
+    X.fillStyle = '#8f8';
+    X.font = '11px Consolas, monospace';
+    featY += 16;
+    (player.evolutionData.abilities || []).forEach(ab => {
+      const abLines = wrapText(ab, panelW - 15, 11);
+      abLines.forEach(line => {
+        X.fillText(line, panelX + 5, featY);
+        featY += 14;
+      });
+    });
   }
 
   // Spells
@@ -4178,7 +4947,9 @@ function updateShop() {
     const y = startY + i * (itemH + gap) + shopScrollY;
     if (y + itemH < startY - 5 || y > canvasH + 5) return;
 
-    const canBuy = player.gold >= item.cost && item.qty > 0;
+    const repMod = getRepTier(player.reputation).shopMod;
+    const adjCost = Math.round(item.cost * repMod);
+    const canBuy = player.gold >= adjCost && item.qty > 0;
     const isHov = isInRect(mouseX, mouseY, panelX, y, panelW, itemH);
 
     // Card background
@@ -4194,10 +4965,11 @@ function updateShop() {
     X.textAlign = 'left';
     X.fillText(item.name, panelX + 10, y + 18);
 
-    // Cost and qty
+    // Cost and qty (reputation-adjusted price)
     X.fillStyle = canBuy ? '#ffd700' : '#555';
     X.font = `${isMobile ? 10 : 12}px Consolas, monospace`;
-    X.fillText(`${item.cost}g | Qty: ${item.qty}`, panelX + 10, y + 35);
+    const priceLabel = repMod !== 1.0 ? `${adjCost}g (was ${item.cost}g)` : `${adjCost}g`;
+    X.fillText(`${priceLabel} | Qty: ${item.qty}`, panelX + 10, y + 35);
 
     // Buy button
     if (canBuy) {
@@ -4207,7 +4979,7 @@ function updateShop() {
       drawButton(buyX, buyY, buyW, buyH, 'BUY', false, '#2a5a2a');
       if (clickedInRect(buyX, buyY, buyW, buyH)) {
         SFX.chest();
-        player.gold -= item.cost;
+        player.gold -= adjCost;
         item.qty--;
 
         // Create and add item to inventory
@@ -4424,6 +5196,9 @@ function loadGame() {
       return;
     }
     player = data.player;
+    if (player.reputation === undefined) player.reputation = 0;
+    if (player.evolution === undefined) player.evolution = null;
+    if (player.evolutionData === undefined) player.evolutionData = null;
     dungeon = data.dungeon;
     currentFloor = data.currentFloor;
     gameState = STATE.DUNGEON;
@@ -4458,6 +5233,7 @@ function gameLoop(timestamp) {
     case STATE.LEVEL_UP:     updateLevelUp(); break;
     case STATE.SHOP:         updateShop(); break;
     case STATE.NPC_TALK:     updateNpcTalk(); break;
+    case STATE.EVOLUTION:    updateEvolution(); break;
   }
 
   updateParticles(dt);
