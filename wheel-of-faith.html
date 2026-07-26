@@ -1485,6 +1485,9 @@ function drawSpin(){
     X.font='bold '+fontSize+'px "Segoe UI",Arial,sans-serif';
     X.textAlign='center';X.textBaseline='middle';
 
+    // Arc chord at text radius — compute BEFORE using it
+    const arcChord=2*textR*Math.sin(Math.min(arcSize,Math.PI)/2);
+
     // Skip text for segments too small to read (< 3px arc width)
     if(arcChord<3&&!(spin.phase==='landed'&&i===spin.landedIdx)){X.restore();X.restore();continue;}
 
@@ -1498,9 +1501,15 @@ function drawSpin(){
     }
 
     const label=items[i];
-    // Cap text width to actual arc chord at text radius to prevent visual overlap
-    const arcChord=2*textR*Math.sin(Math.min(arcSize,Math.PI)/2);
-    const maxTextW=Math.min(wr*0.48,arcChord*0.85)*Math.min(1,arcSize/(Math.PI*2/items.length));
+    // Cap text width strictly to arc chord to prevent visual overlap
+    const maxTextW=Math.min(wr*0.42,arcChord*0.75);
+    // Further reduce fontSize if text still won't fit in the arc
+    let adjustedFontSize=fontSize;
+    X.font='bold '+adjustedFontSize+'px "Segoe UI",Arial,sans-serif';
+    if(X.measureText(label).width>maxTextW&&adjustedFontSize>3){
+      adjustedFontSize=Math.max(3,Math.floor(adjustedFontSize*maxTextW/X.measureText(label).width));
+      X.font='bold '+adjustedFontSize+'px "Segoe UI",Arial,sans-serif';
+    }
     if(X.measureText(label).width<=maxTextW){
       X.fillText(label,0,0);
     }else{
@@ -1511,10 +1520,11 @@ function drawSpin(){
         const mid=Math.ceil(words.length/2);
         line1=words.slice(0,mid).join(' ');
         line2=words.slice(mid).join(' ');
+        const lineH=adjustedFontSize*0.65;
         // Check if wrapped lines fit
-        if(X.measureText(line1).width<=maxTextW*1.1&&X.measureText(line2).width<=maxTextW*1.1){
-          X.fillText(line1,0,-fontSize*0.7);
-          X.fillText(line2,0,fontSize*0.7);
+        if(X.measureText(line1).width<=maxTextW&&X.measureText(line2).width<=maxTextW){
+          X.fillText(line1,0,-lineH);
+          X.fillText(line2,0,lineH);
         }else{
           // Still too long — truncate
           let trunc=label;
