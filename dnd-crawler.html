@@ -296,6 +296,18 @@ const MONSTERS = {
   'Shadow Dragon':   { name: 'Shadow Dragon', hp: 180, ac: 18, attacks: [{name:'Shadow Bite',bonus:10,damage:[2,10],damageBonus:6},{name:'Shadow Breath',bonus:9,damage:[4,8],damageBonus:0},{name:'Tail Lash',bonus:8,damage:[2,6],damageBonus:4}], xp: 5000, cr: 9, str:21,dex:14,con:19,int:14,wis:13,cha:17, color:'#1a0030', symbol:'D', size: 1.6, boss: true },
   'Lich Lord':       { name: 'Lich Lord', hp: 200, ac: 19, attacks: [{name:'Disintegrate',bonus:11,damage:[4,10],damageBonus:0},{name:'Paralyzing Touch',bonus:9,damage:[3,6],damageBonus:5},{name:'Eldritch Barrage',bonus:10,damage:[3,8],damageBonus:0}], xp: 7500, cr: 11, str:11,dex:16,con:16,int:20,wis:14,cha:16, color:'#30c040', symbol:'L', size: 1.1, undead: true, boss: true },
   'Ancient Wyrm':    { name: 'Ancient Wyrm', hp: 250, ac: 20, attacks: [{name:'Flame Bite',bonus:13,damage:[3,10],damageBonus:7},{name:'Dragon Breath',bonus:0,damage:[6,8],damageBonus:0,autoHit:true},{name:'Wing Buffet',bonus:10,damage:[2,8],damageBonus:5}], xp: 10000, cr: 13, str:23,dex:10,con:21,int:16,wis:15,cha:19, color:'#ff4020', symbol:'W', size: 1.8, boss: true },
+  // Faction War Bosses (expanded boss mechanics)
+  'Crown Alliance General': { name: 'Crown Alliance General', hp: 190, ac: 19, attacks: [{name:'Commander\'s Halberd',bonus:10,damage:[2,10],damageBonus:5},{name:'Shield Wall Slam',bonus:8,damage:[1,8],damageBonus:4}], xp: 5500, cr: 9, str:20,dex:12,con:18,int:15,wis:14,cha:17, color:'#c09030', symbol:'G', size: 1.4, boss: true, bossType: 'crown_general', phase2: false, summonedAdds: false,
+    phase2Attacks: [{name:'Commander\'s Halberd',bonus:11,damage:[2,10],damageBonus:6},{name:'Shield Wall Slam',bonus:9,damage:[1,8],damageBonus:5},{name:'Rally Cry',bonus:0,damage:[2,6],damageBonus:0,autoHit:true}],
+    phaseAbility: 'shield_wall', faction: 'crown_alliance' },
+  'Shadow Covenant Assassin': { name: 'Shadow Covenant Assassin', hp: 160, ac: 17, attacks: [{name:'Poison Daggers',bonus:11,damage:[2,6],damageBonus:5},{name:'Shadow Step Strike',bonus:10,damage:[2,8],damageBonus:4}], xp: 5500, cr: 9, str:14,dex:20,con:16,int:16,wis:15,cha:14, color:'#3a1a5a', symbol:'A', size: 1.2, boss: true, bossType: 'shadow_assassin', phase2: false, invisible: false, poisonStacks: 0,
+    phase2Attacks: [{name:'Poison Daggers',bonus:12,damage:[2,6],damageBonus:6},{name:'Backstab',bonus:13,damage:[3,8],damageBonus:7},{name:'Poison Cloud',bonus:0,damage:[3,6],damageBonus:0,autoHit:true}],
+    phaseAbility: 'invisibility', faction: 'shadow_covenant' },
+  'Free Peoples Champion': { name: 'Free Peoples Champion', hp: 220, ac: 18, attacks: [{name:'Warhammer of the People',bonus:11,damage:[2,8],damageBonus:5},{name:'Heroic Charge',bonus:9,damage:[2,10],damageBonus:4}], xp: 6500, cr: 10, str:22,dex:14,con:20,int:12,wis:13,cha:18, color:'#40a060', symbol:'C', size: 1.5, boss: true, bossType: 'free_champion', phase2: false, rageActive: false, rageRound: 0,
+    phase2Attacks: [{name:'Raging Warhammer',bonus:13,damage:[3,8],damageBonus:7},{name:'Berserker Slam',bonus:12,damage:[2,12],damageBonus:6},{name:'War Cry of Defiance',bonus:0,damage:[2,8],damageBonus:0,autoHit:true}],
+    phaseAbility: 'berserker_rage', faction: 'free_peoples' },
+  // Soldier add for Crown General
+  'Crown Soldier': { name: 'Crown Soldier', hp: 35, ac: 16, attacks: [{name:'Sword',bonus:5,damage:[1,8],damageBonus:3}], xp: 200, cr: 2, str:15,dex:12,con:14,int:10,wis:10,cha:10, color:'#c0a040', symbol:'s', size: 0.8, boss: false },
 };
 
 // Monsters by floor difficulty
@@ -440,6 +452,349 @@ const COMPANION_OPINIONS = {
   boss_victory: { Elara: +2, Aldric: +2, Grimjaw: +3, Lyra: +2, Theron: +2, Seraphina: +2 },
   companion_falls: { Elara: -3, Aldric: -3, Grimjaw: -2, Lyra: -3, Theron: -3, Seraphina: -3 },
 };
+
+// ============================================================
+// COMPANION CONFLICT SYSTEM
+// ============================================================
+// Personality trait axes — companions on opposite ends can clash
+const COMPANION_TRAITS = {
+  'Elara':     { traits: ['reckless','cunning','independent'], opposes: ['honorable','cautious','obedient'] },
+  'Aldric':    { traits: ['honorable','cautious','devout'], opposes: ['ruthless','reckless','deceitful'] },
+  'Grimjaw':   { traits: ['reckless','aggressive','direct'], opposes: ['cautious','diplomatic','scholarly'] },
+  'Lyra':      { traits: ['scholarly','cautious','curious'], opposes: ['reckless','aggressive','ignorant'] },
+  'Theron':    { traits: ['cautious','independent','pragmatic'], opposes: ['reckless','obedient','idealistic'] },
+  'Seraphina': { traits: ['honorable','devout','protective'], opposes: ['ruthless','deceitful','cowardly'] },
+};
+
+// Conflict scenarios — triggered when two companions with opposing traits are in the same squad
+const COMPANION_CONFLICTS = [
+  { trait: 'honorable', opposed: 'ruthless',
+    trigger: 'After the battle, the argument erupts over the treatment of a wounded enemy.',
+    sideA: { stance: 'Show mercy — honor demands it.', trait: 'honorable' },
+    sideB: { stance: 'Finish them — sentiment gets you killed.', trait: 'ruthless' },
+    compromise: 'Bind the enemy and leave them. Not killed, not freed.',
+    compA: null, compB: null }, // filled at runtime
+  { trait: 'cautious', opposed: 'reckless',
+    trigger: 'A heated disagreement over whether to scout ahead or charge the next room.',
+    sideA: { stance: 'We scout first. Rushing in is suicide.', trait: 'cautious' },
+    sideB: { stance: 'Waiting wastes time and lets them prepare.', trait: 'reckless' },
+    compromise: 'Send one scout, the rest stays ready to charge if needed.',
+    compA: null, compB: null },
+  { trait: 'devout', opposed: 'deceitful',
+    trigger: 'A shrine lies defiled. One wants to restore it; the other wants to search it for hidden loot.',
+    sideA: { stance: 'Restore the shrine. The gods watch.', trait: 'devout' },
+    sideB: { stance: 'The gods don\'t pay our bills. Check for gold.', trait: 'deceitful' },
+    compromise: 'Restore the shrine, then check behind it — reverently.',
+    compA: null, compB: null },
+  { trait: 'scholarly', opposed: 'aggressive',
+    trigger: 'An ancient mechanism is found. Study it or smash through?',
+    sideA: { stance: 'Let me study this. It could be invaluable.', trait: 'scholarly' },
+    sideB: { stance: 'We don\'t have time for books. Break it down.', trait: 'aggressive' },
+    compromise: 'Quick sketch of the mechanism, then carefully dismantle it.',
+    compA: null, compB: null },
+  { trait: 'independent', opposed: 'obedient',
+    trigger: 'The party leader gave an order. Not everyone agrees.',
+    sideA: { stance: 'I make my own calls. Orders be damned.', trait: 'independent' },
+    sideB: { stance: 'The leader spoke. We follow. That\'s how teams work.', trait: 'obedient' },
+    compromise: 'Follow the plan but with the freedom to adapt if it goes wrong.',
+    compA: null, compB: null },
+  { trait: 'protective', opposed: 'pragmatic',
+    trigger: 'A trapped corridor. One companion wants to shield everyone; the other says take the hit and move fast.',
+    sideA: { stance: 'I will not let anyone get hurt. We go slow.', trait: 'protective' },
+    sideB: { stance: 'We take the hit. Faster is safer overall.', trait: 'pragmatic' },
+    compromise: 'Shield the weakest party member, everyone else moves quick.',
+    compA: null, compB: null },
+];
+
+let conflictsThisFloor = 0; // max 1 per floor
+let pendingConflict = null; // { conflict, compA, compB } — set when triggered, resolved at campfire
+let conflictHistory = []; // track past conflicts for variety
+
+// Check if a conflict should trigger between squad members
+function checkCompanionConflict() {
+  if (!player || !player.squad || player.squad.length < 2) return false;
+  if (conflictsThisFloor >= 1) return false;
+  if (pendingConflict) return false;
+
+  // Gather all possible clashing pairs
+  const pairs = [];
+  for (let i = 0; i < player.squad.length; i++) {
+    for (let j = i + 1; j < player.squad.length; j++) {
+      const a = player.squad[i], b = player.squad[j];
+      const nameA = getCompShortName(a.name), nameB = getCompShortName(b.name);
+      const traitsA = COMPANION_TRAITS[nameA], traitsB = COMPANION_TRAITS[nameB];
+      if (!traitsA || !traitsB) continue;
+
+      // Check if any trait of A opposes any trait of B
+      for (const tA of traitsA.traits) {
+        if (traitsB.opposes.includes(tA)) {
+          for (const tB of traitsB.traits) {
+            if (traitsA.opposes.includes(tB)) {
+              pairs.push({ compA: a, compB: b, traitA: tA, traitB: tB });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (pairs.length === 0) return false;
+
+  // 30% chance per qualifying decision point
+  if (Math.random() > 0.30) return false;
+
+  const pair = pick(pairs);
+  // Find a matching conflict scenario
+  let conflict = COMPANION_CONFLICTS.find(c =>
+    (c.sideA.trait === pair.traitA && c.sideB.trait === pair.traitB) ||
+    (c.sideA.trait === pair.traitB && c.sideB.trait === pair.traitA)
+  );
+  if (!conflict) {
+    // Fallback generic conflict
+    conflict = pick(COMPANION_CONFLICTS);
+  }
+
+  // Assign companions to correct sides
+  const nameA = getCompShortName(pair.compA.name);
+  const traitsA = COMPANION_TRAITS[nameA];
+  let compForSideA, compForSideB;
+  if (traitsA.traits.includes(conflict.sideA.trait)) {
+    compForSideA = pair.compA; compForSideB = pair.compB;
+  } else {
+    compForSideA = pair.compB; compForSideB = pair.compA;
+  }
+
+  pendingConflict = {
+    conflict: deepClone(conflict),
+    compA: compForSideA,
+    compB: compForSideB,
+  };
+  conflictsThisFloor++;
+
+  // Notify player of the conflict
+  const shortA = compForSideA.name.split(' ')[0];
+  const shortB = compForSideB.name.split(' ')[0];
+  dungeonMessage = `${shortA} and ${shortB} are arguing! Resolve it at the campfire.`;
+  dungeonMessageTimer = 3;
+  addFloatingText(canvasW/2, canvasH/2 - 100, 'COMPANION CONFLICT!', '#ff6644');
+  return true;
+}
+
+// Resolve a companion conflict based on player choice
+function resolveConflict(choice) {
+  if (!pendingConflict) return;
+  const { compA, compB } = pendingConflict;
+
+  if (choice === 'sideA') {
+    // Player sided with compA
+    compA.loyalty = Math.min(100, compA.loyalty + 5);
+    compB.loyalty = Math.max(0, compB.loyalty - 12);
+    dungeonMessage = `${compA.name} is grateful. ${compB.name} is upset.`;
+    addFloatingText(canvasW/2 - 40, canvasH/2 - 60, `${getCompShortName(compA.name)}: +5 Loy`, '#44ff88');
+    addFloatingText(canvasW/2 + 40, canvasH/2 - 60, `${getCompShortName(compB.name)}: -12 Loy`, '#ff6644');
+  } else if (choice === 'sideB') {
+    // Player sided with compB
+    compB.loyalty = Math.min(100, compB.loyalty + 5);
+    compA.loyalty = Math.max(0, compA.loyalty - 12);
+    dungeonMessage = `${compB.name} is grateful. ${compA.name} is upset.`;
+    addFloatingText(canvasW/2 + 40, canvasH/2 - 60, `${getCompShortName(compB.name)}: +5 Loy`, '#44ff88');
+    addFloatingText(canvasW/2 - 40, canvasH/2 - 60, `${getCompShortName(compA.name)}: -12 Loy`, '#ff6644');
+  } else {
+    // Compromise — smaller penalty, no bonus
+    compA.loyalty = Math.max(0, compA.loyalty - 3);
+    compB.loyalty = Math.max(0, compB.loyalty - 3);
+    dungeonMessage = 'Both companions accept the compromise, grudgingly.';
+    addFloatingText(canvasW/2 - 40, canvasH/2 - 60, `${getCompShortName(compA.name)}: -3 Loy`, '#ffaa44');
+    addFloatingText(canvasW/2 + 40, canvasH/2 - 60, `${getCompShortName(compB.name)}: -3 Loy`, '#ffaa44');
+  }
+  dungeonMessageTimer = 3;
+
+  // Check if anyone threatens to leave or actually leaves
+  [compA, compB].forEach(comp => {
+    if (comp.loyalty <= 10) {
+      dungeonMessage = `${comp.name} has had enough and leaves the party!`;
+      dungeonMessageTimer = 3;
+      setTimeout(() => { player.squad = player.squad.filter(c => c !== comp); }, 100);
+    } else if (comp.loyalty <= 20) {
+      dungeonMessage += ` ${comp.name} is thinking of leaving...`;
+      dungeonMessageTimer = 3;
+    }
+  });
+
+  conflictHistory.push({ compA: compA.name, compB: compB.name, choice, floor: currentFloor });
+  pendingConflict = null;
+}
+
+// ============================================================
+// EXPANDED BOSS MECHANICS
+// ============================================================
+// Boss phase transition — called during enemy turn when boss HP drops below 50%
+function checkBossPhaseTransition(enemy) {
+  if (!enemy.boss || !enemy.bossType) return false;
+  if (enemy.phase2) return false;
+  if (enemy.hp > enemy.maxHp * 0.5) return false;
+
+  enemy.phase2 = true;
+
+  // Swap to phase 2 attacks
+  if (enemy.phase2Attacks) {
+    enemy.attacks = enemy.phase2Attacks;
+  }
+
+  // Phase-specific behavior
+  if (enemy.bossType === 'crown_general') {
+    // Shield Wall: +3 AC for the rest of the fight
+    enemy.ac += 3;
+    addCombatLog(`★ PHASE 2: ${enemy.name} raises a SHIELD WALL! AC increased to ${enemy.ac}!`);
+    addFloatingText(canvasW/2, canvasH * 0.3, 'SHIELD WALL!', '#c09030');
+    SFX.trap();
+  } else if (enemy.bossType === 'shadow_assassin') {
+    // Goes invisible — next attack is a backstab
+    enemy.invisible = true;
+    enemy.ac += 2; // harder to hit while invisible
+    addCombatLog(`★ PHASE 2: ${enemy.name} vanishes into shadow! INVISIBLE!`);
+    addFloatingText(canvasW/2, canvasH * 0.3, 'VANISHED!', '#3a1a5a');
+    SFX.spell();
+  } else if (enemy.bossType === 'free_champion') {
+    // Berserker Rage — damage bonus increases, gets extra attack
+    enemy.rageActive = true;
+    enemy.rageRound = combatState.combatRound;
+    // Heal 20% on rage activation
+    const healAmt = Math.floor(enemy.maxHp * 0.2);
+    enemy.hp = Math.min(enemy.maxHp, enemy.hp + healAmt);
+    addCombatLog(`★ PHASE 2: ${enemy.name} enters BERSERKER RAGE! Heals ${healAmt} HP!`);
+    addFloatingText(canvasW/2, canvasH * 0.3, 'BERSERKER RAGE!', '#40a060');
+    SFX.crit();
+  }
+
+  spawnParticles(canvasW/2, canvasH * 0.3, enemy.color, 20);
+  return true;
+}
+
+// Boss special abilities during their turn
+function bossSpecialAction(enemy) {
+  if (!enemy.boss || !enemy.bossType || !enemy.phase2) return false;
+
+  if (enemy.bossType === 'crown_general' && !enemy.summonedAdds) {
+    // Summon 2 soldier adds (once per fight)
+    enemy.summonedAdds = true;
+    const soldierTemplate = MONSTERS['Crown Soldier'];
+    for (let i = 0; i < 2; i++) {
+      const soldier = {
+        ...deepClone(soldierTemplate),
+        maxHp: soldierTemplate.hp,
+        hp: soldierTemplate.hp,
+        id: Math.random().toString(36).substr(2, 9),
+        conditions: [],
+        px: 0, py: 0,
+      };
+      const init = d20() + 1;
+      combatState.combatants.push({ type: 'enemy', initiative: init, entity: soldier });
+    }
+    addCombatLog(`${enemy.name} calls reinforcements! 2 Crown Soldiers join the fight!`);
+    addFloatingText(canvasW/2, canvasH * 0.4, 'REINFORCEMENTS!', '#c0a040');
+    SFX.door();
+    return true;
+  }
+
+  if (enemy.bossType === 'shadow_assassin' && enemy.invisible) {
+    // Backstab from stealth — guaranteed hit with bonus damage
+    enemy.invisible = false;
+    enemy.ac -= 2; // lose invisibility AC bonus
+    const backstabDmg = rollDice(4, 8) + 8;
+    // Apply poison
+    enemy.poisonStacks = (enemy.poisonStacks || 0) + 1;
+    const poisonDmg = enemy.poisonStacks * rollDice(1, 4);
+    const totalDmg = backstabDmg + poisonDmg;
+    player.hp = Math.max(0, player.hp - totalDmg);
+    player.conditions.push({ type: 'poisoned', turns: 3 });
+    addCombatLog(`${enemy.name} BACKSTABS from the shadows! ${backstabDmg} + ${poisonDmg} poison = ${totalDmg} damage! You are POISONED!`);
+    addFloatingText(canvasW/2, canvasH * 0.65, `-${totalDmg} BACKSTAB!`, '#8800ff');
+    SFX.crit();
+    spawnParticles(canvasW/2, canvasH * 0.65, '#8800ff', 12);
+    if (player.hp <= 0) {
+      if (player.race === 'Orc' && !player.relentlessUsed) {
+        player.hp = 1; player.relentlessUsed = true;
+        addCombatLog('Relentless Endurance! Survived at 1 HP!');
+      } else { combatState.phase = 'defeat'; SFX.death(); }
+    }
+    return true;
+  }
+
+  if (enemy.bossType === 'shadow_assassin' && !enemy.invisible && Math.random() < 0.25) {
+    // Re-stealth every few turns
+    enemy.invisible = true;
+    enemy.ac += 2;
+    addCombatLog(`${enemy.name} melts back into the shadows! INVISIBLE!`);
+    addFloatingText(canvasW/2, canvasH * 0.3, 'VANISHED!', '#3a1a5a');
+    SFX.spell();
+    return true;
+  }
+
+  if (enemy.bossType === 'free_champion' && enemy.rageActive) {
+    // Gets stronger as HP drops further — bonus damage scaling
+    const hpPct = enemy.hp / enemy.maxHp;
+    if (hpPct < 0.25) {
+      // Desperate fury: extra free attack
+      const attack = enemy.attacks[0];
+      const roll = d20();
+      const totalRoll = roll + attack.bonus + 2; // rage bonus
+      if (roll >= 20 || (roll !== 1 && totalRoll >= calcAC())) {
+        const dmg = rollDice(attack.damage[0], attack.damage[1]) + attack.damageBonus + 4;
+        player.hp = Math.max(0, player.hp - dmg);
+        addCombatLog(`${enemy.name}'s DESPERATE FURY! Extra attack for ${dmg} damage!`);
+        addFloatingText(canvasW/2, canvasH * 0.65, `-${dmg} FURY!`, '#ff4444');
+        SFX.crit();
+        if (player.hp <= 0) {
+          if (player.race === 'Orc' && !player.relentlessUsed) {
+            player.hp = 1; player.relentlessUsed = true;
+            addCombatLog('Relentless Endurance! Survived at 1 HP!');
+          } else { combatState.phase = 'defeat'; SFX.death(); }
+        }
+      } else {
+        addCombatLog(`${enemy.name}'s DESPERATE FURY: MISS!`);
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
+
+// Faction-specific boss loot
+const FACTION_BOSS_LOOT = {
+  crown_general: [
+    { name: 'General\'s Halberd', type: 'weapon', damage: '2d10+6', bonus: 11, rarity: 'rare', desc: 'A masterwork halberd wreathed in golden light. +1 to all saves.' },
+    { name: 'Crown Shield of Command', type: 'shield', acBonus: 3, rarity: 'rare', desc: 'A shield bearing the Crown insignia. Allies gain +1 attack.' },
+  ],
+  shadow_assassin: [
+    { name: 'Covenant Shadowblade', type: 'weapon', damage: '2d6+7', bonus: 12, rarity: 'rare', desc: 'A blade that drinks light. Bonus 1d6 poison damage.' },
+    { name: 'Cloak of the Covenant', type: 'armor', acBonus: 2, rarity: 'rare', desc: 'Woven shadow. +2 DEX saving throws, advantage on stealth.' },
+  ],
+  free_champion: [
+    { name: 'People\'s Warhammer', type: 'weapon', damage: '2d8+7', bonus: 12, rarity: 'rare', desc: 'A hammer forged by free hands. Deals +4 damage to bosses.' },
+    { name: 'Champion\'s Warplate', type: 'armor', acBonus: 3, rarity: 'rare', desc: 'Scarred but unbroken armor. Resist first hit each combat (half damage).' },
+  ],
+};
+
+// Generate faction boss loot as actual game items
+function generateFactionBossLoot(bossType) {
+  const lootPool = FACTION_BOSS_LOOT[bossType];
+  if (!lootPool) return null;
+  const template = pick(lootPool);
+  const item = {
+    id: Math.random().toString(36).substr(2, 9),
+    name: template.name,
+    type: template.type === 'weapon' ? 'weapon' : template.type === 'shield' ? 'shield' : 'armor',
+    rarity: RARITY.RARE,
+    desc: template.desc,
+    damage: template.damage || null,
+    acBonus: template.acBonus || 0,
+    attackBonus: template.bonus || 0,
+    factionLoot: true,
+  };
+  return item;
+}
 
 // Town NPC dialogue
 const TOWN_NPCS = [
@@ -1870,7 +2225,19 @@ function generateFloor(floorNum) {
         boss.id = Math.random().toString(36).substr(2, 9);
         boss.conditions = [];
       } else {
-        const bossName = FLOOR_BOSSES[floorNum] || 'Shadow Demon';
+        // Check for faction war bosses on specific floors when war arc is active
+        let bossName = FLOOR_BOSSES[floorNum] || 'Shadow Demon';
+        if (typeof warState !== 'undefined' && warState !== WAR_STATE.INACTIVE) {
+          if (floorNum === 2 && MONSTERS['Crown Alliance General']) {
+            bossName = 'Crown Alliance General';
+          } else if (floorNum === 3 && MONSTERS['Shadow Covenant Assassin']) {
+            bossName = 'Shadow Covenant Assassin';
+          }
+        }
+        // Floor 5 (index 4) Free Peoples Champion only if no faction boss override
+        if (floorNum === 4 && typeof warState !== 'undefined' && warState !== WAR_STATE.INACTIVE && MONSTERS['Free Peoples Champion']) {
+          bossName = 'Free Peoples Champion';
+        }
         const bossTemplate = MONSTERS[bossName];
         boss = {
           ...deepClone(bossTemplate),
@@ -2389,6 +2756,8 @@ function handleInteract(floor, room) {
       if (player.squad) { player.squad.forEach(c => { c.hp = c.maxHp; }); }
       // Loyalty bonus for using shrine
       applyLoyaltyEvent('use_shrine');
+      // Check for companion conflict after shrine decision
+      if (player.squad && player.squad.length >= 2) checkCompanionConflict();
       dungeonMessage = 'Rested at shrine. HP and spells restored!';
       dungeonMessageTimer = 2.5;
       SFX.heal();
@@ -3406,6 +3775,16 @@ function playerCastSpell(spell) {
 }
 
 function enemyTurn(enemy) {
+  // Boss phase transition check
+  if (enemy.boss && enemy.bossType) {
+    checkBossPhaseTransition(enemy);
+    // Boss special action (may consume the turn)
+    if (bossSpecialAction(enemy)) {
+      nextTurn();
+      return;
+    }
+  }
+
   // Check conditions
   if (enemy.conditions) {
     // Asleep - skip turn
@@ -3672,14 +4051,44 @@ function updateCombat(dt) {
       X.fill();
     }
 
+    // Boss phase 2 indicators
+    if (enemy.boss && enemy.bossType && enemy.phase2) {
+      const t2 = gameTime * 4;
+      if (enemy.bossType === 'crown_general') {
+        // Shield wall glow
+        X.strokeStyle = `rgba(192,144,48,${0.4 + Math.sin(t2) * 0.2})`;
+        X.lineWidth = 3;
+        X.beginPath(); X.arc(ex, ey, size * 1.3, 0, Math.PI * 2); X.stroke();
+        X.font = '9px Consolas, monospace'; X.fillStyle = '#c09030'; X.textAlign = 'center';
+        X.fillText('[SHIELD WALL]', ex, ey + size + 28);
+      } else if (enemy.bossType === 'shadow_assassin' && enemy.invisible) {
+        // Invisible shimmer
+        X.globalAlpha = 0.3 + Math.sin(t2) * 0.15;
+        X.font = '9px Consolas, monospace'; X.fillStyle = '#8844cc'; X.textAlign = 'center';
+        X.fillText('[INVISIBLE]', ex, ey + size + 28);
+      } else if (enemy.bossType === 'free_champion' && enemy.rageActive) {
+        // Rage fire effect
+        X.strokeStyle = `rgba(255,60,30,${0.5 + Math.sin(t2) * 0.2})`;
+        X.lineWidth = 2;
+        X.beginPath(); X.arc(ex, ey, size * 1.2, 0, Math.PI * 2); X.stroke();
+        X.font = '9px Consolas, monospace'; X.fillStyle = '#ff4040'; X.textAlign = 'center';
+        X.fillText('[BERSERKER RAGE]', ex, ey + size + 28);
+        if (Math.random() < 0.3) spawnParticles(ex, ey - size, '#ff4400', 1);
+      }
+      X.globalAlpha = 1.0;
+    }
+
     // Shadow
     X.fillStyle = 'rgba(0,0,0,0.3)';
     X.beginPath();
     X.ellipse(ex, ey + size + 5, size * 0.8, 5, 0, 0, Math.PI * 2);
     X.fill();
 
-    // Body
+    // Body — invisible boss is semi-transparent
     X.fillStyle = enemy.color;
+    if (enemy.bossType === 'shadow_assassin' && enemy.invisible) {
+      X.globalAlpha = 0.25 + Math.sin(gameTime * 5) * 0.1;
+    }
     if (enemy.symbol === 's') {
       // Slime - blob shape
       X.beginPath();
@@ -3696,6 +4105,7 @@ function updateCombat(dt) {
       X.arc(ex, ey, size, 0, Math.PI * 2);
       X.fill();
     }
+    X.globalAlpha = 1.0; // reset alpha after body render (for invisible bosses)
 
     // Letter
     X.fillStyle = '#fff';
@@ -4081,6 +4491,25 @@ function renderCombatVictory(btnAreaY) {
 
     // Loyalty boost for winning battles together
     applyLoyaltyEvent('boss_victory');
+
+    // Check for companion conflict trigger after combat
+    if (player.squad && player.squad.length >= 2) {
+      checkCompanionConflict();
+    }
+
+    // Drop faction boss loot if applicable
+    if (wasBoss) {
+      const bossEntity = deadEnemies.find(c => c.entity.boss && c.entity.bossType);
+      if (bossEntity && bossEntity.entity.bossType) {
+        const factionItem = generateFactionBossLoot(bossEntity.entity.bossType);
+        if (factionItem) {
+          player.inventory.push(factionItem);
+          addFloatingText(canvasW/2, canvasH/2 + 30, `+${factionItem.name}!`, RARITY_COLORS[factionItem.rarity]);
+          dungeonMessage = `Found faction relic: ${factionItem.name}!`;
+          dungeonMessageTimer = 3;
+        }
+      }
+    }
 
     // Faction quest completion: mark dungeon-type quest complete when clearing a war/combat room
     if (activeFactionQuest && activeFactionQuest.questData.type === 'combat' && !activeFactionQuest.completed) {
@@ -5657,6 +6086,10 @@ function saveGame() {
     defectionPending: defectionPending,
     assassinsActive: assassinsActive,
     assassinTier: assassinTier,
+    // Companion conflict state
+    conflictsThisFloor: conflictsThisFloor,
+    pendingConflict: pendingConflict ? { conflict: pendingConflict.conflict, compAName: pendingConflict.compA?.name, compBName: pendingConflict.compB?.name } : null,
+    conflictHistory: conflictHistory,
   };
   try {
     localStorage.setItem('dof_save', JSON.stringify(saveData));
@@ -5699,6 +6132,21 @@ function loadGame() {
     defectionPending = data.defectionPending || false;
     assassinsActive = data.assassinsActive || false;
     assassinTier = data.assassinTier || 'initiate';
+    // Companion conflict state
+    conflictsThisFloor = data.conflictsThisFloor || 0;
+    conflictHistory = data.conflictHistory || [];
+    // Restore pending conflict by finding companions in squad
+    if (data.pendingConflict && player.squad) {
+      const compA = player.squad.find(c => c.name === data.pendingConflict.compAName);
+      const compB = player.squad.find(c => c.name === data.pendingConflict.compBName);
+      if (compA && compB) {
+        pendingConflict = { conflict: data.pendingConflict.conflict, compA, compB };
+      } else {
+        pendingConflict = null;
+      }
+    } else {
+      pendingConflict = null;
+    }
     gameState = STATE.DUNGEON;
     revealArea(player.x, player.y, player.torchRadius);
     dungeonMessage = 'Game loaded!';
@@ -5969,6 +6417,7 @@ function updateTown() {
     SFX.stairs();
     currentFloor = townData.nextFloor;
     player.floor = currentFloor;
+    conflictsThisFloor = 0; // reset conflict counter for new floor
     const startRoom = dungeon.floors[currentFloor].rooms[0];
     player.x = startRoom.cx;
     player.y = startRoom.cy;
@@ -6173,6 +6622,64 @@ function drawTownCampfire(px, py, pw, cx) {
   sageLines.forEach((line, i) => X.fillText(line, px + 10, py + 51 + i * 13));
 
   const actY = py + 51 + sageLines.length * 13 + 14;
+
+  // Show pending companion conflict mediation
+  if (pendingConflict && player.squad && player.squad.length >= 2) {
+    const pc = pendingConflict;
+    const nameA = pc.compA.name.split(' ')[0];
+    const nameB = pc.compB.name.split(' ')[0];
+
+    X.fillStyle = '#ff6644'; X.font = 'bold 12px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('COMPANION CONFLICT', cx, actY);
+
+    X.fillStyle = '#ffaa44'; X.font = 'italic 11px Consolas, monospace';
+    const trigLines = wrapText(pc.conflict.trigger, pw - 20, 11);
+    trigLines.forEach((line, i) => X.fillText(line, cx, actY + 18 + i * 14));
+
+    const choiceY = actY + 18 + trigLines.length * 14 + 10;
+
+    // Side A
+    X.fillStyle = pc.compA.color; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+    X.fillText(`${nameA}:`, px + 10, choiceY);
+    X.fillStyle = '#ccc'; X.font = '10px Consolas, monospace';
+    const aLines = wrapText(`"${pc.conflict.sideA.stance}"`, pw - 80, 10);
+    aLines.forEach((line, i) => X.fillText(line, px + 10, choiceY + 14 + i * 13));
+
+    const sideABtnY = choiceY + 14 + aLines.length * 13 + 4;
+    drawButton(px + 10, sideABtnY, pw/2 - 20, 28, `Side with ${nameA}`, false, '#2a3a1a', pc.compA.color);
+
+    // Side B
+    const sideBStartY = sideABtnY + 36;
+    X.fillStyle = pc.compB.color; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+    X.fillText(`${nameB}:`, px + 10, sideBStartY);
+    X.fillStyle = '#ccc'; X.font = '10px Consolas, monospace';
+    const bLines = wrapText(`"${pc.conflict.sideB.stance}"`, pw - 80, 10);
+    bLines.forEach((line, i) => X.fillText(line, px + 10, sideBStartY + 14 + i * 13));
+
+    const sideBBtnY = sideBStartY + 14 + bLines.length * 13 + 4;
+    drawButton(px + pw/2 + 10, sideABtnY, pw/2 - 20, 28, `Side with ${nameB}`, false, '#3a1a1a', pc.compB.color);
+
+    // Compromise
+    const compY = sideBBtnY + 6;
+    X.fillStyle = '#aaa'; X.font = 'italic 10px Consolas, monospace'; X.textAlign = 'center';
+    const cLines = wrapText(`Compromise: ${pc.conflict.compromise}`, pw - 20, 10);
+    cLines.forEach((line, i) => X.fillText(line, cx, compY + i * 13));
+
+    const compBtnY = compY + cLines.length * 13 + 4;
+    drawButton(cx - 80, compBtnY, 160, 28, 'Find compromise', false, '#2a2a3a', '#ffaa44');
+
+    // Handle clicks
+    if (clickedInRect(px + 10, sideABtnY, pw/2 - 20, 28)) {
+      SFX.click(); resolveConflict('sideA');
+    }
+    if (clickedInRect(px + pw/2 + 10, sideABtnY, pw/2 - 20, 28)) {
+      SFX.click(); resolveConflict('sideB');
+    }
+    if (clickedInRect(cx - 80, compBtnY, 160, 28)) {
+      SFX.click(); resolveConflict('compromise');
+    }
+    return;
+  }
 
   if (!player.squad || player.squad.length === 0) {
     X.fillStyle = '#555'; X.font = '12px Consolas, monospace'; X.textAlign = 'center';
