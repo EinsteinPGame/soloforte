@@ -1,0 +1,1124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Scenario Generator - SoloForte</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0f;--card:#14141f;--card-hover:#1a1a2e;--text:#e0e0e0;--text-dim:#888;--accent:#6c5ce7;--success:#00b894;--danger:#e17055;--warning:#fdcb6e}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+button{cursor:pointer;font-family:inherit;border:none;outline:none}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+
+/* ===== MENU SCREEN ===== */
+.menu-screen{max-width:1100px;margin:0 auto;padding:24px 16px 80px}
+.menu-header{text-align:center;padding:40px 0 32px;user-select:none}
+.menu-header h1{font-size:2.4rem;font-weight:800;background:linear-gradient(135deg,#6c5ce7,#a29bfe,#fd79a8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-1px}
+.menu-header p{color:var(--text-dim);margin-top:8px;font-size:0.95rem}
+.scenario-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.scenario-card{background:var(--card);border-radius:16px;overflow:hidden;transition:all .25s;position:relative;border:1px solid #222}
+.scenario-card:hover{transform:translateY(-4px);border-color:#444;background:var(--card-hover)}
+.scenario-card.locked{opacity:.6;pointer-events:auto}
+.scenario-card.locked:hover{transform:none}
+.card-banner{height:120px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.card-banner .icon{font-size:3rem;z-index:1;filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))}
+.card-banner::before{content:'';position:absolute;inset:0;opacity:.7}
+.card-body{padding:16px}
+.card-body h3{font-size:1.1rem;font-weight:700;margin-bottom:6px}
+.card-body p{font-size:.85rem;color:var(--text-dim);line-height:1.5;margin-bottom:12px;min-height:40px}
+.card-tags{display:flex;gap:6px;flex-wrap:wrap}
+.card-tag{font-size:.7rem;padding:3px 8px;border-radius:99px;background:rgba(108,92,231,.15);color:#a29bfe}
+.card-badge{position:absolute;top:12px;right:12px;font-size:.7rem;padding:4px 10px;border-radius:99px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.badge-playable{background:rgba(0,184,148,.2);color:#00b894}
+.badge-soon{background:rgba(136,136,136,.2);color:#888}
+.badge-new{background:rgba(253,121,168,.2);color:#fd79a8}
+
+/* ===== SETUP SCREEN ===== */
+.setup-screen{max-width:600px;margin:0 auto;padding:24px 16px}
+.setup-screen h2{text-align:center;font-size:1.8rem;margin-bottom:24px;font-weight:700}
+.setup-group{margin-bottom:20px}
+.setup-group label{display:block;font-size:.85rem;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+.setup-group input[type="text"]{width:100%;padding:12px 16px;background:#1a1a2e;border:1px solid #333;border-radius:10px;color:var(--text);font-size:1rem}
+.setup-group input:focus{border-color:var(--accent)}
+.role-options{display:flex;gap:10px;flex-wrap:wrap}
+.role-btn{padding:10px 18px;background:#1a1a2e;border:2px solid #333;border-radius:10px;color:var(--text);font-size:.9rem;transition:all .2s}
+.role-btn:hover{border-color:#555}
+.role-btn.selected{border-color:var(--accent);background:rgba(108,92,231,.15)}
+.preset-options{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.preset-btn{padding:14px;background:#1a1a2e;border:2px solid #333;border-radius:12px;color:var(--text);text-align:left;transition:all .2s}
+.preset-btn:hover{border-color:#555}
+.preset-btn.selected{border-color:var(--accent);background:rgba(108,92,231,.15)}
+.preset-btn .name{font-weight:700;font-size:.95rem;margin-bottom:4px}
+.preset-btn .desc{font-size:.75rem;color:var(--text-dim)}
+.custom-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
+.stat-input{background:#1a1a2e;border:1px solid #333;border-radius:10px;padding:10px;text-align:center}
+.stat-input .stat-name{font-size:.7rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px}
+.stat-input .stat-val{font-size:1.4rem;font-weight:700;margin:4px 0;color:var(--accent)}
+.stat-input .stat-btns{display:flex;justify-content:center;gap:8px}
+.stat-input .stat-btns button{width:28px;height:28px;border-radius:50%;background:#333;color:var(--text);font-size:1rem;display:flex;align-items:center;justify-content:center}
+.stat-input .stat-btns button:hover{background:#444}
+.points-left{text-align:center;font-size:.9rem;color:var(--accent);margin-top:8px}
+.start-btn{display:block;width:100%;padding:16px;background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;font-size:1.1rem;font-weight:700;border-radius:12px;margin-top:24px;transition:all .2s;text-transform:uppercase;letter-spacing:1px}
+.start-btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(108,92,231,.3)}
+.start-btn:disabled{opacity:.4;transform:none;cursor:not-allowed}
+.back-link{display:block;text-align:center;margin-top:16px;color:var(--text-dim);font-size:.85rem;cursor:pointer;background:none}
+.back-link:hover{color:var(--text)}
+
+/* ===== GAME SCREEN ===== */
+.game-screen{display:flex;flex-direction:column;min-height:100vh}
+.game-topbar{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:rgba(20,20,31,.95);border-bottom:1px solid #222;backdrop-filter:blur(10px);position:sticky;top:0;z-index:10}
+.game-topbar .title{font-weight:700;font-size:.95rem}
+.game-topbar .actions{display:flex;gap:8px}
+.topbar-btn{padding:6px 14px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:var(--text-dim);font-size:.8rem;transition:all .2s}
+.topbar-btn:hover{color:var(--text);border-color:#555}
+.game-body{flex:1;display:flex;max-width:1000px;margin:0 auto;width:100%;padding:24px 16px}
+.game-main{flex:1;max-width:700px}
+.game-sidebar{width:220px;margin-left:24px;flex-shrink:0}
+.scene-mood{height:160px;border-radius:16px;margin-bottom:20px;display:flex;align-items:center;justify-content:center;font-size:3rem;position:relative;overflow:hidden}
+.scene-mood::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 60%,var(--bg))}
+.story-text{font-size:1.05rem;line-height:1.8;margin-bottom:24px;white-space:pre-wrap}
+.story-text .new-text{animation:fadeIn .6s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.choice-list{display:flex;flex-direction:column;gap:10px;margin-bottom:32px}
+.choice-btn{padding:14px 18px;background:#1a1a2e;border:2px solid #2a2a3e;border-radius:12px;color:var(--text);font-size:.95rem;text-align:left;transition:all .2s;position:relative}
+.choice-btn:hover{border-color:var(--accent);background:rgba(108,92,231,.08);transform:translateX(4px)}
+.choice-btn .check-info{font-size:.75rem;color:var(--warning);margin-top:4px}
+.choice-btn .rel-info{font-size:.75rem;color:#fd79a8;margin-top:2px}
+.choice-btn.disabled{opacity:.4;pointer-events:none}
+
+/* Stat check result overlay */
+.check-result{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.7);z-index:100;animation:fadeIn .3s}
+.check-result .inner{background:var(--card);padding:32px;border-radius:20px;text-align:center;max-width:360px;border:2px solid #333}
+.check-result .roll-display{font-size:2.5rem;font-weight:800;margin:16px 0}
+.check-result .roll-display.success{color:var(--success)}
+.check-result .roll-display.fail{color:var(--danger)}
+.check-result .roll-detail{font-size:.85rem;color:var(--text-dim);margin-bottom:16px}
+.check-result button{padding:10px 28px;background:var(--accent);color:#fff;border-radius:10px;font-size:.95rem;font-weight:600}
+
+/* Sidebar */
+.sidebar-section{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px;border:1px solid #222}
+.sidebar-section h4{font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);margin-bottom:10px}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:.85rem}
+.stat-row .stat-bar{width:60px;height:6px;background:#222;border-radius:3px;overflow:hidden}
+.stat-row .stat-fill{height:100%;border-radius:3px;background:var(--accent);transition:width .3s}
+.rel-row{display:flex;justify-content:space-between;font-size:.82rem;padding:2px 0}
+.rel-row .val.positive{color:var(--success)}
+.rel-row .val.negative{color:var(--danger)}
+.inv-item{font-size:.82rem;padding:2px 0;color:var(--text-dim)}
+
+/* ===== SAVE/LOAD MODAL ===== */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:200;animation:fadeIn .2s}
+.modal{background:var(--card);border-radius:20px;padding:28px;max-width:440px;width:90%;border:1px solid #333}
+.modal h3{margin-bottom:16px;font-size:1.2rem}
+.save-slot{padding:14px;background:#1a1a2e;border:1px solid #333;border-radius:10px;margin-bottom:10px;cursor:pointer;transition:all .2s}
+.save-slot:hover{border-color:var(--accent)}
+.save-slot .slot-name{font-weight:600;font-size:.9rem}
+.save-slot .slot-info{font-size:.78rem;color:var(--text-dim);margin-top:4px}
+.modal-close{display:block;width:100%;padding:12px;background:#333;color:var(--text);border-radius:10px;margin-top:12px;font-size:.9rem}
+.modal-close:hover{background:#444}
+
+/* ===== UNLOCK MODAL ===== */
+.unlock-input{display:flex;gap:8px;margin-top:12px}
+.unlock-input input{flex:1;padding:10px 14px;background:#1a1a2e;border:1px solid #333;border-radius:8px;color:var(--text);font-size:1rem;text-align:center;letter-spacing:4px}
+.unlock-input button{padding:10px 20px;background:var(--accent);color:#fff;border-radius:8px;font-weight:600}
+.unlock-error{color:var(--danger);font-size:.85rem;margin-top:8px;text-align:center}
+
+/* ===== END SCREEN ===== */
+.end-screen{max-width:600px;margin:60px auto;padding:24px;text-align:center}
+.end-screen h2{font-size:2rem;margin-bottom:16px}
+.end-screen p{color:var(--text-dim);line-height:1.7;margin-bottom:24px}
+.end-screen button{padding:14px 32px;background:var(--accent);color:#fff;border-radius:12px;font-size:1rem;font-weight:600;margin:6px}
+
+/* ===== MOBILE ===== */
+.sidebar-toggle{display:none;padding:10px 16px;background:var(--card);border:1px solid #222;border-radius:10px;color:var(--text-dim);font-size:.85rem;margin-bottom:12px;width:100%}
+@media(max-width:768px){
+  .menu-header h1{font-size:1.8rem}
+  .scenario-grid{grid-template-columns:1fr}
+  .game-body{flex-direction:column;padding:16px 12px}
+  .game-sidebar{width:100%;margin-left:0;margin-top:16px;display:none}
+  .game-sidebar.open{display:block}
+  .sidebar-toggle{display:block}
+  .scene-mood{height:120px}
+  .preset-options{grid-template-columns:1fr}
+  .custom-stats{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const PRIVATE_CODE = 'KYLE2026';
+const STAT_NAMES = {str:'Strength',cha:'Charisma',int:'Intelligence',per:'Perception',cou:'Courage',lck:'Luck'};
+const PRESETS = {
+  recommended:{label:'Recommended',desc:'Balanced stats. The intended experience.',stats:{str:5,cha:5,int:5,per:5,cou:5,lck:5}},
+  gifted:{label:'Gifted',desc:'Higher stats. More options, NPCs react to your talent.',stats:{str:7,cha:7,int:7,per:7,cou:7,lck:7}},
+  underdog:{label:'Underdog',desc:'Lower stats. Harder checks, but bigger payoffs.',stats:{str:3,cha:3,int:3,per:3,cou:3,lck:3}},
+  custom:{label:'Custom',desc:'Distribute 30 points yourself.',stats:{str:5,cha:5,int:5,per:5,cou:5,lck:5}}
+};
+
+// ============================================================
+// STATE
+// ============================================================
+const STATE = {
+  screen:'menu',
+  scenario:null,
+  player:{name:'',role:'',stats:{str:5,cha:5,int:5,per:5,cou:5,lck:5}},
+  currentNode:null,
+  flags:{},
+  relationships:{},
+  inventory:[],
+  history:[],
+  preset:'recommended',
+  privateUnlocked:localStorage.getItem('sg_private')==='true',
+  titleTaps:0,
+  lastTap:0,
+  sidebarOpen:false,
+  checkResult:null,
+  pendingNext:null
+};
+
+// ============================================================
+// SCENARIOS
+// ============================================================
+const SCENARIO_META = [
+  {id:'soldier',title:'Soldier Interrogation',desc:'You wake up in a cold concrete room. A bright light burns overhead. Someone wants answers.',icon:'&#127894;',gradient:'linear-gradient(135deg,#2d3436,#636e72)',tags:['Military','Thriller'],status:'soon',private:false},
+  {id:'transformer',title:'Transformer vs Soldiers',desc:'Metal giant against an entire battalion. Choose your side in a war between steel and flesh.',icon:'&#129302;',gradient:'linear-gradient(135deg,#0984e3,#e17055)',tags:['Sci-Fi','Action'],status:'soon',private:false},
+  {id:'spiderman',title:'City Under Siege',desc:'The city needs a hero. Suit up, pick your gadgets, and swing into action against rising threats.',icon:'&#128375;',gradient:'linear-gradient(135deg,#d63031,#0984e3)',tags:['Superhero','Action'],status:'soon',private:false,progression:'suits'},
+  {id:'zombie',title:'Zombie Outbreak',desc:'The streets are chaos. Gunshots echo between buildings. You need to survive — starting now.',icon:'&#129503;',gradient:'linear-gradient(135deg,#00b894,#d63031)',tags:['Horror','Survival'],status:'playable',private:false},
+  {id:'fratparty',title:'Frat Party After Hours',desc:'The biggest party of the semester. Every choice changes your night — and maybe your semester.',icon:'&#127866;',gradient:'linear-gradient(135deg,#e17055,#fd79a8)',tags:['Social','Drama','Romance'],status:'playable',private:true},
+  {id:'examcrunch',title:'Exam Crunch',desc:'72 hours until the biggest exam of your life. Zero preparation. How do you survive?',icon:'&#128218;',gradient:'linear-gradient(135deg,#ffeaa7,#fdcb6e)',tags:['Comedy','Strategy'],status:'soon',private:false},
+  {id:'prisonbreak',title:'Prison Break',desc:'Maximum security. Minimum time. One chance to get out before they move you to the hole.',icon:'&#128274;',gradient:'linear-gradient(135deg,#636e72,#e17055)',tags:['Thriller','Stealth'],status:'soon',private:false},
+  {id:'shadowprotocol',title:'Shadow Protocol',desc:'You are Agent Zero. Your handler just went dark. Trust no one. Complete the mission.',icon:'&#128373;',gradient:'linear-gradient(135deg,#2d3436,#00b894)',tags:['Spy','Thriller'],status:'soon',private:false},
+  {id:'neonabyss',title:'Neon Abyss',desc:'Night City, 2089. Chrome skin, neural implants, and a debt that will get you flatlined.',icon:'&#127747;',gradient:'linear-gradient(135deg,#e84393,#00cec9)',tags:['Cyberpunk','RPG'],status:'soon',private:false,progression:'cyberware'},
+  {id:'rome',title:'Legions of Rome',desc:'Lead your century into battle. Glory or death — the Senate demands results.',icon:'&#9876;',gradient:'linear-gradient(135deg,#d4a017,#c0392b)',tags:['Historical','Strategy'],status:'soon',private:false},
+  {id:'olympus',title:'Wrath of Olympus',desc:'The gods offer their boons. Monsters roam the land. Prove yourself worthy of legend.',icon:'&#9889;',gradient:'linear-gradient(135deg,#6c5ce7,#fdcb6e)',tags:['Mythology','Action'],status:'soon',private:false,progression:'boons'},
+  {id:'hogwarts',title:'Hogwarts',desc:'Year 1 begins. Choose your house, learn your spells, uncover a mystery lurking in the castle.',icon:'&#9733;',gradient:'linear-gradient(135deg,#6c5ce7,#d4a017)',tags:['Fantasy','Magic'],status:'soon',private:false,progression:'spells'}
+];
+
+const SCENARIO_ROLES = {
+  zombie:['Survivor','Ex-Military','Medic'],
+  fratparty:['The New Kid','The Social Butterfly','The Athlete']
+};
+
+// ============================================================
+// SCENARIO DATA — ZOMBIE OUTBREAK (Chapter 1)
+// ============================================================
+const ZOMBIE_NODES = {
+  zo_wake:{
+    text:`Your eyes snap open. Something is wrong.
+
+The apartment is dark, but the sounds outside are not normal. Car alarms blaring in overlapping waves. Screaming — not the drunk-weekend kind. The raw, animal kind. A helicopter thumps overhead, searchlight sweeping through your blinds.
+
+Your phone buzzes on the nightstand. Seventeen missed calls. A push notification from the city emergency system: "SHELTER IN PLACE. DO NOT OPEN DOORS FOR STRANGERS."
+
+Your heart is hammering.`,
+    scene:'dark',mood:'#2d3436',
+    choices:[
+      {text:'Check the window',next:'zo_window'},
+      {text:'Grab your phone and read the messages',next:'zo_phone'},
+      {text:'Get dressed and find something to defend yourself with',next:'zo_weapon'}
+    ]
+  },
+  zo_phone:{
+    text:`You grab your phone. The screen blinds you for a second.
+
+Mom — 6 missed calls. Dad — 4. Your roommate Jake — 7.
+
+Jake's texts come in rapid fire:
+"BRO GET OUT"
+"something happened downtown dont know what"
+"people are attacking each other"
+"im at the gas station on 5th DO NOT GO OUTSIDE WITHOUT SOMETHING TO PROTECT YOURSELF"
+"tyler is dead dude. tyler is dead. im not joking"
+
+The last text was 47 minutes ago. No response since.
+
+The emergency alert on the news app just says: "Unidentified biological outbreak. National Guard deployed. Avoid contact with infected individuals. Symptoms include aggression, loss of motor control, and—" The page fails to load.`,
+    scene:'dark',mood:'#2d3436',
+    choices:[
+      {text:'Look out the window to see what\'s happening',next:'zo_window'},
+      {text:'Arm yourself — now',next:'zo_weapon'},
+      {text:'Try calling Jake',next:'zo_call_jake'}
+    ]
+  },
+  zo_call_jake:{
+    text:`The phone rings. Once. Twice. Five times. Voicemail.
+
+You try again. Straight to voicemail this time.
+
+One more try. It rings — then picks up. But it's not Jake's voice. It's breathing. Wet, ragged breathing, like someone choking on their own throat. Then a sound that isn't a word, something between a growl and a moan.
+
+The call disconnects.
+
+Your hands are shaking.`,
+    scene:'dark',mood:'#d63031',
+    effects:{flags:{called_jake:true}},
+    choices:[
+      {text:'Look out the window',next:'zo_window'},
+      {text:'Find a weapon. Now.',next:'zo_weapon'}
+    ]
+  },
+  zo_window:{
+    text:`You pull the blinds back and freeze.
+
+The street four floors below is chaos. A car is flipped on its side, still smoking. People are running — some in pajamas, some barefoot. And behind them, others are moving wrong. Stumbling, lurching, fast when they shouldn't be. One of them catches a woman by the hair and drags her down. You look away before you see the rest.
+
+Red and blue lights flash from a police cruiser at the intersection, but the doors are open and nobody's inside. A military Humvee rolls past, soldiers on top scanning rooftops with mounted lights.
+
+This isn't a riot. This isn't a protest. The city is falling apart.
+
+You need to move. But first — you need something to fight with.`,
+    scene:'dark',mood:'#d63031',
+    effects:{flags:{saw_outside:true}},
+    choices:[
+      {text:'Find a weapon in the apartment',next:'zo_weapon'},
+      {text:'Barricade the door and wait for help',next:'zo_barricade'}
+    ]
+  },
+  zo_barricade:{
+    text:`You shove the bookshelf against the front door. Drag the kitchen table behind it. Wedge a chair under the handle for good measure.
+
+For twenty minutes, it feels like the right call. You sit in the dark, listening to the world end outside your window.
+
+Then the scratching starts. Not at your door — at your neighbor's. Mrs. Chen's apartment, right next to yours. You hear her deadbolt turn. Her door opens. She says "Hello? Is someone—"
+
+The scream cuts through the wall like it's paper.
+
+Then silence. Then footsteps — slow, dragging — and something bumps against YOUR door. The bookshelf shifts an inch.
+
+You can't stay here.`,
+    scene:'dark',mood:'#e17055',
+    effects:{flags:{tried_barricade:true}},
+    choices:[
+      {text:'Grab the kitchen knife and head for the fire escape',next:'zo_weapon_knife'},
+      {text:'Go out the window to the fire escape — no time for weapons',next:'zo_fire_escape_bare'}
+    ]
+  },
+  zo_weapon:{
+    text:`You move through the apartment fast, adrenaline making everything sharp. What do you have?
+
+The kitchen: a chef's knife, a cast iron skillet, a drawer full of utensils. The closet: a baseball bat from your college league days, still wrapped in athletic tape. The bathroom: nothing useful. Under the bed: a crowbar you forgot about from when you moved in.
+
+You can carry one main weapon and one backup. Choose wisely — you don't know what's waiting in the hallway.`,
+    scene:'dark',mood:'#636e72',
+    choices:[
+      {text:'Baseball bat — reach and power',next:'zo_hallway',effects:{inventory:['Baseball bat'],flags:{weapon:'bat'}}},
+      {text:'Crowbar — versatile, can pry doors open too',next:'zo_hallway',effects:{inventory:['Crowbar'],flags:{weapon:'crowbar'}}},
+      {text:'Chef\'s knife — light, fast, deadly',next:'zo_hallway',effects:{inventory:['Chef\'s knife'],flags:{weapon:'knife'}}},
+      {text:'Cast iron skillet — nothing gets through this',next:'zo_hallway',effects:{inventory:['Cast iron skillet'],flags:{weapon:'skillet'}}}
+    ]
+  },
+  zo_weapon_knife:{
+    text:`You yank the biggest knife from the block. It's an 8-inch chef's knife — sharp, solid, terrifying in your shaking hand.
+
+The thing on the other side of your door groans. The bookshelf scrapes another inch.
+
+The fire escape. Now.`,
+    scene:'dark',mood:'#e17055',
+    effects:{inventory:['Chef\'s knife'],flags:{weapon:'knife'}},
+    choices:[
+      {text:'Go out the bedroom window to the fire escape',next:'zo_fire_escape'}
+    ]
+  },
+  zo_fire_escape_bare:{
+    text:`No time. You wrench the bedroom window open. The cold night air hits you like a wall. The fire escape is old, rusted, groaning under your weight as you climb out.
+
+Below, the alley is empty. Above, someone's apartment has a light on — fifth floor. You're on the fourth.
+
+You have nothing to defend yourself with. That's going to be a problem.`,
+    scene:'dark',mood:'#636e72',
+    effects:{flags:{no_weapon:true}},
+    choices:[
+      {text:'Climb down to the alley',next:'zo_alley'},
+      {text:'Climb up — maybe the neighbor has supplies',next:'zo_upstairs',check:{stat:'str',dc:10}}
+    ]
+  },
+  zo_fire_escape:{
+    text:`You slide the window open and step onto the fire escape. The metal is cold under your bare feet — you didn't even grab shoes.
+
+Four floors up, the city spreads before you like a war zone. Fires burning in three places you can see. The distant crackle of gunfire — semi-automatic, not police issue. The helicopter has moved east.
+
+Below, the alley looks clear. Above, there's a light on — fifth floor apartment. Down is faster. Up might have supplies, allies, information.`,
+    scene:'dark',mood:'#636e72',
+    choices:[
+      {text:'Climb down to the alley — speed matters',next:'zo_alley'},
+      {text:'Climb up to the lit apartment — strength in numbers',next:'zo_upstairs',check:{stat:'str',dc:8}},
+      {text:'Listen carefully before moving',next:'zo_listen',check:{stat:'per',dc:10}}
+    ]
+  },
+  zo_hallway:{
+    text:`You crack your apartment door open. The hallway fluorescents are flickering — one burned out, the other buzzing like an angry wasp.
+
+The smell hits you first. Copper and something rotten, sweet and horrible. There's a dark smear on the wall near the elevator. The elevator doors are jammed half-open, light blinking inside, empty.
+
+The stairwell door is at the end of the hall. Between you and it: four apartment doors. All closed. One of them has scratch marks around the handle.
+
+Something thumps behind door 4B.`,
+    scene:'dark',mood:'#e17055',
+    choices:[
+      {text:'Move fast — straight to the stairwell',next:'zo_stairwell',check:{stat:'cou',dc:8}},
+      {text:'Move carefully, hugging the wall',next:'zo_hallway_careful',check:{stat:'per',dc:10}},
+      {text:'Check door 4B — someone might need help',next:'zo_door_4b'}
+    ]
+  },
+  zo_door_4b:{
+    text:`You approach 4B. The scratch marks are deep — gouged into the wood like someone used their fingernails. Through the door, you hear the thumping again. Rhythmic. Like someone hitting their head against a wall.
+
+You knock softly. "Hello? You okay in there?"
+
+The thumping stops.
+
+Silence.
+
+Then BANG — something slams against the door from inside. The whole frame shudders. Again. BANG. The hinges groan. Whatever's in there, it's not looking for help. It's trying to get out.
+
+And it heard you.`,
+    scene:'dark',mood:'#d63031',
+    effects:{flags:{alerted_4b:true}},
+    choices:[
+      {text:'RUN to the stairwell',next:'zo_stairwell_run'},
+      {text:'Back away slowly, don\'t make more noise',next:'zo_stairwell',check:{stat:'per',dc:12}}
+    ]
+  },
+  zo_hallway_careful:{
+    text:`You press against the wall, sliding forward inch by inch. Your ears pick up everything — the fluorescent buzz, a distant scream, water running somewhere.
+
+[PERCEPTION CHECK PASSED]
+
+You notice two things: the dark smear on the wall isn't just blood — it trails into apartment 4C, whose door is slightly ajar. And under the stairwell door, you can see shadows moving. Multiple shadows. At least two, maybe three figures, shuffling in the stairwell below.
+
+The fire escape at the end of the hall might be the smarter exit.`,
+    scene:'dark',mood:'#636e72',
+    effects:{flags:{noticed_stairwell_danger:true}},
+    choices:[
+      {text:'Take the fire escape instead',next:'zo_fire_escape'},
+      {text:'Risk the stairwell anyway — it\'s faster',next:'zo_stairwell_danger'}
+    ]
+  },
+  zo_stairwell:{
+    text:`You push through the stairwell door. The echo of your footsteps bounces off concrete walls. Emergency lighting casts everything in a dim red glow.
+
+You start descending. Third floor — clear. Second floor — a door hangs off its hinges, but nothing moves. First floor — the exit to the lobby is right there.
+
+Through the small window in the door, you can see the lobby. The front desk is overturned. Glass from the entrance is shattered across the tile. And standing in the middle of it all, swaying slightly, is what used to be the building's security guard. His uniform is soaked dark. His head tilts at an angle that shouldn't be possible.
+
+He hasn't seen you yet.`,
+    scene:'dark',mood:'#d63031',
+    choices:[
+      {text:'Try to sneak past him to the front entrance',next:'zo_sneak_lobby',check:{stat:'per',dc:11}},
+      {text:'Fight him — he\'s between you and freedom',next:'zo_fight_guard',check:{stat:'str',dc:9}},
+      {text:'Go back up and use the fire escape',next:'zo_fire_escape'}
+    ]
+  },
+  zo_stairwell_run:{
+    text:`You bolt. Behind you, door 4B splinters. You don't look back.
+
+The stairwell door slams open as you hit it at full speed. You take the stairs three at a time, hand on the railing, feet barely touching. Above you, the hallway door crashes open again — it followed you.
+
+You can hear it. Fast. Faster than it should be. Bare feet slapping concrete, a wet snarling sound that echoes down the stairwell.
+
+You hit the ground floor. The lobby door is right there.`,
+    scene:'dark',mood:'#d63031',
+    effects:{flags:{being_chased:true}},
+    choices:[
+      {text:'Burst through to the lobby — don\'t stop',next:'zo_lobby_run'},
+      {text:'Slam the stairwell door shut behind you and barricade it',next:'zo_barricade_stair',check:{stat:'str',dc:11}}
+    ]
+  },
+  zo_stairwell_danger:{
+    text:`You know they're there. You push the door open slowly, carefully.
+
+Two figures on the landing below. Both in pajamas — residents. One missing an arm below the elbow, still dripping. The other's jaw hangs at a wrong angle. They're not moving, just standing. Waiting.
+
+You have one chance to get past before they react.`,
+    scene:'dark',mood:'#d63031',
+    choices:[
+      {text:'Sprint past them — speed and surprise',next:'zo_sprint_past',check:{stat:'cou',dc:10}},
+      {text:'Fight through them',next:'zo_fight_two',check:{stat:'str',dc:13}},
+      {text:'Go back — take the fire escape',next:'zo_fire_escape'}
+    ]
+  },
+  zo_alley:{
+    text:`Your feet hit the alley pavement. Cold, wet, scattered with trash. The fire escape ladder retracts above you with a clang that echoes too loud.
+
+The alley runs north-south. South leads to the main street — you can see the flashing lights, hear the chaos. North leads deeper into the block, toward the back parking lot and the convenience store on the corner.
+
+A rat shoots past your ankle. Somewhere above, glass breaks.
+
+You're outside now. The apartment was a cage, but at least it had walls. Out here, you're exposed.`,
+    scene:'dark',mood:'#636e72',
+    choices:[
+      {text:'Head south to the main street — find help, find the military',next:'zo_main_street'},
+      {text:'Go north to the convenience store — supplies first',next:'zo_store'},
+      {text:'Check the parking lot for a car',next:'zo_parking',check:{stat:'lck',dc:10}}
+    ]
+  },
+  zo_store:{
+    text:`The QuikMart on the corner still has power — the neon "OPEN 24HRS" sign flickers blue and red. The door is ajar. One of the front windows is cracked but holding.
+
+Inside, it's been partially looted. Shelves knocked over, cereal and chips scattered across the floor. But the back shelves — water, canned food, first aid — look mostly untouched. People grabbed the easy stuff and ran.
+
+Behind the counter, the register is open and empty. No cashier. A small TV on the counter plays static.
+
+Then you hear it: someone crying. Quietly. Coming from the back storage room.`,
+    scene:'dark',mood:'#00b894',
+    choices:[
+      {text:'Call out: "Hello? I\'m not going to hurt you"',next:'zo_store_call'},
+      {text:'Stay quiet, grab supplies, leave fast',next:'zo_store_grab',check:{stat:'per',dc:9}},
+      {text:'Approach the storage room carefully',next:'zo_store_approach',check:{stat:'cou',dc:10}}
+    ]
+  },
+  zo_store_call:{
+    text:`"Hello? I'm not going to hurt you."
+
+The crying stops. A pause that stretches forever.
+
+Then a small voice: "Are you... are you normal?"
+
+"Yeah. Yeah, I'm normal."
+
+The storage room door cracks open. A girl — early twenties, dark hair pulled back, wearing a convenience store vest with a name tag that says MAYA. Her eyes are red, mascara streaked. She's holding a box cutter in a white-knuckle grip.
+
+"I've been in here since it started," she says. "My manager — he turned. Right in front of me. I locked myself in and I've been—" Her voice breaks. She takes a breath. "Are there more of you? Is anyone coming to help?"`,
+    scene:'dark',mood:'#00b894',
+    effects:{flags:{met_maya:true},relationships:{maya:2}},
+    choices:[
+      {text:'"I don\'t know. But we should stick together."',next:'zo_ch1_end_maya',effects:{relationships:{maya:2},flags:{allied_maya:true}}},
+      {text:'"I saw military out there. We need to reach them."',next:'zo_ch1_end_maya',effects:{relationships:{maya:1}}},
+      {text:'"Honestly? I have no idea what\'s going on. But I\'m getting out of the city."',next:'zo_ch1_end_maya',effects:{relationships:{maya:1},flags:{plan_escape:true}}}
+    ]
+  },
+  zo_ch1_end_maya:{
+    text:`Maya nods slowly. She wipes her eyes with the back of her hand, then straightens up. Something in her shifts — from terrified cashier to someone deciding to survive.
+
+"Okay," she says. "Let me grab the first aid kit. There's a back exit that leads to the loading dock. My car's parked out there — if it hasn't been taken."
+
+She moves to the supply shelf, starts shoving water bottles and bandages into a canvas bag. Efficient. Focused. Whatever she was ten minutes ago, she's not that anymore.
+
+You have a weapon. You have a companion. You have supplies. And outside, the city is burning.
+
+Chapter 1 is just the beginning.
+
+---
+
+CHAPTER 1 COMPLETE
+
+Your choices, your stats, and your relationships will carry forward into Chapter 2: "No Safe Haven" — where the real survival begins.`,
+    scene:'dark',mood:'#00b894',
+    effects:{flags:{chapter1_complete:true}},
+    choices:[
+      {text:'CHAPTER 2 COMING SOON — Return to Menu',next:'_menu'}
+    ]
+  },
+  zo_main_street:{
+    text:`You step onto the main street and immediately regret it.
+
+It's a warzone. Two cars are burning. A bus has crashed into a storefront, its passengers long gone — or worse. The military Humvee you saw earlier is stopped in the middle of the intersection, engine running, but the soldiers are gone. One of their rifles lies on the ground next to a pool of blood.
+
+To your left: a group of survivors huddled behind an overturned delivery truck, waving at you. Five, maybe six people. To your right: the Humvee. A working vehicle with military equipment.
+
+Something is approaching from the south. You can hear them — shuffling footsteps, dozens of them, getting closer.`,
+    scene:'dark',mood:'#d63031',
+    choices:[
+      {text:'Join the survivor group — safety in numbers',next:'zo_ch1_end_group',effects:{flags:{joined_group:true}}},
+      {text:'Go for the Humvee',next:'zo_ch1_end_humvee',check:{stat:'cou',dc:11}},
+      {text:'Run north — avoid all of it',next:'zo_store'}
+    ]
+  },
+  zo_ch1_end_group:{
+    text:`You sprint to the overturned truck. Hands reach out and pull you behind cover.
+
+"You bit?" A big guy with a shaved head and blood on his shirt grabs your shoulder. "ARE YOU BIT?"
+
+"No! No, I'm fine."
+
+He stares at you for three seconds, reading your face. Then nods. "Alright. I'm Marcus. We're heading for the school — it's built like a fortress. Thick walls, one entrance. We can hold it."
+
+The group: Marcus, a retired cop. Two college students clutching each other. An older woman with a limp. A kid, maybe twelve, silent and wide-eyed.
+
+Six strangers. One plan. And the horde is three blocks away.
+
+---
+
+CHAPTER 1 COMPLETE
+
+You've found a group. But trust is fragile, supplies are low, and the school might already be overrun.
+
+Chapter 2: "No Safe Haven" — coming soon.`,
+    scene:'dark',mood:'#00b894',
+    effects:{flags:{chapter1_complete:true}},
+    choices:[
+      {text:'CHAPTER 2 COMING SOON — Return to Menu',next:'_menu'}
+    ]
+  },
+  zo_ch1_end_humvee:{
+    text:`You run for the Humvee. Your feet pound the asphalt. The shuffling from the south is getting louder — you can see them now, a mass of figures emerging from the smoke.
+
+You reach the Humvee. The keys are in the ignition. An M4 rifle sits in the mount. A pack of MREs and a radio on the back seat. The radio crackles: "...all units fall back to Rally Point Alpha... overrun... God, they're everywhere..."
+
+You climb in, slam the door, and twist the key. The diesel engine roars to life.
+
+The horde reaches the intersection behind you. Dozens of them. Hundreds.
+
+You floor it.
+
+---
+
+CHAPTER 1 COMPLETE
+
+You have a military vehicle, a weapon, and a radio. But you're alone, and Rally Point Alpha might already be gone.
+
+Chapter 2: "No Safe Haven" — coming soon.`,
+    scene:'dark',mood:'#00b894',
+    effects:{flags:{chapter1_complete:true},inventory:['M4 Rifle','Military Radio','MREs']},
+    choices:[
+      {text:'CHAPTER 2 COMING SOON — Return to Menu',next:'_menu'}
+    ]
+  }
+};
+
+// Add pass/fail variants for stat checks
+ZOMBIE_NODES.zo_listen = {
+  text:`You press your ear to the railing and listen.
+
+[PERCEPTION CHECK PASSED]
+
+Below: two, maybe three of them shuffling on the second floor landing. Their breathing is wrong — gurgling, like fluid in the lungs.
+
+Above: nothing. The fifth floor apartment with the light is quiet. Could be empty. Could be someone hiding. Could be a trap.
+
+But you also hear something else — far below, in the alley. An engine idling. Someone has a car running down there.`,
+  scene:'dark',mood:'#636e72',
+  effects:{flags:{heard_car:true}},
+  choices:[
+    {text:'Go down carefully — aim for that car',next:'zo_alley',effects:{flags:{knows_car_location:true}}},
+    {text:'Climb up to the fifth floor',next:'zo_upstairs'}
+  ]
+};
+ZOMBIE_NODES.zo_upstairs = {
+  text:`You climb up. The fifth floor window is cracked open, curtains blowing.
+
+You pull yourself through into a clean, well-lit apartment. Someone was here recently — coffee still warm on the counter, laptop open on a news feed that stopped updating thirty minutes ago.
+
+On the kitchen table: a backpack already packed. Water, granola bars, a flashlight, a first aid kit, and a note: "Going to the roof. Helicopter evac at dawn. — R.T."
+
+The roof. If there's an evac...`,
+  scene:'dark',mood:'#636e72',
+  effects:{inventory:['Flashlight','First aid kit','Granola bars']},
+  choices:[
+    {text:'Head to the roof',next:'zo_ch1_end_roof'},
+    {text:'Take the supplies and go down to the alley',next:'zo_alley'}
+  ]
+};
+ZOMBIE_NODES.zo_ch1_end_roof = {
+  text:`You take the stairs to the roof. The door is already open.
+
+The city stretches before you in every direction. Fires painting the skyline orange. The distant thud of explosions — the military is bombing something. Somewhere east, a massive column of smoke rises from what might be the hospital.
+
+And in the sky, a helicopter. Moving away from you, searchlight sweeping. It's heading east.
+
+On the roof: a flare gun and two flares, left behind. And a fresh set of scratch marks on the door you just came through — from the outside.
+
+Someone was up here. They already got picked up. Or they didn't.
+
+You have the high ground. You have flares. Dawn is five hours away.
+
+---
+
+CHAPTER 1 COMPLETE
+
+You chose the roof. Rescue might come — or the dawn might bring something worse.
+
+Chapter 2: "No Safe Haven" — coming soon.`,
+  scene:'dark',mood:'#00b894',
+  effects:{flags:{chapter1_complete:true},inventory:['Flare gun','Flares x2']},
+  choices:[
+    {text:'CHAPTER 2 COMING SOON — Return to Menu',next:'_menu'}
+  ]
+};
+// Additional zombie fail nodes
+ZOMBIE_NODES.zo_sneak_lobby = {text:'You crouch low and slide along the wall. The guard doesn\'t turn. You reach the entrance — shattered glass crunches under your foot. He twitches but you\'re already through. The street swallows you into the night.',scene:'dark',mood:'#636e72',choices:[{text:'Head for the main street',next:'zo_main_street'},{text:'Cut through the alley',next:'zo_alley'}]};
+ZOMBIE_NODES.zo_fight_guard = {text:'You swing hard. The impact shudders up your arm. The guard stumbles, reaches for you with grey fingers. You hit again — and again. It goes down. Stays down.\n\nYour hands are shaking. That was a person. Was.\n\nThe lobby entrance is clear. Outside: the street, or the alley.',scene:'dark',mood:'#e17055',effects:{flags:{first_kill:true}},choices:[{text:'Head for the main street',next:'zo_main_street'},{text:'Cut through the alley',next:'zo_alley'}]};
+ZOMBIE_NODES.zo_lobby_run = {text:'You burst through the lobby door. The security guard — what\'s left of him — turns. You don\'t slow down. You hurdle the overturned desk, your feet hit broken glass, pain flares but you keep running. Through the shattered entrance, into the night air.\n\nBehind you, the thing from 4B crashes into the lobby. But you\'re already gone.',scene:'dark',mood:'#e17055',effects:{flags:{first_kill:false}},choices:[{text:'Main street — find help',next:'zo_main_street'},{text:'Alley — stay hidden',next:'zo_alley'}]};
+ZOMBIE_NODES.zo_barricade_stair = {text:'You grab a fire extinguisher from the wall mount and jam it through the door handle. The thing slams into the door — once, twice — but the handle holds. For now.\n\nYou\'re in the lobby. The entrance is right there.',scene:'dark',mood:'#636e72',choices:[{text:'Check the lobby carefully',next:'zo_stairwell'},{text:'Head straight outside',next:'zo_alley'}]};
+ZOMBIE_NODES.zo_sprint_past = {text:'You take the stairs at a dead sprint. The two figures react — too slow. One grabs at your shirt, fingers scraping fabric, but you rip free. The other lunges and misses entirely.\n\nYou\'re past them. Ground floor. The lobby waits.',scene:'dark',mood:'#636e72',choices:[{text:'Enter the lobby',next:'zo_stairwell'}]};
+ZOMBIE_NODES.zo_fight_two = {text:'Two on one. Bad odds.\n\nThe one-armed one is faster. It lunges — you swing and connect. It crumples against the railing. The jaw-broken one comes from your left. You dodge, slam it into the wall. It doesn\'t stay down. You hit it again. And again.\n\nBoth stop moving. You\'re breathing hard, covered in something you don\'t want to think about.\n\nGround floor. Almost out.',scene:'dark',mood:'#d63031',effects:{flags:{first_kill:true}},choices:[{text:'Continue to the lobby',next:'zo_stairwell'}]};
+ZOMBIE_NODES.zo_parking = {text:'The parking lot is mostly empty. Three cars remain. One has keys in the visor — an old Honda Civic. It starts on the third try.\n\nYou have transportation. Where do you go?',scene:'dark',mood:'#636e72',effects:{inventory:['Honda Civic'],flags:{has_car:true}},choices:[{text:'Drive to the main street — find other survivors',next:'zo_main_street'},{text:'Drive to the convenience store — stock up first',next:'zo_store'}]};
+ZOMBIE_NODES.zo_store_grab = {text:'You move through the store quickly, filling your pockets and a plastic bag. Water bottles, a first aid kit, two cans of beans, a lighter, batteries.\n\n[PERCEPTION CHECK PASSED]\n\nYou notice a baseball bat behind the counter — the cashier\'s. And the crying from the back has stopped. Whoever was there heard you moving around.\n\nThe loading dock exit is to your right. The front door is behind you.',scene:'dark',mood:'#636e72',effects:{inventory:['Water bottles','First aid kit','Canned food','Lighter']},choices:[{text:'Call out to whoever\'s in the back',next:'zo_store_call'},{text:'Take the bat and leave through the loading dock',next:'zo_ch1_end_solo',effects:{inventory:['Baseball bat']}}]};
+ZOMBIE_NODES.zo_store_approach = {text:'You move toward the storage room. The crying gets louder, then stops abruptly — they heard you.\n\nThe door is cracked open. Through the gap, you see movement. Someone small, pressed into the corner.',scene:'dark',mood:'#636e72',choices:[{text:'"Hey. I\'m not infected. Are you okay?"',next:'zo_store_call'},{text:'Push the door open slowly',next:'zo_store_call'}]};
+ZOMBIE_NODES.zo_ch1_end_solo = {text:'You step out onto the loading dock. The alley behind the store is quiet. No movement. No sound except distant gunfire and the low hum of a city dying.\n\nYou have supplies. You have a weapon. You have no one.\n\nSometimes alone is safer. Sometimes it just means no one hears you scream.\n\n---\n\nCHAPTER 1 COMPLETE\n\nYou chose to go alone. Speed and stealth are your advantages — but every fight is yours alone.\n\nChapter 2: "No Safe Haven" — coming soon.',scene:'dark',mood:'#636e72',effects:{flags:{chapter1_complete:true,went_solo:true}},choices:[{text:'CHAPTER 2 COMING SOON — Return to Menu',next:'_menu'}]};
+
+// ============================================================
+// SCENARIO DATA — FRAT PARTY (PRIVATE)
+// ============================================================
+const FRATPARTY_NODES = {};
+// Will be populated below
+
+// ============================================================
+// REGISTER SCENARIOS
+// ============================================================
+const SCENARIOS = {};
+SCENARIO_META.forEach(m => {
+  SCENARIOS[m.id] = {
+    meta: m,
+    roles: SCENARIO_ROLES[m.id] || [],
+    nodes: m.id === 'zombie' ? ZOMBIE_NODES : m.id === 'fratparty' ? FRATPARTY_NODES : {},
+    startNode: m.id === 'zombie' ? 'zo_wake' : m.id === 'fratparty' ? 'fp_arrival' : null,
+    relationships: m.id === 'fratparty' ? {mia:0,zara:0,luna:0,jake:0,tyler:0,chad:0} : m.id === 'zombie' ? {maya:0,marcus:0} : {}
+  };
+});
+
+// ============================================================
+// ENGINE
+// ============================================================
+function statCheck(statName, dc) {
+  const stat = STATE.player.stats[statName] || 5;
+  const roll = Math.floor(Math.random() * 10) + 1;
+  const total = stat + roll;
+  return {success: total >= dc, roll, stat, total, dc, statName};
+}
+
+function applyEffects(effects) {
+  if (!effects) return;
+  if (effects.flags) Object.assign(STATE.flags, effects.flags);
+  if (effects.relationships) {
+    for (const [k,v] of Object.entries(effects.relationships)) {
+      STATE.relationships[k] = Math.max(-10, Math.min(10, (STATE.relationships[k]||0) + v));
+    }
+  }
+  if (effects.stats) {
+    for (const [k,v] of Object.entries(effects.stats)) {
+      STATE.player.stats[k] = Math.max(1, Math.min(10, (STATE.player.stats[k]||5) + v));
+    }
+  }
+  if (effects.inventory) {
+    effects.inventory.forEach(item => {
+      if (!STATE.inventory.includes(item)) STATE.inventory.push(item);
+    });
+  }
+}
+
+function goToNode(nodeId) {
+  if (nodeId === '_menu') { STATE.screen = 'menu'; render(); return; }
+  const scenario = SCENARIOS[STATE.scenario];
+  if (!scenario) return;
+  const node = scenario.nodes[nodeId];
+  if (!node) return;
+  STATE.currentNode = nodeId;
+  STATE.history.push(nodeId);
+  if (node.effects) applyEffects(node.effects);
+  render();
+}
+
+function handleChoice(choice) {
+  if (choice.effects) applyEffects(choice.effects);
+  if (choice.check) {
+    const result = statCheck(choice.check.stat, choice.check.dc);
+    STATE.checkResult = result;
+    STATE.pendingNext = result.success ? choice.next : (choice.failNext || choice.next);
+    render();
+  } else {
+    goToNode(choice.next);
+  }
+}
+
+function dismissCheck() {
+  const next = STATE.pendingNext;
+  STATE.checkResult = null;
+  STATE.pendingNext = null;
+  goToNode(next);
+}
+
+function startScenario(id) {
+  const sc = SCENARIOS[id];
+  if (!sc || !sc.startNode) return;
+  STATE.scenario = id;
+  STATE.screen = 'setup';
+  STATE.player.role = '';
+  STATE.preset = 'recommended';
+  STATE.player.stats = {...PRESETS.recommended.stats};
+  render();
+}
+
+function beginGame() {
+  if (!STATE.player.name.trim()) { STATE.player.name = 'Player'; }
+  const sc = SCENARIOS[STATE.scenario];
+  STATE.screen = 'game';
+  STATE.currentNode = sc.startNode;
+  STATE.flags = {};
+  STATE.relationships = {...(sc.relationships || {})};
+  STATE.inventory = [];
+  STATE.history = [sc.startNode];
+  STATE.sidebarOpen = false;
+  if (sc.nodes[sc.startNode]?.effects) applyEffects(sc.nodes[sc.startNode].effects);
+  render();
+}
+
+// ============================================================
+// SAVE / LOAD
+// ============================================================
+function saveGame(slot) {
+  const data = {
+    scenario: STATE.scenario,
+    player: JSON.parse(JSON.stringify(STATE.player)),
+    currentNode: STATE.currentNode,
+    flags: {...STATE.flags},
+    relationships: {...STATE.relationships},
+    inventory: [...STATE.inventory],
+    history: [...STATE.history],
+    preset: STATE.preset,
+    savedAt: new Date().toISOString()
+  };
+  localStorage.setItem('sg_save_' + slot, JSON.stringify(data));
+}
+
+function loadGame(slot) {
+  const raw = localStorage.getItem('sg_save_' + slot);
+  if (!raw) return false;
+  const data = JSON.parse(raw);
+  Object.assign(STATE, {
+    scenario: data.scenario,
+    player: data.player,
+    currentNode: data.currentNode,
+    flags: data.flags || {},
+    relationships: data.relationships || {},
+    inventory: data.inventory || [],
+    history: data.history || [],
+    preset: data.preset || 'recommended',
+    screen: 'game',
+    checkResult: null,
+    pendingNext: null
+  });
+  render();
+  return true;
+}
+
+function getSaveInfo(slot) {
+  const raw = localStorage.getItem('sg_save_' + slot);
+  if (!raw) return null;
+  const data = JSON.parse(raw);
+  const meta = SCENARIO_META.find(m => m.id === data.scenario);
+  return {
+    scenario: meta ? meta.title : data.scenario,
+    name: data.player.name,
+    role: data.player.role,
+    node: data.currentNode,
+    date: new Date(data.savedAt).toLocaleString(),
+    steps: (data.history||[]).length
+  };
+}
+
+function deleteSave(slot) {
+  localStorage.removeItem('sg_save_' + slot);
+}
+
+// ============================================================
+// PRIVATE UNLOCK
+// ============================================================
+function handleTitleTap() {
+  const now = Date.now();
+  if (now - STATE.lastTap > 3000) STATE.titleTaps = 0;
+  STATE.lastTap = now;
+  STATE.titleTaps++;
+  if (STATE.titleTaps >= 5) {
+    STATE.titleTaps = 0;
+    showUnlockModal();
+  }
+}
+
+function showUnlockModal() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Enter Access Code</h3>
+      <p style="color:var(--text-dim);font-size:.85rem;margin-bottom:12px">Private scenarios require an access code.</p>
+      <div class="unlock-input">
+        <input type="password" id="unlock-code" placeholder="CODE" maxlength="20" autocomplete="off">
+        <button onclick="tryUnlock()">Unlock</button>
+      </div>
+      <div id="unlock-error" class="unlock-error"></div>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('input').focus();
+  overlay.querySelector('input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') tryUnlock();
+  });
+}
+
+function tryUnlock() {
+  const input = document.getElementById('unlock-code');
+  const err = document.getElementById('unlock-error');
+  if (input.value.toUpperCase() === PRIVATE_CODE) {
+    STATE.privateUnlocked = true;
+    localStorage.setItem('sg_private', 'true');
+    document.querySelector('.modal-overlay').remove();
+    render();
+  } else {
+    err.textContent = 'Invalid code.';
+    input.value = '';
+    input.focus();
+  }
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+const app = document.getElementById('app');
+
+function render() {
+  switch(STATE.screen) {
+    case 'menu': renderMenu(); break;
+    case 'setup': renderSetup(); break;
+    case 'game': renderGameScreen(); break;
+  }
+}
+
+function renderMenu() {
+  const cards = SCENARIO_META
+    .filter(m => !m.private || STATE.privateUnlocked)
+    .map(m => {
+      const playable = m.status === 'playable';
+      const isNew = m.status === 'playable' && (m.id === 'zombie' || m.id === 'fratparty');
+      return `
+        <div class="scenario-card ${playable?'':'locked'}" onclick="${playable ? `startScenario('${m.id}')` : ''}">
+          <div class="card-banner" style="background:${m.gradient}">
+            <span class="icon">${m.icon}</span>
+          </div>
+          <span class="card-badge ${playable?'badge-playable':'badge-soon'}">${playable?(isNew?'NEW':'PLAY'):'COMING SOON'}</span>
+          <div class="card-body">
+            <h3>${m.title}</h3>
+            <p>${m.desc}</p>
+            <div class="card-tags">${m.tags.map(t=>`<span class="card-tag">${t}</span>`).join('')}</div>
+          </div>
+        </div>`;
+    }).join('');
+
+  const hasSaves = [0,1,2].some(i => getSaveInfo(i));
+
+  app.innerHTML = `
+    <div class="menu-screen">
+      <div class="menu-header">
+        <h1 onclick="handleTitleTap()">Scenario Generator</h1>
+        <p>Choose your story. Every decision matters.</p>
+      </div>
+      ${hasSaves ? `<div style="text-align:center;margin-bottom:20px"><button class="topbar-btn" onclick="showLoadModal()" style="padding:10px 24px;font-size:.9rem">Continue Saved Game</button></div>` : ''}
+      <div class="scenario-grid">${cards}</div>
+    </div>`;
+}
+
+function renderSetup() {
+  const sc = SCENARIOS[STATE.scenario];
+  const meta = sc.meta;
+  const roles = sc.roles;
+
+  const roleHTML = roles.length ? `
+    <div class="setup-group">
+      <label>Choose Your Role</label>
+      <div class="role-options">
+        ${roles.map(r => `<button class="role-btn ${STATE.player.role===r?'selected':''}" onclick="STATE.player.role='${r}';render()">${r}</button>`).join('')}
+      </div>
+    </div>` : '';
+
+  const presetHTML = Object.entries(PRESETS).map(([k,v]) => `
+    <button class="preset-btn ${STATE.preset===k?'selected':''}" onclick="selectPreset('${k}')">
+      <div class="name">${v.label}</div>
+      <div class="desc">${v.desc}</div>
+    </button>`).join('');
+
+  const customHTML = STATE.preset === 'custom' ? `
+    <div class="custom-stats">
+      ${Object.entries(STAT_NAMES).map(([k,name]) => `
+        <div class="stat-input">
+          <div class="stat-name">${name}</div>
+          <div class="stat-val">${STATE.player.stats[k]}</div>
+          <div class="stat-btns">
+            <button onclick="adjustStat('${k}',-1)">-</button>
+            <button onclick="adjustStat('${k}',1)">+</button>
+          </div>
+        </div>`).join('')}
+    </div>
+    <div class="points-left">Points remaining: ${30 - Object.values(STATE.player.stats).reduce((a,b)=>a+b,0)}</div>` : '';
+
+  const canStart = STATE.player.name.trim() && (roles.length === 0 || STATE.player.role) && (STATE.preset !== 'custom' || Object.values(STATE.player.stats).reduce((a,b)=>a+b,0) === 30);
+
+  app.innerHTML = `
+    <div class="setup-screen">
+      <h2 style="background:${meta.gradient};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">${meta.title}</h2>
+      <div class="setup-group">
+        <label>Your Name</label>
+        <input type="text" id="player-name" value="${STATE.player.name}" placeholder="Enter your name..." maxlength="20" oninput="STATE.player.name=this.value">
+      </div>
+      ${roleHTML}
+      <div class="setup-group">
+        <label>Difficulty Preset</label>
+        <div class="preset-options">${presetHTML}</div>
+        ${customHTML}
+      </div>
+      <button class="start-btn" ${canStart?'':"disabled"} onclick="beginGame()">BEGIN</button>
+      <button class="back-link" onclick="STATE.screen='menu';render()">Back to scenarios</button>
+    </div>`;
+}
+
+function selectPreset(key) {
+  STATE.preset = key;
+  if (key !== 'custom') {
+    STATE.player.stats = {...PRESETS[key].stats};
+  } else {
+    STATE.player.stats = {str:5,cha:5,int:5,per:5,cou:5,lck:5};
+  }
+  render();
+}
+
+function adjustStat(stat, delta) {
+  const total = Object.values(STATE.player.stats).reduce((a,b)=>a+b,0);
+  const newVal = STATE.player.stats[stat] + delta;
+  if (newVal < 1 || newVal > 10) return;
+  if (delta > 0 && total >= 30) return;
+  STATE.player.stats[stat] = newVal;
+  render();
+}
+
+function renderGameScreen() {
+  const sc = SCENARIOS[STATE.scenario];
+  const node = sc.nodes[STATE.currentNode];
+  if (!node) return;
+  const meta = sc.meta;
+
+  const moodColor = node.mood || '#1a1a2e';
+  const sceneGrad = `linear-gradient(135deg, ${moodColor}, ${moodColor}88, var(--bg))`;
+
+  // Filter choices by flags/conditions
+  const choices = (node.choices||[]).filter(c => {
+    if (c.requires) {
+      for (const [k,v] of Object.entries(c.requires)) {
+        if (STATE.flags[k] !== v) return false;
+      }
+    }
+    if (c.minRel) {
+      for (const [k,v] of Object.entries(c.minRel)) {
+        if ((STATE.relationships[k]||0) < v) return false;
+      }
+    }
+    return true;
+  });
+
+  const choiceHTML = choices.map((c,i) => {
+    let extra = '';
+    if (c.check) extra += `<div class="check-info">[${STAT_NAMES[c.check.stat]} check — DC ${c.check.dc}]</div>`;
+    if (c.relHint) extra += `<div class="rel-info">${c.relHint}</div>`;
+    return `<button class="choice-btn" onclick="handleChoice(SCENARIOS['${STATE.scenario}'].nodes['${STATE.currentNode}'].choices[${(node.choices||[]).indexOf(c)}])">${c.text}${extra}</button>`;
+  }).join('');
+
+  // Sidebar: stats
+  const statsHTML = Object.entries(STAT_NAMES).map(([k,name]) => {
+    const val = STATE.player.stats[k]||5;
+    return `<div class="stat-row"><span>${name}</span><span>${val}</span><div class="stat-bar"><div class="stat-fill" style="width:${val*10}%"></div></div></div>`;
+  }).join('');
+
+  // Sidebar: relationships
+  const relEntries = Object.entries(STATE.relationships).filter(([k,v]) => v !== 0);
+  const relHTML = relEntries.length ? relEntries.map(([k,v]) => {
+    const cls = v > 0 ? 'positive' : 'negative';
+    return `<div class="rel-row"><span>${k.charAt(0).toUpperCase()+k.slice(1)}</span><span class="val ${cls}">${v>0?'+':''}${v}</span></div>`;
+  }).join('') : '<div style="font-size:.8rem;color:var(--text-dim)">No relationships yet</div>';
+
+  // Sidebar: inventory
+  const invHTML = STATE.inventory.length ? STATE.inventory.map(i => `<div class="inv-item">- ${i}</div>`).join('') : '<div style="font-size:.8rem;color:var(--text-dim)">Empty</div>';
+
+  app.innerHTML = `
+    <div class="game-screen">
+      <div class="game-topbar">
+        <div class="title">${meta.title}</div>
+        <div class="actions">
+          <button class="topbar-btn" onclick="showSaveModal()">Save</button>
+          <button class="topbar-btn" onclick="showLoadModal()">Load</button>
+          <button class="topbar-btn" onclick="if(confirm('Return to menu? Unsaved progress will be lost.'))STATE.screen='menu',render()">Menu</button>
+        </div>
+      </div>
+      <div class="game-body">
+        <div class="game-main">
+          <div class="scene-mood" style="background:${sceneGrad}">
+            <span class="icon" style="font-size:2.5rem">${meta.icon}</span>
+          </div>
+          <button class="sidebar-toggle" onclick="STATE.sidebarOpen=!STATE.sidebarOpen;document.querySelector('.game-sidebar').classList.toggle('open')">Stats & Inventory</button>
+          <div class="story-text"><div class="new-text">${formatText(node.text)}</div></div>
+          <div class="choice-list">${choiceHTML}</div>
+        </div>
+        <div class="game-sidebar ${STATE.sidebarOpen?'open':''}">
+          <div class="sidebar-section"><h4>Character</h4>
+            <div style="font-size:.9rem;font-weight:600;margin-bottom:4px">${STATE.player.name}</div>
+            ${STATE.player.role ? `<div style="font-size:.8rem;color:var(--text-dim)">${STATE.player.role}</div>` : ''}
+          </div>
+          <div class="sidebar-section"><h4>Stats</h4>${statsHTML}</div>
+          <div class="sidebar-section"><h4>Relationships</h4>${relHTML}</div>
+          <div class="sidebar-section"><h4>Inventory</h4>${invHTML}</div>
+        </div>
+      </div>
+    </div>`;
+
+  // Check result overlay
+  if (STATE.checkResult) {
+    const cr = STATE.checkResult;
+    const overlay = document.createElement('div');
+    overlay.className = 'check-result';
+    overlay.innerHTML = `
+      <div class="inner">
+        <div style="font-size:.85rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:1px">${STAT_NAMES[cr.statName]} Check</div>
+        <div class="roll-display ${cr.success?'success':'fail'}">${cr.success?'SUCCESS':'FAILED'}</div>
+        <div class="roll-detail">Stat ${cr.stat} + Roll ${cr.roll} = ${cr.total} vs DC ${cr.dc}</div>
+        <button onclick="dismissCheck()">Continue</button>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+}
+
+function formatText(text) {
+  return text.replace(/\n/g, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\[(.+?)\]/g, '<span style="color:var(--accent);font-style:italic">[$1]</span>');
+}
+
+function showSaveModal() {
+  const slots = [0,1,2].map(i => {
+    const info = getSaveInfo(i);
+    return `<div class="save-slot" onclick="saveGame(${i});this.closest('.modal-overlay').remove()">
+      <div class="slot-name">Slot ${i+1}</div>
+      <div class="slot-info">${info ? `${info.scenario} - ${info.name} (${info.role||'no role'}) | ${info.steps} steps | ${info.date}` : 'Empty'}</div>
+    </div>`;
+  }).join('');
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal"><h3>Save Game</h3>${slots}<button class="modal-close" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div>`;
+  document.body.appendChild(overlay);
+}
+
+function showLoadModal() {
+  const slots = [0,1,2].map(i => {
+    const info = getSaveInfo(i);
+    if (!info) return `<div class="save-slot" style="opacity:.3"><div class="slot-name">Slot ${i+1}</div><div class="slot-info">Empty</div></div>`;
+    return `<div class="save-slot" onclick="loadGame(${i});this.closest('.modal-overlay').remove()">
+      <div class="slot-name">Slot ${i+1}</div>
+      <div class="slot-info">${info.scenario} - ${info.name} (${info.role||'no role'}) | ${info.steps} steps | ${info.date}</div>
+    </div>`;
+  }).join('');
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal"><h3>Load Game</h3>${slots}<button class="modal-close" onclick="this.closest('.modal-overlay').remove()">Cancel</button></div>`;
+  document.body.appendChild(overlay);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+render();
+</script>
+<script src="auth.js"></script>
+<script src="back-btn.js"></script>
+</body>
+</html>
