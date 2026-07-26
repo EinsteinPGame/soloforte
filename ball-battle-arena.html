@@ -19659,7 +19659,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.34.3 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.34.4 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -20476,12 +20476,18 @@ function drawSelectMobile(){
     // Remove sponsor buttons that overlap nav area
     buttons=buttons.filter(b=>!(b.id.startsWith(sponsorPrefix)&&b.y+b.h>arrowNavY-10));
 
-    // Back button — drawn AFTER sponsor picker so it's on top
-    addBtn('mSelBack',5,arrowNavY,55,arrowNavH,'\u2190 Back','#666',()=>{_1v1SelPage--;});
-
-    // Nav buttons background — cover any sponsor overflow
+    // Nav buttons background — cover any sponsor overflow FIRST
     X.fillStyle='#0a0a1a';X.fillRect(0,arrowNavY-10,W,H-arrowNavY+10);
 
+    // Back button — drawn AFTER nav background so it's visible
+    addBtn('mSelBack',5,arrowNavY,55,arrowNavH,'\u2190 Back','#666',()=>{_1v1SelPage--;});
+  }
+
+  // Draw all registered buttons first
+  buttons.forEach(drawBtn);
+
+  // Draw Next/Battle button LAST so it's never covered by anything
+  if(!isCharPage){
     if(_1v1SelPage===4){
       // Final page — BATTLE button (prominent)
       X.save();X.shadowColor='#ff4444';X.shadowBlur=12;
@@ -20491,17 +20497,15 @@ function drawSelectMobile(){
       X.fillText('BATTLE!',W/2,arrowNavY-42+19);
       addBtn('battle',W/2-80,arrowNavY-42,160,38,'','transparent',startIntroCutscene);
     } else {
-      // Next to P2 char select (prominent filled)
+      // Next to P2 char/elem select (prominent filled)
       X.save();X.shadowColor='#7b68ee';X.shadowBlur=8;
       drawRoundRect(W/2-55,arrowNavY,110,arrowNavH,8);X.fillStyle='#7b68ee';X.fill();
       X.shadowBlur=0;X.restore();
       X.font='bold 14px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';X.fillStyle='#fff';
       X.fillText('Next \u2192',W/2,arrowNavY+arrowNavH/2);
-      addBtn('mSelNext',W/2-55,arrowNavY,110,arrowNavH,'','transparent',()=>{_1v1SelPage=3;selectPage=0;selectTierPage=0;});
+      addBtn('mSelNext',W/2-55,arrowNavY,110,arrowNavH,'','transparent',()=>{_1v1SelPage=_1v1SelPage+1;selectPage=0;selectTierPage=0;});
     }
   }
-
-  buttons.forEach(drawBtn);
 }
 
 function drawElementIcon(cx,cy,elemId,size){
