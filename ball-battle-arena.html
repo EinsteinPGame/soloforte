@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// BALL BATTLE ARENA v10.17.0 — 18 lore combos + cross-franchise combos
+// BALL BATTLE ARENA v10.37.0 — 28 chars: Jogo + Sukuna (Heian resurrection)
 // ============================================================
 const C=document.getElementById('g'),X=C.getContext('2d');
 const isMobile=(()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
@@ -210,6 +210,26 @@ const SFX={
   todoClap(){this._tone(1500,0.05,'square',0.3);this._tone(800,0.08,'triangle',0.2,0.02);this._noise(0.03,0.06)},
   // Mahito — Transfigure soul touch
   transfigure(){this._tone(400,0.15,'sine',0.2);this._tone(300,0.2,'sine',0.15,0.05);this._tone(200,0.25,'triangle',0.1,0.1);},
+  // Jogo — Volcanic Fist (fire burst melee)
+  jogoFist(){this._tone(150,0.15,'sawtooth',0.25);this._tone(300,0.1,'sine',0.2,0.02);this._noise(0.1,0.18);this._tone(80,0.2,'sine',0.15,0.05)},
+  // Jogo — Fire Pillar (ground eruption)
+  jogoPillar(){this._tone(80,0.3,'sine',0.3);this._tone(200,0.2,'sawtooth',0.22,0.05);this._noise(0.2,0.2);this._tone(400,0.12,'square',0.15,0.1)},
+  // Jogo — Maximum Meteor (big AoE)
+  jogoMeteor(){this._tone(40,0.5,'sine',0.45);this._tone(80,0.4,'sine',0.35,0.05);this._tone(150,0.3,'sawtooth',0.25,0.1);this._noise(0.3,0.3);this._tone(300,0.15,'square',0.18,0.15)},
+  // Jogo — Domain: Coffin of Iron Mountain
+  jogoDomain(){[150,300,450,600,800,1000].forEach((f,i)=>this._tone(f,0.25,'sine',0.22,i*0.06));this._noise(0.25,0.2);this._tone(60,0.4,'sine',0.3,0.35)},
+  // Sukuna — Cleave slash (mid-air slash on enemy)
+  sukunaCleave(){this._tone(1200,0.04,'sawtooth',0.22);this._tone(2000,0.03,'sawtooth',0.15,0.01);this._tone(600,0.06,'square',0.12,0.02);this._noise(0.04,0.08)},
+  // Sukuna — Fuga fire arrow
+  sukunaFuga(){this._tone(200,0.15,'sawtooth',0.25);this._tone(400,0.12,'sine',0.2,0.03);this._noise(0.1,0.18);this._tone(600,0.08,'square',0.12,0.06)},
+  // Sukuna — Dismantle (defense-breaking slash)
+  sukunaDismantle(){this._tone(1400,0.05,'sawtooth',0.3);this._tone(800,0.08,'square',0.22,0.02);this._tone(2200,0.03,'sawtooth',0.18,0.01);this._noise(0.06,0.15)},
+  // Sukuna — Malevolent Shrine domain
+  sukunaDomain(){[100,250,400,600,900,1200].forEach((f,i)=>this._tone(f,0.2,'sine',0.25,i*0.05));this._noise(0.25,0.25);this._tone(50,0.5,'sine',0.35,0.3)},
+  // Sukuna — Heian resurrection
+  sukunaHeian(){this._tone(200,0.2,'sine',0.2);this._tone(400,0.2,'sine',0.18,0.1);this._tone(600,0.2,'sine',0.15,0.2);this._tone(800,0.3,'sine',0.25,0.3);this._tone(1000,0.2,'sawtooth',0.2,0.4);this._noise(0.2,0.15)},
+  // Sukuna — World Cutting Slash
+  sukunaWorldSlash(){this._tone(30,0.6,'sine',0.5);this._tone(60,0.5,'sine',0.4,0.05);this._tone(120,0.4,'sawtooth',0.3,0.1);this._noise(0.4,0.35);[200,400,600,800].forEach((f,i)=>this._tone(f,0.2,'square',0.15,0.15+i*0.05))},
 };
 
 // ============================================================
@@ -437,6 +457,22 @@ const CHARS=[
     baseAtkInterval:42,relicChargeRate:0.85,
     specialName:'HAIRPIN!',
   },
+  {
+    id:'jogo',name:'Jogo',color:'#cc4400',
+    desc:'Volcanic cursed spirit. Charge hits \u2192 Volcanic Fist \u2192 Fire Pillar \u2192 Maximum Meteor.',
+    playstyle:'Charge & Eruption',
+    stats:{hp:540,atk:29,speed:3.6,range:120,def:8,crit:14},
+    baseAtkInterval:44,relicChargeRate:0.15,
+    specialName:'COFFIN OF IRON MOUNTAIN',
+  },
+  {
+    id:'sukuna',name:'Sukuna',color:'#8b0000',
+    desc:'King of Curses. Auto-cleave slashes + Fuga fire arrows. Dismantles break all defense. Resurrects as Heian Era.',
+    playstyle:'Slash & Dismantle',
+    stats:{hp:600,atk:32,speed:4.0,range:130,def:10,crit:18},
+    baseAtkInterval:28,relicChargeRate:0.8,
+    specialName:'MALEVOLENT SHRINE',
+  },
 ];
 
 // ============================================================
@@ -547,6 +583,14 @@ const COMBO_EFFECTS={
   'yuki_electric':'Garuda chains lightning to nearby enemies on hit',
   'yuki_toxic':'Mass decays 50% slower between combos',
   'yuki_cryo':'Black hole pulls slower but Garuda orbits longer',
+  'jogo_fire':'Stronger volcanic effects — bigger eruptions + more burn',
+  'jogo_electric':'Faster charge gain per hit (0.2 instead of 0.15)',
+  'jogo_toxic':'Lingering lava pools left by eruptions',
+  'jogo_cryo':'Obsidian shards — volcanic+ice hybrid explosions',
+  'sukuna_fire':'Divine flames stronger — Fuga + slashes deal bonus fire damage',
+  'sukuna_electric':'Faster slash rate + shorter Fuga cooldown',
+  'sukuna_toxic':'Dismantles leave poison zones that linger',
+  'sukuna_cryo':'Slashes freeze enemies briefly on hit',
 };
 
 // ============================================================
@@ -560,7 +604,8 @@ const TIER_MAP={
   mahoraga:10, // S (boss)
   dabura:9, // S- (boss)
   higuruma:8, toji:8, kashimo:8, yuki:8, megumi:8, // A+
-  nanami:7, choso:7, naoya:7, mahito:7, // A
+  sukuna:9, // S- (non-boss playable)
+  nanami:7, choso:7, naoya:7, mahito:7, jogo:7, // A
   sandy:3, // B- (cyberware implant, not a full fighter)
   mechamaru:6, // A-
   yuji:5, todo:5, // B+
@@ -716,6 +761,34 @@ const LORE_COMBOS=[
     dmgMult:3.2,
     cutsceneFrames:85,
     color1:'#8b0000', color2:'#7744aa',
+  },
+  {
+    pair:['jogo','sukuna'], franchise:'JJK', name:'VOLCANIC KING',
+    desc:'Jogo erupts Maximum Meteor while Sukuna opens Malevolent Shrine — fire and dismantles shred everything',
+    dmgMult:3.0,
+    cutsceneFrames:85,
+    color1:'#cc4400', color2:'#8b0000',
+  },
+  {
+    pair:['sukuna','yuji'], franchise:'JJK', name:'VESSEL & KING',
+    desc:'Sukuna takes control through Yuji — combined Black Flash + Dismantle tears through all defenses',
+    dmgMult:2.8,
+    cutsceneFrames:80,
+    color1:'#8b0000', color2:'#ff69b4',
+  },
+  {
+    pair:['sukuna','megumi'], franchise:'JJK', name:'TEN SHADOWS VESSEL',
+    desc:'Sukuna channels through Megumi\'s Ten Shadows — Mahoraga\'s wheel turns as Dismantles rain',
+    dmgMult:3.0,
+    cutsceneFrames:85,
+    color1:'#8b0000', color2:'#1a3a6a',
+  },
+  {
+    pair:['jogo','mahito'], franchise:'JJK', name:'CURSED SPIRIT ALLIANCE',
+    desc:'Jogo\'s volcanic fury combines with Mahito\'s soul manipulation — a cataclysmic cursed storm',
+    dmgMult:2.5,
+    cutsceneFrames:75,
+    color1:'#cc4400', color2:'#5a8a8a',
   },
   {
     pair:['hakari','kashimo'], franchise:'JJK', name:'JACKPOT LIGHTNING',
@@ -1892,6 +1965,32 @@ function createFighter(charIdx,elemIdx,side){
     nobaraVoodooDoll:null, // {x,y,hp,maxHp,targetRef,timer,maxTimer} — active voodoo doll
     nobaraVoodooFireRate:1.0, // fire rate multiplier during voodoo (slower)
     nobaraVoodooAoeDmg:0, // stored AoE damage for doll explosion (prime mode)
+    // Jogo state — Volcanic cursed spirit
+    jogoCharge:0, // permanent charge (builds 0.15 per hit)
+    jogoDomainActive:false, // Coffin of Iron Mountain active
+    jogoDomainTimer:0, // domain duration
+    jogoMeteorCD:0, // meteor cooldown
+    jogoPillarCD:0, // fire pillar cooldown
+    jogoBugTimer:0, // visual bug swarm timer
+    jogoLavaPool:[], // [{x,y,timer,radius}] lingering lava pools (toxic element)
+    // Sukuna state — King of Curses
+    sukunaSlashTimer:0, // auto-cleave slash timer
+    sukunaFugaCD:0, // Fuga fire arrow cooldown
+    sukunaFugaAiming:false, // currently aiming Fuga
+    sukunaFugaAimTimer:0, // aim duration before firing
+    sukunaFugaAngle:0, // aim angle
+    sukunaDismantleActive:false, // Dismantle mode after Fuga lands
+    sukunaDismantleTimer:0, // how many Dismantle attacks remain
+    sukunaDismantleCount:0, // attacks done in Dismantle mode
+    sukunaDomainActive:false, // Malevolent Shrine active
+    sukunaDomainTimer:0, // domain duration
+    sukunaHeian:false, // Heian Era Sukuna (resurrected form)
+    sukunaRevived:false, // has already revived once
+    sukunaReviving:false, // currently in revival animation
+    sukunaReviveTimer:0, // revival animation timer
+    sukunaWorldSlashReady:false, // ONE World Cutting Slash available (Heian only)
+    sukunaWorldSlashUsed:false, // already used the World Cutting Slash
+    sukunaSlashProjectiles:[], // auto-cleave slashes [{x,y,timer,angle}]
   };
 }
 
@@ -1910,6 +2009,8 @@ function updatePhysics(f,dt){
   if(f.kashimoAmberActive)spdMult=0; // Kashimo frozen during AMBER charge
   if(f.mahoSlamActive)spdMult=0; // Mahoraga frozen during slam
   if(f.mahoShinjukuAnim>0)spdMult=0; // Mahoraga frozen during Shinjuku transition
+  if(f.sukunaReviving)spdMult=0; // Sukuna frozen during Heian revival
+  if(f.sukunaFugaAiming)spdMult=0.3; // Sukuna slowed while aiming Fuga
   if(f.dabPhaseTransition>0)spdMult=0; // Dabura frozen during phase transition
   if(f.dabDashing)spdMult=0; // Dabura movement handled by dash logic
   if(f.slowTimer>0)spdMult*=0.55;
@@ -2050,6 +2151,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
   if(defender.naoyaTransitionTimer>0)return 0;
   // Gojo revival invulnerability — no damage in or out during float-up
   if(attacker.gojoReviving||defender.gojoReviving)return 0;
+  // Sukuna revival invulnerability — no damage during Heian transformation
+  if(attacker.sukunaReviving||defender.sukunaReviving)return 0;
   // Captured enemies cannot damage the monowire that captured them
   if(attacker.captureTimer>0&&defender===attacker._capturedBy)return 0;
   if(canCrit===undefined)canCrit=true;
@@ -2401,6 +2504,19 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
       addLog('GOJO REVIVES!');
       return dmg;
     }
+    // Sukuna revival — first death triggers Heian Era
+    if(defender.char.id==='sukuna'&&!defender.sukunaRevived){
+      defender.hp=1;defender.sukunaRevived=true;defender.sukunaReviving=true;defender.sukunaReviveTimer=120;
+      defender.stunTimer=0;defender.freezeTimer=0;defender.projectionFrozenTimer=0;defender.captureTimer=0;
+      SFX.sukunaHeian();
+      showRelicText('HEIAN ERA SUKUNA','#8b0000');
+      spawnBurst(defender.x,defender.y,'#8b0000',40,10);
+      spawnBurst(defender.x,defender.y,'#ff4400',25,7);
+      for(let r=0;r<3;r++){explosions.push({x:defender.x,y:defender.y,radius:0,maxRadius:60+r*25,color:'#8b0000',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});}
+      shakeTimer=25;shakeAmt=14;triggerScreenFlash('#8b0000',15);
+      addLog('SUKUNA — HEIAN ERA!');
+      return dmg;
+    }
     // Mahoraga Shinjuku mode — at 18% HP, doesn't die, enters Shinjuku
     if(defender.char.id==='mahoraga'&&!defender.mahoShinjuku&&defender.hp<=0){
       defender.hp=defender.maxHp*0.18;
@@ -2470,6 +2586,15 @@ function applyDotDamage(target,dmg,source){
       spawnBurst(target.x,target.y,'#8888ff',40,10);spawnBurst(target.x,target.y,'#ffffff',25,7);
       for(let r=0;r<3;r++){explosions.push({x:target.x,y:target.y,radius:0,maxRadius:60+r*25,color:'#5577ff',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});}
       shakeTimer=25;shakeAmt=14;triggerScreenFlash('#5577ff',15);addLog('GOJO REVIVES!');return;
+    }
+    // Sukuna revival (dot damage)
+    if(target.char.id==='sukuna'&&!target.sukunaRevived){
+      target.hp=1;target.sukunaRevived=true;target.sukunaReviving=true;target.sukunaReviveTimer=120;
+      target.stunTimer=0;target.freezeTimer=0;target.projectionFrozenTimer=0;target.captureTimer=0;
+      SFX.sukunaHeian();showRelicText('HEIAN ERA SUKUNA','#8b0000');
+      spawnBurst(target.x,target.y,'#8b0000',40,10);spawnBurst(target.x,target.y,'#ff4400',25,7);
+      for(let r=0;r<3;r++){explosions.push({x:target.x,y:target.y,radius:0,maxRadius:60+r*25,color:'#8b0000',life:20,maxLife:20,dmg:0,owner:null,target:null,hit:true});}
+      shakeTimer=25;shakeAmt=14;triggerScreenFlash('#8b0000',15);addLog('SUKUNA — HEIAN ERA!');return;
     }
     // Mahoraga Shinjuku mode
     if(target.char.id==='mahoraga'&&!target.mahoShinjuku){
@@ -3974,6 +4099,8 @@ function performWeaponAttack(f,enemy){
     case 'megumi':attackMegumi(f,enemy,chaos);break;
     case 'mahito':attackMahito(f,enemy,chaos);break;
     case 'nobara':attackNobara(f,enemy,chaos);break;
+    case 'jogo':attackJogo(f,enemy,chaos);break;
+    case 'sukuna':attackSukuna(f,enemy,chaos);break;
   }
 }
 
@@ -6292,6 +6419,450 @@ function updatePrimeNobara(f,enemy,dt){
   }
 }
 
+// ============================================================
+// JOGO — Volcanic Cursed Spirit: Charge & Eruption
+// ============================================================
+function attackJogo(f,enemy,chaos){
+  f.weaponExtend=1;f.weaponFlash=10;
+  const d=dist(f,enemy);
+  const effectiveRange=f.range+enemy.radius+chaos*6;
+
+  // Element modifiers
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  const chargeGain=isElecElem?0.2:0.15;
+  const dmgMult=isFireElem?1.2:1.0;
+
+  // Check charge level for attack type
+  if(f.jogoCharge>=3&&f.jogoMeteorCD<=0){
+    // Maximum Meteor — big AoE projectile from sky
+    SFX.jogoMeteor();
+    f.jogoCharge-=3;
+    f.jogoMeteorCD=180; // 3s cooldown
+    const meteorX=enemy.x+rand(-30,30);const meteorY=20;
+    projectiles.push({
+      x:meteorX,y:meteorY,vx:0,vy:8,owner:f,target:enemy,color:'#ff4400',
+      life:80,radius:20,dmg:f.atk*3.5*dmgMult,explosive:true,homing:false,
+      isJogoMeteor:true,trail:'#cc4400',
+    });
+    spawnBurst(meteorX,meteorY,'#ff6600',15,6);
+    shakeTimer=12;shakeAmt=8;
+    spawnDmgNum(f.x,f.y-f.radius-20,'MAXIMUM METEOR!','#ff4400',true);
+    addLog((f.side===0?'P1':'P2')+' MAXIMUM METEOR!');
+    if(d<effectiveRange){f.jogoCharge+=chargeGain;dealDamage(f,enemy,f.atk*0.5*dmgMult);}
+    return;
+  }
+  if(f.jogoCharge>=2&&f.jogoPillarCD<=0){
+    // Fire Pillar — ground eruption at enemy position
+    SFX.jogoPillar();
+    f.jogoCharge-=2;
+    f.jogoPillarCD=120; // 2s cooldown
+    const pillarR=isFireElem?60:45;
+    explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:pillarR,color:'#ff6600',life:30,maxLife:30,dmg:f.atk*2.0*dmgMult,owner:f,target:null,hit:false});
+    // Pillar visual — upward particles
+    for(let i=0;i<20;i++){
+      spawnParticle(enemy.x+rand(-20,20),enemy.y,'#ff4400',rand(-2,2),-3-Math.random()*4,30,3);
+    }
+    spawnBurst(enemy.x,enemy.y,'#ff8800',20,8);
+    shakeTimer=10;shakeAmt=6;
+    spawnDmgNum(f.x,f.y-f.radius-20,'FIRE PILLAR!','#ff6600',true);
+    if(isToxicElem){f.jogoLavaPool.push({x:enemy.x,y:enemy.y,timer:180,radius:40});}
+    if(d<effectiveRange){f.jogoCharge+=chargeGain;dealDamage(f,enemy,f.atk*0.5*dmgMult);}
+    return;
+  }
+  if(f.jogoCharge>=1&&d<effectiveRange+20){
+    // Volcanic Fist — melee fire punch
+    SFX.jogoFist();
+    f.jogoCharge-=1;
+    const fistDmg=f.atk*1.8*dmgMult;
+    dealDamage(f,enemy,fistDmg);
+    explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:35,color:'#ff4400',life:15,maxLife:15,dmg:0,owner:f,target:null,hit:true});
+    spawnBurst(enemy.x,enemy.y,'#ff6600',15,6);
+    shakeTimer=8;shakeAmt=5;
+    spawnDmgNum(enemy.x,enemy.y-20,'VOLCANIC FIST!','#ff4400',false);
+    const ka=angle(f,enemy);
+    enemy.vx+=Math.cos(ka)*5;enemy.vy+=Math.sin(ka)*5;
+    if(isToxicElem){f.jogoLavaPool.push({x:enemy.x,y:enemy.y,timer:120,radius:25});}
+    return;
+  }
+
+  // Normal hit — builds charge
+  if(d>effectiveRange)return;
+  SFX.hit();
+  const dmg=dealDamage(f,enemy,f.atk*(1+chaos*0.06)*dmgMult);
+  if(dmg>0)f.jogoCharge+=chargeGain;
+  spawnBurst(enemy.x,enemy.y,'#cc4400',6,3);
+  // Charge indicator
+  spawnDmgNum(f.x,f.y-f.radius-15,f.jogoCharge.toFixed(1),'#ff6600',false);
+  const ka=angle(f,enemy);
+  enemy.vx+=Math.cos(ka)*2;enemy.vy+=Math.sin(ka)*2;
+}
+
+function relicJogo(f,enemy){
+  // COFFIN OF IRON MOUNTAIN — domain expansion
+  SFX.jogoDomain();
+  SFX.megaExplosion();
+
+  f.jogoDomainActive=true;
+  f.jogoDomainTimer=300; // 5 seconds
+  f.specialTimer=300;
+
+  // Passive charge gain during domain
+  f.jogoCharge+=1.5;
+
+  spawnBurst(f.x,f.y,'#cc4400',40,15);
+  spawnBurst(f.x,f.y,'#ff6600',30,10);
+  triggerScreenFlash('#cc4400',15);
+  shakeTimer=20;shakeAmt=12;
+  spawnDmgNum(f.x,f.y-f.radius-30,'COFFIN OF IRON MOUNTAIN','#cc4400',true);
+  addLog((f.side===0?'P1':'P2')+' COFFIN OF IRON MOUNTAIN!');
+}
+
+function updateRelicJogo(f,enemy,dt){
+  if(!f.jogoDomainActive)return;
+  f.jogoDomainTimer-=dt;
+  if(f.jogoMeteorCD>0)f.jogoMeteorCD-=dt;
+  if(f.jogoPillarCD>0)f.jogoPillarCD-=dt;
+
+  // Domain visual: volcanic particles
+  if(battleTime%4<1){
+    const a=Math.random()*Math.PI*2;const r=Math.random()*200;
+    spawnParticle(f.x+Math.cos(a)*r,f.y+Math.sin(a)*r,pick(['#ff4400','#ff6600','#cc3300']),rand(-1,1),-2-Math.random()*2,25,3);
+  }
+
+  // Mini meteors raining from above every 1.5s
+  if(f.jogoDomainTimer%90===0&&f.jogoDomainTimer>0){
+    const isFireElem=f.elementActive&&f.elem.id==='fire';
+    const meteorDmg=f.atk*(isFireElem?1.0:0.7);
+    for(let i=0;i<3;i++){
+      const mx=rand(30,W-30);const my=rand(10,30);
+      projectiles.push({
+        x:mx,y:my,vx:rand(-1,1),vy:6+rand(0,3),owner:f,target:null,color:'#ff6600',
+        life:60,radius:10,dmg:meteorDmg,explosive:true,homing:false,isJogoMeteor:true,trail:'#cc4400',
+      });
+    }
+    SFX.jogoPillar();
+    shakeTimer=6;shakeAmt=4;
+  }
+
+  // Passive charge gain (0.05 per second)
+  f.jogoCharge+=0.05/60*dt;
+
+  // Lava pools (toxic element)
+  for(let i=f.jogoLavaPool.length-1;i>=0;i--){
+    const lp=f.jogoLavaPool[i];
+    lp.timer-=dt;
+    if(lp.timer<=0){f.jogoLavaPool.splice(i,1);continue;}
+    // Damage enemies in pool
+    if(battleTime%30===0){
+      fighters.forEach(t=>{
+        if(t.side===f.side||t.dead)return;
+        if(Math.hypot(t.x-lp.x,t.y-lp.y)<lp.radius){
+          applyDotDamage(t,f.atk*0.3,f);
+          spawnParticle(t.x,t.y,'#ff4400',0,-1,10,2);
+        }
+      });
+    }
+    // Lava pool visual
+    if(battleTime%8<1){
+      spawnParticle(lp.x+rand(-lp.radius/2,lp.radius/2),lp.y+rand(-5,5),'#ff6600',0,-1,15,2);
+    }
+  }
+
+  if(f.jogoDomainTimer<=0){
+    f.jogoDomainActive=false;
+    addLog((f.side===0?'P1':'P2')+' domain faded');
+  }
+}
+
+function updatePrimeJogo(f,enemy,dt){
+  // Prime mode: volcanic bugs swarm at higher chaos — visual only + slight charge boost
+  const chaos=getChaosLevel(f);
+  if(battleTime%10<1){
+    const bugCount=Math.min(5,1+Math.floor(chaos*0.5));
+    for(let i=0;i<bugCount;i++){
+      const a=Math.random()*Math.PI*2;
+      spawnParticle(f.x+Math.cos(a)*(f.radius+5),f.y+Math.sin(a)*(f.radius+5),
+        pick(['#cc4400','#ff6600','#993300']),Math.cos(a+Math.PI)*1.5,Math.sin(a+Math.PI)*1.5-0.5,20,1.5);
+    }
+  }
+  // Cooldown reduction
+  if(f.jogoMeteorCD>0)f.jogoMeteorCD-=dt*0.3;
+  if(f.jogoPillarCD>0)f.jogoPillarCD-=dt*0.3;
+}
+
+// ============================================================
+// SUKUNA — King of Curses: Slash & Dismantle
+// ============================================================
+function attackSukuna(f,enemy,chaos){
+  f.weaponExtend=1;f.weaponFlash=8;
+  const d=dist(f,enemy);
+  const effectiveRange=f.range+enemy.radius+chaos*5;
+
+  // Element modifiers
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  const heian=f.sukunaHeian;
+
+  // Auto-cleave slash timer (independent of normal attack)
+  const slashRate=isElecElem?18:(heian?22:30);
+  if(f.sukunaSlashTimer<=0){
+    f.sukunaSlashTimer=Math.round(slashRate/(1+chaos*0.08));
+    // Spawn slash on enemy position
+    const slashAngle=Math.random()*Math.PI*2;
+    const slashDmg=f.atk*(heian?1.2:0.8)*(isFireElem?1.3:1.0);
+    if(enemy.alive){
+      // Slash appears mid-air on enemy
+      const sx=enemy.x+rand(-15,15);const sy=enemy.y+rand(-15,15);
+      f.sukunaSlashProjectiles.push({x:sx,y:sy,timer:12,angle:slashAngle,dmg:slashDmg,hit:false,target:enemy});
+      if(heian){
+        SFX.sukunaDismantle();
+        // Slash visual — divine flames
+        for(let i=0;i<6;i++){
+          spawnParticle(sx+rand(-8,8),sy+rand(-8,8),pick(['#ff4400','#ff6600','#8b0000']),rand(-2,2),rand(-2,2),12,2);
+        }
+      } else {
+        SFX.sukunaCleave();
+      }
+      // Slash arc visual
+      for(let i=0;i<4;i++){
+        const spread=(Math.random()-0.5)*0.8;
+        spawnParticle(sx,sy,'#8b0000',Math.cos(slashAngle+spread)*3,Math.sin(slashAngle+spread)*3,10,2);
+      }
+    }
+  }
+
+  // Fuga fire arrow
+  if(f.sukunaFugaCD<=0&&!f.sukunaFugaAiming){
+    const fugaInterval=isElecElem?240:300; // 4-5 seconds
+    f.sukunaFugaCD=Math.round(fugaInterval/(1+chaos*0.05));
+    f.sukunaFugaAiming=true;
+    f.sukunaFugaAimTimer=heian?20:40; // Heian aims faster
+    f.sukunaFugaAngle=angle(f,enemy);
+  }
+
+  // Fuga aiming
+  if(f.sukunaFugaAiming){
+    f.sukunaFugaAimTimer-=1;
+    f.sukunaFugaAngle=lerp(f.sukunaFugaAngle,angle(f,enemy),0.1);
+    if(f.sukunaFugaAimTimer<=0){
+      f.sukunaFugaAiming=false;
+      SFX.sukunaFuga();
+      const fugaDmg=f.atk*(heian?2.5:2.0)*(isFireElem?1.3:1.0);
+      if(heian){
+        // Barrage version — 3 rapid fire arrows
+        for(let i=0;i<3;i++){
+          const spread=(i-1)*0.15;
+          projectiles.push({
+            x:f.x+Math.cos(f.sukunaFugaAngle)*f.radius,y:f.y+Math.sin(f.sukunaFugaAngle)*f.radius,
+            vx:Math.cos(f.sukunaFugaAngle+spread)*9,vy:Math.sin(f.sukunaFugaAngle+spread)*9,
+            owner:f,target:enemy,color:'#ff4400',life:50,radius:8,dmg:fugaDmg*0.6,
+            explosive:true,homing:true,homingStrength:0.04,isSukunaFuga:true,
+          });
+        }
+        spawnDmgNum(f.x,f.y-f.radius-20,'FUGA BARRAGE!','#ff4400',true);
+      } else {
+        projectiles.push({
+          x:f.x+Math.cos(f.sukunaFugaAngle)*f.radius,y:f.y+Math.sin(f.sukunaFugaAngle)*f.radius,
+          vx:Math.cos(f.sukunaFugaAngle)*8,vy:Math.sin(f.sukunaFugaAngle)*8,
+          owner:f,target:enemy,color:'#ff4400',life:60,radius:10,dmg:fugaDmg,
+          explosive:true,homing:true,homingStrength:0.03,isSukunaFuga:true,
+        });
+        spawnDmgNum(f.x,f.y-f.radius-20,'FUGA!','#ff4400',false);
+      }
+      spawnBurst(f.x+Math.cos(f.sukunaFugaAngle)*f.radius,f.y+Math.sin(f.sukunaFugaAngle)*f.radius,'#ff6600',10,5);
+      shakeTimer=8;shakeAmt=5;
+      // After Fuga lands, next few attacks become Dismantles
+      f.sukunaDismantleActive=true;
+      f.sukunaDismantleTimer=heian?8:5; // number of Dismantle attacks
+      f.sukunaDismantleCount=0;
+    }
+    return; // don't attack while aiming
+  }
+
+  // Heian World Cutting Slash — one-time massive hit
+  if(heian&&f.sukunaWorldSlashReady&&!f.sukunaWorldSlashUsed&&d<effectiveRange*1.5){
+    f.sukunaWorldSlashUsed=true;
+    f.sukunaWorldSlashReady=false;
+    SFX.sukunaWorldSlash();
+    const wcsDmg=f.atk*6;
+    dealDamage(f,enemy,wcsDmg,true);
+    // Massive visual
+    explosions.push({x:enemy.x,y:enemy.y,radius:0,maxRadius:150,color:'#8b0000',life:30,maxLife:30,dmg:0,owner:null,target:null,hit:true});
+    // Screen-wide slash line
+    for(let i=0;i<30;i++){
+      const a=angle(f,enemy);const spread=(Math.random()-0.5)*0.3;
+      spawnParticle(f.x+Math.cos(a)*i*8,f.y+Math.sin(a)*i*8,'#ff0000',0,0,20,3);
+    }
+    spawnBurst(enemy.x,enemy.y,'#ff0000',40,12);
+    spawnBurst(enemy.x,enemy.y,'#8b0000',30,8);
+    triggerScreenFlash('#8b0000',20);triggerHitFreeze(10);
+    shakeTimer=25;shakeAmt=16;
+    spawnDmgNum(enemy.x,enemy.y-30,'WORLD CUTTING SLASH!','#ff0000',true);
+    addLog((f.side===0?'P1':'P2')+' WORLD CUTTING SLASH!');
+    return;
+  }
+
+  // Dismantle mode — defense-breaking attacks
+  if(f.sukunaDismantleActive&&f.sukunaDismantleCount<f.sukunaDismantleTimer&&d<effectiveRange){
+    SFX.sukunaDismantle();
+    const dismDmg=f.atk*1.5*(isFireElem?1.2:1.0);
+    // Bypass defense
+    const savedDef=enemy.def;
+    enemy.def=0;
+    dealDamage(f,enemy,dismDmg,true);
+    enemy.def=savedDef;
+    f.sukunaDismantleCount++;
+    spawnBurst(enemy.x,enemy.y,'#8b0000',10,5);
+    spawnDmgNum(enemy.x,enemy.y-20,'DISMANTLE!','#8b0000',false);
+    const ka=angle(f,enemy);enemy.vx+=Math.cos(ka)*3;enemy.vy+=Math.sin(ka)*3;
+    if(isToxicElem){
+      // Poison zone from Dismantle
+      f.jogoLavaPool.push({x:enemy.x,y:enemy.y,timer:120,radius:30});
+    }
+    if(isCryoElem&&Math.random()<0.3){enemy.freezeTimer=Math.max(enemy.freezeTimer,30);}
+    if(f.sukunaDismantleCount>=f.sukunaDismantleTimer)f.sukunaDismantleActive=false;
+    return;
+  }
+
+  // Normal melee
+  if(d>effectiveRange)return;
+  SFX.hit();
+  dealDamage(f,enemy,f.atk*(1+chaos*0.06));
+  spawnBurst(enemy.x,enemy.y,'#8b0000',5,3);
+  const ka=angle(f,enemy);
+  enemy.vx+=Math.cos(ka)*2;enemy.vy+=Math.sin(ka)*2;
+}
+
+function relicSukuna(f,enemy){
+  // MALEVOLENT SHRINE — domain expansion
+  SFX.sukunaDomain();
+  SFX.megaExplosion();
+
+  const heian=f.sukunaHeian;
+  f.sukunaDomainActive=true;
+  f.sukunaDomainTimer=heian?360:300; // Heian: 6s, Normal: 5s
+  f.specialTimer=f.sukunaDomainTimer;
+
+  // Heian: enable World Cutting Slash
+  if(heian&&!f.sukunaWorldSlashUsed){
+    f.sukunaWorldSlashReady=true;
+    spawnDmgNum(f.x,f.y-f.radius-40,'WORLD SLASH READY','#ff0000',true);
+  }
+
+  spawnBurst(f.x,f.y,'#8b0000',40,15);
+  spawnBurst(f.x,f.y,'#ff4400',30,10);
+  triggerScreenFlash('#8b0000',15);
+  shakeTimer=20;shakeAmt=12;
+  spawnDmgNum(f.x,f.y-f.radius-30,'MALEVOLENT SHRINE','#8b0000',true);
+  addLog((f.side===0?'P1':'P2')+' MALEVOLENT SHRINE!');
+}
+
+function updateRelicSukuna(f,enemy,dt){
+  // Slash timer always ticks
+  if(f.sukunaSlashTimer>0)f.sukunaSlashTimer-=dt;
+  if(f.sukunaFugaCD>0)f.sukunaFugaCD-=dt;
+
+  // Process slash projectiles (visual slashes on enemy)
+  for(let i=f.sukunaSlashProjectiles.length-1;i>=0;i--){
+    const sl=f.sukunaSlashProjectiles[i];
+    sl.timer-=dt;
+    // Hit on first frame
+    if(!sl.hit&&sl.target&&sl.target.alive){
+      sl.hit=true;
+      const t=sl.target;
+      if(dist(sl,t)<t.radius+20){
+        dealDamage(f,t,sl.dmg);
+        spawnBurst(sl.x,sl.y,'#8b0000',6,3);
+        if(f.elementActive&&f.elem.id==='cryo'&&Math.random()<0.2){
+          t.freezeTimer=Math.max(t.freezeTimer,25);
+        }
+      }
+    }
+    if(sl.timer<=0)f.sukunaSlashProjectiles.splice(i,1);
+  }
+
+  // Revival animation — float up, HP refill (Heian)
+  if(f.sukunaReviving){
+    f.sukunaReviveTimer-=dt;
+    f.vx=0;f.vy=-0.5;
+    f.hp=Math.min(f.maxHp,f.hp+f.maxHp/90*dt);
+    if(battleTime%2<1){
+      const pa=battleTime*0.15+Math.random()*Math.PI*2;
+      spawnParticle(f.x+Math.cos(pa)*50,f.y+Math.sin(pa)*50,'#8b0000',
+        Math.cos(pa+Math.PI)*2,Math.sin(pa+Math.PI)*2,15,3);
+    }
+    if(f.sukunaReviveTimer<=0){
+      f.sukunaReviving=false;
+      f.sukunaHeian=true;
+      f.maxHp=Math.round(f.maxHp*0.7); // Heian has less max HP
+      f.hp=f.maxHp;
+      f.atk=Math.round(f.baseAtk*1.4);
+      f.speed=f.baseSpeed*1.2;
+      f.sukunaWorldSlashReady=true;
+      spawnBurst(f.x,f.y,'#8b0000',30,8);
+      spawnBurst(f.x,f.y,'#ff4400',20,6);
+      shakeTimer=15;shakeAmt=10;
+      SFX.relicActivate();
+      addLog('HEIAN ERA SUKUNA!');
+    }
+  }
+
+  if(!f.sukunaDomainActive)return;
+  f.sukunaDomainTimer-=dt;
+  const heian=f.sukunaHeian;
+
+  // Domain visual: dark red particles + slash marks
+  if(battleTime%3<1){
+    const a=Math.random()*Math.PI*2;const r=Math.random()*250;
+    spawnParticle(f.x+Math.cos(a)*r,f.y+Math.sin(a)*r,pick(['#8b0000','#660000','#ff2200']),rand(-1,1),rand(-1,1),20,2);
+  }
+
+  // Environmental Dismantle damage to opponents every 1s (60 frames)
+  const tickInterval=heian?40:60;
+  if(f.sukunaDomainTimer%tickInterval===0&&f.sukunaDomainTimer>0){
+    fighters.forEach(t=>{
+      if(t.side===f.side||t.dead)return;
+      const dismantleDmg=f.atk*(heian?0.6:0.4);
+      // Bypass defense in domain
+      const savedDef=t.def;
+      t.def=0;
+      dealDamage(f,t,dismantleDmg);
+      t.def=savedDef;
+      // Slash visual on target
+      const sa=Math.random()*Math.PI*2;
+      for(let i=0;i<3;i++){
+        spawnParticle(t.x+rand(-10,10),t.y+rand(-10,10),'#8b0000',Math.cos(sa)*2,Math.sin(sa)*2,8,2);
+      }
+      spawnDmgNum(t.x,t.y-15,'DISMANTLE','#660000',false);
+    });
+    SFX.sukunaCleave();
+    shakeTimer=4;shakeAmt=3;
+  }
+
+  if(f.sukunaDomainTimer<=0){
+    f.sukunaDomainActive=false;
+    addLog((f.side===0?'P1':'P2')+' domain faded');
+  }
+}
+
+function updatePrimeSukuna(f,enemy,dt){
+  // Prime mode: faster slash rate, more damage
+  const chaos=getChaosLevel(f);
+  // Faster slash timer reduction
+  if(f.sukunaSlashTimer>0)f.sukunaSlashTimer-=dt*0.3;
+  // Heian: divine flame particles
+  if(f.sukunaHeian&&battleTime%6<1){
+    const a=Math.random()*Math.PI*2;
+    spawnParticle(f.x+Math.cos(a)*(f.radius+3),f.y+Math.sin(a)*(f.radius+3),
+      pick(['#ff4400','#ff6600','#8b0000']),Math.cos(a)*0.8,-1.5,15,2);
+  }
+}
+
 function relicYuki(f,enemy){
   // STAR RAGE — BLACK HOLE
   SFX.relicActivate();
@@ -8260,6 +8831,8 @@ function useSpecial(f,enemy){
     case 'megumi':relicMegumi(f,enemy);break;
     case 'mahito':relicMahito(f,enemy);break;
     case 'nobara':relicNobara(f,enemy);break;
+    case 'jogo':relicJogo(f,enemy);break;
+    case 'sukuna':relicSukuna(f,enemy);break;
   }
 }
 
@@ -10565,6 +11138,8 @@ function updatePrimeAbility(f,enemy,dt){
     case 'yuki': updatePrimeYuki(f,enemy,dt);break;
     case 'megumi': updatePrimeMegumi(f,enemy,dt);break;
     case 'nobara': updatePrimeNobara(f,enemy,dt);break;
+    case 'jogo': updatePrimeJogo(f,enemy,dt);break;
+    case 'sukuna': updatePrimeSukuna(f,enemy,dt);break;
   }
 }
 
@@ -11633,6 +12208,8 @@ function updateBattle(dt){
         case 'megumi':updateRelicMegumi(f,enemy,dt);break;
         case 'mahito':updateRelicMahito(f,enemy,dt);break;
         case 'nobara':updateRelicNobara(f,enemy,dt);break;
+        case 'jogo':updateRelicJogo(f,enemy,dt);break;
+        case 'sukuna':updateRelicSukuna(f,enemy,dt);break;
       }
     }
 
@@ -11640,6 +12217,75 @@ function updateBattle(dt){
     if(f.char.id==='naoya') updateRelicNaoya(f,enemy,dt);
     // Mahito projectiles run always (charges can decay outside domain)
     if(f.char.id==='mahito') updateMahitoProjectiles(f,dt);
+    // Sukuna slash/fuga timers + revival run always
+    if(f.char.id==='sukuna'){
+      if(f.sukunaSlashTimer>0)f.sukunaSlashTimer-=dt;
+      if(f.sukunaFugaCD>0)f.sukunaFugaCD-=dt;
+      // Process slash projectiles always
+      for(let i=f.sukunaSlashProjectiles.length-1;i>=0;i--){
+        const sl=f.sukunaSlashProjectiles[i];
+        sl.timer-=dt;
+        if(!sl.hit&&sl.target&&sl.target.alive){
+          sl.hit=true;
+          const t=sl.target;
+          if(dist(sl,t)<t.radius+20){
+            dealDamage(f,t,sl.dmg);
+            spawnBurst(sl.x,sl.y,'#8b0000',6,3);
+            if(f.elementActive&&f.elem.id==='cryo'&&Math.random()<0.2){
+              t.freezeTimer=Math.max(t.freezeTimer,25);
+            }
+          }
+        }
+        if(sl.timer<=0)f.sukunaSlashProjectiles.splice(i,1);
+      }
+      // Revival animation always runs
+      if(f.sukunaReviving){
+        f.sukunaReviveTimer-=dt;
+        f.vx=0;f.vy=-0.5;
+        f.hp=Math.min(f.maxHp,f.hp+f.maxHp/90*dt);
+        if(battleTime%2<1){
+          const pa=battleTime*0.15+Math.random()*Math.PI*2;
+          spawnParticle(f.x+Math.cos(pa)*50,f.y+Math.sin(pa)*50,'#8b0000',
+            Math.cos(pa+Math.PI)*2,Math.sin(pa+Math.PI)*2,15,3);
+        }
+        if(f.sukunaReviveTimer<=0){
+          f.sukunaReviving=false;
+          f.sukunaHeian=true;
+          f.maxHp=Math.round(f.maxHp*0.7);
+          f.hp=f.maxHp;
+          f.atk=Math.round(f.baseAtk*1.4);
+          f.speed=f.baseSpeed*1.2;
+          f.sukunaWorldSlashReady=true;
+          spawnBurst(f.x,f.y,'#8b0000',30,8);
+          spawnBurst(f.x,f.y,'#ff4400',20,6);
+          shakeTimer=15;shakeAmt=10;
+          SFX.relicActivate();
+          addLog('HEIAN ERA SUKUNA!');
+        }
+      }
+    }
+    // Jogo lava pools + cooldowns run always
+    if(f.char.id==='jogo'){
+      if(f.jogoMeteorCD>0)f.jogoMeteorCD-=dt;
+      if(f.jogoPillarCD>0)f.jogoPillarCD-=dt;
+      for(let i=f.jogoLavaPool.length-1;i>=0;i--){
+        const lp=f.jogoLavaPool[i];
+        lp.timer-=dt;
+        if(lp.timer<=0){f.jogoLavaPool.splice(i,1);continue;}
+        if(battleTime%30===0){
+          fighters.forEach(t2=>{
+            if(t2.side===f.side||t2.dead)return;
+            if(Math.hypot(t2.x-lp.x,t2.y-lp.y)<lp.radius){
+              applyDotDamage(t2,f.atk*0.3,f);
+              spawnParticle(t2.x,t2.y,'#ff4400',0,-1,10,2);
+            }
+          });
+        }
+        if(battleTime%8<1){
+          spawnParticle(lp.x+rand(-lp.radius/2,lp.radius/2),lp.y+rand(-5,5),'#ff6600',0,-1,15,2);
+        }
+      }
+    }
 
     // Choso beam runs always (not just during special)
     if(f.char.id==='choso'&&(f.chosoBeamActive||f.chosoBeamCooldown>0||f.chosoPiercingFreeze>0)){
@@ -12673,10 +13319,11 @@ function updateBattle(dt){
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='yuji'||f.char.id==='mahoraga'||f.char.id==='dabura'||f.char.id==='todo'||f.char.id==='yuki'||f.char.id==='megumi'||f.char.id==='mahito'||f.char.id==='nobara'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='yuji'||f.char.id==='mahoraga'||f.char.id==='dabura'||f.char.id==='todo'||f.char.id==='yuki'||f.char.id==='megumi'||f.char.id==='mahito'||f.char.id==='nobara'||f.char.id==='jogo'||f.char.id==='sukuna'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
+      else if(f.char.id==='sukuna'&&f.sukunaReviving){/* heian revive */}
       else if(f.attackTimer>0)f.attackTimer-=dt*f.sandyTimeScale; // slowed by Sandevistan
       else if(f.attackTimer<=0){
         // PLS fires purely on interval — projectile aims toward enemy
@@ -16884,6 +17531,136 @@ function drawBall(f){
     X.restore();
   }
 
+  // Jogo face — volcanic head with single eye and teeth
+  if(f.char.id==='jogo'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    // --- Volcanic head shape (dark brown/ash) ---
+    X.fillStyle='#4a2a10';
+    X.beginPath();X.arc(hx,hy,r*0.55,0,Math.PI*2);X.fill();
+    // Volcanic cracks — lava lines across head
+    X.strokeStyle='#ff4400';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.3,hy-r*0.2);X.lineTo(hx-r*0.1,hy+r*0.1);X.lineTo(hx+r*0.2,hy-r*0.1);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.1,hy+r*0.1);X.lineTo(hx+r*0.3,hy+r*0.3);X.stroke();
+    // --- Single cyclopean eye ---
+    X.fillStyle='#fff';
+    X.beginPath();X.ellipse(hx,hy-r*0.10,r*0.14,r*0.10,0,0,Math.PI*2);X.fill();
+    // Iris — orange-red
+    X.fillStyle='#ff4400';
+    X.beginPath();X.arc(hx,hy-r*0.10,r*0.08,0,Math.PI*2);X.fill();
+    // Pupil
+    X.fillStyle='#1a0a00';
+    X.beginPath();X.arc(hx,hy-r*0.10,r*0.04,0,Math.PI*2);X.fill();
+    // Eye highlight
+    X.fillStyle='#fff';
+    X.beginPath();X.arc(hx+r*0.03,hy-r*0.13,r*0.02,0,Math.PI*2);X.fill();
+    // --- Teeth — jagged grin ---
+    X.fillStyle='#222';
+    X.beginPath();
+    X.moveTo(hx-r*0.25,hy+r*0.15);
+    X.quadraticCurveTo(hx,hy+r*0.32,hx+r*0.25,hy+r*0.15);
+    X.quadraticCurveTo(hx,hy+r*0.22,hx-r*0.25,hy+r*0.15);
+    X.fill();
+    // Teeth
+    X.fillStyle='#eee';
+    for(let t=-2;t<=2;t++){
+      X.beginPath();
+      X.moveTo(hx+t*r*0.08-r*0.03,hy+r*0.16);
+      X.lineTo(hx+t*r*0.08,hy+r*0.24);
+      X.lineTo(hx+t*r*0.08+r*0.03,hy+r*0.16);
+      X.closePath();X.fill();
+    }
+    // --- Volcano peak on top of head ---
+    X.fillStyle='#3a1a08';
+    X.beginPath();
+    X.moveTo(hx-r*0.15,hy-r*0.45);
+    X.lineTo(hx,hy-r*0.70);
+    X.lineTo(hx+r*0.15,hy-r*0.45);
+    X.closePath();X.fill();
+    // Lava glow at peak
+    X.fillStyle='#ff6600';X.shadowColor='#ff4400';X.shadowBlur=6;
+    X.beginPath();X.arc(hx,hy-r*0.65,r*0.06,0,Math.PI*2);X.fill();
+    X.shadowBlur=0;
+    // Charge glow
+    if(f.jogoCharge>=1){
+      X.globalAlpha=0.3+Math.sin(battleTime*0.1)*0.1;
+      X.fillStyle='#ff4400';
+      X.beginPath();X.arc(hx,hy,r*0.6,0,Math.PI*2);X.fill();
+      X.globalAlpha=1;
+    }
+    X.restore();
+  }
+
+  // Sukuna face — four eyes, mouth markings, menacing
+  if(f.char.id==='sukuna'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    const heian=f.sukunaHeian;
+    // --- Skin tone ---
+    X.fillStyle=heian?'#d4a880':'#f0dcc8';
+    X.beginPath();X.arc(hx,hy,r*0.55,0,Math.PI*2);X.fill();
+    // --- Hair (Sukuna: short pink/light, Heian: longer wild) ---
+    if(heian){
+      // Heian: wild dark hair with fire highlights
+      X.fillStyle='#1a0a0a';
+      X.beginPath();
+      X.ellipse(hx,hy-r*0.42,r*0.65,r*0.32,0,Math.PI,0);X.fill();
+      // Wild spikes
+      const spikes=[{off:-0.35,h:0.55},{off:-0.15,h:0.70},{off:0.05,h:0.65},{off:0.25,h:0.50},{off:0.40,h:0.40}];
+      spikes.forEach(sp=>{
+        X.beginPath();X.moveTo(hx+sp.off*r-r*0.06,hy-r*0.42);
+        X.lineTo(hx+sp.off*r,hy-r*sp.h);X.lineTo(hx+sp.off*r+r*0.06,hy-r*0.42);X.closePath();X.fill();
+      });
+    } else {
+      // Normal: light pink short hair
+      X.fillStyle='#cc8899';
+      X.beginPath();
+      X.ellipse(hx,hy-r*0.42,r*0.58,r*0.25,0,Math.PI,0);X.fill();
+    }
+    // --- Four eyes (Sukuna's signature) ---
+    // Top pair (normal position)
+    X.fillStyle='#fff';
+    X.beginPath();X.ellipse(hx-r*0.18,hy-r*0.12,r*0.09,r*0.06,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.18,hy-r*0.12,r*0.09,r*0.06,0,0,Math.PI*2);X.fill();
+    // Bottom pair (below, smaller)
+    X.beginPath();X.ellipse(hx-r*0.15,hy+r*0.02,r*0.07,r*0.04,0,0,Math.PI*2);X.fill();
+    X.beginPath();X.ellipse(hx+r*0.15,hy+r*0.02,r*0.07,r*0.04,0,0,Math.PI*2);X.fill();
+    // Irises — red
+    X.fillStyle=heian?'#ff2200':'#cc0000';
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.12,r*0.05,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.19,hy-r*0.12,r*0.05,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx-r*0.14,hy+r*0.02,r*0.035,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.16,hy+r*0.02,r*0.035,0,Math.PI*2);X.fill();
+    // Pupils
+    X.fillStyle='#0a0000';
+    X.beginPath();X.arc(hx-r*0.17,hy-r*0.12,r*0.025,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.19,hy-r*0.12,r*0.025,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx-r*0.14,hy+r*0.02,r*0.018,0,Math.PI*2);X.fill();
+    X.beginPath();X.arc(hx+r*0.16,hy+r*0.02,r*0.018,0,Math.PI*2);X.fill();
+    // --- Mouth markings (dark lines from mouth outward) ---
+    X.strokeStyle='#3a0a0a';X.lineWidth=2;X.lineCap='round';
+    X.beginPath();X.moveTo(hx-r*0.20,hy+r*0.20);X.lineTo(hx-r*0.35,hy+r*0.18);X.stroke();
+    X.beginPath();X.moveTo(hx+r*0.20,hy+r*0.20);X.lineTo(hx+r*0.35,hy+r*0.18);X.stroke();
+    // --- Menacing grin ---
+    X.strokeStyle=heian?'#ff2200':'#4a0a0a';X.lineWidth=1.5;X.lineCap='round';
+    X.beginPath();
+    X.moveTo(hx-r*0.20,hy+r*0.20);
+    X.quadraticCurveTo(hx,hy+r*0.30,hx+r*0.20,hy+r*0.20);
+    X.stroke();
+    // Nose line
+    X.strokeStyle='rgba(100,60,40,0.4)';X.lineWidth=1;
+    X.beginPath();X.moveTo(hx,hy-r*0.02);X.lineTo(hx-r*0.02,hy+r*0.08);X.stroke();
+    // Heian: fire aura
+    if(heian){
+      X.globalAlpha=0.25+Math.sin(battleTime*0.1)*0.1;
+      const hg=X.createRadialGradient(hx,hy,r*0.3,hx,hy,r*0.7);
+      hg.addColorStop(0,'rgba(255,68,0,0.3)');hg.addColorStop(1,'rgba(139,0,0,0)');
+      X.fillStyle=hg;X.beginPath();X.arc(hx,hy,r*0.7,0,Math.PI*2);X.fill();
+      X.globalAlpha=1;
+    }
+    X.restore();
+  }
+
   // Todo cursed energy papers
   if(f.char.id==='todo'&&f.todoPapers){
     f.todoPapers.forEach(p=>{
@@ -17853,6 +18630,18 @@ function drawBall(f){
       const self=f.nobaraSelfDmgNext?' SELF':'';
       X.fillText(doll+self+' NAIL',f.x,statY);
       break;}
+    case 'jogo':{
+      const dom=f.jogoDomainActive?'DOMAIN ':'';
+      const chg=f.jogoCharge.toFixed(1);
+      const lvl=f.jogoCharge>=3?'METEOR':f.jogoCharge>=2?'PILLAR':f.jogoCharge>=1?'FIST':'---';
+      X.fillText(dom+'CHG:'+chg+' '+lvl,f.x,statY);
+      break;}
+    case 'sukuna':{
+      const dom=f.sukunaDomainActive?'SHRINE ':'';
+      const heian=f.sukunaHeian?'HEIAN ':'';
+      const dis=f.sukunaDismantleActive?'DISMNTL ':'';
+      X.fillText(dom+heian+dis+'SLASH',f.x,statY);
+      break;}
   }
 
   // Mahito charge soul marks on this fighter
@@ -17952,6 +18741,8 @@ function drawWeapon(f){
     case 'megumi':drawMegumiWeapon(r,ext,flash,f);break;
     case 'mahito':drawMahitoWeapon(r,ext,flash,f);break;
     case 'nobara':drawNobaraWeapon(r,ext,flash,f);break;
+    case 'jogo':drawJogoWeapon(r,ext,flash,f);break;
+    case 'sukuna':drawSukunaWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -18721,6 +19512,83 @@ function drawNobaraWeapon(r,ext,flash,f){
     X.fillStyle='#44ff44';X.fillRect(dx-10,dy+14,20*hpPct,3);
     X.strokeStyle='#333';X.lineWidth=0.5;X.strokeRect(dx-10,dy+14,20,3);
     X.globalAlpha=1;
+    X.restore();
+  }
+}
+
+function drawJogoWeapon(r,ext,flash,f){
+  // Volcanic fist — glowing magma fist
+  const extend=ext*8;
+  const col=flash?'#ffffff':'#ff6600';
+  const darkCol=flash?'#ffaa66':'#cc4400';
+  // Arm
+  X.fillStyle='#4a2a10';X.fillRect(r-4,-3,10+extend,6);
+  // Fist
+  X.fillStyle=darkCol;
+  X.beginPath();X.arc(r+10+extend,0,8,0,Math.PI*2);X.fill();
+  // Magma glow
+  X.shadowColor='#ff4400';X.shadowBlur=flash?12:6;
+  X.fillStyle=col;
+  X.beginPath();X.arc(r+10+extend,0,5,0,Math.PI*2);X.fill();
+  X.shadowBlur=0;
+  // Charge indicator
+  if(f&&f.jogoCharge>=1){
+    const chg=Math.min(3,Math.floor(f.jogoCharge));
+    for(let i=0;i<chg;i++){
+      X.fillStyle='#ff4400';
+      X.beginPath();X.arc(r+10+extend+12+i*6,0,3,0,Math.PI*2);X.fill();
+    }
+  }
+}
+
+function drawSukunaWeapon(r,ext,flash,f){
+  // Cleave slash marks — floating slash lines
+  const extend=ext*6;
+  const col=flash?'#ffffff':'#8b0000';
+  const heian=f&&f.sukunaHeian;
+  // Invisible blade (Sukuna fights with cursed energy, not a physical weapon)
+  // Show slash energy
+  X.strokeStyle=col;X.lineWidth=heian?3:2;X.lineCap='round';
+  X.beginPath();X.moveTo(r-2,-6);X.lineTo(r+12+extend,0);X.lineTo(r-2,6);X.stroke();
+  // Second slash mark
+  X.globalAlpha=0.6;
+  X.beginPath();X.moveTo(r+2,-8);X.lineTo(r+16+extend,-2);X.stroke();
+  X.globalAlpha=1;
+  // Heian: fire aura on weapon
+  if(heian){
+    X.shadowColor='#ff4400';X.shadowBlur=8;
+    X.strokeStyle='#ff4400';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(r+4,-4);X.lineTo(r+14+extend,0);X.lineTo(r+4,4);X.stroke();
+    X.shadowBlur=0;
+  }
+  // Dismantle indicator
+  if(f&&f.sukunaDismantleActive){
+    X.fillStyle='#ff0000';X.globalAlpha=0.8;
+    X.font='bold 7px Consolas,monospace';
+    X.save();X.rotate(-f.weaponAngle);
+    X.fillText('DISMANTLE',0,-r-8);
+    X.restore();
+    X.globalAlpha=1;
+  }
+  // Draw slash projectiles (visual slashes on enemy)
+  if(f&&f.sukunaSlashProjectiles){
+    X.save();
+    X.rotate(-f.weaponAngle); // counter-rotate to draw in world space
+    for(const sl of f.sukunaSlashProjectiles){
+      const sx=sl.x-f.x,sy=sl.y-f.y;
+      X.strokeStyle=heian?'#ff4400':'#8b0000';X.lineWidth=heian?3:2;X.lineCap='round';
+      X.globalAlpha=sl.timer/12;
+      X.beginPath();
+      X.moveTo(sx+Math.cos(sl.angle)*15,sy+Math.sin(sl.angle)*15);
+      X.lineTo(sx-Math.cos(sl.angle)*15,sy-Math.sin(sl.angle)*15);
+      X.stroke();
+      // Cross slash
+      X.beginPath();
+      X.moveTo(sx+Math.cos(sl.angle+0.5)*10,sy+Math.sin(sl.angle+0.5)*10);
+      X.lineTo(sx-Math.cos(sl.angle+0.5)*10,sy-Math.sin(sl.angle+0.5)*10);
+      X.stroke();
+      X.globalAlpha=1;
+    }
     X.restore();
   }
 }
@@ -20276,6 +21144,22 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.moveTo(-6,-6);X.lineTo(8,-6);X.stroke();
       X.fillStyle='#b34560';X.fillRect(-8,-8,3,4); // nail head
       break;
+    case 'jogo':
+      // Volcanic fist
+      X.fillStyle='#4a2a10';X.fillRect(-6,-2,10,4);
+      X.fillStyle='#cc4400';X.beginPath();X.arc(6,0,6,0,Math.PI*2);X.fill();
+      X.fillStyle='#ff6600';X.beginPath();X.arc(6,0,3,0,Math.PI*2);X.fill();
+      // Lava cracks
+      X.strokeStyle='#ff4400';X.lineWidth=0.8;
+      X.beginPath();X.moveTo(2,-3);X.lineTo(8,1);X.stroke();
+      break;
+    case 'sukuna':
+      // Cleave slash marks
+      X.strokeStyle='#8b0000';X.lineWidth=2;X.lineCap='round';
+      X.beginPath();X.moveTo(-4,-6);X.lineTo(12,0);X.lineTo(-4,6);X.stroke();
+      X.strokeStyle='#ff440066';X.lineWidth=1.5;
+      X.beginPath();X.moveTo(0,-8);X.lineTo(14,-2);X.stroke();
+      break;
   }
   X.restore();
 }
@@ -20347,7 +21231,7 @@ function drawTitle(){
   addBtn('loreCombos',W/2-60,playY+80,120,32,'ALLY COMBOS','#aa44cc',()=>{screen='loreCombos';selectPage=0;});
 
   X.font='11px Consolas,Courier New,monospace';X.fillStyle='#444';X.textAlign='center';
-  X.fillText('BBA v10.34.4 // soloforte.ai',W/2,H-20);
+  X.fillText('BBA v10.37.0 // soloforte.ai',W/2,H-20);
   buttons.forEach(drawBtn);
 }
 
@@ -22283,6 +23167,46 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
         X.beginPath();X.moveTo(cx+4*s,cy-3*s);X.lineTo(cx-4*s,cy+3*s);X.stroke();
       }
       if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#e85d75';X.fillText('STRAW DOLL',cx,cy+50*s);}
+      break;}
+    case 'jogo':{
+      // Volcanic eruption — lava pillars + meteor falling
+      // Lava pillars erupting upward
+      const numPillars=Math.min(5,Math.floor(t/6));
+      for(let i=0;i<numPillars;i++){
+        const pa=Math.PI*2*i/5;const pt=t-i*6;const pd=20*s+i*8*s;
+        const px=cx+Math.cos(pa)*pd;
+        X.globalAlpha=Math.min(0.7,pt/5);X.fillStyle='#ff4400';
+        X.fillRect(px-3*s,cy-pt*s,6*s,pt*s*0.8);
+        X.fillStyle='#ff6600';X.fillRect(px-2*s,cy-pt*s,4*s,pt*s*0.5);
+      }
+      // Meteor falling from top
+      if(t>30){const mt=t-30;const my=Math.min(cy,mt*2*s);
+        X.globalAlpha=0.8;X.fillStyle='#cc4400';X.beginPath();X.arc(cx,my,8*s,0,Math.PI*2);X.fill();
+        X.fillStyle='#ff6600';X.beginPath();X.arc(cx,my,5*s,0,Math.PI*2);X.fill();
+        // Trail
+        X.strokeStyle='#ff440066';X.lineWidth=3*s;X.beginPath();X.moveTo(cx,0);X.lineTo(cx,my);X.stroke();
+        // Impact
+        if(my>=cy){X.globalAlpha=Math.max(0,0.9-(t-30-cy/2/s)/10);X.strokeStyle='#ff4400';X.lineWidth=2*s;
+          X.beginPath();X.arc(cx,cy,(t-30-cy/2/s)*3*s,0,Math.PI*2);X.stroke();}
+      }
+      if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#cc4400';X.fillText('IRON MOUNTAIN',cx,cy+50*s);}
+      break;}
+    case 'sukuna':{
+      // Malevolent Shrine — slash marks appearing everywhere + shrine outline
+      // Shrine silhouette
+      X.globalAlpha=Math.min(0.5,t/20);X.strokeStyle='#8b0000';X.lineWidth=2*s;
+      X.beginPath();X.moveTo(cx-30*s,cy+20*s);X.lineTo(cx-20*s,cy-20*s);X.lineTo(cx,cy-35*s);
+      X.lineTo(cx+20*s,cy-20*s);X.lineTo(cx+30*s,cy+20*s);X.closePath();X.stroke();
+      // Slash marks appearing
+      const numSlashes=Math.min(8,Math.floor(t/5));
+      for(let i=0;i<numSlashes;i++){
+        const st=t-i*5;const sa=Math.PI*2*i/8+0.3;
+        const sr=15*s+i*4*s;const sx2=cx+Math.cos(sa)*sr;const sy2=cy+Math.sin(sa)*sr;
+        X.globalAlpha=Math.min(0.8,st/5);X.strokeStyle='#8b0000';X.lineWidth=2*s;
+        X.beginPath();X.moveTo(sx2-6*s,sy2-6*s);X.lineTo(sx2+6*s,sy2+6*s);X.stroke();
+        X.beginPath();X.moveTo(sx2+4*s,sy2-4*s);X.lineTo(sx2-4*s,sy2+4*s);X.stroke();
+      }
+      if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#8b0000';X.fillText('MALEVOLENT SHRINE',cx,cy+50*s);}
       break;}
     case 'yuki':{
       // Star Rage — expanding mass ring
@@ -24338,6 +25262,8 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'megumi':{const dom=f.megumiDomainActive?'DOMAIN ':'';const shiki=f.megumiActiveShikigami?(f.megumiActiveShikigami.toUpperCase()+' '):'';const dogs=f.megumiTotality?'TOT':(f.megumiDog1.alive&&f.megumiDog2.alive?'DD':(f.megumiDog1.alive||f.megumiDog2.alive?'D1':'--'));statLine=dom+shiki+dogs+' M:'+Math.floor(f.megumiShadowMeter);break;}
     case 'mahito':{const dom=f.mahitoDomainActive?'DOMAIN ':'';const eChg=fighters.find(t=>t.side!==f.side&&!t.dead);const chg=eChg?(eChg.mahitoChargeCount||0):0;statLine=dom+'Charges:'+chg+'/7';break;}
     case 'nobara':{const doll=f.nobaraVoodooDoll?'DOLL:'+f.nobaraVoodooDoll.hp+'/'+f.nobaraVoodooDoll.maxHp+' ':'';const self=f.nobaraSelfDmgNext?'SELF ':'';statLine=doll+self+'NAIL';break;}
+    case 'jogo':{const dom=f.jogoDomainActive?'DOMAIN ':'';const chg=f.jogoCharge.toFixed(1);const lvl=f.jogoCharge>=3?'METEOR':f.jogoCharge>=2?'PILLAR':f.jogoCharge>=1?'FIST':'---';statLine=dom+'CHG:'+chg+' '+lvl;break;}
+    case 'sukuna':{const dom=f.sukunaDomainActive?'SHRINE ':'';const heian=f.sukunaHeian?'HEIAN ':'';const dis=f.sukunaDismantleActive?'DISMNTL ':'';const wcs=f.sukunaWorldSlashReady?'WCS ':'';statLine=dom+heian+dis+wcs+'SLASH';break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
