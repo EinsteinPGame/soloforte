@@ -816,6 +816,81 @@ const TOWN_NPCS = [
             '"Kill every enemy on the next floor? Two hundred gold and a rare item. Deal?"'] },
 ];
 
+// -- Guild System --
+const GUILDS = {
+  adventurers: { name: "Adventurers' Guild", color: '#c08020', icon: '🏛', desc: 'For those who seek glory in the depths.', statReq: 'STR',
+    ranks: ['Initiate','Bronze','Silver','Gold','Platinum'],
+    rankThresholds: [0, 50, 150, 300, 500],
+    perks: ['Access to guild bounties','Healing discount (50%)','Free rest at tavern','Guild weapon cache','Legendary quest access'],
+    joinDialogue: '"Think you have what it takes? Show me your strength. We value those who face danger head-on."',
+    joinCheck: { stat: 'STR', dc: 10, pass: '"Impressive grip. You are in."', fail: '"Hmm. Weaker than I expected, but heart counts. Welcome aboard."' }
+  },
+  arcane: { name: 'Arcane Order', color: '#6c5ce7', icon: '📖', desc: 'Keepers of forbidden knowledge.', statReq: 'INT',
+    ranks: ['Apprentice','Scribe','Arcanist','Magister','Archmage'],
+    rankThresholds: [0, 50, 150, 300, 500],
+    perks: ['Identify items for free','Spell scroll discounts','Bonus spell slot','Arcane enchantment','Legendary spell access'],
+    joinDialogue: '"Knowledge is the only true power. Solve this riddle and you may enter our halls."',
+    joinCheck: { stat: 'INT', dc: 10, pass: '"Clever. The Order welcomes a sharp mind."', fail: '"Not the answer I expected, but... unconventional thinking has its merits. Enter."' }
+  },
+  shadow: { name: 'Shadow Brotherhood', color: '#555', icon: '🗡', desc: 'Those who work in darkness serve the light... sometimes.', statReq: 'DEX',
+    ranks: ['Whisper','Shade','Phantom','Wraith','Shadowlord'],
+    rankThresholds: [0, 50, 150, 300, 500],
+    perks: ['Lockpick kit','Trap detection bonus','Poison vials','Stealth enchantment','Assassination contracts'],
+    joinDialogue: '"You found us. That alone is impressive. But can you move without being seen?"',
+    joinCheck: { stat: 'DEX', dc: 10, pass: '"Silent as a ghost. You belong here."', fail: '"A bit clumsy, but teachable. The Brotherhood accepts all who seek the shadows."' }
+  },
+  holy: { name: 'Holy Order of the Dawn', color: '#ffd700', icon: '☀', desc: 'Servants of the light who heal and protect.', statReq: 'WIS',
+    ranks: ['Acolyte','Templar','Cleric','High Priest','Exarch'],
+    rankThresholds: [0, 50, 150, 300, 500],
+    perks: ['Free healing (1/town)','Blessed water vials','Undead damage bonus','Divine protection aura','Holy relic access'],
+    joinDialogue: '"The light tests not your power but your compassion. Would you heal a fallen enemy?"',
+    joinCheck: { stat: 'WIS', dc: 10, pass: '"Your wisdom shines. Welcome to the Dawn."', fail: '"Your heart is uncertain, but the light does not demand perfection. Only willingness."' }
+  }
+};
+
+const GUILD_QUESTS = [
+  // Adventurers' Guild quests
+  { guild: 'adventurers', title: 'Trial of Steel', desc: 'Defeat 5 enemies on a single floor without resting.', type: 'combat_streak', target: 5, reward: { gold: 80, rep: 30 }, minRank: 0 },
+  { guild: 'adventurers', title: 'Monster Slayer', desc: 'Defeat a floor boss in under 5 rounds.', type: 'fast_boss', target: 5, reward: { gold: 120, rep: 40 }, minRank: 1 },
+  { guild: 'adventurers', title: 'Ironclad', desc: 'Complete a floor taking less than 20% max HP in total damage.', type: 'low_damage', target: 0.2, reward: { gold: 150, rep: 50 }, minRank: 2 },
+  // Arcane Order quests
+  { guild: 'arcane', title: 'Tome Hunter', desc: 'Find and identify 3 magical items on a single floor.', type: 'find_magic', target: 3, reward: { gold: 80, rep: 30 }, minRank: 0 },
+  { guild: 'arcane', title: 'Spell Weaver', desc: 'Cast 8 spells in a single floor without running out of slots.', type: 'cast_spells', target: 8, reward: { gold: 100, rep: 40 }, minRank: 1 },
+  { guild: 'arcane', title: 'Arcane Secrets', desc: 'Reach floor 4 and bring back dungeon inscriptions.', type: 'reach_floor', target: 4, reward: { gold: 200, rep: 60 }, minRank: 2 },
+  // Shadow Brotherhood quests
+  { guild: 'shadow', title: 'Ghost Walk', desc: 'Complete a floor while avoiding 3 or more enemies (flee/sneak).', type: 'avoid_enemies', target: 3, reward: { gold: 80, rep: 30 }, minRank: 0 },
+  { guild: 'shadow', title: 'Disarm Expert', desc: 'Disarm 2 traps on a single floor.', type: 'disarm_traps', target: 2, reward: { gold: 100, rep: 40 }, minRank: 1 },
+  { guild: 'shadow', title: 'Unseen Hand', desc: 'Steal from the shop without getting caught.', type: 'steal_shop', target: 1, reward: { gold: 60, rep: 50 }, minRank: 2 },
+  // Holy Order quests
+  { guild: 'holy', title: 'Mercy Watch', desc: 'Keep all companions alive for an entire floor.', type: 'protect_allies', target: 1, reward: { gold: 80, rep: 30 }, minRank: 0 },
+  { guild: 'holy', title: 'Purifier', desc: 'Defeat 3 undead enemies on a single floor.', type: 'kill_undead', target: 3, reward: { gold: 100, rep: 40 }, minRank: 1 },
+  { guild: 'holy', title: 'Dawn\'s Champion', desc: 'Defeat a floor boss with no companion casualties.', type: 'perfect_boss', target: 1, reward: { gold: 150, rep: 50 }, minRank: 2 },
+];
+
+let playerGuild = null; // guild id or null
+let guildRep = { adventurers: 0, arcane: 0, shadow: 0, holy: 0 };
+let activeGuildQuest = null; // { questData, progress, accepted }
+let completedGuildQuests = [];
+let guildQuestTracking = { combatStreak: 0, spellsCast: 0, enemiesAvoided: 0, trapsDisarmed: 0, magicFound: 0, damageTaken: 0, undeadKilled: 0, companionsDied: false, bossRounds: 0 };
+
+// Dialogue skill check helper
+function dialogueCheck(stat, dc) {
+  const statVal = player.stats[stat] || 10;
+  const mod = Math.floor((statVal - 10) / 2);
+  const roll = Math.floor(Math.random() * 20) + 1;
+  return { success: (roll + mod) >= dc, roll, mod, total: roll + mod, dc };
+}
+
+function getGuildRank(guildId) {
+  const rep = guildRep[guildId] || 0;
+  const guild = GUILDS[guildId];
+  let rank = 0;
+  for (let i = guild.rankThresholds.length - 1; i >= 0; i--) {
+    if (rep >= guild.rankThresholds[i]) { rank = i; break; }
+  }
+  return rank;
+}
+
 // -- Class Evolution Paths --
 const EVOLUTION_PATHS = {
   Fighter: [
@@ -3641,6 +3716,7 @@ function playerCastSpell(spell) {
       return;
     }
     player.spellSlots--;
+    if (activeGuildQuest) guildQuestTracking.spellsCast++;
   }
 
   SFX.spell();
@@ -4530,6 +4606,15 @@ function renderCombatVictory(btnAreaY) {
         evolutionRoom.cleared = true;
       }
       player._pendingEvolution = true;
+    }
+
+    // Guild quest tracking — combat
+    if (activeGuildQuest) {
+      guildQuestTracking.combatStreak++;
+      if (deadEnemies.some(c => c.entity.tags && c.entity.tags.includes('undead'))) guildQuestTracking.undeadKilled++;
+      if (combatState._fallenCompanions && combatState._fallenCompanions.length > 0) guildQuestTracking.companionsDied = true;
+      if (wasBoss) guildQuestTracking.bossRounds = combatState.round || 99;
+      checkGuildQuestCompletion();
     }
 
     // Check level up
@@ -6075,7 +6160,7 @@ function saveGame() {
     dungeon: deepClone(dungeon),
     currentFloor: currentFloor,
     timestamp: Date.now(),
-    version: '2.3',
+    version: '2.5',
     // War arc state
     warState: warState,
     playerFaction: playerFaction,
@@ -6090,6 +6175,12 @@ function saveGame() {
     conflictsThisFloor: conflictsThisFloor,
     pendingConflict: pendingConflict ? { conflict: pendingConflict.conflict, compAName: pendingConflict.compA?.name, compBName: pendingConflict.compB?.name } : null,
     conflictHistory: conflictHistory,
+    // Guild state
+    playerGuild: playerGuild,
+    guildRep: deepClone(guildRep),
+    activeGuildQuest: deepClone(activeGuildQuest),
+    completedGuildQuests: deepClone(completedGuildQuests),
+    guildQuestTracking: deepClone(guildQuestTracking),
   };
   try {
     localStorage.setItem('dof_save', JSON.stringify(saveData));
@@ -6135,6 +6226,12 @@ function loadGame() {
     // Companion conflict state
     conflictsThisFloor = data.conflictsThisFloor || 0;
     conflictHistory = data.conflictHistory || [];
+    // Guild state
+    playerGuild = data.playerGuild || null;
+    guildRep = data.guildRep || { adventurers: 0, arcane: 0, shadow: 0, holy: 0 };
+    activeGuildQuest = data.activeGuildQuest || null;
+    completedGuildQuests = data.completedGuildQuests || [];
+    guildQuestTracking = data.guildQuestTracking || { combatStreak: 0, spellsCast: 0, enemiesAvoided: 0, trapsDisarmed: 0, magicFound: 0, damageTaken: 0, undeadKilled: 0, companionsDied: false, bossRounds: 0 };
     // Restore pending conflict by finding companions in squad
     if (data.pendingConflict && player.squad) {
       const compA = player.squad.find(c => c.name === data.pendingConflict.compAName);
@@ -6329,6 +6426,7 @@ function updateTown() {
     { name: 'Barracks', color: '#606080', icon: 'B', desc: 'Recruit allies' },
     { name: 'Bounty', color: '#c08020', icon: '$', desc: 'Contracts' },
     { name: 'Campfire', color: '#c04010', icon: '🔥', desc: 'Party talk' },
+    { name: 'Guilds', color: playerGuild ? (GUILDS[playerGuild]?.color || '#c08020') : '#c08020', icon: '🏛', desc: 'Join & quests' },
     { name: 'Factions', color: warState !== WAR_STATE.INACTIVE ? (playerFaction ? (FACTIONS[playerFaction]?.color || '#8844cc') : '#8844cc') : '#444466', icon: '⚔', desc: 'Allegiance' },
   ];
   const totalBW = buildings.length * (bldW + bldGap) - bldGap;
@@ -6377,8 +6475,13 @@ function updateTown() {
   if (clickedInRect(cfX, bldY, bldW, bldH)) {
     SFX.click(); townData.activeSection = 'campfire';
   }
+  // Guilds
+  const gldX = bldStartX + 4 * (bldW + bldGap);
+  if (clickedInRect(gldX, bldY, bldW, bldH)) {
+    SFX.click(); townData.activeSection = 'guilds';
+  }
   // Factions
-  const facX = bldStartX + 4 * (bldW + bldGap);
+  const facX = bldStartX + 5 * (bldW + bldGap);
   if (clickedInRect(facX, bldY, bldW, bldH)) {
     SFX.click();
     if (warState === WAR_STATE.TRIGGERED) {
@@ -6406,6 +6509,8 @@ function updateTown() {
     drawTownBounty(panelX, contentY, panelW, cx);
   } else if (section === 'campfire') {
     drawTownCampfire(panelX, contentY, panelW, cx);
+  } else if (section === 'guilds') {
+    drawTownGuilds(panelX, contentY, panelW, cx);
   } else if (section === 'factions') {
     drawTownFactions(panelX, contentY, panelW, cx);
   }
@@ -6477,7 +6582,42 @@ function drawTownTavern(px, py, pw, cx) {
     X.fillText('Party fully rested!', cx, actY + 50);
   }
 
+  // Buy drinks & chat (CHA dialogue check)
+  const chatY = townData.healUsed ? actY + 65 : actY + 50;
+  if (!townData.chatResult) {
+    drawButton(cx - 100, chatY, 200, 30, 'Buy Drinks & Chat (5g)', false, player.gold >= 5 ? '#2a2a4a' : '#333');
+    if (clickedInRect(cx - 100, chatY, 200, 30) && player.gold >= 5) {
+      SFX.click(); player.gold -= 5;
+      const check = dialogueCheck('CHA', 10 + townData.floorCleared * 2);
+      const goodTips = [
+        `"The boss on Floor ${townData.nextFloor + 1} is weak to magic. Hit it hard and fast."`,
+        `"There is a hidden treasure room on the next floor. Look for a cracked wall in the east."`,
+        `"The traps on the next floor trigger on weight. Send your lightest companion first."`,
+        `"I heard the boss guards a legendary weapon. Worth the risk."`,
+      ];
+      const badTips = [
+        '"Ehh, I dunno much. Drink more and ask again later."',
+        '"Floor below is scary. That is all I know. Can I have another drink?"',
+      ];
+      townData.chatResult = {
+        success: check.success,
+        tip: check.success ? goodTips[townData.nextFloor % goodTips.length] : badTips[Math.floor(Math.random() * badTips.length)],
+        roll: `CHA Check: ${check.roll}+${check.mod}=${check.total} vs DC ${check.dc}`
+      };
+      if (check.success) addFloatingText(canvasW/2, canvasH/2, 'Useful intel!', '#44ff44');
+    }
+  }
+  if (townData.chatResult) {
+    X.fillStyle = townData.chatResult.success ? '#44ff44' : '#ff8844';
+    X.font = '9px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText(townData.chatResult.roll, cx, chatY + 8);
+    X.fillStyle = '#ccc'; X.font = 'italic 10px Consolas, monospace';
+    const tipLines = wrapText(townData.chatResult.tip, pw - 20, 10);
+    tipLines.forEach((line, i) => X.fillText(line, cx, chatY + 22 + i * 13));
+  }
+
   // Rumors (random flavor)
+  const rumorsStartY = townData.chatResult ? chatY + 50 : chatY + 40;
   const rumors = [
     '"Heard the next floor has traps that make the last look like puddles..."',
     '"A wizard came through last month. We haven\'t seen him since."',
@@ -6488,7 +6628,7 @@ function drawTownTavern(px, py, pw, cx) {
   const rumor = rumors[(townData.nextFloor + Math.floor(gameTime * 0.1)) % rumors.length];
   X.fillStyle = '#666'; X.font = 'italic 10px Consolas, monospace'; X.textAlign = 'center';
   const rumorLines = wrapText(`Rumor: ${rumor}`, pw - 20, 10);
-  rumorLines.forEach((line, i) => X.fillText(line, cx, actY + 65 + i * 13));
+  rumorLines.forEach((line, i) => X.fillText(line, cx, rumorsStartY + i * 13));
 
   // Reputation indicator
   X.fillStyle = repTier.color; X.font = '11px Consolas, monospace'; X.textAlign = 'center';
@@ -7741,6 +7881,200 @@ function updateWarChoice() {
     if (clickedInRect(cx + 8, confY2, btnW2, btnH2)) {
       SFX.click();
       warChoiceState.phase = 'choose';
+    }
+  }
+}
+
+// ============================================================
+// GUILD QUEST COMPLETION CHECK
+// ============================================================
+function checkGuildQuestCompletion() {
+  if (!activeGuildQuest) return;
+  const q = activeGuildQuest.questData;
+  const t = guildQuestTracking;
+  let complete = false;
+
+  switch (q.type) {
+    case 'combat_streak': complete = t.combatStreak >= q.target; break;
+    case 'fast_boss': complete = t.bossRounds > 0 && t.bossRounds <= q.target; break;
+    case 'low_damage': complete = false; break; // checked at floor end
+    case 'find_magic': complete = t.magicFound >= q.target; break;
+    case 'cast_spells': complete = t.spellsCast >= q.target; break;
+    case 'reach_floor': complete = currentFloor >= q.target; break;
+    case 'avoid_enemies': complete = t.enemiesAvoided >= q.target; break;
+    case 'disarm_traps': complete = t.trapsDisarmed >= q.target; break;
+    case 'steal_shop': complete = false; break; // special
+    case 'protect_allies': complete = !t.companionsDied && t.combatStreak >= 3; break;
+    case 'kill_undead': complete = t.undeadKilled >= q.target; break;
+    case 'perfect_boss': complete = t.bossRounds > 0 && !t.companionsDied; break;
+  }
+
+  if (complete) {
+    player.gold += q.reward.gold;
+    guildRep[q.guild] = (guildRep[q.guild] || 0) + q.reward.rep;
+    completedGuildQuests.push(q.title);
+    addFloatingText(canvasW/2, canvasH/2 - 80, `Guild Quest Complete: ${q.title}!`, '#ffd700');
+    addFloatingText(canvasW/2, canvasH/2 - 56, `+${q.reward.gold}g, +${q.reward.rep} guild rep`, '#44ff44');
+    activeGuildQuest = null;
+    saveGame();
+  }
+}
+
+// ============================================================
+// GUILD HALL — TOWN SECTION
+// ============================================================
+let guildHallScroll = 0;
+let guildDialogueResult = null; // { stat, roll, mod, total, dc, success, message }
+
+function drawTownGuilds(px, py, pw, cx) {
+  X.fillStyle = '#c08020';
+  X.font = 'bold 14px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('GUILD HALL', cx, py + 18);
+
+  let yOff = py + 36;
+
+  if (playerGuild) {
+    // Show current guild info + active quest
+    const g = GUILDS[playerGuild];
+    const rank = getGuildRank(playerGuild);
+    const rep = guildRep[playerGuild] || 0;
+    const nextThresh = g.rankThresholds[rank + 1] || '—';
+
+    X.fillStyle = g.color; X.font = 'bold 12px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText(`${g.icon} ${g.name}`, cx, yOff);
+    yOff += 16;
+    X.fillStyle = '#ccc'; X.font = '11px Consolas, monospace';
+    X.fillText(`Rank: ${g.ranks[rank]} — Rep: ${rep}/${nextThresh}`, cx, yOff);
+    yOff += 14;
+
+    // Rank perk
+    X.fillStyle = '#aaa'; X.font = '10px Consolas, monospace';
+    X.fillText(`Perk: ${g.perks[rank]}`, cx, yOff);
+    yOff += 18;
+
+    // Rep bar
+    const barW = pw - 40, barH = 8;
+    const barX = px + 20;
+    X.fillStyle = '#222'; X.fillRect(barX, yOff, barW, barH);
+    const progress = typeof nextThresh === 'number' ? Math.min(1, rep / nextThresh) : 1;
+    X.fillStyle = g.color; X.fillRect(barX, yOff, barW * progress, barH);
+    X.strokeStyle = '#555'; X.lineWidth = 1; X.strokeRect(barX, yOff, barW, barH);
+    yOff += 16;
+
+    // Active guild quest
+    if (activeGuildQuest) {
+      X.fillStyle = '#ffd700'; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+      X.fillText('Active Quest:', px + 10, yOff);
+      yOff += 14;
+      X.fillStyle = '#ccc'; X.font = '11px Consolas, monospace';
+      X.fillText(activeGuildQuest.questData.title, px + 10, yOff);
+      yOff += 13;
+      X.fillStyle = '#aaa'; X.font = '10px Consolas, monospace';
+      const descLines = wrapText(activeGuildQuest.questData.desc, pw - 20, 10);
+      descLines.forEach(line => { X.fillText(line, px + 10, yOff); yOff += 12; });
+      yOff += 4;
+      X.fillStyle = '#ffd700'; X.font = '10px Consolas, monospace';
+      X.fillText(`Reward: ${activeGuildQuest.questData.reward.gold}g, +${activeGuildQuest.questData.reward.rep} rep`, px + 10, yOff);
+      yOff += 16;
+    } else {
+      // Show available quests to accept
+      X.fillStyle = '#ffd700'; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'center';
+      X.fillText('Available Quests:', cx, yOff);
+      yOff += 16;
+
+      const available = GUILD_QUESTS.filter(q =>
+        q.guild === playerGuild &&
+        q.minRank <= rank &&
+        !completedGuildQuests.includes(q.title)
+      );
+
+      if (available.length === 0) {
+        X.fillStyle = '#666'; X.font = '10px Consolas, monospace';
+        X.fillText('No quests available at this rank.', cx, yOff);
+      } else {
+        available.slice(0, 3).forEach((q, i) => {
+          const qY = yOff + i * 46;
+          X.fillStyle = '#1a1a2a'; X.fillRect(px + 5, qY, pw - 10, 42);
+          X.strokeStyle = '#444'; X.lineWidth = 1; X.strokeRect(px + 5, qY, pw - 10, 42);
+          X.fillStyle = '#ccc'; X.font = 'bold 10px Consolas, monospace'; X.textAlign = 'left';
+          X.fillText(q.title, px + 10, qY + 13);
+          X.fillStyle = '#aaa'; X.font = '9px Consolas, monospace';
+          X.fillText(q.desc, px + 10, qY + 26);
+          X.fillStyle = '#ffd700'; X.textAlign = 'right';
+          X.fillText(`${q.reward.gold}g +${q.reward.rep}rep`, px + pw - 12, qY + 13);
+
+          // Accept button
+          const btnW = 60, btnH = 16;
+          const btnX = px + pw - btnW - 8, btnY = qY + 24;
+          X.fillStyle = '#2a4a2a'; X.fillRect(btnX, btnY, btnW, btnH);
+          X.strokeStyle = '#4a8a4a'; X.strokeRect(btnX, btnY, btnW, btnH);
+          X.fillStyle = '#44ff44'; X.font = 'bold 9px Consolas, monospace'; X.textAlign = 'center';
+          X.fillText('ACCEPT', btnX + btnW/2, btnY + 12);
+
+          if (clickedInRect(btnX, btnY, btnW, btnH)) {
+            SFX.click();
+            activeGuildQuest = { questData: q, progress: 0, accepted: true };
+            guildQuestTracking = { combatStreak: 0, spellsCast: 0, enemiesAvoided: 0, trapsDisarmed: 0, magicFound: 0, damageTaken: 0, undeadKilled: 0, companionsDied: false, bossRounds: 0 };
+            addFloatingText(canvasW/2, canvasH/2, `Quest accepted: ${q.title}`, '#ffd700');
+          }
+        });
+      }
+    }
+
+    // Leave guild button (small, bottom)
+    X.textAlign = 'center';
+    const leaveY = py + (canvasH - py - 55) - 20;
+    X.fillStyle = '#444'; X.font = '9px Consolas, monospace';
+    X.fillText('[Leave Guild]', cx, leaveY);
+    if (clickedInRect(cx - 40, leaveY - 10, 80, 14)) {
+      playerGuild = null; activeGuildQuest = null; guildDialogueResult = null;
+      addFloatingText(canvasW/2, canvasH/2, 'Left guild.', '#ff6644');
+    }
+  } else {
+    // Guild selection — show all 4 guilds to join
+    X.fillStyle = '#aaa'; X.font = '11px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('Choose a guild to join:', cx, yOff);
+    yOff += 18;
+
+    Object.entries(GUILDS).forEach(([id, g], i) => {
+      const gY = yOff + i * 52;
+      const hov = isInRect(mouseX, mouseY, px + 5, gY, pw - 10, 48);
+      X.fillStyle = hov ? '#222' : '#1a1a2a';
+      X.fillRect(px + 5, gY, pw - 10, 48);
+      X.strokeStyle = hov ? g.color : '#444'; X.lineWidth = hov ? 2 : 1;
+      X.strokeRect(px + 5, gY, pw - 10, 48);
+
+      X.fillStyle = g.color; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+      X.fillText(`${g.icon} ${g.name}`, px + 10, gY + 15);
+      X.fillStyle = '#aaa'; X.font = '9px Consolas, monospace';
+      X.fillText(g.desc, px + 10, gY + 28);
+      X.fillStyle = '#666'; X.font = '8px Consolas, monospace';
+      X.fillText(`Requires: ${g.statReq} check | First perk: ${g.perks[0]}`, px + 10, gY + 40);
+
+      if (clickedInRect(px + 5, gY, pw - 10, 48)) {
+        SFX.click();
+        // Dialogue skill check
+        const check = dialogueCheck(g.joinCheck.stat, g.joinCheck.dc);
+        playerGuild = id;
+        guildRep[id] = (guildRep[id] || 0) + (check.success ? 10 : 0);
+        guildDialogueResult = {
+          ...check,
+          message: check.success ? g.joinCheck.pass : g.joinCheck.fail
+        };
+        addFloatingText(canvasW/2, canvasH/2, `Joined ${g.name}!`, g.color);
+        addFloatingText(canvasW/2, canvasH/2 + 24, `${g.joinCheck.stat} Check: ${check.roll}+${check.mod}=${check.total} vs DC ${check.dc} — ${check.success ? 'SUCCESS' : 'PASSED ANYWAY'}`, check.success ? '#44ff44' : '#ffaa44');
+      }
+    });
+
+    // Show dialogue result
+    if (guildDialogueResult) {
+      const drY = yOff + 4 * 52 + 10;
+      X.fillStyle = '#1a2a1a'; X.fillRect(px + 5, drY, pw - 10, 30);
+      X.strokeStyle = '#4a8a4a'; X.strokeRect(px + 5, drY, pw - 10, 30);
+      X.fillStyle = guildDialogueResult.success ? '#44ff44' : '#ffaa44';
+      X.font = 'italic 10px Consolas, monospace'; X.textAlign = 'center';
+      X.fillText(guildDialogueResult.message, cx, drY + 18);
     }
   }
 }
