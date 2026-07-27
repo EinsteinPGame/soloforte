@@ -822,6 +822,14 @@ const TOWN_NPCS = [
     lines: ['"If your blade is dull, you are already dead. Let me see it."',
             '"Voidsteel runs through the deep floors. Bring me some and I will make something legendary."',
             '"Every weapon tells a story. Yours looks like it is still on chapter one."'] },
+  { name: 'Lorekeeper Thessa', desc: 'A hooded woman with ink-stained fingers and ancient tomes.', color: '#9070cc',
+    lines: ['"The archive remembers what the living forget."',
+            '"Every floor you clear reveals more of the Architect-Kings\' story. Bring me what you find."',
+            '"Knowledge without context is dangerous. Let me give you context."'] },
+  { name: 'Scout Kael', desc: 'A lean figure in dark leather with sharp, restless eyes.', color: '#50aa90',
+    lines: ['"I have been deeper than anyone alive. Alone. That is how I stayed alive."',
+            '"The dungeon shifts between runs. I can tell you what changed."',
+            '"Information is the cheapest armor you will ever buy."'] },
 ];
 
 // -- Guild System --
@@ -970,6 +978,31 @@ const SIDE_QUESTS = [
     intro: '"The town well has been running red. Not rust — blood. Something is down in the aquifer, something big. The last person who went to look... we found his boots. Just the boots."',
     success: 'The creature is enormous — a cave wyrm, ancient and territorial. You drive your blade through its skull as it lunges from the dark water. The well runs clear again.',
     fail: 'The beast is too large, too fast in the water. You barely escape with your life. The town begins rationing water from the rain barrels.' },
+  { id: 'sq_mirror_room', title: 'The Mirror Labyrinth', desc: 'A room of enchanted mirrors has trapped adventurers in reflection copies. Free them.',
+    type: 'investigate', reward: { gold: 200, xp: 110, rep: 15 }, icon: '🪞', difficulty: 3,
+    intro: '"There is a chamber on the third floor where mirrors line every wall. Walk in, and your reflection walks out. The real you stays trapped. Three adventurers went in last week — their reflections are the ones who came back. Trust me."',
+    success: 'You shatter the master mirror at the chamber\'s center. The reflections scream and dissolve. The real adventurers stumble out, disoriented and grateful.',
+    fail: 'The mirrors show you your own face, but the expression is wrong. Something smiles back at you. You leave before it steps out.' },
+  { id: 'sq_forge_relic', title: 'The Sundered Relic', desc: 'Three fragments of an ancient weapon are scattered across the dungeon floors. Collect them all.',
+    type: 'fetch', reward: { gold: 400, xp: 200, item: 'Relic Blade' }, icon: '⚒', difficulty: 4,
+    intro: '"The Architect-Kings\' greatest weapon was broken into three pieces and hidden across separate floors. A blade of light against whatever they imprisoned. If you can find all three fragments, Grimjaw can reforge it."',
+    success: 'Three fragments, pulsing with ancient energy, placed on Grimjaw\'s anvil. The reforging shakes the ground. The Relic Blade shines with the light of a dead civilization\'s last hope.',
+    fail: 'Two of three fragments found. The third lies beyond a sealed door you cannot open. So close.' },
+  { id: 'sq_fungal_plague', title: 'The Creeping Blight', desc: 'A fast-spreading fungal infection is consuming entire dungeon corridors. Find the source spore.',
+    type: 'investigate', reward: { gold: 170, xp: 90, rep: 10 }, icon: '🍄', difficulty: 2,
+    intro: '"The fungus spreads a foot per hour. At this rate, it will reach the town foundations in three days. Find the source — a mother spore, massive, probably pulsing. Burn it."',
+    success: 'The mother spore is the size of a wagon, throbbing with bioluminescent veins. Your fire catches immediately. It shrieks as it burns — yes, the fungus shrieks.',
+    fail: 'You hack at fungal walls for hours but the blight grows back faster than you can cut. Hearthrest starts smelling of mushrooms.' },
+  { id: 'sq_time_loop', title: 'The Repeating Room', desc: 'A room on the fourth floor traps anyone who enters in a time loop. Break the cycle.',
+    type: 'investigate', reward: { gold: 280, xp: 150, rep: 20 }, icon: '⏳', difficulty: 4,
+    intro: '"I have been to the fourth floor seventeen times. Or once. I cannot tell. There is a room — you enter, you fight, you win, and then you are at the door again. Nothing changes. I barely escaped. Something is wrong with time itself in there."',
+    success: 'On your third loop, you notice the clock on the wall runs backwards. You reverse it. Time snaps. The room releases its prisoners — some have been looping for years and do not know it.',
+    fail: 'You enter the room. You fight. You win. You are at the door again. You enter the room. You fight. You—' },
+  { id: 'sq_orphan_rescue', title: 'The Lost Children', desc: 'Three orphans snuck into the dungeon on a dare. Find them before nightfall.',
+    type: 'rescue', reward: { gold: 100, xp: 60, rep: 25 }, icon: '👧', difficulty: 1,
+    intro: '"The children — three of them, barely ten years old — went in on a dare. The entrance guard was distracted. They have been down there for four hours. Please. They are just children."',
+    success: 'You find them huddled in a supply closet on the first floor, wide-eyed and terrified but unharmed. They clutch your legs the entire walk back. Heroes do not always fight.',
+    fail: 'You search every room on the first floor. Their laughter echoes from somewhere deeper. They went further than anyone expected.' },
 ];
 
 let activeSideQuests = []; // { questData, status: 'active'|'complete'|'failed', progress }
@@ -1075,6 +1108,40 @@ const NPC_DIALOGUE_TREES = {
       { label: 'Commission a custom weapon (300g)', response: null, stat: null, cost: 300,
         pass: '"Three hundred gold and a good eye. I will forge it overnight. Come back tomorrow and it will be ready — balanced to your grip, weighted to your swing." [+Custom Weapon Next Floor]',
         fail: '"You cannot afford my work. Come back when you have real coin."' },
+    ]
+  },
+  thessa: {
+    name: 'Lorekeeper Thessa',
+    greeting: '"The archive remembers what the living forget. Tell me — are you here to learn, or merely to take?"',
+    options: [
+      { label: 'Ask about the Architect-Kings', response: '"They were not kings in any mortal sense. They were scholars who became something more — beings that shaped reality through equations carved in stone. Their downfall was curiosity. They built the prison below because they summoned something they could not understand, and could not destroy."', stat: null },
+      { label: 'Ask about floor boss weaknesses (INT DC 14)', response: null, stat: 'INT', dc: 14,
+        pass: '"Ah, a scholar! Each boss is bound by the seal it guards. The seal is both its power source and its chain. Strike the seal rune during the fight — it weakens the boss for three turns. Look for the glowing glyph on the arena floor." [+Boss Weakness Hint]',
+        fail: '"Your mind is eager but undisciplined. The knowledge would be wasted on you in this state. Return when you have sharpened your intellect."' },
+      { label: 'Request a dungeon map fragment (WIS DC 13)', response: null, stat: 'WIS', dc: 13,
+        pass: '"Your instincts are sound. Here — a partial map of the next floor. The archive preserves what scouts have reported. Not everything, but enough to avoid the worst traps." [+Map Fragment]',
+        fail: '"You do not yet have the patience to read the old cartography. The symbols would mislead you more than help."' },
+      { label: 'Ask about the sealed entity', response: '"Even the archive does not name it. The Architect-Kings referred to it only as the Hunger Below. Not a creature — a concept given form. It does not want freedom. It wants to consume. Everything. Forever."', stat: null },
+      { label: 'Donate a rare artifact to the archive', response: null, stat: null, cost: 100,
+        pass: '"A genuine relic from the deep floors! This will fill gaps in the archive that have stood empty for centuries. In return, I will share something precious — the Word of Warding. Speak it before a boss fight and the first attack against you will miss." [+Warding Word]',
+        fail: '"The archive accepts only items of genuine historical value. Come back with something from the dungeon depths."' },
+    ]
+  },
+  kael: {
+    name: 'Scout Kael',
+    greeting: '"Back from the dark, or heading in? Either way, I have got information that will keep you breathing. For a price."',
+    options: [
+      { label: 'Ask what he has seen', response: '"I go deeper than anyone else in this town — solo, quiet, no fighting. I watch. The dungeon changes, you know. Rooms shift. Monsters migrate. What killed you last run might not even be there next time. But the bosses... the bosses never move."', stat: null },
+      { label: 'Scout the next floor (DEX DC 12)', response: null, stat: 'DEX', dc: 12,
+        pass: '"Alright, I did a sweep. The next floor has a patrol pattern — heavy group on the left corridor, lighter on the right. Go right, then cut through the middle room. Also, there is a locked chest behind the second pillar in the main hall." [+Scout Intel]',
+        fail: '"You move too loud to be useful on a scout run. You would get us both killed. Stick to the sword."' },
+      { label: 'Ask about escape routes', response: '"Every floor has at least one. The Architect-Kings built emergency exits — probably for their own people. Look for walls with a faint blue glow. Push hard and they open. Gets you back to town fast if things go south."', stat: null },
+      { label: 'Hire him as a guide (80g)', response: null, stat: null, cost: 80,
+        pass: '"Eighty gold and a death wish. My kind of customer. I will shadow your party for the next floor — call me when you need a door opened or a trap spotted. I will not fight, but I will make sure you do not walk into an ambush." [+Kael Guide Buff]',
+        fail: '"Not enough to risk my neck. I have a very specific price for dying, and it is more than that."' },
+      { label: 'Challenge his scouting skills (DEX DC 15)', response: null, stat: 'DEX', dc: 15,
+        pass: '"Whoa. You got within arm\'s reach without me noticing. THAT never happens. Alright, you have earned my respect. Free intel: the boss on the current floor is weakest when it charges — sidestep and hit the exposed back." [+Boss Pattern Intel]',
+        fail: '"Nice try. I heard you from twelve paces. I hear EVERYTHING from twelve paces. That is why I am alive."' },
     ]
   }
 };
@@ -7007,6 +7074,21 @@ function drawTownBounty(px, py, pw, cx) {
     SFX.click(); townData.talkingToNpc = 'sal'; npcDialogueState = null;
   }
 
+  // Scout Kael
+  const kael = TOWN_NPCS[7];
+  const kaelY = talkSalY + 28;
+  X.fillStyle = kael.color; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+  X.fillText(`${kael.name}:`, px + 10, kaelY);
+  X.fillStyle = '#ccc'; X.font = 'italic 10px Consolas, monospace';
+  const kaelLine = kael.lines[townData.floorCleared % kael.lines.length];
+  const kaelLines = wrapText(kaelLine, pw - 20, 10);
+  kaelLines.forEach((line, i) => X.fillText(line, px + 10, kaelY + 14 + i * 13));
+  const talkKaelY = kaelY + 14 + kaelLines.length * 13 + 2;
+  drawButton(px + 10, talkKaelY, 120, 22, 'Talk to Kael', false, '#2a2a3a', kael.color);
+  if (clickedInRect(px + 10, talkKaelY, 120, 22)) {
+    SFX.click(); townData.talkingToNpc = 'kael'; npcDialogueState = null;
+  }
+
   const bounties = [
     { desc: `Clear Floor ${townData.nextFloor + 1} without losing a companion`, reward: 100, id: 'no_loss' },
     { desc: `Defeat the boss on Floor ${townData.nextFloor + 1}`, reward: 150, id: 'boss_kill' },
@@ -7067,7 +7149,22 @@ function drawTownCampfire(px, py, pw, cx) {
     SFX.click(); townData.talkingToNpc = 'verendis'; npcDialogueState = null;
   }
 
-  const actY = talkSageY + 28;
+  // Lorekeeper Thessa
+  const thessa = TOWN_NPCS[6];
+  const thY = talkSageY + 28;
+  X.fillStyle = thessa.color; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+  X.fillText(`${thessa.name}:`, px + 10, thY);
+  X.fillStyle = '#ccc'; X.font = 'italic 10px Consolas, monospace';
+  const thLine = thessa.lines[townData.floorCleared % thessa.lines.length];
+  const thLines = wrapText(thLine, pw - 20, 10);
+  thLines.forEach((line, i) => X.fillText(line, px + 10, thY + 14 + i * 13));
+  const talkThY = thY + 14 + thLines.length * 13 + 2;
+  drawButton(px + 10, talkThY, 130, 22, 'Talk to Thessa', false, '#2a2a3a', thessa.color);
+  if (clickedInRect(px + 10, talkThY, 130, 22)) {
+    SFX.click(); townData.talkingToNpc = 'thessa'; npcDialogueState = null;
+  }
+
+  const actY = talkThY + 28;
 
   // Show pending companion conflict mediation
   if (pendingConflict && player.squad && player.squad.length >= 2) {
