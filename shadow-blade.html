@@ -629,17 +629,38 @@ function drawMenu() {
 let nameInputActive = true;
 let nameCursorBlink = 0;
 
+// Hidden input for mobile keyboard support
+const mobileNameInput = document.createElement('input');
+mobileNameInput.type = 'text';
+mobileNameInput.maxLength = 16;
+mobileNameInput.autocomplete = 'off';
+mobileNameInput.autocapitalize = 'off';
+mobileNameInput.style.cssText = 'position:fixed;top:-100px;left:0;opacity:0;width:1px;height:1px;font-size:16px;';
+document.body.appendChild(mobileNameInput);
+mobileNameInput.addEventListener('input', function() {
+  if (state !== STATES.CHAR_CREATE || charCreateStep !== 0) return;
+  inputText = mobileNameInput.value.replace(/[^a-zA-Z0-9 _-]/g, '').slice(0, 16);
+});
+mobileNameInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && inputText.length >= 1) {
+    charName = inputText; charCreateStep = 1; SFX.menuSelect();
+    mobileNameInput.blur();
+    e.preventDefault();
+  }
+});
+
 function updateCharCreate() {
   nameCursorBlink++;
   if (charCreateStep === 0) {
-    // Name input via keyboard events
-    // Handled in keydown listener below
+    // Sync hidden input with inputText
+    if (mobileNameInput.value !== inputText) mobileNameInput.value = inputText;
   }
 }
 
-// Name input handler
+// Name input handler (desktop keyboard)
 addEventListener('keydown', function(e) {
   if (state !== STATES.CHAR_CREATE || charCreateStep !== 0) return;
+  if (document.activeElement === mobileNameInput) return; // Let mobile input handle it
   if (e.key === 'Backspace') { inputText = inputText.slice(0, -1); e.preventDefault(); }
   else if (e.key === 'Enter' && inputText.length >= 1) { charName = inputText; charCreateStep = 1; SFX.menuSelect(); }
   else if (e.key.length === 1 && inputText.length < 16 && /[a-zA-Z0-9 _-]/.test(e.key)) { inputText += e.key; }
@@ -655,12 +676,14 @@ function drawCharCreate() {
     // Name input
     drawTextBold('What is your name, Shadow?', W/2, 120, 16, '#aaa');
 
-    // Input box
+    // Input box (tap to focus on mobile)
     const bx = W/2 - 120, by = 150, bw = 240, bh = 40;
-    X.fillStyle = '#1a1a3e'; X.strokeStyle = '#6644cc'; X.lineWidth = 2;
+    const inputHover = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
+    X.fillStyle = inputHover ? '#222266' : '#1a1a3e'; X.strokeStyle = '#6644cc'; X.lineWidth = 2;
     X.beginPath(); X.roundRect(bx, by, bw, bh, 8); X.fill(); X.stroke();
+    if (inputHover && clicked) { mobileNameInput.value = inputText; mobileNameInput.focus(); }
     const cursor = nameCursorBlink % 60 < 30 ? '|' : '';
-    drawText(inputText + cursor, W/2, by + bh/2, 16, '#e0e0e0');
+    drawText(inputText.length > 0 ? inputText + cursor : (isMobile ? 'Tap here to type' + cursor : 'Type your name' + cursor), W/2, by + bh/2, 16, inputText.length > 0 ? '#e0e0e0' : '#666');
 
     if (inputText.length >= 1) {
       if (drawBtn(W/2 - 60, 210, 120, 36, 'Continue', false, '#2a1a4a', '#3a2a6a')) {
