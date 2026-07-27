@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// DUNGEONS OF FATE v2.2 — D&D Dungeon Crawler Phase 3: Squad + Town + Loyalty + Romance
+// DUNGEONS OF FATE v2.6 — D&D Dungeon Crawler Phase 3b: Side Quests + NPC Dialogue Trees + Elite Guild Quests
 // ============================================================
 
 const C = document.getElementById('g'), X = C.getContext('2d');
@@ -866,6 +866,154 @@ const GUILD_QUESTS = [
   { guild: 'holy', title: 'Purifier', desc: 'Defeat 3 undead enemies on a single floor.', type: 'kill_undead', target: 3, reward: { gold: 100, rep: 40 }, minRank: 1 },
   { guild: 'holy', title: 'Dawn\'s Champion', desc: 'Defeat a floor boss with no companion casualties.', type: 'perfect_boss', target: 1, reward: { gold: 150, rep: 50 }, minRank: 2 },
 ];
+
+// -- Elite Guild Quests (rank 3-4) --
+const ELITE_GUILD_QUESTS = [
+  // Adventurers' Guild elite
+  { guild: 'adventurers', title: 'Colosseum Champion', desc: 'Defeat 10 enemies on a single floor with no rest.', type: 'combat_streak', target: 10, reward: { gold: 250, rep: 70 }, minRank: 3 },
+  { guild: 'adventurers', title: 'Legend of the Depths', desc: 'Reach floor 5 with full squad alive.', type: 'reach_floor_squad', target: 5, reward: { gold: 400, rep: 100 }, minRank: 4 },
+  // Arcane Order elite
+  { guild: 'arcane', title: 'Reality Shaper', desc: 'Cast 15 spells on a single floor.', type: 'cast_spells', target: 15, reward: { gold: 250, rep: 70 }, minRank: 3 },
+  { guild: 'arcane', title: 'Forbidden Knowledge', desc: 'Reach floor 5 and decipher the ancient runes.', type: 'reach_floor', target: 5, reward: { gold: 400, rep: 100 }, minRank: 4 },
+  // Shadow Brotherhood elite
+  { guild: 'shadow', title: 'Phantom Strike', desc: 'Avoid 6 enemies on a single floor.', type: 'avoid_enemies', target: 6, reward: { gold: 250, rep: 70 }, minRank: 3 },
+  { guild: 'shadow', title: 'The Perfect Heist', desc: 'Steal from the shop 3 times without getting caught.', type: 'steal_shop', target: 3, reward: { gold: 400, rep: 100 }, minRank: 4 },
+  // Holy Order elite
+  { guild: 'holy', title: 'Shield of Faith', desc: 'Complete 2 floors without any companion falling below 50% HP.', type: 'protect_allies_strict', target: 2, reward: { gold: 250, rep: 70 }, minRank: 3 },
+  { guild: 'holy', title: 'Divine Crusade', desc: 'Defeat 8 undead enemies across 2 floors.', type: 'kill_undead', target: 8, reward: { gold: 400, rep: 100 }, minRank: 4 },
+];
+// Merge elite quests into main quest pool
+GUILD_QUESTS.push(...ELITE_GUILD_QUESTS);
+
+// -- Side Quest System --
+const SIDE_QUESTS = [
+  { id: 'sq_escort', title: 'Escort the Merchant', desc: 'A terrified merchant needs escort through the next floor. Keep him alive.',
+    type: 'escort', reward: { gold: 120, xp: 80 }, icon: '🧑‍💼', difficulty: 1,
+    intro: '"Please, I beg you! My wares must reach the other side. Those creatures... I cannot face them alone."',
+    success: 'The merchant reaches safety and presses a bag of gold into your hands. "You are heroes!"',
+    fail: 'The merchant falls to the dungeon\'s horrors. His goods scatter across the cold stone.' },
+  { id: 'sq_lost_ring', title: 'The Lost Heirloom', desc: 'Find a golden ring lost somewhere on the next floor.',
+    type: 'fetch', reward: { gold: 80, xp: 50 }, icon: '💍', difficulty: 1,
+    intro: '"My grandmother\'s ring... I dropped it when I fled. It glows faintly in the dark. Please, it is all I have left of her."',
+    success: 'You find the ring wedged in a crack between stones, still glowing softly. The old woman weeps with joy.',
+    fail: 'Despite searching every corner, the ring is nowhere to be found. Perhaps a creature swallowed it.' },
+  { id: 'sq_poison', title: 'The Poisoned Well', desc: 'Something is tainting the town water. Find the source in the dungeon.',
+    type: 'investigate', reward: { gold: 150, xp: 100 }, icon: '🧪', difficulty: 2,
+    intro: '"People are falling ill. The water tastes of copper and death. I traced the pipes into the dungeon. Find what is poisoning us."',
+    success: 'You destroy the nest of venomous creatures polluting the underground stream. The water runs clean again.',
+    fail: 'The poison source eludes you. The townspeople grow weaker with each passing day.' },
+  { id: 'sq_ghost', title: 'The Restless Spirit', desc: 'A ghost haunts the dungeon corridors. Put it to rest.',
+    type: 'investigate', reward: { gold: 100, xp: 80, rep: 10 }, icon: '👻', difficulty: 2,
+    intro: '"Every night, wailing echoes from below. A knight who fell a century ago. Find his remains, give them a proper burial."',
+    success: 'You find the knight\'s bones and speak the words of peace. The spectral wailing ceases, replaced by grateful silence.',
+    fail: 'The spirit grows more agitated. Its cries now echo through the tavern walls at midnight.' },
+  { id: 'sq_missing_scout', title: 'Missing Scout', desc: 'A town scout hasn\'t returned from the dungeon. Find them.',
+    type: 'rescue', reward: { gold: 100, xp: 70 }, icon: '🔦', difficulty: 1,
+    intro: '"Jess went down two days ago to map the tunnels. She has not come back. She is tough, but... please look for her."',
+    success: '"Jess!" She is trapped behind a collapsed passage, bruised but alive. She hugs you and limps back to town.',
+    fail: 'You find only Jess\'s torn cloak and broken lantern. The search party returns with grim faces.' },
+  { id: 'sq_rare_herb', title: 'Rare Herb Harvest', desc: 'Collect Moonpetal herbs that only grow in the dungeon depths.',
+    type: 'fetch', reward: { gold: 60, xp: 40, item: 'Healing Potion' }, icon: '🌿', difficulty: 1,
+    intro: '"Moonpetal mushrooms grow only in the deep dark. I need three for my healing salves. I will brew you a potion in return."',
+    success: 'Three luminous Moonpetals, carefully harvested. The herbalist mixes them into a potent healing elixir.',
+    fail: 'The mushrooms crumble to dust when you try to pick them. Wrong technique, the herbalist sighs.' },
+  { id: 'sq_ancient_map', title: 'The Cartographer\'s Obsession', desc: 'Map every room on the next floor for the town cartographer.',
+    type: 'explore', reward: { gold: 130, xp: 90 }, icon: '🗺', difficulty: 2,
+    intro: '"I have mapped every surface mile of this region. But the dungeon... it shifts. Map the next floor completely and I will pay handsomely."',
+    success: 'Every corridor, every chamber, recorded in precise detail. The cartographer adds it to his masterwork.',
+    fail: 'Too many rooms left unexplored. The cartographer frowns at the incomplete sketches.' },
+  { id: 'sq_rival_party', title: 'The Rival Adventurers', desc: 'Another party is racing to clear the next floor first. Beat them.',
+    type: 'race', reward: { gold: 200, xp: 120 }, icon: '⚔', difficulty: 3,
+    intro: '"Those arrogant fools from the Silver Swords claim they will clear the next floor before you. Show them who the real heroes are."',
+    success: 'You clear the floor boss while the rival party is still fighting rats in the first chamber. Their faces are priceless.',
+    fail: 'The Silver Swords reach the boss chamber first, grinning smugly as you arrive.' },
+  { id: 'sq_cursed_weapon', title: 'The Cursed Blade', desc: 'A cursed weapon pulses with dark energy. Purify or destroy it.',
+    type: 'investigate', reward: { gold: 180, xp: 100, rep: 15 }, icon: '🗡', difficulty: 3,
+    intro: '"This blade whispers to anyone who touches it. I sealed it in a chest, but it is getting louder. Take it into the dungeon — the ancient altar there might purify it."',
+    success: 'The altar flares with divine light. The curse shatters, and the blade transforms into a weapon of radiant steel.',
+    fail: 'The altar rejects the blade. The whispers grow to screams as you flee back to town.' },
+  { id: 'sq_dragon_egg', title: 'Dragon Egg Recovery', desc: 'A dragon egg was stolen and hidden in the dungeon. Retrieve it before it hatches.',
+    type: 'fetch', reward: { gold: 300, xp: 150, rep: 20 }, icon: '🥚', difficulty: 3,
+    intro: '"A dragon egg. Yes, a real one. Thieves stole it and hid it below. If it hatches down there, unattended... the consequences would be catastrophic."',
+    success: 'The egg pulses warmly in your arms. The dragonologist cradles it tenderly, tears of relief in her eyes.',
+    fail: 'You hear a crack echoing from the depths. Then a roar. Then silence. You should probably leave town for a while.' },
+];
+
+let activeSideQuests = []; // { questData, status: 'active'|'complete'|'failed', progress }
+let completedSideQuests = []; // ids of completed quests
+let sideQuestBoardSeed = 0; // rotates available quests
+
+// -- NPC Dialogue Trees --
+const NPC_DIALOGUE_TREES = {
+  marta: {
+    name: 'Innkeeper Marta',
+    greeting: '"What brings you to my bar, stranger? Sit, drink, talk."',
+    options: [
+      { label: 'Ask about the dungeon', response: '"Every week new fools go down. Every week fewer come back. The ones who do... they change. Eyes hollow, hands shaking. Whatever is down there, it eats at your soul."', stat: null },
+      { label: 'Ask about the town', response: '"Hearthrest has stood for three hundred years, built right atop this dungeon. Some say the town feeds on whatever dark power leaks from below. I say the town is just stubborn, like me."', stat: null },
+      { label: 'Flirt (CHA DC 14)', response: null, stat: 'CHA', dc: 14,
+        pass: '"Oh my. A smooth tongue and a brave heart? Dangerous combination. You remind me of my late husband. He died in the dungeon. ...Don\'t die in the dungeon."',
+        fail: '"Ha! Save the charm for someone who hasn\'t seen a thousand adventurers try that line. Drink your ale."' },
+      { label: 'Intimidate for info (STR DC 12)', response: null, stat: 'STR', dc: 12,
+        pass: '"Alright, alright! There is a hidden passage on every floor. Look for walls with scratch marks — they slide open. Now stop scaring my customers."',
+        fail: '"You think flexing at a woman who wrestles barrels daily will work? Cute. Now sit down."' },
+      { label: 'Ask about rumors', response: '"The war between the factions is getting worse. People choosing sides, old friends becoming enemies. And all the while, whatever sleeps at the bottom of the dungeon stirs. We are all fools."', stat: null },
+    ]
+  },
+  rolo: {
+    name: 'Guard Captain Rolo',
+    greeting: '"State your business. I keep the peace here, and I don\'t like surprises."',
+    options: [
+      { label: 'Ask about threats', response: '"Bandits, mostly. Some dungeon creatures crawl up at night — we handle them. But lately, something bigger has been probing the defenses. Something intelligent."', stat: null },
+      { label: 'Ask about the war', response: '"The factions are tearing this town apart. The Iron Vanguard wants order, the Crimson Circle wants power, the Verdant Pact wants peace. Me? I just want everyone to stop killing each other."', stat: null },
+      { label: 'Offer to help patrol (STR DC 11)', response: null, stat: 'STR', dc: 11,
+        pass: '"You handled yourself well. Here, take this — patrol bonus. And if you see anything suspicious in the dungeon, report back." [+30 gold]',
+        fail: '"Appreciate the offer, but you looked a bit shaky on the wall. Maybe more dungeon practice first."',
+        passReward: { gold: 30 } },
+      { label: 'Ask about weak spots (INT DC 13)', response: null, stat: 'INT', dc: 13,
+        pass: '"Smart question. The dungeon walls near staircases are thinner — old construction. You can sometimes hear what is on the other side before you open a door."',
+        fail: '"That is classified guard intelligence. Earn my trust first."' },
+      { label: 'Bribe for info (50g)', response: null, stat: null, cost: 50,
+        pass: '"...Fine. The boss on the next floor has a pattern — it always attacks left first, then right, then center. Dodge left."',
+        fail: '"You don\'t have enough gold for my attention."' },
+    ]
+  },
+  verendis: {
+    name: 'Sage Verendis',
+    greeting: '"Ah, visitors. How delightful. I trust you bring more than questions — though questions are also valuable."',
+    options: [
+      { label: 'Ask about dungeon history', response: '"This dungeon was built by the Architect-Kings, a civilization that predated all known races. They sealed something beneath the fifth floor — something they feared even with all their power."', stat: null },
+      { label: 'Ask about the seals', response: '"Each floor boss guards a seal. When all five are broken, the way opens to what lies below. The Architect-Kings did not build a dungeon. They built a prison."', stat: null },
+      { label: 'Discuss magic theory (INT DC 13)', response: null, stat: 'INT', dc: 13,
+        pass: '"Remarkable! Your understanding of arcane harmonics is impressive. Here — this scroll contains a spell optimization technique. Your next spell will hit harder." [+Spell Damage Buff]',
+        fail: '"A valiant attempt, but your theory has gaps. Study more and return."' },
+      { label: 'Ask about companions', response: '"Your companions are more than swords and spells. Their loyalties will be tested. In the deep dark, trust is the only real armor. Choose wisely who walks beside you."', stat: null },
+      { label: 'Request ancient blessing (WIS DC 15)', response: null, stat: 'WIS', dc: 15,
+        pass: '"The old words still hold power. I speak them over you now. May the light of the Architect-Kings guide your path." [+Temp HP Blessing]',
+        fail: '"The blessing requires a receptive spirit. Yours is... cluttered. Meditate and try again."',
+        passReward: { tempHp: 10 } },
+    ]
+  },
+  sal: {
+    name: 'Bounty Broker Sal',
+    greeting: '"Ah, a customer. Or prey. Same thing in my line of work. What do you need?"',
+    options: [
+      { label: 'Ask about bounties', response: '"I broker contracts. Kill this, fetch that, survive the other thing. The pay is good, the work is deadly. Standard stuff."', stat: null },
+      { label: 'Ask about the black market', response: '"I know nothing about any black market. But if I did, hypothetically, it would be behind the third pillar in the guild hall. Hypothetically."', stat: null },
+      { label: 'Haggle for better rates (CHA DC 14)', response: null, stat: 'CHA', dc: 14,
+        pass: '"You drive a hard bargain. Fine — your next bounty pays double. But only the next one, and you did NOT hear that from me."',
+        fail: '"Nice try. My rates are my rates. Take it or leave it."' },
+      { label: 'Threaten (STR DC 15)', response: null, stat: 'STR', dc: 15,
+        pass: '"Whoa, easy! Here — take this map. It shows a hidden stash on the next floor. Just don\'t break my fingers." [+Treasure Map]',
+        fail: '"You think you are the first person to threaten me? I have six knives and zero morals. Sit down."' },
+      { label: 'Pick his pocket (DEX DC 16)', response: null, stat: 'DEX', dc: 16,
+        pass: '"...Wait, where is my — YOU. Ha! Respect. Keep it. Consider it an audition for my more... discreet contracts." [+Lockpick]',
+        fail: '"I felt that. Lucky for you I find attempted theft flattering. Try again and I will find it less so."' },
+    ]
+  }
+};
+
+let npcDialogueState = null; // { npcId, selectedOption, result }
 
 let playerGuild = null; // guild id or null
 let guildRep = { adventurers: 0, arcane: 0, shadow: 0, holy: 0 };
@@ -6428,6 +6576,7 @@ function updateTown() {
     { name: 'Campfire', color: '#c04010', icon: '🔥', desc: 'Party talk' },
     { name: 'Guilds', color: playerGuild ? (GUILDS[playerGuild]?.color || '#c08020') : '#c08020', icon: '🏛', desc: 'Join & quests' },
     { name: 'Factions', color: warState !== WAR_STATE.INACTIVE ? (playerFaction ? (FACTIONS[playerFaction]?.color || '#8844cc') : '#8844cc') : '#444466', icon: '⚔', desc: 'Allegiance' },
+    { name: 'Quests', color: '#44aa88', icon: '📜', desc: 'Side quests' },
   ];
   const totalBW = buildings.length * (bldW + bldGap) - bldGap;
   const bldStartX = cx - totalBW / 2;
@@ -6491,6 +6640,11 @@ function updateTown() {
     }
     townData.activeSection = 'factions';
   }
+  // Quests
+  const questX = bldStartX + 6 * (bldW + bldGap);
+  if (clickedInRect(questX, bldY, bldW, bldH)) {
+    SFX.click(); townData.activeSection = 'quests';
+  }
 
   const section = townData.activeSection || 'tavern';
 
@@ -6513,6 +6667,8 @@ function updateTown() {
     drawTownGuilds(panelX, contentY, panelW, cx);
   } else if (section === 'factions') {
     drawTownFactions(panelX, contentY, panelW, cx);
+  } else if (section === 'quests') {
+    drawTownQuests(panelX, contentY, panelW, cx);
   }
 
   // Descend button
@@ -6538,6 +6694,11 @@ function updateTown() {
 }
 
 function drawTownTavern(px, py, pw, cx) {
+  // Check if NPC dialogue tree is active
+  if (townData.talkingToNpc === 'marta') {
+    if (drawNpcDialogueOverlay(px, py, pw, cx, 'marta')) return;
+  }
+
   X.fillStyle = '#ffd700';
   X.font = 'bold 14px Consolas, monospace';
   X.textAlign = 'center';
@@ -6559,7 +6720,14 @@ function drawTownTavern(px, py, pw, cx) {
   const npcLines = wrapText(npcLine, pw - 20, 11);
   npcLines.forEach((line, i) => X.fillText(line, px + 10, py + 52 + i * 14));
 
-  const actY = py + 52 + npcLines.length * 14 + 10;
+  // Talk to Marta button (opens dialogue tree)
+  const talkBtnY = py + 52 + npcLines.length * 14 + 2;
+  drawButton(px + 10, talkBtnY, 120, 22, 'Talk to Marta', false, '#2a2a3a', npc.color);
+  if (clickedInRect(px + 10, talkBtnY, 120, 22)) {
+    SFX.click(); townData.talkingToNpc = 'marta'; npcDialogueState = null;
+  }
+
+  const actY = talkBtnY + 28;
 
   // Rest/heal option
   const hLabel = canHealFree ? 'REST (Free - High Rep)' : `REST (${healCost} gold)`;
@@ -6636,6 +6804,11 @@ function drawTownTavern(px, py, pw, cx) {
 }
 
 function drawTownBarracks(px, py, pw, cx) {
+  // Check if NPC dialogue tree is active
+  if (townData.talkingToNpc === 'rolo') {
+    if (drawNpcDialogueOverlay(px, py, pw, cx, 'rolo')) return;
+  }
+
   X.fillStyle = '#a0a0d0';
   X.font = 'bold 14px Consolas, monospace';
   X.textAlign = 'center';
@@ -6651,7 +6824,14 @@ function drawTownBarracks(px, py, pw, cx) {
   const gLines = wrapText(gl, pw - 20, 11);
   gLines.forEach((line, i) => X.fillText(line, px + 10, py + 52 + i * 14));
 
-  const cardY = py + 52 + gLines.length * 14 + 10;
+  // Talk to Rolo button
+  const talkBtnY2 = py + 52 + gLines.length * 14 + 2;
+  drawButton(px + 10, talkBtnY2, 120, 22, 'Talk to Rolo', false, '#2a2a3a', guardNpc.color);
+  if (clickedInRect(px + 10, talkBtnY2, 120, 22)) {
+    SFX.click(); townData.talkingToNpc = 'rolo'; npcDialogueState = null;
+  }
+
+  const cardY = talkBtnY2 + 28;
   const squadFull = (player.squad || []).length >= 4;
 
   // Show available companions not already in squad
@@ -6700,6 +6880,11 @@ function drawTownBarracks(px, py, pw, cx) {
 }
 
 function drawTownBounty(px, py, pw, cx) {
+  // Check if NPC dialogue tree is active
+  if (townData.talkingToNpc === 'sal') {
+    if (drawNpcDialogueOverlay(px, py, pw, cx, 'sal')) return;
+  }
+
   X.fillStyle = '#c08020';
   X.font = 'bold 14px Consolas, monospace';
   X.textAlign = 'center';
@@ -6712,6 +6897,13 @@ function drawTownBounty(px, py, pw, cx) {
   const sl = salNpc.lines[townData.floorCleared % salNpc.lines.length];
   const sLines = wrapText(sl, pw - 20, 11);
   sLines.forEach((line, i) => X.fillText(line, px + 10, py + 52 + i * 14));
+
+  // Talk to Sal button
+  const talkSalY = py + 52 + sLines.length * 14 + 2;
+  drawButton(px + 10, talkSalY, 110, 22, 'Talk to Sal', false, '#2a2a3a', salNpc.color);
+  if (clickedInRect(px + 10, talkSalY, 110, 22)) {
+    SFX.click(); townData.talkingToNpc = 'sal'; npcDialogueState = null;
+  }
 
   const bounties = [
     { desc: `Clear Floor ${townData.nextFloor + 1} without losing a companion`, reward: 100, id: 'no_loss' },
@@ -6742,6 +6934,11 @@ function drawTownBounty(px, py, pw, cx) {
 }
 
 function drawTownCampfire(px, py, pw, cx) {
+  // Check if NPC dialogue tree is active
+  if (townData.talkingToNpc === 'verendis') {
+    if (drawNpcDialogueOverlay(px, py, pw, cx, 'verendis')) return;
+  }
+
   X.fillStyle = '#ff8833';
   X.font = 'bold 14px Consolas, monospace';
   X.textAlign = 'center';
@@ -6761,7 +6958,14 @@ function drawTownCampfire(px, py, pw, cx) {
   const sageLines = wrapText(sageLine, pw - 20, 10);
   sageLines.forEach((line, i) => X.fillText(line, px + 10, py + 51 + i * 13));
 
-  const actY = py + 51 + sageLines.length * 13 + 14;
+  // Talk to Verendis button
+  const talkSageY = py + 51 + sageLines.length * 13 + 2;
+  drawButton(px + 10, talkSageY, 130, 22, 'Talk to Verendis', false, '#2a2a3a', sage.color);
+  if (clickedInRect(px + 10, talkSageY, 130, 22)) {
+    SFX.click(); townData.talkingToNpc = 'verendis'; npcDialogueState = null;
+  }
+
+  const actY = talkSageY + 28;
 
   // Show pending companion conflict mediation
   if (pendingConflict && player.squad && player.squad.length >= 2) {
@@ -8077,6 +8281,277 @@ function drawTownGuilds(px, py, pw, cx) {
       X.fillText(guildDialogueResult.message, cx, drY + 18);
     }
   }
+}
+
+// ============================================================
+// SIDE QUEST BOARD — TOWN SECTION
+// ============================================================
+function getAvailableSideQuests() {
+  const seed = (townData?.floorCleared || 0) + sideQuestBoardSeed;
+  return SIDE_QUESTS.filter(q =>
+    !completedSideQuests.includes(q.id) &&
+    !activeSideQuests.some(a => a.questData.id === q.id) &&
+    q.difficulty <= (townData?.floorCleared || 0) + 2
+  ).sort((a, b) => {
+    const hashA = (a.id.charCodeAt(3) * 31 + seed) % 100;
+    const hashB = (b.id.charCodeAt(3) * 31 + seed) % 100;
+    return hashA - hashB;
+  }).slice(0, 3);
+}
+
+function resolveSideQuest(quest) {
+  // Resolution based on quest type — uses dice rolls + stats
+  const types = {
+    escort: { stat: 'CON', dc: 10 + quest.difficulty * 2 },
+    fetch: { stat: 'INT', dc: 9 + quest.difficulty * 2 },
+    investigate: { stat: 'WIS', dc: 11 + quest.difficulty * 2 },
+    rescue: { stat: 'STR', dc: 10 + quest.difficulty * 2 },
+    explore: { stat: 'INT', dc: 10 + quest.difficulty * 2 },
+    race: { stat: 'DEX', dc: 12 + quest.difficulty * 2 },
+  };
+  const check = types[quest.type] || { stat: 'STR', dc: 12 };
+  const result = dialogueCheck(check.stat, check.dc);
+  // Floor cleared bonus
+  const floorBonus = (townData?.floorCleared || 0) >= quest.difficulty ? 2 : 0;
+  result.total += floorBonus;
+  result.success = result.total >= check.dc;
+  return { ...result, stat: check.stat };
+}
+
+function drawTownQuests(px, py, pw, cx) {
+  X.fillStyle = '#44aa88';
+  X.font = 'bold 14px Consolas, monospace';
+  X.textAlign = 'center';
+  X.fillText('QUEST BOARD', cx, py + 18);
+
+  let yOff = py + 36;
+
+  // Show active side quests
+  if (activeSideQuests.length > 0) {
+    X.fillStyle = '#ffd700'; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+    X.fillText('Active Quests:', px + 10, yOff);
+    yOff += 16;
+
+    activeSideQuests.forEach((sq, i) => {
+      const qY = yOff + i * 60;
+      X.fillStyle = sq.status === 'complete' ? '#1a2a1a' : sq.status === 'failed' ? '#2a1a1a' : '#1a1a2a';
+      X.fillRect(px + 5, qY, pw - 10, 56);
+      X.strokeStyle = sq.status === 'complete' ? '#44ff44' : sq.status === 'failed' ? '#ff4444' : '#44aa88';
+      X.lineWidth = 1; X.strokeRect(px + 5, qY, pw - 10, 56);
+
+      X.fillStyle = '#fff'; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+      X.fillText(`${sq.questData.icon} ${sq.questData.title}`, px + 10, qY + 15);
+
+      X.fillStyle = '#aaa'; X.font = '9px Consolas, monospace';
+      X.fillText(sq.questData.desc, px + 10, qY + 28);
+
+      if (sq.status === 'active') {
+        // Attempt button (resolves via dice + stat check)
+        const btnW = 80, btnH = 22;
+        drawButton(px + pw - btnW - 10, qY + 30, btnW, btnH, 'Attempt', false, '#2a4a2a');
+        if (clickedInRect(px + pw - btnW - 10, qY + 30, btnW, btnH)) {
+          SFX.click();
+          const result = resolveSideQuest(sq.questData);
+          if (result.success) {
+            sq.status = 'complete';
+            player.gold += sq.questData.reward.gold || 0;
+            player.xp += sq.questData.reward.xp || 0;
+            if (sq.questData.reward.rep) player.reputation = (player.reputation || 0) + sq.questData.reward.rep;
+            if (sq.questData.reward.tempHp) player.hp = Math.min(player.maxHp + sq.questData.reward.tempHp, player.hp + sq.questData.reward.tempHp);
+            completedSideQuests.push(sq.questData.id);
+            addFloatingText(canvasW/2, canvasH/2 - 20, `Quest Complete! +${sq.questData.reward.gold}g`, '#44ff44');
+            addFloatingText(canvasW/2, canvasH/2, `${result.stat}: ${result.roll}+${result.mod}=${result.total} vs DC ${result.dc}`, '#44ff44');
+          } else {
+            sq.status = 'failed';
+            addFloatingText(canvasW/2, canvasH/2 - 20, 'Quest Failed!', '#ff4444');
+            addFloatingText(canvasW/2, canvasH/2, `${result.stat}: ${result.roll}+${result.mod}=${result.total} vs DC ${result.dc}`, '#ff4444');
+          }
+        }
+      } else {
+        X.fillStyle = sq.status === 'complete' ? '#44ff44' : '#ff4444';
+        X.font = 'bold 10px Consolas, monospace'; X.textAlign = 'right';
+        X.fillText(sq.status === 'complete' ? 'COMPLETE' : 'FAILED', px + pw - 12, qY + 44);
+        // Show result text
+        X.fillStyle = '#888'; X.font = 'italic 9px Consolas, monospace'; X.textAlign = 'left';
+        const txt = sq.status === 'complete' ? sq.questData.success : sq.questData.fail;
+        const lines = wrapText(txt, pw - 30, 9);
+        lines.slice(0, 2).forEach((line, li) => X.fillText(line, px + 10, qY + 40 + li * 11));
+      }
+    });
+
+    yOff += activeSideQuests.length * 60 + 10;
+
+    // Clear completed/failed quests button
+    const doneQuests = activeSideQuests.filter(q => q.status !== 'active');
+    if (doneQuests.length > 0) {
+      drawButton(cx - 60, yOff, 120, 24, 'Clear Done', false, '#333');
+      if (clickedInRect(cx - 60, yOff, 120, 24)) {
+        SFX.click();
+        activeSideQuests = activeSideQuests.filter(q => q.status === 'active');
+      }
+      yOff += 32;
+    }
+  }
+
+  // Available quests
+  const available = getAvailableSideQuests();
+  if (available.length > 0) {
+    X.fillStyle = '#44aa88'; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('Available Quests:', cx, yOff);
+    yOff += 16;
+
+    available.forEach((q, i) => {
+      const qY = yOff + i * 72;
+      const hov = isInRect(mouseX, mouseY, px + 5, qY, pw - 10, 68);
+      X.fillStyle = hov ? '#222233' : '#1a1a2a';
+      X.fillRect(px + 5, qY, pw - 10, 68);
+      X.strokeStyle = hov ? '#44aa88' : '#333'; X.lineWidth = hov ? 2 : 1;
+      X.strokeRect(px + 5, qY, pw - 10, 68);
+
+      X.fillStyle = '#fff'; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+      X.fillText(`${q.icon} ${q.title}`, px + 10, qY + 15);
+
+      // Difficulty stars
+      X.fillStyle = '#ffd700'; X.font = '10px Consolas, monospace'; X.textAlign = 'right';
+      X.fillText('★'.repeat(q.difficulty), px + pw - 12, qY + 15);
+
+      X.fillStyle = '#aaa'; X.font = '9px Consolas, monospace'; X.textAlign = 'left';
+      X.fillText(q.desc, px + 10, qY + 28);
+
+      X.fillStyle = '#888'; X.font = 'italic 9px Consolas, monospace';
+      const introLines = wrapText(q.intro, pw - 30, 9);
+      introLines.slice(0, 2).forEach((line, li) => X.fillText(line, px + 10, qY + 40 + li * 11));
+
+      X.fillStyle = '#ffd700'; X.font = '9px Consolas, monospace'; X.textAlign = 'right';
+      X.fillText(`${q.reward.gold}g +${q.reward.xp}xp`, px + pw - 12, qY + 28);
+
+      // Accept button
+      const btnW = 65, btnH = 20;
+      drawButton(px + pw - btnW - 8, qY + 45, btnW, btnH, 'Accept', false, '#2a4a3a');
+      if (clickedInRect(px + pw - btnW - 8, qY + 45, btnW, btnH)) {
+        SFX.click();
+        activeSideQuests.push({ questData: q, status: 'active', progress: 0 });
+        addFloatingText(canvasW/2, canvasH/2, `Quest accepted: ${q.title}`, '#44aa88');
+      }
+    });
+  } else if (activeSideQuests.length === 0) {
+    X.fillStyle = '#666'; X.font = '11px Consolas, monospace'; X.textAlign = 'center';
+    X.fillText('All quests completed! A true hero.', cx, yOff + 20);
+  }
+
+  // Quest completion counter
+  X.fillStyle = '#555'; X.font = '10px Consolas, monospace'; X.textAlign = 'center';
+  X.fillText(`Completed: ${completedSideQuests.length}/${SIDE_QUESTS.length}`, cx, py + (canvasH - py - 55) - 8);
+}
+
+// ============================================================
+// NPC DIALOGUE TREE — TOWN INTERACTION
+// ============================================================
+function drawNpcDialogueOverlay(px, py, pw, cx, npcId) {
+  const tree = NPC_DIALOGUE_TREES[npcId];
+  if (!tree) return false;
+
+  if (!npcDialogueState || npcDialogueState.npcId !== npcId) {
+    npcDialogueState = { npcId, selectedOption: -1, result: null };
+  }
+
+  const state = npcDialogueState;
+
+  // Dark overlay
+  X.fillStyle = 'rgba(0,0,0,0.85)';
+  X.fillRect(px, py, pw, canvasH - py - 55);
+
+  // NPC name
+  X.fillStyle = '#ffd700'; X.font = 'bold 14px Consolas, monospace'; X.textAlign = 'center';
+  X.fillText(tree.name, cx, py + 20);
+
+  // Greeting or result
+  X.fillStyle = '#ccc'; X.font = 'italic 11px Consolas, monospace'; X.textAlign = 'center';
+  let displayText = tree.greeting;
+  if (state.result) {
+    displayText = state.result.text;
+    X.fillStyle = state.result.success === true ? '#44ff44' : state.result.success === false ? '#ff8844' : '#ccc';
+  }
+  const greetLines = wrapText(displayText, pw - 30, 11);
+  greetLines.forEach((line, i) => X.fillText(line, cx, py + 38 + i * 14));
+
+  // Show result roll info
+  let rollY = py + 38 + greetLines.length * 14;
+  if (state.result && state.result.rollInfo) {
+    X.fillStyle = state.result.success ? '#44ff44' : '#ff6644';
+    X.font = '9px Consolas, monospace';
+    X.fillText(state.result.rollInfo, cx, rollY + 6);
+    rollY += 14;
+  }
+
+  const optStartY = rollY + 14;
+
+  // Show dialogue options
+  if (state.selectedOption === -1) {
+    tree.options.forEach((opt, i) => {
+      const optY = optStartY + i * 30;
+      const hov = isInRect(mouseX, mouseY, px + 10, optY, pw - 20, 26);
+      X.fillStyle = hov ? '#2a2a3a' : '#1a1a2a';
+      X.fillRect(px + 10, optY, pw - 20, 26);
+      X.strokeStyle = hov ? '#44aa88' : '#333'; X.lineWidth = 1;
+      X.strokeRect(px + 10, optY, pw - 20, 26);
+      X.fillStyle = opt.stat ? '#ffaa44' : '#aaa';
+      X.font = '10px Consolas, monospace'; X.textAlign = 'left';
+      X.fillText(`> ${opt.label}`, px + 15, optY + 16);
+
+      if (clickedInRect(px + 10, optY, pw - 20, 26)) {
+        SFX.click();
+        state.selectedOption = i;
+
+        if (opt.stat) {
+          // Stat check
+          const check = dialogueCheck(opt.stat, opt.dc);
+          state.result = {
+            text: check.success ? opt.pass : opt.fail,
+            success: check.success,
+            rollInfo: `${opt.stat} Check: ${check.roll}+${check.mod}=${check.total} vs DC ${opt.dc} — ${check.success ? 'SUCCESS' : 'FAIL'}`
+          };
+          // Apply rewards on success
+          if (check.success && opt.passReward) {
+            if (opt.passReward.gold) { player.gold += opt.passReward.gold; addFloatingText(canvasW/2, canvasH/2, `+${opt.passReward.gold} gold`, '#ffd700'); }
+            if (opt.passReward.tempHp) { player.hp = Math.min(player.maxHp + opt.passReward.tempHp, player.hp + opt.passReward.tempHp); addFloatingText(canvasW/2, canvasH/2, `+${opt.passReward.tempHp} temp HP`, '#44ff44'); }
+          }
+        } else if (opt.cost) {
+          // Gold cost option
+          if (player.gold >= opt.cost) {
+            player.gold -= opt.cost;
+            state.result = { text: opt.pass, success: true, rollInfo: `-${opt.cost} gold` };
+          } else {
+            state.result = { text: opt.fail, success: false, rollInfo: 'Not enough gold' };
+          }
+        } else {
+          // Simple response
+          state.result = { text: opt.response, success: null };
+        }
+      }
+    });
+  }
+
+  // Back button
+  const backY = py + (canvasH - py - 55) - 30;
+  drawButton(cx - 50, backY, 100, 24, 'Back', false, '#333');
+  if (clickedInRect(cx - 50, backY, 100, 24)) {
+    SFX.click();
+    npcDialogueState = null;
+    townData.talkingToNpc = null;
+  }
+
+  // "Ask something else" button (after seeing a response)
+  if (state.selectedOption >= 0) {
+    drawButton(cx - 70, backY - 30, 140, 24, 'Ask something else', false, '#2a2a3a');
+    if (clickedInRect(cx - 70, backY - 30, 140, 24)) {
+      SFX.click();
+      state.selectedOption = -1;
+      state.result = null;
+    }
+  }
+
+  return true;
 }
 
 // ============================================================
