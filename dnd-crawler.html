@@ -109,6 +109,7 @@ let combatLog = [];
 let gameTime = 0;
 let lastTime = 0;
 let helpOpen = false;
+let showTutorial = false;
 let shopRoom = null;
 let shopScrollY = 0;
 let npcRoom = null;
@@ -2201,6 +2202,7 @@ function drawCharPreview() {
     createCharacter();
     generateDungeon();
     gameState = STATE.DUNGEON;
+    showTutorial = true;
   }
 }
 
@@ -5908,10 +5910,13 @@ function updateCharSheet() {
     });
   }
 
-  // Close button
-  const closeBtnW = 100, closeBtnH = 35;
-  drawButton(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH, 'Close [C]', false, '#333');
-  if (clickedInRect(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH) || keys['c'] || keys['C'] || keys['Escape']) {
+  // Close button — top-right X button (always visible on mobile)
+  const xBtnSize = 40;
+  drawButton(canvasW - xBtnSize - 10, 8, xBtnSize, xBtnSize, 'X', false, '#4a2a2a', '#ff6666');
+  // Bottom close button (moved higher to avoid mobile browser chrome)
+  const closeBtnW = 120, closeBtnH = 40;
+  drawButton(cx - closeBtnW/2, canvasH - 80, closeBtnW, closeBtnH, 'Close [C]', false, '#444');
+  if (clickedInRect(canvasW - xBtnSize - 10, 8, xBtnSize, xBtnSize) || clickedInRect(cx - closeBtnW/2, canvasH - 80, closeBtnW, closeBtnH) || keys['c'] || keys['C'] || keys['Escape']) {
     keys['c'] = false; keys['C'] = false; keys['Escape'] = false;
     SFX.click();
     gameState = STATE.DUNGEON;
@@ -5976,9 +5981,12 @@ function updateHelp() {
     }
   });
 
-  const closeBtnW = 100, closeBtnH = 35;
-  drawButton(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH, 'Close [?]', false, '#333');
-  if (clickedInRect(cx - closeBtnW/2, canvasH - 45, closeBtnW, closeBtnH) || keys['?'] || keys['/'] || keys['Escape']) {
+  // Top-right X close button (mobile friendly)
+  const xBtnSize = 40;
+  drawButton(canvasW - xBtnSize - 10, 8, xBtnSize, xBtnSize, 'X', false, '#4a2a2a', '#ff6666');
+  const closeBtnW = 120, closeBtnH = 40;
+  drawButton(cx - closeBtnW/2, canvasH - 80, closeBtnW, closeBtnH, 'Close [?]', false, '#444');
+  if (clickedInRect(canvasW - xBtnSize - 10, 8, xBtnSize, xBtnSize) || clickedInRect(cx - closeBtnW/2, canvasH - 80, closeBtnW, closeBtnH) || keys['?'] || keys['/'] || keys['Escape']) {
     keys['?'] = false; keys['/'] = false; keys['Escape'] = false;
     SFX.click();
     helpOpen = false;
@@ -9144,6 +9152,56 @@ function gameLoop(timestamp) {
   }
 
   updateParticles(dt);
+
+  // Tutorial overlay (first-time popup)
+  if (showTutorial) {
+    X.fillStyle = 'rgba(0,0,0,0.85)';
+    X.fillRect(0, 0, canvasW, canvasH);
+    const cx = canvasW / 2;
+    const panelW = Math.min(canvasW - 30, 380);
+    const panelX = cx - panelW / 2;
+    const panelY = 30;
+    X.fillStyle = '#1a1a2e';
+    X.fillRect(panelX, panelY, panelW, canvasH - 60);
+    X.strokeStyle = '#ffd700';
+    X.lineWidth = 2;
+    X.strokeRect(panelX, panelY, panelW, canvasH - 60);
+    X.fillStyle = '#ffd700';
+    X.font = 'bold 18px Consolas, monospace';
+    X.textAlign = 'center';
+    X.fillText('HOW TO PLAY', cx, panelY + 30);
+    const tips = [
+      ['Move', isMobile ? 'Use the D-pad (bottom-left)' : 'WASD or Arrow keys'],
+      ['Interact', isMobile ? 'Tap the E button (bottom-right)' : 'Press E near doors, stairs, shrines'],
+      ['Combat', 'Tap/click actions when enemies appear'],
+      ['Inventory', isMobile ? 'Tap [I]nv button' : 'Press I to manage gear'],
+      ['Character', isMobile ? 'Tap [C]har button' : 'Press C to view stats'],
+      ['Help', isMobile ? 'Tap [?] button' : 'Press ? for full controls'],
+      ['Save', isMobile ? 'Tap Save button in dungeon HUD' : 'Use the Save button in the HUD'],
+      ['Goal', 'Descend 8 floors. Defeat bosses. Survive!'],
+      ['Tips', 'Rest at shrines to heal. Equip loot from inventory.'],
+      ['Town', 'Visit the Town between floors to buy gear and talk to NPCs.'],
+    ];
+    X.textAlign = 'left';
+    let ty = panelY + 55;
+    tips.forEach(([key, desc]) => {
+      X.fillStyle = '#ffcc00';
+      X.font = 'bold 12px Consolas, monospace';
+      X.fillText(key, panelX + 15, ty);
+      X.fillStyle = '#ccc';
+      X.font = '11px Consolas, monospace';
+      const lines = wrapText(desc, panelW - 100, 11);
+      lines.forEach((line, i) => X.fillText(line, panelX + 90, ty + i * 14));
+      ty += Math.max(lines.length, 1) * 14 + 6;
+    });
+    const gotItW = 140, gotItH = 42;
+    drawButton(cx - gotItW/2, canvasH - 80, gotItW, gotItH, 'GOT IT!', false, '#2a4a2a');
+    if (clickedInRect(cx - gotItW/2, canvasH - 80, gotItW, gotItH) || keys['Escape'] || keys['Enter'] || keys[' ']) {
+      keys['Escape'] = false; keys['Enter'] = false; keys[' '] = false;
+      showTutorial = false;
+      SFX.click();
+    }
+  }
 
   // Reset click
   mouseClicked = false;
