@@ -15777,49 +15777,6 @@ function drawBall(f){
     X.restore();
   }
 
-  // Yuji ghost fists drawing — flying blue fist projectiles
-  if(f.char.id==='yuji'&&f.yujiGhostFists){
-    f.yujiGhostFists.forEach(gf=>{
-      const progress=Math.max(0,1-(gf.timer/60));
-      const alpha=0.5+progress*0.4;
-      X.save();
-      X.translate(gf.x,gf.y);
-      X.rotate(gf.angle||0);
-      X.globalAlpha=alpha;
-      // Blue energy trail — wide and visible
-      X.shadowColor='#4488ff';X.shadowBlur=18;
-      const trailG=X.createLinearGradient(-30,0,5,0);
-      trailG.addColorStop(0,'rgba(68,136,255,0)');trailG.addColorStop(0.4,'rgba(68,136,255,0.3)');trailG.addColorStop(1,'rgba(68,136,255,0.6)');
-      X.fillStyle=trailG;
-      X.fillRect(-32,-8,32,16);
-      // Fist shape — large, knuckles facing forward
-      const sz=(isMobile?16:12)+progress*6;
-      // Wrist/palm base
-      X.fillStyle='#3377ee';
-      X.beginPath();X.ellipse(-sz*0.3,0,sz*0.7,sz*0.85,0,0,Math.PI*2);X.fill();
-      // Main fist body (bigger)
-      X.fillStyle='#4488ff';
-      X.beginPath();X.arc(0,0,sz,0,Math.PI*2);X.fill();
-      // Knuckle bumps — larger and more prominent
-      X.fillStyle='#88bbff';
-      for(let k=0;k<4;k++){
-        const ky=-4.5+k*3;
-        X.beginPath();X.arc(sz*0.75,ky,3.2,0,Math.PI*2);X.fill();
-      }
-      // Finger lines
-      X.strokeStyle='rgba(30,60,140,0.4)';X.lineWidth=1;
-      for(let k=0;k<3;k++){X.beginPath();X.moveTo(sz*0.2,-3+k*3);X.lineTo(sz*0.65,-3+k*3);X.stroke();}
-      // Bright highlight
-      X.fillStyle='rgba(200,230,255,0.5)';
-      X.beginPath();X.arc(-2,-2,sz*0.35,0,Math.PI*2);X.fill();
-      // Outer glow ring
-      X.strokeStyle='rgba(68,136,255,0.3)';X.lineWidth=2;
-      X.beginPath();X.arc(0,0,sz+4,0,Math.PI*2);X.stroke();
-      X.shadowBlur=0;
-      X.restore();
-    });
-  }
-
   // Naoya face — green slicked-back hair, sharp arrogant features, narrow eyes, smirk
   if(f.char.id==='naoya'){
     X.save();
@@ -17225,6 +17182,9 @@ function drawBall(f){
     X.restore();
   }
 
+  // End face clip region — all effects below extend beyond ball boundary
+  X.restore();
+
   // Draw Mechamaru mouth blast beam
   if(f.char.id==='mechamaru'&&f.mechaMouthBlastActive){
     X.save();
@@ -17619,8 +17579,48 @@ function drawBall(f){
     }
   }
 
-  // End face clip region — features beyond ball boundary are now clipped
-  X.restore();
+  // Yuji ghost fists drawing — flying blue fist projectiles (must be OUTSIDE clip region)
+  if(f.char.id==='yuji'&&f.yujiGhostFists){
+    f.yujiGhostFists.forEach(gf=>{
+      const progress=Math.max(0,1-(gf.timer/60));
+      const alpha=0.5+progress*0.4;
+      X.save();
+      X.translate(gf.x,gf.y);
+      X.rotate(gf.angle||0);
+      X.globalAlpha=alpha;
+      // Blue energy trail — wide and visible
+      X.shadowColor='#4488ff';X.shadowBlur=18;
+      const trailG=X.createLinearGradient(-30,0,5,0);
+      trailG.addColorStop(0,'rgba(68,136,255,0)');trailG.addColorStop(0.4,'rgba(68,136,255,0.3)');trailG.addColorStop(1,'rgba(68,136,255,0.6)');
+      X.fillStyle=trailG;
+      X.fillRect(-32,-8,32,16);
+      // Fist shape — large, knuckles facing forward
+      const sz=(isMobile?16:12)+progress*6;
+      // Wrist/palm base
+      X.fillStyle='#3377ee';
+      X.beginPath();X.ellipse(-sz*0.3,0,sz*0.7,sz*0.85,0,0,Math.PI*2);X.fill();
+      // Main fist body (bigger)
+      X.fillStyle='#4488ff';
+      X.beginPath();X.arc(0,0,sz,0,Math.PI*2);X.fill();
+      // Knuckle bumps — larger and more prominent
+      X.fillStyle='#88bbff';
+      for(let k=0;k<4;k++){
+        const ky=-4.5+k*3;
+        X.beginPath();X.arc(sz*0.75,ky,3.2,0,Math.PI*2);X.fill();
+      }
+      // Finger lines
+      X.strokeStyle='rgba(30,60,140,0.4)';X.lineWidth=1;
+      for(let k=0;k<3;k++){X.beginPath();X.moveTo(sz*0.2,-3+k*3);X.lineTo(sz*0.65,-3+k*3);X.stroke();}
+      // Bright highlight
+      X.fillStyle='rgba(200,230,255,0.5)';
+      X.beginPath();X.arc(-2,-2,sz*0.35,0,Math.PI*2);X.fill();
+      // Outer glow ring
+      X.strokeStyle='rgba(68,136,255,0.3)';X.lineWidth=2;
+      X.beginPath();X.arc(0,0,sz+4,0,Math.PI*2);X.stroke();
+      X.shadowBlur=0;
+      X.restore();
+    });
+  }
 
   // HP text in center
   X.font='bold 13px Consolas,monospace';X.textAlign='center';X.textBaseline='middle';
