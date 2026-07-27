@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// DUNGEONS OF FATE v2.6 — D&D Dungeon Crawler Phase 3b: Side Quests + NPC Dialogue Trees + Elite Guild Quests
+// DUNGEONS OF FATE v2.7 — D&D Dungeon Crawler Phase 3c: 5 new side quests (15 total), 2 new NPCs (Healer Elara + Weaponsmith Grimjaw)
 // ============================================================
 
 const C = document.getElementById('g'), X = C.getContext('2d');
@@ -814,6 +814,14 @@ const TOWN_NPCS = [
     lines: ['"Got contracts if you want extra coin. Clear a floor without losing a companion — hundred gold."',
             '"Don\'t ask where the bounties come from. Ask if the gold is real. It is."',
             '"Kill every enemy on the next floor? Two hundred gold and a rare item. Deal?"'] },
+  { name: 'Healer Elara', desc: 'A calm woman with herb-stained hands and knowing eyes.', color: '#55cc88',
+    lines: ['"You look like death. Sit down before you fall down."',
+            '"The dungeon poisons more than bodies. Come back if the nightmares start."',
+            '"I cannot fix stupid, but I can fix the wounds that come from it."'] },
+  { name: 'Weaponsmith Grimjaw', desc: 'A dwarf surrounded by hammers, anvils, and sparks.', color: '#cc7733',
+    lines: ['"If your blade is dull, you are already dead. Let me see it."',
+            '"Voidsteel runs through the deep floors. Bring me some and I will make something legendary."',
+            '"Every weapon tells a story. Yours looks like it is still on chapter one."'] },
 ];
 
 // -- Guild System --
@@ -937,6 +945,31 @@ const SIDE_QUESTS = [
     intro: '"A dragon egg. Yes, a real one. Thieves stole it and hid it below. If it hatches down there, unattended... the consequences would be catastrophic."',
     success: 'The egg pulses warmly in your arms. The dragonologist cradles it tenderly, tears of relief in her eyes.',
     fail: 'You hear a crack echoing from the depths. Then a roar. Then silence. You should probably leave town for a while.' },
+  { id: 'sq_undead_horde', title: 'The Rising Dead', desc: 'An undead horde is forming in the catacombs beneath the dungeon. Thin their numbers.',
+    type: 'combat', reward: { gold: 200, xp: 130, rep: 15 }, icon: '💀', difficulty: 3,
+    intro: '"The dead are not staying dead. Bones rattle in the walls at night. Something is raising them — a necromancer, a cursed artifact, I don\'t care. Just make it stop."',
+    success: 'You smash through the skeletal ranks and shatter the dark phylactery fueling the resurrection. The bones crumble to dust, finally at peace.',
+    fail: 'For every skeleton you destroy, two more claw out of the earth. The horde grows stronger. Hearthrest bars its doors at sunset now.' },
+  { id: 'sq_spy_network', title: 'The Informant', desc: 'Someone in town is feeding information to the dungeon\'s boss creatures. Find the traitor.',
+    type: 'investigate', reward: { gold: 250, xp: 120, rep: 25 }, icon: '🕵', difficulty: 3,
+    intro: '"The bosses know we are coming. They set ambushes, change patrol routes. Someone in Hearthrest is talking. Find them before they get more adventurers killed."',
+    success: 'You catch the traitor — a merchant selling intel for enchanted gems. Guard Captain Rolo drags them to the stockade. The dungeon grows quieter.',
+    fail: 'The spy vanishes before you can close in. The next expedition into the dungeon walks straight into a prepared kill box.' },
+  { id: 'sq_collapsed_mine', title: 'Trapped Miners', desc: 'A mine shaft connected to the dungeon has collapsed. Miners are trapped inside.',
+    type: 'rescue', reward: { gold: 180, xp: 100 }, icon: '⛏', difficulty: 2,
+    intro: '"The east shaft caved in this morning. Eight miners inside, maybe alive, maybe not. The rescue team cannot get through — the rubble connects to dungeon tunnels crawling with creatures."',
+    success: 'You clear a path through rubble and monsters alike. All eight miners stumble out, blinking in the sunlight. The town celebrates.',
+    fail: 'The tunnels are too unstable. Every path you clear collapses again. The tapping from inside grows fainter each hour.' },
+  { id: 'sq_dark_ritual', title: 'Disrupt the Ritual', desc: 'Cultists are performing a dark ritual on the third floor. Stop them before it completes.',
+    type: 'combat', reward: { gold: 280, xp: 140, rep: 20, item: 'Ritual Dagger' }, icon: '🕯', difficulty: 3,
+    intro: '"Hooded figures have been entering the dungeon at midnight. Candles, chanting, blood offerings. Whatever they are summoning, we cannot let it arrive."',
+    success: 'You crash through the ritual circle mid-chant. The cultists scatter. The half-formed shadow in the summoning ring howls and dissipates. You pocket the ritual dagger — might be useful.',
+    fail: 'You arrive too late. The summoning circle pulses with dark energy. Something watches you from the other side of reality, and it knows your face now.' },
+  { id: 'sq_water_beast', title: 'The Beast Below the Well', desc: 'Something massive is living in the underground lake beneath the dungeon. Kill it or drive it away.',
+    type: 'combat', reward: { gold: 350, xp: 180, rep: 30 }, icon: '🐉', difficulty: 4,
+    intro: '"The town well has been running red. Not rust — blood. Something is down in the aquifer, something big. The last person who went to look... we found his boots. Just the boots."',
+    success: 'The creature is enormous — a cave wyrm, ancient and territorial. You drive your blade through its skull as it lunges from the dark water. The well runs clear again.',
+    fail: 'The beast is too large, too fast in the water. You barely escape with your life. The town begins rationing water from the rain barrels.' },
 ];
 
 let activeSideQuests = []; // { questData, status: 'active'|'complete'|'failed', progress }
@@ -1009,6 +1042,39 @@ const NPC_DIALOGUE_TREES = {
       { label: 'Pick his pocket (DEX DC 16)', response: null, stat: 'DEX', dc: 16,
         pass: '"...Wait, where is my — YOU. Ha! Respect. Keep it. Consider it an audition for my more... discreet contracts." [+Lockpick]',
         fail: '"I felt that. Lucky for you I find attempted theft flattering. Try again and I will find it less so."' },
+    ]
+  },
+  elara: {
+    name: 'Healer Elara',
+    greeting: '"Sit. Let me look at your wounds. And before you say you are fine — no one who walks out of that dungeon is fine."',
+    options: [
+      { label: 'Ask about healing magic', response: '"My magic comes from the old groves. Nature healing, not divine. It is slower, but it does not come with strings attached. No god tells me who deserves to live."', stat: null },
+      { label: 'Ask about the dungeon sickness', response: '"Those who spend too long below start changing. Nightmares first. Then the whispers. Then they stop wanting to leave. I have lost three patients to it this year. They walked back into the dungeon at midnight, smiling."', stat: null },
+      { label: 'Request enhanced healing (WIS DC 12)', response: null, stat: 'WIS', dc: 12,
+        pass: '"Your spirit is open to the old magic. I can weave a stronger healing — it will mend deeper than muscle and bone." [+Full Heal + Temp HP]',
+        fail: '"Your spirit resists. Too much anger, perhaps. Or fear. I can only heal what allows itself to be healed."',
+        passReward: { tempHp: 15 } },
+      { label: 'Ask about her past', response: '"I was an adventurer once. Reached the fourth floor. Lost my party — all of them. Came back up alone. Now I make sure other people come back up alive. That is enough purpose for one lifetime."', stat: null },
+      { label: 'Offer rare herbs from the dungeon', response: null, stat: null, cost: 0, requireItem: 'Healing Potion',
+        pass: '"Moonpetals? You found Moonpetals? With these I can brew antidotes for the dungeon sickness. You may have just saved lives that were already lost." [+Town Reputation]',
+        fail: '"I appreciate the thought, but I need specific herbs — Moonpetals from the deep floors. Bring me those and we will talk."' },
+    ]
+  },
+  grimjaw: {
+    name: 'Weaponsmith Grimjaw',
+    greeting: '"Name your metal. Name your edge. I forge weapons that kill — no decorations, no nonsense. You want pretty, go to an elf."',
+    options: [
+      { label: 'Ask about weapon enchantments', response: '"Enchantments are tricky. A bad enchant will blow up in your face — literally. I only enchant weapons that have been blooded. Bring me one that has killed a boss and I will make it sing."', stat: null },
+      { label: 'Ask about dungeon metals', response: '"The deep floors have veins of Voidsteel. Harder than anything on the surface. Problem is, it screams when you mine it. Literally screams. Drives miners insane. I have got a small stockpile — enough for one good blade."', stat: null },
+      { label: 'Arm-wrestle for a discount (STR DC 14)', response: null, stat: 'STR', dc: 14,
+        pass: '"HA! Finally someone with some fight! You beat a dwarf at arm-wrestling. Tell no one. Here — your next purchase is half price." [+Shop Discount]',
+        fail: '"Not even close. My grandmother hits harder than you, and she has been dead for forty years."' },
+      { label: 'Discuss forging techniques (INT DC 13)', response: null, stat: 'INT', dc: 13,
+        pass: '"You know about differential hardening? Color me impressed. Most adventurers think swords grow on trees. Here — take this whetstone. It will keep your edge sharper, longer." [+Whetstone]',
+        fail: '"Stick to swinging, not smithing. Not everyone needs to know how the sausage gets made."' },
+      { label: 'Commission a custom weapon (300g)', response: null, stat: null, cost: 300,
+        pass: '"Three hundred gold and a good eye. I will forge it overnight. Come back tomorrow and it will be ready — balanced to your grip, weighted to your swing." [+Custom Weapon Next Floor]',
+        fail: '"You cannot afford my work. Come back when you have real coin."' },
     ]
   }
 };
@@ -6698,6 +6764,9 @@ function drawTownTavern(px, py, pw, cx) {
   if (townData.talkingToNpc === 'marta') {
     if (drawNpcDialogueOverlay(px, py, pw, cx, 'marta')) return;
   }
+  if (townData.talkingToNpc === 'elara') {
+    if (drawNpcDialogueOverlay(px, py, pw, cx, 'elara')) return;
+  }
 
   X.fillStyle = '#ffd700';
   X.font = 'bold 14px Consolas, monospace';
@@ -6798,15 +6867,33 @@ function drawTownTavern(px, py, pw, cx) {
   const rumorLines = wrapText(`Rumor: ${rumor}`, pw - 20, 10);
   rumorLines.forEach((line, i) => X.fillText(line, cx, rumorsStartY + i * 13));
 
+  // Healer Elara (secondary NPC in tavern)
+  const elaraY = rumorsStartY + rumorLines.length * 13 + 10;
+  const elaraNpc = TOWN_NPCS[4];
+  X.fillStyle = elaraNpc.color; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+  X.fillText(`${elaraNpc.name}:`, px + 10, elaraY);
+  X.fillStyle = '#ccc'; X.font = 'italic 10px Consolas, monospace';
+  const elaraLine = elaraNpc.lines[townData.floorCleared % elaraNpc.lines.length];
+  const elaraLines = wrapText(elaraLine, pw - 20, 10);
+  elaraLines.forEach((line, i) => X.fillText(line, px + 10, elaraY + 14 + i * 13));
+  const talkElaraY = elaraY + 14 + elaraLines.length * 13 + 2;
+  drawButton(px + 10, talkElaraY, 120, 22, 'Talk to Elara', false, '#2a2a3a', elaraNpc.color);
+  if (clickedInRect(px + 10, talkElaraY, 120, 22)) {
+    SFX.click(); townData.talkingToNpc = 'elara'; npcDialogueState = null;
+  }
+
   // Reputation indicator
   X.fillStyle = repTier.color; X.font = '11px Consolas, monospace'; X.textAlign = 'center';
-  X.fillText(`Reputation: ${repTier.name} — ${repTier.desc}`, cx, actY + 65 + rumorLines.length * 13 + 14);
+  X.fillText(`Reputation: ${repTier.name} — ${repTier.desc}`, cx, talkElaraY + 30);
 }
 
 function drawTownBarracks(px, py, pw, cx) {
   // Check if NPC dialogue tree is active
   if (townData.talkingToNpc === 'rolo') {
     if (drawNpcDialogueOverlay(px, py, pw, cx, 'rolo')) return;
+  }
+  if (townData.talkingToNpc === 'grimjaw') {
+    if (drawNpcDialogueOverlay(px, py, pw, cx, 'grimjaw')) return;
   }
 
   X.fillStyle = '#a0a0d0';
@@ -6875,8 +6962,23 @@ function drawTownBarracks(px, py, pw, cx) {
     });
   }
 
+  // Weaponsmith Grimjaw (secondary NPC in barracks)
+  const gjY = cardY + (available.length > 0 && !squadFull ? Math.min(available.length, 3) * 54 + 8 : 40);
+  const gjNpc = TOWN_NPCS[5];
+  X.fillStyle = gjNpc.color; X.font = 'bold 11px Consolas, monospace'; X.textAlign = 'left';
+  X.fillText(`${gjNpc.name}:`, px + 10, gjY);
+  X.fillStyle = '#ccc'; X.font = 'italic 10px Consolas, monospace';
+  const gjLine = gjNpc.lines[townData.floorCleared % gjNpc.lines.length];
+  const gjLines = wrapText(gjLine, pw - 20, 10);
+  gjLines.forEach((line, i) => X.fillText(line, px + 10, gjY + 14 + i * 13));
+  const talkGjY = gjY + 14 + gjLines.length * 13 + 2;
+  drawButton(px + 10, talkGjY, 140, 22, 'Talk to Grimjaw', false, '#2a2a3a', gjNpc.color);
+  if (clickedInRect(px + 10, talkGjY, 140, 22)) {
+    SFX.click(); townData.talkingToNpc = 'grimjaw'; npcDialogueState = null;
+  }
+
   X.fillStyle = '#888'; X.font = '10px Consolas, monospace'; X.textAlign = 'center';
-  X.fillText(`Squad: ${(player.squad||[]).length}/4`, cx, py + (canvasH - py - 60));
+  X.fillText(`Squad: ${(player.squad||[]).length}/4`, cx, talkGjY + 30);
 }
 
 function drawTownBounty(px, py, pw, cx) {
