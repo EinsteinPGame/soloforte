@@ -20,7 +20,7 @@ canvas{display:block}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// DUNGEONS OF FATE v2.7 — D&D Dungeon Crawler Phase 3c: 5 new side quests (15 total), 2 new NPCs (Healer Elara + Weaponsmith Grimjaw)
+// DUNGEONS OF FATE v3.0 — D&D Dungeon Crawler Phase 3f: NPC dialogue consequences (8 NPC flags → dungeon effects)
 // ============================================================
 
 const C = document.getElementById('g'), X = C.getContext('2d');
@@ -1032,6 +1032,10 @@ const NPC_DIALOGUE_TREES = {
         pass: '"Alright, alright! There is a hidden passage on every floor. Look for walls with scratch marks — they slide open. Now stop scaring my customers."',
         fail: '"You think flexing at a woman who wrestles barrels daily will work? Cute. Now sit down."' },
       { label: 'Ask about rumors', response: '"The war between the factions is getting worse. People choosing sides, old friends becoming enemies. And all the while, whatever sleeps at the bottom of the dungeon stirs. We are all fools."', stat: null },
+      { label: 'Ask about hidden passages (CHA DC 13)', response: null, stat: 'CHA', dc: 13,
+        pass: '"Fine, fine. There is a trick the old adventurers used — tap the walls in trap rooms. Half the traps have secret bypasses built by the original architects. You will spot them easier now." [Trap detection bonus on next floor]',
+        fail: '"I do not share secrets with strangers. Buy more ale first."',
+        passReward: { flag: 'marta_trap_intel' } },
     ]
   },
   rolo: {
@@ -1049,7 +1053,12 @@ const NPC_DIALOGUE_TREES = {
         fail: '"That is classified guard intelligence. Earn my trust first."' },
       { label: 'Bribe for info (50g)', response: null, stat: null, cost: 50,
         pass: '"...Fine. The boss on the next floor has a pattern — it always attacks left first, then right, then center. Dodge left."',
-        fail: '"You don\'t have enough gold for my attention."' },
+        fail: '"You don\'t have enough gold for my attention."',
+        passReward: { flag: 'rolo_boss_pattern' } },
+      { label: 'Request guard escort (STR DC 14)', response: null, stat: 'STR', dc: 14,
+        pass: '"You have earned it. I will station two of my best at the dungeon entrance. If you are overwhelmed on the first rooms, fall back — they will cover you. First combat encounter will be easier."',
+        fail: '"My guards are not babysitters. Prove yourself first."',
+        passReward: { flag: 'rolo_guard_escort' } },
     ]
   },
   verendis: {
@@ -1066,6 +1075,10 @@ const NPC_DIALOGUE_TREES = {
         pass: '"The old words still hold power. I speak them over you now. May the light of the Architect-Kings guide your path." [+Temp HP Blessing]',
         fail: '"The blessing requires a receptive spirit. Yours is... cluttered. Meditate and try again."',
         passReward: { tempHp: 10 } },
+      { label: 'Study boss seal-breaking (INT DC 16)', response: null, stat: 'INT', dc: 16,
+        pass: '"Extraordinary! You have grasped the theory of seal resonance. When you face the next floor boss, strike during its power surge — the seal weakens it. The boss will take 25% more damage for the first 3 rounds."',
+        fail: '"The concepts are beyond you. Perhaps with more dungeon experience..."',
+        passReward: { flag: 'verendis_seal_knowledge' } },
     ]
   },
   sal: {
@@ -1099,6 +1112,10 @@ const NPC_DIALOGUE_TREES = {
       { label: 'Offer rare herbs from the dungeon', response: null, stat: null, cost: 0, requireItem: 'Healing Potion',
         pass: '"Moonpetals? You found Moonpetals? With these I can brew antidotes for the dungeon sickness. You may have just saved lives that were already lost." [+Town Reputation]',
         fail: '"I appreciate the thought, but I need specific herbs — Moonpetals from the deep floors. Bring me those and we will talk."' },
+      { label: 'Learn poison resistance ward (WIS DC 13)', response: null, stat: 'WIS', dc: 13,
+        pass: '"Here — chew this bitterroot before entering. It will not taste pleasant, but poison traps and poison attacks will deal half damage on the next floor. Your body will purge the toxins faster."',
+        fail: '"Your constitution is not ready for bitterroot. It would do more harm than good."',
+        passReward: { flag: 'elara_poison_ward' } },
     ]
   },
   grimjaw: {
@@ -1115,7 +1132,12 @@ const NPC_DIALOGUE_TREES = {
         fail: '"Stick to swinging, not smithing. Not everyone needs to know how the sausage gets made."' },
       { label: 'Commission a custom weapon (300g)', response: null, stat: null, cost: 300,
         pass: '"Three hundred gold and a good eye. I will forge it overnight. Come back tomorrow and it will be ready — balanced to your grip, weighted to your swing." [+Custom Weapon Next Floor]',
-        fail: '"You cannot afford my work. Come back when you have real coin."' },
+        fail: '"You cannot afford my work. Come back when you have real coin."',
+        passReward: { flag: 'grimjaw_custom_weapon' } },
+      { label: 'Ask about armor weak spots (STR DC 13)', response: null, stat: 'STR', dc: 13,
+        pass: '"Every creature has armor gaps. The trick is knowing where to look. Armored enemies in the dungeon — golems, knights, shielded beasts — they all have a joint seam on the left flank. Hit there and your attacks pierce deeper. +2 damage against armored enemies next floor."',
+        fail: '"You would not understand. It takes a smith to know where metal fails."',
+        passReward: { flag: 'grimjaw_armor_knowledge' } },
     ]
   },
   thessa: {
@@ -1132,7 +1154,12 @@ const NPC_DIALOGUE_TREES = {
       { label: 'Ask about the sealed entity', response: '"Even the archive does not name it. The Architect-Kings referred to it only as the Hunger Below. Not a creature — a concept given form. It does not want freedom. It wants to consume. Everything. Forever."', stat: null },
       { label: 'Donate a rare artifact to the archive', response: null, stat: null, cost: 100,
         pass: '"A genuine relic from the deep floors! This will fill gaps in the archive that have stood empty for centuries. In return, I will share something precious — the Word of Warding. Speak it before a boss fight and the first attack against you will miss." [+Warding Word]',
-        fail: '"The archive accepts only items of genuine historical value. Come back with something from the dungeon depths."' },
+        fail: '"The archive accepts only items of genuine historical value. Come back with something from the dungeon depths."',
+        passReward: { flag: 'thessa_warding_word' } },
+      { label: 'Research monster weaknesses (INT DC 15)', response: null, stat: 'INT', dc: 15,
+        pass: '"The archive contains bestiary notes from the Architect-Kings themselves. According to their records, the undead on the lower floors fear radiant strikes — and the elementals are vulnerable during their phase shifts. Your attacks will be more effective against these types next floor."',
+        fail: '"The bestiary is written in Architect script. You cannot read it yet."',
+        passReward: { flag: 'thessa_bestiary' } },
     ]
   },
   kael: {
@@ -1149,12 +1176,20 @@ const NPC_DIALOGUE_TREES = {
         fail: '"Not enough to risk my neck. I have a very specific price for dying, and it is more than that."' },
       { label: 'Challenge his scouting skills (DEX DC 15)', response: null, stat: 'DEX', dc: 15,
         pass: '"Whoa. You got within arm\'s reach without me noticing. THAT never happens. Alright, you have earned my respect. Free intel: the boss on the current floor is weakest when it charges — sidestep and hit the exposed back." [+Boss Pattern Intel]',
-        fail: '"Nice try. I heard you from twelve paces. I hear EVERYTHING from twelve paces. That is why I am alive."' },
+        fail: '"Nice try. I heard you from twelve paces. I hear EVERYTHING from twelve paces. That is why I am alive."',
+        passReward: { flag: 'kael_boss_pattern' } },
+      { label: 'Ask about ambush points (DEX DC 13)', response: null, stat: 'DEX', dc: 13,
+        pass: '"The first room on every floor has a blind corner. If you know it is there, you can set up an ambush instead of walking into one. First combat encounter next floor — you get a surprise round."',
+        fail: '"You are too loud to think about ambushes. Learn to walk quietly first."',
+        passReward: { flag: 'kael_ambush_intel' } },
     ]
   }
 };
 
 let npcDialogueState = null; // { npcId, selectedOption, result }
+
+// NPC dialogue consequence flags — persist across floors, affect dungeon events
+let npcFlags = {};
 
 let playerGuild = null; // guild id or null
 let guildRep = { adventurers: 0, arcane: 0, shadow: 0, holy: 0 };
@@ -1576,7 +1611,7 @@ function updateTitle() {
   // Version
   X.fillStyle = '#333';
   X.font = '11px Consolas, monospace';
-  X.fillText('v2.2 | Phase 3: Squad + Town', cx, canvasH - 12);
+  X.fillText('v3.0 | Phase 3f: Dialogue Consequences', cx, canvasH - 12);
 }
 
 // ============================================================
@@ -2374,6 +2409,18 @@ function calcDamage(critical) {
       dmg += rollDice(1, 6);
     }
   }
+  // NPC dialogue consequences
+  if (combatState) {
+    const target = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0)[0];
+    if (target) {
+      // Grimjaw's armor knowledge: +2 vs armored enemies (AC >= 15)
+      if (npcFlags.grimjaw_armor_knowledge && target.entity.ac >= 15) { dmg += 2; }
+      // Verendis seal knowledge: +25% dmg vs bosses for first 3 rounds
+      if (npcFlags.verendis_seal_knowledge && target.entity.boss && combatState.combatRound <= 3) { dmg = Math.floor(dmg * 1.25); }
+      // Thessa bestiary: +2 vs undead or elemental names
+      if (npcFlags.thessa_bestiary && (target.entity.undead || target.entity.name.includes('Elemental') || target.entity.name.includes('Golem'))) { dmg += 2; }
+    }
+  }
   return Math.max(1, dmg);
 }
 
@@ -3065,6 +3112,9 @@ function handleInteract(floor, room) {
     // Enter town between floors
     SFX.stairs();
     changeRep(5, 'Floor Cleared');
+    // Clear per-floor NPC flags when entering town (they apply for one floor only)
+    const perFloorFlags = ['marta_trap_intel','elara_poison_ward','grimjaw_armor_knowledge','verendis_seal_knowledge','thessa_bestiary','thessa_warding_word','rolo_boss_pattern','kael_boss_pattern'];
+    perFloorFlags.forEach(f => delete npcFlags[f]);
     townData = {
       floorCleared: currentFloor,
       nextFloor: currentFloor + 1,
@@ -3171,9 +3221,14 @@ function handleTrap(room) {
   room.trapTriggered = true;
 
   // Perception check to spot trap
-  const percCheck = d20() + mod(player.stats.WIS) + (player.proficiencies.includes('Perception') ? PROF_BONUS[player.level] : 0);
+  let trapBonus = 0;
+  if (npcFlags.marta_trap_intel) { trapBonus += 3; } // Marta's hidden passage intel
+  const percCheck = d20() + mod(player.stats.WIS) + (player.proficiencies.includes('Perception') ? PROF_BONUS[player.level] : 0) + trapBonus;
   // Halfling lucky: reroll 1s
   let spotted = percCheck >= room.trapDC;
+  if (spotted && npcFlags.marta_trap_intel) {
+    dungeonMessage += ' (Marta\'s intel helped!)';
+  }
 
   if (spotted) {
     dungeonMessage = `Spotted a ${room.trapType === 'pit' ? 'pit trap' : 'poison dart trap'}! Avoided it.`;
@@ -3211,12 +3266,14 @@ function handleTrap(room) {
       dungeonMessageTimer = 2;
     } else {
       let dmg = rollDice(1, 4);
-      if (hasPoisonResist) dmg = Math.floor(dmg / 2);
+      if (hasPoisonResist || npcFlags.elara_poison_ward) dmg = Math.floor(dmg / 2);
       player.hp = Math.max(0, player.hp - dmg);
-      if (!hasPoisonResist) {
+      if (!hasPoisonResist && !npcFlags.elara_poison_ward) {
         player.conditions.push({ type: 'poisoned', turns: 3 });
       }
-      dungeonMessage = `Poison darts! ${dmg} damage${!hasPoisonResist ? ' + poisoned!' : ' (resisted poison)'}`;
+      const wardNote = npcFlags.elara_poison_ward ? ' (Elara\'s ward!)' : '';
+      dungeonMessage = `Poison darts! ${dmg} damage${!hasPoisonResist && !npcFlags.elara_poison_ward ? ' + poisoned!' : ' (resisted poison' + wardNote + ')'}`;
+
       dungeonMessageTimer = 2.5;
       addFloatingText(canvasW/2, canvasH/2, `-${dmg}`, '#44ff44');
       checkPlayerDeath();
@@ -3781,6 +3838,26 @@ function startCombat(room) {
     fleeing: false,
   };
 
+  // NPC dialogue consequences — combat modifiers
+  if (npcFlags.kael_ambush_intel && !room.cleared) {
+    // Surprise round: player always goes first
+    const playerIdx = combatants.findIndex(c => c.type === 'player');
+    if (playerIdx > 0) {
+      const [p] = combatants.splice(playerIdx, 1);
+      p.initiative = 99;
+      combatants.unshift(p);
+    }
+    delete npcFlags.kael_ambush_intel; // one-time use
+  }
+  if (npcFlags.rolo_guard_escort && !room.cleared) {
+    // Guard escort: first combat enemies take 10 damage
+    enemies.forEach(e => { e.hp = Math.max(1, e.hp - 10); });
+    delete npcFlags.rolo_guard_escort; // one-time use
+  }
+  // Rolo boss pattern: boss takes -2 to first attack roll (handled in enemy turn)
+  // Kael boss pattern: similar effect
+  // Thessa warding word: first attack against player misses (handled in enemy attack)
+
   addCombatLog(`--- COMBAT BEGINS (Round 1) ---`);
   addCombatLog(`Initiative: ${combatants.map(c => `${c.type === 'player' ? player.name : c.entity.name} (${c.initiative})`).join(', ')}`);
 
@@ -4235,8 +4312,23 @@ function enemyTurn(enemy) {
     return;
   }
 
+  // NPC dialogue consequences — Thessa's warding word: first attack misses
+  if (npcFlags.thessa_warding_word && combatState.combatRound === 1) {
+    delete npcFlags.thessa_warding_word;
+    addCombatLog(`Thessa's Ward activates! ${enemy.name}'s attack deflected by ancient magic!`);
+    addFloatingText(canvasW/2, canvasH * 0.65, 'WARDED!', '#aa88ff');
+    SFX.click();
+    nextTurn();
+    return;
+  }
+
   let roll = d20();
   let totalRoll = roll + attack.bonus;
+
+  // NPC dialogue consequences — boss pattern intel: -3 to boss attacks round 1-2
+  if ((npcFlags.rolo_boss_pattern || npcFlags.kael_boss_pattern) && enemy.boss && combatState.combatRound <= 2) {
+    totalRoll -= 3;
+  }
 
   // Check disadvantage
   const hasDisadvantage = enemy.conditions && enemy.conditions.some(c => c.type === 'disadvantage');
@@ -6470,6 +6562,8 @@ function saveGame() {
     activeGuildQuest: deepClone(activeGuildQuest),
     completedGuildQuests: deepClone(completedGuildQuests),
     guildQuestTracking: deepClone(guildQuestTracking),
+    // NPC dialogue consequence flags
+    npcFlags: deepClone(npcFlags),
   };
   try {
     localStorage.setItem('dof_save', JSON.stringify(saveData));
@@ -6521,6 +6615,8 @@ function loadGame() {
     activeGuildQuest = data.activeGuildQuest || null;
     completedGuildQuests = data.completedGuildQuests || [];
     guildQuestTracking = data.guildQuestTracking || { combatStreak: 0, spellsCast: 0, enemiesAvoided: 0, trapsDisarmed: 0, magicFound: 0, damageTaken: 0, undeadKilled: 0, companionsDied: false, bossRounds: 0 };
+    // NPC dialogue consequence flags
+    npcFlags = data.npcFlags || {};
     // Restore pending conflict by finding companions in squad
     if (data.pendingConflict && player.squad) {
       const compA = player.squad.find(c => c.name === data.pendingConflict.compAName);
@@ -6820,12 +6916,27 @@ function updateTown() {
     currentFloor = townData.nextFloor;
     player.floor = currentFloor;
     conflictsThisFloor = 0; // reset conflict counter for new floor
+    // Grimjaw custom weapon: +3 damage bonus for this floor
+    if (npcFlags.grimjaw_custom_weapon) {
+      const weapon = getEquippedItem('weapon');
+      if (weapon) { weapon.bonusDamage = (weapon.bonusDamage || 0) + 3; }
+      delete npcFlags.grimjaw_custom_weapon;
+    }
     const startRoom = dungeon.floors[currentFloor].rooms[0];
     player.x = startRoom.cx;
     player.y = startRoom.cy;
     revealArea(player.x, player.y, player.torchRadius);
-    dungeonMessage = `Descended to Floor ${currentFloor + 1}`;
-    dungeonMessageTimer = 2;
+    // Show active NPC buffs
+    const activeBuffs = [];
+    if (npcFlags.marta_trap_intel) activeBuffs.push('Trap Detection+');
+    if (npcFlags.elara_poison_ward) activeBuffs.push('Poison Ward');
+    if (npcFlags.grimjaw_armor_knowledge) activeBuffs.push('Armor Exploit');
+    if (npcFlags.verendis_seal_knowledge) activeBuffs.push('Seal Knowledge');
+    if (npcFlags.thessa_bestiary) activeBuffs.push('Bestiary Intel');
+    if (npcFlags.thessa_warding_word) activeBuffs.push('Warding Word');
+    if (npcFlags.rolo_boss_pattern || npcFlags.kael_boss_pattern) activeBuffs.push('Boss Pattern');
+    dungeonMessage = `Descended to Floor ${currentFloor + 1}` + (activeBuffs.length ? ` [${activeBuffs.join(', ')}]` : '');
+    dungeonMessageTimer = activeBuffs.length ? 3 : 2;
     townData = null;
     gameState = STATE.DUNGEON;
     saveGame();
@@ -8722,12 +8833,15 @@ function drawNpcDialogueOverlay(px, py, pw, cx, npcId) {
           if (check.success && opt.passReward) {
             if (opt.passReward.gold) { player.gold += opt.passReward.gold; addFloatingText(canvasW/2, canvasH/2, `+${opt.passReward.gold} gold`, '#ffd700'); }
             if (opt.passReward.tempHp) { player.hp = Math.min(player.maxHp + opt.passReward.tempHp, player.hp + opt.passReward.tempHp); addFloatingText(canvasW/2, canvasH/2, `+${opt.passReward.tempHp} temp HP`, '#44ff44'); }
+            if (opt.passReward.flag) { npcFlags[opt.passReward.flag] = true; }
+            if (opt.passReward.rep) { player.reputation = (player.reputation || 0) + opt.passReward.rep; }
           }
         } else if (opt.cost) {
           // Gold cost option
           if (player.gold >= opt.cost) {
             player.gold -= opt.cost;
             state.result = { text: opt.pass, success: true, rollInfo: `-${opt.cost} gold` };
+            if (opt.passReward && opt.passReward.flag) { npcFlags[opt.passReward.flag] = true; }
           } else {
             state.result = { text: opt.fail, success: false, rollInfo: 'Not enough gold' };
           }
