@@ -466,7 +466,7 @@
   <div class="start-info">
     <h3>Test Information</h3>
     <ul>
-      <li>450 questions across 21 categories</li>
+      <li>510 questions across 23 categories</li>
       <li>60 minutes total (~33 seconds per question)</li>
       <li>Timer auto-submits when time runs out</li>
       <li>You can flag questions for review</li>
@@ -475,16 +475,10 @@
     <br>
     <h3>Question Categories</h3>
     <ul>
-      <li>Verbal Analogies (30 questions)</li>
-      <li>Critical Thinking (30 questions)</li>
-      <li>Data Interpretation (29 questions)</li>
-      <li>Pattern Sequences (26 questions)</li>
-      <li>Sentence Completion (25 questions)</li>
-      <li>Number Series (25 questions)</li>
-      <li>Logical Sequences (25 questions)</li>
-      <li>Spatial / Folding (24 questions)</li>
-      <li>Odd One Out (22 questions)</li>
-      <li>+ 12 more categories (214 questions)</li>
+      <li>Critical Thinking (38) | Verbal Analogies (33) | Data Interpretation (31)</li>
+      <li>Number Series (30) | Pattern Sequences (28) | Spatial/Folding (26)</li>
+      <li>Sentence Completion (25) | Logical Sequences (25) | Word Relationships (24)</li>
+      <li>Odd One Out (24) | Number Logic (23) | + 12 more categories</li>
     </ul>
   </div>
   <button class="start-btn" onclick="startTest()">Begin Full Test (120 Questions)</button>
@@ -1204,22 +1198,15 @@ let startTime = null;
 let submitted = false;
 let practiceMode = null;
 
-const CATEGORIES = [
-  {name:"Pattern Sequences", start:0, count:15},
-  {name:"Odd One Out", start:15, count:15},
-  {name:"Matrix Reasoning", start:30, count:10},
-  {name:"Spatial / Folding", start:40, count:10},
-  {name:"Logical Sequences", start:50, count:20},
-  {name:"Mirror / Rotation", start:70, count:10},
-  {name:"Verbal Analogies", start:80, count:10},
-  {name:"Number Logic", start:90, count:10},
-  {name:"Advanced Patterns", start:100, count:10},
-  {name:"Brain Teasers", start:110, count:10},
-  {name:"Data Interpretation", start:120, count:10},
-  {name:"Logical Deduction", start:130, count:10},
-  {name:"Word Relationships", start:140, count:5},
-  {name:"Quantitative Comparison", start:145, count:5},
-];
+// Build categories dynamically from all questions
+const CATEGORIES = (function() {
+  const catMap = {};
+  ALL_QUESTIONS.forEach(q => {
+    if (!catMap[q.cat]) catMap[q.cat] = 0;
+    catMap[q.cat]++;
+  });
+  return Object.entries(catMap).sort((a,b) => b[1] - a[1]).map(([name, count]) => ({name, count}));
+})();
 
 // Build category practice buttons on start screen
 (function buildCatButtons(){
@@ -1237,7 +1224,7 @@ const CATEGORIES = [
 
 function startPractice(catIdx) {
   const cat = CATEGORIES[catIdx];
-  activeQs = ALL_QUESTIONS.slice(cat.start, cat.start + cat.count);
+  activeQs = ALL_QUESTIONS.filter(q => q.cat === cat.name);
   TOTAL = activeQs.length;
   practiceMode = cat.name;
   answers = new Array(TOTAL).fill(null);
