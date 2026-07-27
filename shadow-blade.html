@@ -20,7 +20,7 @@ canvas{display:block;image-rendering:pixelated}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// SHADOW BLADE: SHOGUNATE v1.1
+// SHADOW BLADE: SHOGUNATE v1.2 — 9 missions (3 acts), act progression
 // A stealth-action game set in feudal Japan
 // ============================================================
 const C = document.getElementById('g'), X = C.getContext('2d');
@@ -253,6 +253,14 @@ const MISSIONS = [
   { id: 'castle1', name: 'The Serpent\'s Nest', desc: 'Infiltrate the castle compound and assassinate Captain Hayato, the Shogun\'s intelligence officer.', area: 'Castle Compound', target: 'Captain Hayato', reward: { xp: 200, gold: 150 }, act: 1 },
   { id: 'castle2', name: 'Stolen Scrolls', desc: 'Retrieve the clan\'s stolen scrolls from the castle archives before they are destroyed.', area: 'Castle Compound', target: null, objective: 'steal', reward: { xp: 150, gold: 100 }, act: 1 },
   { id: 'castle3', name: 'Burning Bridge', desc: 'Sabotage the castle\'s supply bridge to cut off reinforcements.', area: 'Castle Compound', target: null, objective: 'sabotage', reward: { xp: 180, gold: 120 }, act: 1 },
+  // Act 2 — Temple District
+  { id: 'temple1', name: 'The Silent Bell', desc: 'The monks of Ryuzen Temple are harboring a Shogun spy. Infiltrate the temple grounds at night and identify the traitor without raising alarm.', area: 'Temple District', target: 'The Traitor Monk', reward: { xp: 300, gold: 200 }, act: 2 },
+  { id: 'temple2', name: 'Poison Garden', desc: 'Steal rare nightshade extract from the temple\'s restricted herbalist garden. The monks guard their medicines fiercely.', area: 'Temple District', target: null, objective: 'steal', reward: { xp: 250, gold: 180 }, act: 2 },
+  { id: 'temple3', name: 'The War Bell', desc: 'Ring the ancient war bell atop Ryuzen Temple to signal the uprising. Expect heavy resistance on the way up.', area: 'Temple District', target: null, objective: 'sabotage', reward: { xp: 350, gold: 250 }, act: 2 },
+  // Act 3 — Shogun's Palace
+  { id: 'palace1', name: 'The Inner Sanctum', desc: 'Penetrate the Shogun\'s palace outer ring. Assassinate General Takeda before he deploys reinforcements to the northern front.', area: 'Shogun\'s Palace', target: 'General Takeda', reward: { xp: 450, gold: 300 }, act: 3 },
+  { id: 'palace2', name: 'Chains of Command', desc: 'Free your captured clan members from the palace dungeons. Stealth is critical — one alarm and the prisoners will be executed.', area: 'Shogun\'s Palace', target: null, objective: 'steal', reward: { xp: 400, gold: 350 }, act: 3 },
+  { id: 'palace3', name: 'The Shogun Falls', desc: 'The final mission. Infiltrate the throne room and end the Shogun\'s tyranny. His personal guard — the Crimson Oni — stand between you and justice.', area: 'Shogun\'s Palace', target: 'The Shogun', reward: { xp: 600, gold: 500 }, act: 3 },
 ];
 
 // ── Castle Map Layout ──
@@ -614,7 +622,7 @@ function drawMenu() {
   if (isMobile) drawText('Touch: Left side = Move, Right side = Actions', W/2, ctrlY + 36, 11, '#555');
 
   // Version
-  drawText('v1.0', W/2, H - 20, 10, '#333');
+  drawText('v1.2', W/2, H - 20, 10, '#333');
 }
 
 // ── CHARACTER CREATION ──
@@ -1424,6 +1432,11 @@ function completeMission() {
     completedMissions.push(currentMission.id);
     player.xp += currentMission.reward.xp;
     player.gold += currentMission.reward.gold;
+    // Check act progression
+    const actMissions = MISSIONS.filter(m => m.act === currentAct);
+    if (actMissions.every(m => completedMissions.includes(m.id)) && currentAct < 3) {
+      currentAct++;
+    }
   }
   state = STATES.SCORE;
   SFX.victory();
@@ -2062,10 +2075,11 @@ function drawMissionBrief() {
   drawTextBold('MISSION BOARD', W/2, 30, 22, '#e0d0ff');
   drawText('Shadow Crane Headquarters', W/2, 52, 12, '#666');
 
-  const availableMissions = MISSIONS.filter(m => !completedMissions.includes(m.id));
+  const availableMissions = MISSIONS.filter(m => !completedMissions.includes(m.id) && m.act <= currentAct);
+  const actNames = { 1: 'Castle Compound', 2: 'Temple District', 3: "Shogun's Palace" };
+  drawText(`Act ${currentAct} — ${actNames[currentAct] || ''}`, W/2, 70, 13, '#6644cc');
   if (availableMissions.length === 0) {
-    drawText('No missions available. All completed!', W/2, H/2, 14, '#888');
-    drawText('More missions coming in Act 2...', W/2, H/2 + 25, 12, '#555');
+    drawText(currentAct >= 3 ? 'All missions completed! The Shogun has fallen.' : 'Act complete! New missions unlocked.', W/2, H/2, 14, '#888');
   } else {
     for (let i = 0; i < availableMissions.length; i++) {
       const m = availableMissions[i];
