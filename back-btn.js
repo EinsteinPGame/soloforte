@@ -1,9 +1,11 @@
 // Adds a floating "Home" back button to all pages (for PWA/app users)
 // On website, homepage links open in new tabs so this is mainly for app navigation
 (function(){
-  // Don't show on index.html or admin.html
+  // Don't show on index.html, admin.html, or full-screen canvas games
   var path = location.pathname;
   if(path === '/' || path === '/index.html' || path === '/admin.html') return;
+  // Canvas games with their own back navigation
+  if(path.indexOf('dnd-crawler') !== -1) return;
   var btn = document.createElement('a');
   btn.href = 'index.html';
   btn.textContent = '\u2190 Home';
