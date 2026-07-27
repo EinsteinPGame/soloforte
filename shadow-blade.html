@@ -20,7 +20,7 @@ canvas{display:block;image-rendering:pixelated}
 <div id="gc"><canvas id="g"></canvas></div>
 <script>
 // ============================================================
-// SHADOW BLADE: SHOGUNATE v1.0
+// SHADOW BLADE: SHOGUNATE v1.1
 // A stealth-action game set in feudal Japan
 // ============================================================
 const C = document.getElementById('g'), X = C.getContext('2d');
@@ -189,6 +189,10 @@ const WEAPONS = {
   hidden_blade: { name: 'Hidden Blade', desc: 'Stealth kills, counter-assassinations', type: 'melee', damage: 30, speed: 1.5, stealthDmg: 100, range: 20, staminaCost: 8, icon: 'HB' },
   katana: { name: 'Katana', desc: 'Heavy damage, parry system', type: 'melee', damage: 25, speed: 1.0, stealthDmg: 60, range: 30, staminaCost: 12, icon: 'KT' },
   kunai: { name: 'Kunai', desc: 'Throwable, silent ranged', type: 'ranged', damage: 15, speed: 2.0, stealthDmg: 40, range: 150, staminaCost: 6, ammo: 10, icon: 'KN' },
+  tanto: { name: 'Tanto', desc: 'Fast close-range, bleed damage', type: 'melee', damage: 18, speed: 2.2, stealthDmg: 80, range: 15, staminaCost: 5, bleed: 3, icon: 'TN' },
+  kusarigama: { name: 'Kusarigama', desc: 'Chain sickle, crowd control', type: 'melee', damage: 22, speed: 0.8, stealthDmg: 50, range: 45, staminaCost: 14, sweep: true, icon: 'KS' },
+  shuriken: { name: 'Shuriken', desc: 'Fast throwing stars, multi-hit', type: 'ranged', damage: 8, speed: 3.0, stealthDmg: 20, range: 120, staminaCost: 3, ammo: 20, burst: 3, icon: 'SH' },
+  yumi: { name: 'Yumi Bow', desc: 'Long range, charged shots', type: 'ranged', damage: 35, speed: 0.6, stealthDmg: 90, range: 250, staminaCost: 10, ammo: 8, chargeMulti: 2.0, icon: 'YM' },
 };
 
 const SKILL_TREES = {
@@ -210,6 +214,36 @@ const SKILL_TREES = {
       { name: 'Whirlwind', desc: 'Heavy attack hits all nearby enemies', cost: 2, effect: 'aoeHeavy', req: 1 },
       { name: 'Unbreakable', desc: '+30 max HP', cost: 2, effect: 'maxHp', req: 2 },
       { name: 'Blade Storm', desc: 'After parry, next 3 attacks deal double damage', cost: 3, effect: 'parryBonus', req: 3 },
+    ]
+  },
+  spirit: {
+    name: 'Spirit Path', color: '#44aacc', desc: 'Spiritual arts, detection, and supernatural abilities',
+    skills: [
+      { name: 'Spirit Sense', desc: 'See enemies through thin walls (8 tile range)', cost: 1, effect: 'spiritSense' },
+      { name: 'Soul Ward', desc: 'Auto-block one lethal hit per mission (1 HP survive)', cost: 1, effect: 'soulWard', req: 0 },
+      { name: 'Spirit Dash', desc: 'Dodge phases through enemies and walls (short range)', cost: 2, effect: 'spiritDash', req: 1 },
+      { name: 'Meditation', desc: 'Stand still 3s to regenerate 30 HP (once per encounter)', cost: 2, effect: 'meditation', req: 2 },
+      { name: 'Astral Projection', desc: 'Scout ahead as a ghost for 5s (no detection)', cost: 3, effect: 'astralProject', req: 3 },
+    ]
+  },
+  assassin: {
+    name: 'Assassin Path', color: '#aa44cc', desc: 'Lethal efficiency, poison, and chain kills',
+    skills: [
+      { name: 'Poisoned Edge', desc: 'Stealth kills apply poison to nearby enemies (10 dmg/s, 3s)', cost: 1, effect: 'poisonKill' },
+      { name: 'Quick Loot', desc: 'Auto-loot gold from kills (+50% gold)', cost: 1, effect: 'quickLoot', req: 0 },
+      { name: 'Chain Kill', desc: 'After stealth kill, 2s window to instant-kill another nearby enemy', cost: 2, effect: 'chainKill', req: 1 },
+      { name: 'Smoke Bomb', desc: 'Drop smoke (blinds enemies 4s, breaks combat) — 2 per mission', cost: 2, effect: 'smokeBomb', req: 2 },
+      { name: 'Mark of Death', desc: 'Tag up to 3 enemies, then execute all simultaneously', cost: 3, effect: 'markDeath', req: 3 },
+    ]
+  },
+  ninjutsu: {
+    name: 'Ninjutsu Path', color: '#cc8844', desc: 'Elemental jutsu, traps, and environmental mastery',
+    skills: [
+      { name: 'Fire Jutsu', desc: 'Ranged fire attack (25 dmg, sets ground on fire 3s)', cost: 1, effect: 'fireJutsu' },
+      { name: 'Tripwire', desc: 'Place a wire trap that stuns enemies for 2s', cost: 1, effect: 'tripwire', req: 0 },
+      { name: 'Water Clone', desc: 'Create a decoy that distracts enemies for 5s', cost: 2, effect: 'waterClone', req: 1 },
+      { name: 'Lightning Step', desc: 'Dash forward with electric damage, stuns hit enemies', cost: 2, effect: 'lightningStep', req: 2 },
+      { name: 'Shadow Clone Jutsu', desc: 'Summon 2 clones that fight alongside you for 8s', cost: 3, effect: 'shadowClone', req: 3 },
     ]
   }
 };
@@ -687,31 +721,48 @@ function drawCharCreate() {
     }
   }
   else if (charCreateStep === 3) {
-    // Weapon loadout - all 3 are pre-selected for v1
-    drawTextBold('Your Loadout', W/2, 100, 16, '#aaa');
-    drawText('In this chapter, you carry these weapons:', W/2, 125, 12, '#666');
+    // Weapon loadout - pick 3 from arsenal
+    drawTextBold('Choose 3 Weapons', W/2, 100, 16, '#aaa');
+    drawText(`Selected: ${charWeapons.length}/3 — click to toggle`, W/2, 125, 12, '#666');
 
-    const weaponKeys = ['hidden_blade', 'katana', 'kunai'];
-    for (let i = 0; i < 3; i++) {
-      const w = WEAPONS[weaponKeys[i]];
-      const bx = W/2 - 170, by = 155 + i * 80, bw = 340, bh = 65;
-      X.fillStyle = '#1a1a3e'; X.strokeStyle = '#3a3a5a'; X.lineWidth = 1;
+    const allWeaponKeys = Object.keys(WEAPONS);
+    for (let i = 0; i < allWeaponKeys.length; i++) {
+      const wKey = allWeaponKeys[i];
+      const w = WEAPONS[wKey];
+      const selected = charWeapons.includes(wKey);
+      const col = i % 2, row = Math.floor(i / 2);
+      const bx = W/2 - 340/2 + col * 175, by = 145 + row * 60, bw = 165, bh = 52;
+      const hov = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
+
+      X.fillStyle = selected ? 'rgba(68,68,150,0.3)' : (hov ? '#1a1a3e' : '#12122a');
+      X.strokeStyle = selected ? '#9b7bff' : (hov ? '#555' : '#2a2a4a');
+      X.lineWidth = selected ? 2 : 1;
       X.beginPath(); X.roundRect(bx, by, bw, bh, 8); X.fill(); X.stroke();
 
-      drawTextBold(w.name, bx + 50, by + 18, 14, '#e0d0ff', 'left');
-      drawText(w.desc, bx + 50, by + 36, 11, '#888', 'left');
-      drawText(`DMG: ${w.damage} | SPD: ${w.speed}x | Range: ${w.range}`, bx + 50, by + 52, 10, '#6a6a9a', 'left');
+      drawTextBold(w.name, bx + 32, by + 16, 12, selected ? '#e0d0ff' : '#999', 'left');
+      drawText(w.desc.substring(0, 28), bx + 32, by + 31, 9, '#666', 'left');
+      drawText(`DMG:${w.damage} SPD:${w.speed}x`, bx + 32, by + 43, 9, '#6a6a9a', 'left');
 
-      // Icon
-      X.fillStyle = '#2a2a5e';
-      X.beginPath(); X.arc(bx + 25, by + bh/2, 16, 0, TAU); X.fill();
-      drawTextBold(w.icon, bx + 25, by + bh/2, 11, '#9b7bff');
+      X.fillStyle = selected ? '#3a3a7a' : '#1a1a2e';
+      X.beginPath(); X.arc(bx + 14, by + bh/2, 12, 0, TAU); X.fill();
+      drawTextBold(w.icon, bx + 14, by + bh/2, 9, selected ? '#9b7bff' : '#555');
+
+      if (hov && mouseClicked) {
+        if (selected) {
+          charWeapons = charWeapons.filter(k => k !== wKey);
+        } else if (charWeapons.length < 3) {
+          charWeapons.push(wKey);
+        }
+        SFX.click();
+      }
     }
 
-    if (drawBtn(W/2 - 80, H - 60, 160, 40, 'Begin Your Journey', false, '#2a1a4a', '#3a2a6a')) {
+    if (charWeapons.length === 3 && drawBtn(W/2 - 80, H - 60, 160, 40, 'Begin Your Journey', false, '#2a1a4a', '#3a2a6a')) {
       SFX.menuSelect();
       createPlayer();
       enterVillage();
+    } else if (charWeapons.length < 3) {
+      drawText('Select 3 weapons to continue', W/2, H - 42, 12, '#cc5555');
     }
   }
 }
@@ -734,7 +785,7 @@ function createPlayer() {
     backstory: charBackstory,
     look: charLook,
     lookData: look,
-    weapons: ['hidden_blade', 'katana', 'kunai'],
+    weapons: [...charWeapons],
     currentWeapon: 0,
     crouching: false,
     moving: false,
@@ -753,7 +804,9 @@ function createPlayer() {
     dodgeDir: 0,
     vanishTimer: 0,
     vanishCooldown: 0,
-    kunaiAmmo: 10,
+    kunaiAmmo: charWeapons.includes('kunai') ? 10 : 0,
+    shurikenAmmo: charWeapons.includes('shuriken') ? 20 : 0,
+    yumiAmmo: charWeapons.includes('yumi') ? 8 : 0,
     skills: {},
     unlockedSkills: {},
     invincible: 0,
@@ -926,20 +979,28 @@ function updatePlayer() {
     const wpn = WEAPONS[wpnKey];
 
     if (wpn.type === 'ranged') {
-      // Kunai throw
-      if (player.kunaiAmmo > 0 && player.stamina >= wpn.staminaCost) {
-        player.kunaiAmmo--;
+      // Generic ranged attack
+      const ammoKey = wpnKey + 'Ammo';
+      const ammoCount = player[ammoKey] || 0;
+      if (ammoCount > 0 && player.stamina >= wpn.staminaCost) {
+        player[ammoKey]--;
         player.stamina -= wpn.staminaCost;
         player.attackAnim = 15;
         player.attackType = 'ranged';
-        projectiles.push({
-          x: player.x, y: player.y,
-          vx: Math.cos(player.angle) * 6,
-          vy: Math.sin(player.angle) * 6,
-          damage: wpn.damage * (1 + (player.unlockedSkills['ronin_0'] ? 0.2 : 0)),
-          owner: 'player', life: 60,
-          silent: true
-        });
+        const burstCount = wpn.burst || 1;
+        for (let bi = 0; bi < burstCount; bi++) {
+          const spread = burstCount > 1 ? (bi - (burstCount-1)/2) * 0.15 : 0;
+          const ang = player.angle + spread;
+          const speed = wpnKey === 'yumi' ? 8 : 6;
+          projectiles.push({
+            x: player.x, y: player.y,
+            vx: Math.cos(ang) * speed,
+            vy: Math.sin(ang) * speed,
+            damage: wpn.damage * (1 + (player.unlockedSkills['ronin_0'] ? 0.2 : 0)),
+            owner: 'player', life: wpnKey === 'yumi' ? 90 : 60,
+            silent: wpnKey !== 'yumi'
+          });
+        }
         SFX.kunaiThrow();
       }
     } else {
@@ -1856,7 +1917,9 @@ function drawHUD() {
   X.beginPath(); X.roundRect(10, 58, 140, 24, 4); X.fill();
   drawText(`${wpn.icon} ${wpn.name}`, 80, 70, 11, '#ddd');
   if (wpn.type === 'ranged') {
-    drawText(`x${player.kunaiAmmo}`, 135, 70, 10, '#aaa');
+    const wpnKey = player.weapons[player.currentWeapon];
+    const ammo = player[wpnKey + 'Ammo'] || 0;
+    drawText(`x${ammo}`, 135, 70, 10, '#aaa');
   }
 
   // Weapon slots
@@ -2127,9 +2190,13 @@ function drawSkillTree() {
   X.fillStyle = '#0a0a0f'; X.fillRect(0, 0, W, H);
 
   drawTextBold('DOJO - Skill Trees', W/2, 30, 22, '#e0d0ff');
-  drawText(`Skill Points: ${player.skillPoints || 0}`, W/2, 55, 13, '#cc88ff');
+  drawText(`Skill Points: ${player.skillPoints || 0}  |  Scroll: ↑↓`, W/2, 55, 13, '#cc88ff');
 
-  let treeY = 80;
+  // Scrollable area
+  X.save();
+  X.beginPath(); X.rect(0, 70, W, H - 120); X.clip();
+
+  let treeY = 80 - skillTreeScroll;
   for (const [treeKey, tree] of Object.entries(SKILL_TREES)) {
     drawTextBold(tree.name, W/2, treeY, 16, tree.color);
     drawText(tree.desc, W/2, treeY + 18, 11, '#666');
@@ -2143,7 +2210,7 @@ function drawSkillTree() {
         (skill.req === undefined || player.unlockedSkills[`${treeKey}_${skill.req}`]);
 
       const bx = W/2 - 160, by = treeY, bw = 320, bh = 42;
-      const hov = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
+      const hov = by >= 70 && by <= H - 80 && mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
 
       X.fillStyle = unlocked ? 'rgba(68,120,68,0.2)' : (canUnlock && hov ? '#2a2a5e' : '#12122a');
       X.strokeStyle = unlocked ? '#44aa44' : (canUnlock ? tree.color : '#222');
@@ -2174,6 +2241,12 @@ function drawSkillTree() {
     }
     treeY += 15;
   }
+  const maxScroll = Math.max(0, treeY + skillTreeScroll - H + 120);
+  X.restore();
+
+  // Scroll with arrow keys
+  if (keys['ArrowDown'] || keys['s']) skillTreeScroll = Math.min(maxScroll, skillTreeScroll + 4);
+  if (keys['ArrowUp'] || keys['w']) skillTreeScroll = Math.max(0, skillTreeScroll - 4);
 
   // Floating texts in UI
   for (const ft of floatingTexts) {
@@ -2185,7 +2258,7 @@ function drawSkillTree() {
   X.globalAlpha = 1;
 
   if (drawBtn(W/2 - 60, H - 45, 120, 36, 'Back', false, '#2a1a1a', '#3a2a2a')) {
-    SFX.click(); state = STATES.VILLAGE;
+    SFX.click(); state = STATES.VILLAGE; skillTreeScroll = 0;
   }
 }
 
