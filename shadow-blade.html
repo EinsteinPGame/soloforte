@@ -1,0 +1,2282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>Shadow Blade: Shogunate</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0a0a0a;color:#e0e0e0;overflow:hidden;height:100vh;width:100vw;display:flex;justify-content:center;align-items:center;user-select:none;-webkit-user-select:none}
+canvas{display:block;image-rendering:pixelated}
+#gc{position:relative;width:100%;height:100%;display:flex;justify-content:center;align-items:center}
+</style>
+</head>
+<body>
+<script src="auth.js"></script>
+<script src="back-btn.js"></script>
+<div id="gc"><canvas id="g"></canvas></div>
+<script>
+// ============================================================
+// SHADOW BLADE: SHOGUNATE v1.0
+// A stealth-action game set in feudal Japan
+// ============================================================
+const C = document.getElementById('g'), X = C.getContext('2d');
+const isMobile = (()=>{const ua=navigator.userAgent||'';return /Mobi|Android|iPhone|iPad|iPod/i.test(ua)||('ontouchstart' in window)||window.innerWidth<768})();
+const TW = isMobile ? 400 : 800, TH = isMobile ? 700 : 600;
+let sc = 1, dpr = 1;
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  dpr = window.devicePixelRatio || 1;
+  sc = Math.min(w / TW, h / TH);
+  const cssW = TW * sc, cssH = TH * sc;
+  C.width = TW * sc * dpr; C.height = TH * sc * dpr;
+  C.style.width = cssW + 'px'; C.style.height = cssH + 'px';
+  C.style.position = 'absolute';
+  C.style.left = (w - cssW) / 2 + 'px';
+  C.style.top = (h - cssH) / 2 + 'px';
+  X.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+function gmp(e) {
+  const r = C.getBoundingClientRect();
+  const cx = (e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX) || 0) - r.left;
+  const cy = (e.clientY || (e.touches && e.touches[0] && e.touches[0].clientY) || 0) - r.top;
+  return { x: cx / sc, y: cy / sc };
+}
+
+// ── Utilities ──
+const W = TW, H = TH;
+const rand = (a,b) => a + Math.floor(Math.random() * (b - a + 1));
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
+const lerp = (a,b,t) => a + (b - a) * t;
+const dist = (a,b) => Math.hypot(a.x - b.x, a.y - b.y);
+const angle = (a,b) => Math.atan2(b.y - a.y, b.x - a.x);
+const PI = Math.PI, TAU = PI * 2;
+
+// ── Audio ──
+const SFX = {
+  ctx: null,
+  _init() { if (!this.ctx) try { this.ctx = new (window.AudioContext || window.webkitAudioContext)() } catch(e) {} },
+  _tone(freq,dur,type,vol,delay) {
+    this._init(); if (!this.ctx) return;
+    const t = this.ctx.currentTime + (delay||0);
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type||'sine'; o.frequency.setValueAtTime(freq,t);
+    g.gain.setValueAtTime(vol||0.15,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.ctx.destination); o.start(t); o.stop(t+dur);
+  },
+  _noise(dur,vol) {
+    this._init(); if (!this.ctx) return;
+    const sz = this.ctx.sampleRate*dur, buf = this.ctx.createBuffer(1,sz,this.ctx.sampleRate);
+    const d = buf.getChannelData(0); for (let i=0;i<sz;i++) d[i]=(Math.random()*2-1)*(vol||0.1);
+    const s = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    s.buffer = buf; g.gain.setValueAtTime(vol||0.1,this.ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,this.ctx.currentTime+dur);
+    s.connect(g); g.connect(this.ctx.destination); s.start(); s.stop(this.ctx.currentTime+dur);
+  },
+  slash() { this._tone(1200,0.04,'sawtooth',0.2); this._tone(2400,0.03,'sawtooth',0.12,0.01); this._noise(0.04,0.08); },
+  heavySlash() { this._tone(600,0.08,'sawtooth',0.25); this._tone(300,0.12,'sine',0.18,0.02); this._noise(0.06,0.12); },
+  stealthKill() { this._tone(800,0.03,'triangle',0.15); this._tone(400,0.06,'sine',0.1,0.02); this._tone(200,0.1,'sine',0.08,0.04); },
+  parry() { this._tone(1400,0.08,'square',0.25); this._tone(2000,0.06,'sawtooth',0.18,0.02); this._noise(0.04,0.08); },
+  kunaiThrow() { this._tone(1800,0.03,'triangle',0.12); this._tone(1200,0.04,'sine',0.1,0.02); },
+  kunaiHit() { this._tone(600,0.05,'square',0.15); this._tone(400,0.06,'sine',0.1,0.02); },
+  dodge() { this._tone(300,0.06,'sine',0.08); this._noise(0.04,0.05); },
+  hit() { this._tone(200,0.12,'sine',0.18); this._noise(0.1,0.1); },
+  alert() { this._tone(600,0.15,'square',0.18); this._tone(800,0.12,'square',0.15,0.12); },
+  detect() { this._tone(400,0.08,'triangle',0.1); },
+  click() { this._tone(800,0.05,'square',0.06); },
+  death() { this._tone(300,0.15,'sine',0.2); this._tone(200,0.2,'sine',0.15,0.12); this._tone(100,0.3,'sine',0.1,0.28); },
+  victory() { [523,659,784,1047].forEach((f,i)=>this._tone(f,0.3,'sine',0.2,i*0.1)); },
+  smoke() { this._noise(0.3,0.15); this._tone(200,0.15,'sine',0.08); },
+  levelUp() { [440,550,660,880].forEach((f,i)=>this._tone(f,0.2,'triangle',0.15,i*0.08)); },
+  menuSelect() { this._tone(600,0.06,'triangle',0.1); this._tone(900,0.04,'triangle',0.08,0.04); },
+};
+
+// ── Input ──
+const keys = {};
+let mouseX = W/2, mouseY = H/2, mouseDown = false, mouseClicked = false, rightClicked = false;
+let touchJoy = null, touchBtns = [];
+
+addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; keys[e.code] = true; e.preventDefault(); });
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.code] = false; });
+C.addEventListener('mousemove', e => { const p = gmp(e); mouseX = p.x; mouseY = p.y; });
+C.addEventListener('mousedown', e => { const p = gmp(e); mouseX = p.x; mouseY = p.y; if (e.button === 0) { mouseDown = true; mouseClicked = true; } if (e.button === 2) rightClicked = true; });
+C.addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; });
+C.addEventListener('contextmenu', e => e.preventDefault());
+
+// Touch controls
+let joyBase = null, joyKnob = null, joyAngle = 0, joyDist = 0;
+const mobileButtons = [];
+
+if (isMobile) {
+  C.addEventListener('touchstart', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const p = gmp(t);
+      if (p.x < W * 0.4) {
+        joyBase = { x: p.x, y: p.y, id: t.identifier };
+        joyKnob = { x: p.x, y: p.y };
+      } else {
+        mouseX = p.x; mouseY = p.y;
+        mouseClicked = true; mouseDown = true;
+        touchBtns.push({ id: t.identifier, x: p.x, y: p.y });
+      }
+    }
+  }, { passive: false });
+  C.addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const p = gmp(t);
+      if (joyBase && t.identifier === joyBase.id) {
+        const dx = p.x - joyBase.x, dy = p.y - joyBase.y;
+        const d = Math.hypot(dx, dy);
+        joyAngle = Math.atan2(dy, dx);
+        joyDist = Math.min(d, 50);
+        joyKnob = { x: joyBase.x + Math.cos(joyAngle) * joyDist, y: joyBase.y + Math.sin(joyAngle) * joyDist };
+      } else {
+        mouseX = p.x; mouseY = p.y;
+      }
+    }
+  }, { passive: false });
+  C.addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (joyBase && t.identifier === joyBase.id) {
+        joyBase = null; joyKnob = null; joyDist = 0;
+      } else {
+        mouseDown = false;
+        touchBtns = touchBtns.filter(b => b.id !== t.identifier);
+      }
+    }
+  });
+}
+
+// ── Game State ──
+const STATES = { MENU: 0, CHAR_CREATE: 1, VILLAGE: 2, MISSION_BRIEF: 3, MISSION: 4, SCORE: 5, SKILL_TREE: 6, SHOP: 7, DOJO: 8, PAUSE: 9, GAME_OVER: 10 };
+let state = STATES.MENU;
+let prevState = STATES.MENU;
+let frameCount = 0;
+let dt = 1/60;
+let lastTime = 0;
+let camera = { x: 0, y: 0 };
+let particles = [];
+let floatingTexts = [];
+let shakeTimer = 0, shakeIntensity = 0;
+
+// ── Player data ──
+let player = null;
+let currentMission = null;
+let missionState = null;
+
+const BACKSTORIES = [
+  { name: 'Orphan Shinobi', desc: 'Raised by the Shadow Crane clan from infancy. You know nothing but the way of the shadow.', stats: { stealth: 3, combat: 1, agility: 2, spirit: 1 }, skill: 'Silent Step', color: '#6644cc' },
+  { name: 'Fallen Samurai', desc: 'Once a retainer of the Shogun himself. Honor lost, blade unbroken. You seek redemption through blood.', stats: { stealth: 1, combat: 3, agility: 1, spirit: 2 }, skill: 'Iron Guard', color: '#cc4444' },
+  { name: 'Temple Monk', desc: 'Trained in forbidden arts at the mountain temple. Your spirit is your deadliest weapon.', stats: { stealth: 2, combat: 1, agility: 1, spirit: 3 }, skill: 'Spirit Sense', color: '#44aacc' },
+];
+
+const LOOKS = [
+  { name: 'Shadow', bodyColor: '#1a1a2e', headColor: '#2d2d44', accent: '#6644cc', maskColor: '#111122' },
+  { name: 'Crimson', bodyColor: '#2e1a1a', headColor: '#442d2d', accent: '#cc4444', maskColor: '#221111' },
+  { name: 'Storm', bodyColor: '#1a2e2e', headColor: '#2d4444', accent: '#44aacc', maskColor: '#112222' },
+];
+
+const WEAPONS = {
+  hidden_blade: { name: 'Hidden Blade', desc: 'Stealth kills, counter-assassinations', type: 'melee', damage: 30, speed: 1.5, stealthDmg: 100, range: 20, staminaCost: 8, icon: 'HB' },
+  katana: { name: 'Katana', desc: 'Heavy damage, parry system', type: 'melee', damage: 25, speed: 1.0, stealthDmg: 60, range: 30, staminaCost: 12, icon: 'KT' },
+  kunai: { name: 'Kunai', desc: 'Throwable, silent ranged', type: 'ranged', damage: 15, speed: 2.0, stealthDmg: 40, range: 150, staminaCost: 6, ammo: 10, icon: 'KN' },
+};
+
+const SKILL_TREES = {
+  shadow: {
+    name: 'Shadow Path', color: '#6644cc', desc: 'Stealth bonuses, silent movement',
+    skills: [
+      { name: 'Silent Step', desc: 'Reduce noise while walking by 50%', cost: 1, effect: 'noiseReduce' },
+      { name: 'Shadow Meld', desc: 'Faster hiding in shadows (+30%)', cost: 1, effect: 'shadowSpeed', req: 0 },
+      { name: 'Ghost Walk', desc: 'Crouching is completely silent', cost: 2, effect: 'silentCrouch', req: 1 },
+      { name: 'Vanish', desc: 'Briefly become invisible (3s cooldown)', cost: 2, effect: 'vanish', req: 2 },
+      { name: 'Death Shadow', desc: 'Stealth kills restore 20 HP', cost: 3, effect: 'stealthHeal', req: 3 },
+    ]
+  },
+  ronin: {
+    name: 'Ronin Path', color: '#cc4444', desc: 'Combat damage, parry, heavy attacks',
+    skills: [
+      { name: 'Iron Strike', desc: '+20% melee damage', cost: 1, effect: 'meleeDmg' },
+      { name: 'Perfect Parry', desc: 'Wider parry window (+50%)', cost: 1, effect: 'parryWindow', req: 0 },
+      { name: 'Whirlwind', desc: 'Heavy attack hits all nearby enemies', cost: 2, effect: 'aoeHeavy', req: 1 },
+      { name: 'Unbreakable', desc: '+30 max HP', cost: 2, effect: 'maxHp', req: 2 },
+      { name: 'Blade Storm', desc: 'After parry, next 3 attacks deal double damage', cost: 3, effect: 'parryBonus', req: 3 },
+    ]
+  }
+};
+
+// ── Mission Data ──
+const MISSIONS = [
+  { id: 'castle1', name: 'The Serpent\'s Nest', desc: 'Infiltrate the castle compound and assassinate Captain Hayato, the Shogun\'s intelligence officer.', area: 'Castle Compound', target: 'Captain Hayato', reward: { xp: 200, gold: 150 }, act: 1 },
+  { id: 'castle2', name: 'Stolen Scrolls', desc: 'Retrieve the clan\'s stolen scrolls from the castle archives before they are destroyed.', area: 'Castle Compound', target: null, objective: 'steal', reward: { xp: 150, gold: 100 }, act: 1 },
+  { id: 'castle3', name: 'Burning Bridge', desc: 'Sabotage the castle\'s supply bridge to cut off reinforcements.', area: 'Castle Compound', target: null, objective: 'sabotage', reward: { xp: 180, gold: 120 }, act: 1 },
+];
+
+// ── Castle Map Layout ──
+const TILE = 32;
+const MAP_W = 40, MAP_H = 40;
+
+function createCastleMap() {
+  // 0=floor, 1=wall, 2=water, 3=bush(hide), 4=torch, 5=door, 6=rooftop
+  const m = [];
+  for (let y = 0; y < MAP_H; y++) {
+    m[y] = [];
+    for (let x = 0; x < MAP_W; x++) {
+      // Outer walls
+      if (x === 0 || y === 0 || x === MAP_W-1 || y === MAP_H-1) m[y][x] = 1;
+      else m[y][x] = 0;
+    }
+  }
+  // Castle structure - main building
+  for (let x = 12; x <= 28; x++) { m[5][x] = 1; m[18][x] = 1; }
+  for (let y = 5; y <= 18; y++) { m[y][12] = 1; m[y][28] = 1; }
+  // Inner rooms
+  for (let x = 12; x <= 28; x++) m[11][x] = 1;
+  for (let y = 5; y <= 18; y++) m[y][20] = 1;
+  // Doors
+  m[11][16] = 5; m[11][24] = 5; m[5][16] = 5; m[5][24] = 5;
+  m[18][16] = 5; m[18][24] = 5;
+  m[11][20] = 5; m[8][20] = 5; m[14][20] = 5;
+  m[8][12] = 5; m[14][12] = 5; m[8][28] = 5; m[14][28] = 5;
+  // Courtyard walls
+  for (let x = 5; x <= 35; x++) { m[22][x] = 1; m[35][x] = 1; }
+  for (let y = 22; y <= 35; y++) { m[y][5] = 1; m[y][35] = 1; }
+  m[22][10] = 5; m[22][20] = 5; m[22][30] = 5;
+  m[35][20] = 5;
+  // Garden area with bushes
+  for (let x = 6; x <= 12; x++) for (let y = 23; y <= 28; y++) {
+    if (Math.random() < 0.3) m[y][x] = 3;
+  }
+  // More bushes along walls
+  for (let x = 25; x <= 34; x++) for (let y = 30; y <= 34; y++) {
+    if (Math.random() < 0.25) m[y][x] = 3;
+  }
+  // Water moat
+  for (let x = 1; x <= 4; x++) for (let y = 1; y <= 4; y++) m[y][x] = 2;
+  for (let x = 36; x <= 38; x++) for (let y = 1; y <= 4; y++) m[y][x] = 2;
+  // Torches
+  const torchPositions = [
+    [15,6],[25,6],[15,17],[25,17],[13,9],[27,9],[13,14],[27,14],
+    [10,23],[20,23],[30,23],[10,34],[30,34],[20,28],[7,28],[33,28]
+  ];
+  for (const [tx,ty] of torchPositions) {
+    if (m[ty][tx] === 0) m[ty][tx] = 4;
+  }
+  // Rooftop access points
+  m[3][20] = 6; m[20][10] = 6; m[20][30] = 6;
+  // Entry point - south gate
+  m[MAP_H-1][20] = 5;
+  return m;
+}
+
+function createVillageMap() {
+  const m = [];
+  for (let y = 0; y < MAP_H; y++) {
+    m[y] = [];
+    for (let x = 0; x < MAP_W; x++) {
+      if (x === 0 || y === 0 || x === MAP_W-1 || y === MAP_H-1) m[y][x] = 1;
+      else m[y][x] = 0;
+    }
+  }
+  // Dojo building (top-left)
+  for (let x = 3; x <= 12; x++) { m[3][x] = 1; m[10][x] = 1; }
+  for (let y = 3; y <= 10; y++) { m[y][3] = 1; m[y][12] = 1; }
+  m[10][7] = 5; // door
+  // Mission board area (center-right)
+  for (let x = 22; x <= 30; x++) { m[5][x] = 1; m[12][x] = 1; }
+  for (let y = 5; y <= 12; y++) { m[y][22] = 1; m[y][30] = 1; }
+  m[12][26] = 5;
+  // Shop (bottom-left)
+  for (let x = 3; x <= 11; x++) { m[25][x] = 1; m[32][x] = 1; }
+  for (let y = 25; y <= 32; y++) { m[y][3] = 1; m[y][11] = 1; }
+  m[25][7] = 5;
+  // Some trees/bushes
+  const bushSpots = [[15,15],[16,20],[18,8],[25,20],[30,30],[35,15],[14,30],[20,25]];
+  for (const [bx,by] of bushSpots) if (by < MAP_H-1 && bx < MAP_W-1) m[by][bx] = 3;
+  // Torches
+  const vtorches = [[7,11],[26,13],[7,24],[15,5],[25,35],[35,25]];
+  for (const [tx,ty] of vtorches) if (m[ty][tx] === 0) m[ty][tx] = 4;
+  return m;
+}
+
+let currentMap = null;
+let mapEntities = [];
+
+// ── Guard AI ──
+function createGuard(x, y, patrol, type) {
+  return {
+    x: x * TILE + TILE/2, y: y * TILE + TILE/2,
+    patrol: patrol.map(p => ({ x: p[0]*TILE+TILE/2, y: p[1]*TILE+TILE/2 })),
+    patrolIdx: 0, patrolDir: 1,
+    angle: 0, speed: 0.8,
+    visionRange: 120, visionAngle: PI/3,
+    hp: 50, maxHp: 50,
+    state: 'patrol', // patrol, suspicious, alert, combat, dead
+    alertTimer: 0, suspicionTimer: 0,
+    attackTimer: 0, attackCooldown: 60,
+    stunTimer: 0,
+    type: type || 'guard', // guard, captain, archer
+    damage: 10,
+    lastKnownPlayerPos: null,
+    searchTimer: 0,
+    dead: false,
+    deathAnim: 0,
+    bodyDiscovered: false,
+    w: 14, h: 14,
+  };
+}
+
+function createCastleGuards() {
+  return [
+    // Courtyard patrol
+    createGuard(10, 25, [[10,25],[10,33],[20,33],[20,25]], 'guard'),
+    createGuard(30, 25, [[30,25],[30,33],[25,33],[25,25]], 'guard'),
+    // Gate guard
+    createGuard(18, 37, [[18,37],[22,37]], 'guard'),
+    // Inner courtyard
+    createGuard(20, 28, [[15,28],[25,28]], 'guard'),
+    // Castle interior - ground floor
+    createGuard(16, 14, [[14,14],[18,14],[18,16],[14,16]], 'guard'),
+    createGuard(24, 14, [[22,14],[26,14],[26,16],[22,16]], 'guard'),
+    // Castle interior - upper floor
+    createGuard(16, 8, [[14,8],[18,8]], 'guard'),
+    // Captain Hayato - the target
+    createGuard(24, 8, [[23,7],[25,7],[25,9],[23,9]], 'captain'),
+  ];
+}
+
+// ── Torch Light System ──
+function getTorchPositions(map) {
+  const torches = [];
+  for (let y = 0; y < MAP_H; y++)
+    for (let x = 0; x < MAP_W; x++)
+      if (map[y][x] === 4) torches.push({ x: x*TILE+TILE/2, y: y*TILE+TILE/2, radius: 80+Math.random()*20, flicker: Math.random()*TAU });
+  return torches;
+}
+
+function isInShadow(px, py, torches) {
+  for (const t of torches) {
+    const d = Math.hypot(px - t.x, py - t.y);
+    const r = t.radius + Math.sin(frameCount*0.05 + t.flicker) * 8;
+    if (d < r) return false;
+  }
+  return true;
+}
+
+function isInBush(px, py, map) {
+  const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+  if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H) return map[ty][tx] === 3;
+  return false;
+}
+
+// ── Collision ──
+function isWall(px, py, map) {
+  const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+  if (tx < 0 || tx >= MAP_W || ty < 0 || ty >= MAP_H) return true;
+  const t = map[ty][tx];
+  return t === 1 || t === 2;
+}
+
+function canMove(px, py, map, size) {
+  size = size || 6;
+  return !isWall(px-size,py-size,map) && !isWall(px+size,py-size,map) &&
+         !isWall(px-size,py+size,map) && !isWall(px+size,py+size,map);
+}
+
+// ── Particles ──
+function addParticle(x,y,color,count,speed,life) {
+  for (let i = 0; i < (count||5); i++) {
+    const a = Math.random() * TAU;
+    const s = Math.random() * (speed||2);
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: life||30, maxLife: life||30, color: color||'#fff', size: 2+Math.random()*2 });
+  }
+}
+
+function addFloatingText(x, y, text, color) {
+  floatingTexts.push({ x, y, text, color: color||'#fff', life: 60, maxLife: 60 });
+}
+
+// ── Save/Load ──
+function saveGame() {
+  if (!player) return;
+  const save = {
+    player: { ...player, attackAnim: 0, dodgeTimer: 0, vanishTimer: 0 },
+    missions: completedMissions,
+    act: currentAct,
+    v: 1
+  };
+  localStorage.setItem('sb_save', JSON.stringify(save));
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem('sb_save');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch(e) { return null; }
+}
+
+function hasSave() { return !!localStorage.getItem('sb_save'); }
+
+// ── Game Variables ──
+let completedMissions = [];
+let currentAct = 1;
+let torches = [];
+let guards = [];
+let projectiles = [];
+let alertLevel = 0; // 0=calm, 1=suspicious, 2=searching, 3=combat
+let globalAlertTimer = 0;
+let missionScore = { kills: 0, stealthKills: 0, detected: false, time: 0, ghostRating: true };
+let menuSelection = 0;
+let charCreateStep = 0; // 0=name, 1=backstory, 2=look, 3=weapons
+let charName = '';
+let charBackstory = 0;
+let charLook = 0;
+let charWeapons = ['hidden_blade', 'katana', 'kunai'];
+let inputText = '';
+let skillTreeScroll = 0;
+let selectedMission = 0;
+let missionObjectiveComplete = false;
+let objectiveItem = null;
+let interactPrompt = null;
+let pauseSelection = 0;
+let dojoSelection = 0;
+
+// ── MAIN GAME LOOP ──
+function gameLoop(timestamp) {
+  if (!lastTime) lastTime = timestamp;
+  dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+  frameCount++;
+
+  X.save();
+  X.scale(sc, sc);
+
+  switch(state) {
+    case STATES.MENU: updateMenu(); drawMenu(); break;
+    case STATES.CHAR_CREATE: updateCharCreate(); drawCharCreate(); break;
+    case STATES.VILLAGE: updateVillage(); drawGame(); break;
+    case STATES.MISSION_BRIEF: updateMissionBrief(); drawMissionBrief(); break;
+    case STATES.MISSION: updateMission(); drawGame(); break;
+    case STATES.SCORE: updateScore(); drawScore(); break;
+    case STATES.SKILL_TREE: updateSkillTree(); drawSkillTree(); break;
+    case STATES.DOJO: updateDojo(); drawDojo(); break;
+    case STATES.PAUSE: updatePause(); drawPause(); break;
+    case STATES.GAME_OVER: updateGameOver(); drawGameOver(); break;
+  }
+
+  mouseClicked = false;
+  rightClicked = false;
+  X.restore();
+  requestAnimationFrame(gameLoop);
+}
+
+// ── UI Helpers ──
+function drawBtn(x, y, w, h, text, hover, color1, color2) {
+  const mx = mouseX, my = mouseY;
+  const hov = mx >= x && mx <= x+w && my >= y && my <= y+h;
+  X.fillStyle = hov ? (color2 || '#3a2a6a') : (color1 || '#1a1a3e');
+  X.strokeStyle = hov ? '#9b7bff' : '#333';
+  X.lineWidth = 2;
+  X.beginPath();
+  X.roundRect(x, y, w, h, 8);
+  X.fill(); X.stroke();
+  X.fillStyle = '#e0e0e0';
+  X.font = 'bold 14px Segoe UI, system-ui, sans-serif';
+  X.textAlign = 'center'; X.textBaseline = 'middle';
+  X.fillText(text, x+w/2, y+h/2);
+  return hov && mouseClicked;
+}
+
+function drawText(text, x, y, size, color, align, baseline) {
+  X.font = `${size||14}px Segoe UI, system-ui, sans-serif`;
+  X.fillStyle = color || '#e0e0e0';
+  X.textAlign = align || 'center';
+  X.textBaseline = baseline || 'middle';
+  X.fillText(text, x, y);
+}
+
+function drawTextBold(text, x, y, size, color, align) {
+  X.font = `bold ${size||14}px Segoe UI, system-ui, sans-serif`;
+  X.fillStyle = color || '#e0e0e0';
+  X.textAlign = align || 'center';
+  X.textBaseline = 'middle';
+  X.fillText(text, x, y);
+}
+
+// ── MENU ──
+function updateMenu() {}
+
+function drawMenu() {
+  // Dark background
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, W, H);
+
+  // Atmospheric particles
+  for (let i = 0; i < 30; i++) {
+    const px = (frameCount * 0.3 + i * 127) % W;
+    const py = (Math.sin(frameCount * 0.01 + i) * 0.5 + 0.5) * H;
+    X.globalAlpha = 0.15 + Math.sin(frameCount * 0.02 + i) * 0.1;
+    X.fillStyle = '#4a3a7a';
+    X.beginPath(); X.arc(px, py, 1, 0, TAU); X.fill();
+  }
+  X.globalAlpha = 1;
+
+  // Title
+  const titleY = H * 0.22;
+  X.save();
+  X.shadowColor = '#6644cc';
+  X.shadowBlur = 30;
+  drawTextBold('SHADOW BLADE', W/2, titleY, 42, '#e0d0ff');
+  X.shadowBlur = 0;
+  X.restore();
+  drawTextBold('SHOGUNATE', W/2, titleY + 38, 20, '#6644cc');
+
+  // Subtitle
+  drawText('A tale of vengeance in feudal Japan', W/2, titleY + 68, 13, '#666');
+
+  // Kanji decoration
+  X.font = '28px serif';
+  X.fillStyle = '#2a1a4a';
+  X.textAlign = 'center';
+  X.fillText('\u5f71\u306e\u5203', W/2, titleY + 100);
+
+  // Menu buttons
+  const btnW = 220, btnH = 44;
+  const startY = H * 0.52;
+
+  if (drawBtn(W/2 - btnW/2, startY, btnW, btnH, 'New Game', false, '#1a1a3e', '#2a2a5e')) {
+    SFX.menuSelect();
+    charCreateStep = 0; charName = ''; inputText = '';
+    state = STATES.CHAR_CREATE;
+  }
+
+  if (hasSave()) {
+    if (drawBtn(W/2 - btnW/2, startY + 56, btnW, btnH, 'Continue', false, '#1a1a3e', '#2a2a5e')) {
+      SFX.menuSelect();
+      const save = loadGame();
+      if (save) {
+        player = save.player;
+        completedMissions = save.missions || [];
+        currentAct = save.act || 1;
+        enterVillage();
+      }
+    }
+  }
+
+  // Controls hint
+  const ctrlY = H * 0.82;
+  drawText('WASD - Move | Mouse - Aim | LMB - Attack | RMB - Heavy/Parry', W/2, ctrlY, 11, '#444');
+  drawText('SPACE - Dodge | C - Crouch | E - Interact | TAB - Weapons | ESC - Pause', W/2, ctrlY + 18, 11, '#444');
+  if (isMobile) drawText('Touch: Left side = Move, Right side = Actions', W/2, ctrlY + 36, 11, '#555');
+
+  // Version
+  drawText('v1.0', W/2, H - 20, 10, '#333');
+}
+
+// ── CHARACTER CREATION ──
+let nameInputActive = true;
+let nameCursorBlink = 0;
+
+function updateCharCreate() {
+  nameCursorBlink++;
+  if (charCreateStep === 0) {
+    // Name input via keyboard events
+    // Handled in keydown listener below
+  }
+}
+
+// Name input handler
+addEventListener('keydown', function(e) {
+  if (state !== STATES.CHAR_CREATE || charCreateStep !== 0) return;
+  if (e.key === 'Backspace') { inputText = inputText.slice(0, -1); e.preventDefault(); }
+  else if (e.key === 'Enter' && inputText.length >= 1) { charName = inputText; charCreateStep = 1; SFX.menuSelect(); }
+  else if (e.key.length === 1 && inputText.length < 16 && /[a-zA-Z0-9 _-]/.test(e.key)) { inputText += e.key; }
+}, true);
+
+function drawCharCreate() {
+  X.fillStyle = '#0a0a0f'; X.fillRect(0, 0, W, H);
+
+  drawTextBold('CREATE YOUR SHADOW', W/2, 40, 24, '#e0d0ff');
+  drawText(`Step ${charCreateStep+1} of 4`, W/2, 65, 12, '#666');
+
+  if (charCreateStep === 0) {
+    // Name input
+    drawTextBold('What is your name, Shadow?', W/2, 120, 16, '#aaa');
+
+    // Input box
+    const bx = W/2 - 120, by = 150, bw = 240, bh = 40;
+    X.fillStyle = '#1a1a3e'; X.strokeStyle = '#6644cc'; X.lineWidth = 2;
+    X.beginPath(); X.roundRect(bx, by, bw, bh, 8); X.fill(); X.stroke();
+    const cursor = nameCursorBlink % 60 < 30 ? '|' : '';
+    drawText(inputText + cursor, W/2, by + bh/2, 16, '#e0e0e0');
+
+    if (inputText.length >= 1) {
+      if (drawBtn(W/2 - 60, 210, 120, 36, 'Continue', false, '#2a1a4a', '#3a2a6a')) {
+        charName = inputText; charCreateStep = 1; SFX.menuSelect();
+      }
+    }
+  }
+  else if (charCreateStep === 1) {
+    // Backstory selection
+    drawTextBold('Choose your origin', W/2, 100, 16, '#aaa');
+
+    for (let i = 0; i < 3; i++) {
+      const b = BACKSTORIES[i];
+      const bx = W/2 - 170, by = 130 + i * 130, bw = 340, bh = 115;
+      const hov = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
+
+      X.fillStyle = hov ? '#2a2a5e' : (charBackstory === i ? '#1a1a4e' : '#12122a');
+      X.strokeStyle = charBackstory === i ? b.color : (hov ? '#555' : '#2a2a4a');
+      X.lineWidth = charBackstory === i ? 2 : 1;
+      X.beginPath(); X.roundRect(bx, by, bw, bh, 10); X.fill(); X.stroke();
+
+      drawTextBold(b.name, bx + 15, by + 20, 15, b.color, 'left');
+      drawText(b.desc, bx + 15, by + 42, 11, '#888', 'left');
+
+      // Stats
+      const stats = b.stats;
+      let sx = bx + 15;
+      for (const [k,v] of Object.entries(stats)) {
+        drawText(`${k.charAt(0).toUpperCase()+k.slice(1)}: ${v}`, sx, by + 68, 11, '#6a6a9a', 'left');
+        sx += 75;
+      }
+      drawText(`Starting Skill: ${b.skill}`, bx + 15, by + 88, 11, b.color, 'left');
+
+      if (hov && mouseClicked) { charBackstory = i; SFX.click(); }
+    }
+
+    if (drawBtn(W/2 - 60, H - 60, 120, 36, 'Continue', false, '#2a1a4a', '#3a2a6a')) {
+      charCreateStep = 2; SFX.menuSelect();
+    }
+  }
+  else if (charCreateStep === 2) {
+    // Look selection
+    drawTextBold('Choose your appearance', W/2, 100, 16, '#aaa');
+
+    for (let i = 0; i < 3; i++) {
+      const look = LOOKS[i];
+      const bx = W/2 - 200 + i * 140, by = 150, bw = 120, bh = 160;
+      const hov = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
+
+      X.fillStyle = hov ? '#2a2a5e' : (charLook === i ? '#1a1a4e' : '#12122a');
+      X.strokeStyle = charLook === i ? look.accent : (hov ? '#555' : '#2a2a4a');
+      X.lineWidth = charLook === i ? 2 : 1;
+      X.beginPath(); X.roundRect(bx, by, bw, bh, 10); X.fill(); X.stroke();
+
+      // Draw character preview
+      const cx = bx + bw/2, cy = by + 70;
+      drawCharacterSprite(cx, cy, 0, look, 2);
+
+      drawTextBold(look.name, bx + bw/2, by + bh - 25, 13, look.accent);
+
+      if (hov && mouseClicked) { charLook = i; SFX.click(); }
+    }
+
+    if (drawBtn(W/2 - 60, H - 60, 120, 36, 'Continue', false, '#2a1a4a', '#3a2a6a')) {
+      charCreateStep = 3; SFX.menuSelect();
+    }
+  }
+  else if (charCreateStep === 3) {
+    // Weapon loadout - all 3 are pre-selected for v1
+    drawTextBold('Your Loadout', W/2, 100, 16, '#aaa');
+    drawText('In this chapter, you carry these weapons:', W/2, 125, 12, '#666');
+
+    const weaponKeys = ['hidden_blade', 'katana', 'kunai'];
+    for (let i = 0; i < 3; i++) {
+      const w = WEAPONS[weaponKeys[i]];
+      const bx = W/2 - 170, by = 155 + i * 80, bw = 340, bh = 65;
+      X.fillStyle = '#1a1a3e'; X.strokeStyle = '#3a3a5a'; X.lineWidth = 1;
+      X.beginPath(); X.roundRect(bx, by, bw, bh, 8); X.fill(); X.stroke();
+
+      drawTextBold(w.name, bx + 50, by + 18, 14, '#e0d0ff', 'left');
+      drawText(w.desc, bx + 50, by + 36, 11, '#888', 'left');
+      drawText(`DMG: ${w.damage} | SPD: ${w.speed}x | Range: ${w.range}`, bx + 50, by + 52, 10, '#6a6a9a', 'left');
+
+      // Icon
+      X.fillStyle = '#2a2a5e';
+      X.beginPath(); X.arc(bx + 25, by + bh/2, 16, 0, TAU); X.fill();
+      drawTextBold(w.icon, bx + 25, by + bh/2, 11, '#9b7bff');
+    }
+
+    if (drawBtn(W/2 - 80, H - 60, 160, 40, 'Begin Your Journey', false, '#2a1a4a', '#3a2a6a')) {
+      SFX.menuSelect();
+      createPlayer();
+      enterVillage();
+    }
+  }
+}
+
+function createPlayer() {
+  const bs = BACKSTORIES[charBackstory];
+  const look = LOOKS[charLook];
+  player = {
+    name: charName,
+    x: 20 * TILE + TILE/2, y: 36 * TILE + TILE/2,
+    angle: -PI/2,
+    speed: 2.5,
+    hp: 80 + bs.stats.combat * 10,
+    maxHp: 80 + bs.stats.combat * 10,
+    stamina: 100,
+    maxStamina: 100,
+    xp: 0, level: 1, skillPoints: 1,
+    gold: 50,
+    stats: { ...bs.stats },
+    backstory: charBackstory,
+    look: charLook,
+    lookData: look,
+    weapons: ['hidden_blade', 'katana', 'kunai'],
+    currentWeapon: 0,
+    crouching: false,
+    moving: false,
+    running: false,
+    hidden: false,
+    onRoof: false,
+    attackAnim: 0,
+    attackType: null, // light, heavy, stealth
+    heavyChargeTimer: 0,
+    parryTimer: 0,
+    parryWindow: 12,
+    parrySuccess: false,
+    parryCooldown: 0,
+    dodgeTimer: 0,
+    dodgeCooldown: 0,
+    dodgeDir: 0,
+    vanishTimer: 0,
+    vanishCooldown: 0,
+    kunaiAmmo: 10,
+    skills: {},
+    unlockedSkills: {},
+    invincible: 0,
+    comboCount: 0,
+    comboTimer: 0,
+    lastAttackTime: 0,
+  };
+  // Starting skill
+  if (bs.skill === 'Silent Step') player.unlockedSkills['shadow_0'] = true;
+  if (bs.skill === 'Iron Guard') player.unlockedSkills['ronin_0'] = true;
+  if (bs.skill === 'Spirit Sense') player.unlockedSkills['shadow_0'] = true;
+}
+
+function enterVillage() {
+  state = STATES.VILLAGE;
+  currentMap = createVillageMap();
+  guards = [];
+  projectiles = [];
+  particles = [];
+  floatingTexts = [];
+  alertLevel = 0;
+  interactPrompt = null;
+  if (player) {
+    player.x = 20 * TILE + TILE/2;
+    player.y = 20 * TILE + TILE/2;
+    player.hp = player.maxHp;
+    player.stamina = player.maxStamina;
+  }
+  torches = getTorchPositions(currentMap);
+  saveGame();
+}
+
+// ── VILLAGE UPDATE ──
+function updateVillage() {
+  updatePlayer();
+  updateParticles();
+
+  // Check interactions
+  interactPrompt = null;
+  const px = Math.floor(player.x / TILE), py = Math.floor(player.y / TILE);
+
+  // Mission board (near door at 26,12)
+  if (dist(player, {x:26*TILE+TILE/2, y:13*TILE+TILE/2}) < 40) {
+    interactPrompt = 'Press E - Mission Board';
+    if (keys['e']) { keys['e'] = false; state = STATES.MISSION_BRIEF; SFX.menuSelect(); }
+  }
+  // Dojo (near door at 7,10)
+  if (dist(player, {x:7*TILE+TILE/2, y:11*TILE+TILE/2}) < 40) {
+    interactPrompt = 'Press E - Dojo (Skill Tree)';
+    if (keys['e']) { keys['e'] = false; state = STATES.SKILL_TREE; SFX.menuSelect(); }
+  }
+  // Shop (near door at 7,25)
+  if (dist(player, {x:7*TILE+TILE/2, y:24*TILE+TILE/2}) < 40) {
+    interactPrompt = 'Press E - Shop';
+    if (keys['e']) { keys['e'] = false; /* shop not in v1 */ addFloatingText(player.x, player.y-20, 'Shop coming soon...', '#ffaa44'); }
+  }
+
+  // Pause
+  if (keys['escape']) { keys['escape'] = false; prevState = state; state = STATES.PAUSE; pauseSelection = 0; }
+}
+
+// ── PLAYER UPDATE ──
+function updatePlayer() {
+  if (!player) return;
+
+  let dx = 0, dy = 0;
+  if (keys['w'] || keys['arrowup']) dy = -1;
+  if (keys['s'] || keys['arrowdown']) dy = 1;
+  if (keys['a'] || keys['arrowleft']) dx = -1;
+  if (keys['d'] || keys['arrowright']) dx = 1;
+
+  // Mobile joystick
+  if (joyBase && joyDist > 10) {
+    dx = Math.cos(joyAngle);
+    dy = Math.sin(joyAngle);
+  }
+
+  // Normalize
+  if (dx || dy) {
+    const len = Math.hypot(dx, dy);
+    dx /= len; dy /= len;
+  }
+
+  // Crouch toggle
+  if (keys['c']) { keys['c'] = false; player.crouching = !player.crouching; }
+
+  // Speed
+  let spd = player.speed;
+  if (player.crouching) spd *= 0.5;
+  if (player.dodgeTimer > 0) spd = 5;
+
+  // Stamina regen
+  if (player.stamina < player.maxStamina && player.attackAnim <= 0 && player.dodgeTimer <= 0) {
+    player.stamina = Math.min(player.maxStamina, player.stamina + 0.3);
+  }
+
+  // Dodge
+  if (player.dodgeTimer > 0) {
+    player.dodgeTimer--;
+    player.invincible = Math.max(player.invincible, 1);
+    dx = Math.cos(player.dodgeDir);
+    dy = Math.sin(player.dodgeDir);
+  } else if ((keys[' '] || keys['space']) && player.dodgeCooldown <= 0 && player.stamina >= 20) {
+    keys[' '] = false; keys['space'] = false;
+    player.dodgeTimer = 12;
+    player.dodgeCooldown = 30;
+    player.stamina -= 20;
+    player.dodgeDir = player.angle;
+    if (dx || dy) player.dodgeDir = Math.atan2(dy, dx);
+    SFX.dodge();
+    addParticle(player.x, player.y, '#6644cc88', 5, 1.5, 15);
+  }
+  if (player.dodgeCooldown > 0) player.dodgeCooldown--;
+  if (player.invincible > 0) player.invincible--;
+
+  // Vanish
+  if (player.vanishTimer > 0) { player.vanishTimer--; player.hidden = true; }
+  if (player.vanishCooldown > 0) player.vanishCooldown--;
+
+  // Movement
+  player.moving = (dx !== 0 || dy !== 0) && player.attackAnim <= 0;
+  if (player.moving) {
+    const nx = player.x + dx * spd;
+    const ny = player.y + dy * spd;
+    if (canMove(nx, player.y, currentMap)) player.x = nx;
+    if (canMove(player.x, ny, currentMap)) player.y = ny;
+    if (player.dodgeTimer <= 0) player.angle = Math.atan2(dy, dx);
+  }
+
+  // Mouse aim (override angle when in mission)
+  if (state === STATES.MISSION && !isMobile) {
+    const wx = mouseX + camera.x, wy = mouseY + camera.y;
+    player.angle = Math.atan2(wy - player.y, wx - player.x);
+  }
+
+  // Hidden status
+  if (player.vanishTimer <= 0) {
+    player.hidden = isInBush(player.x, player.y, currentMap) || (isInShadow(player.x, player.y, torches) && player.crouching);
+  }
+
+  // Weapon switch
+  if (keys['tab']) {
+    keys['tab'] = false;
+    player.currentWeapon = (player.currentWeapon + 1) % player.weapons.length;
+    SFX.click();
+  }
+  if (keys['1']) { keys['1'] = false; player.currentWeapon = 0; SFX.click(); }
+  if (keys['2']) { keys['2'] = false; player.currentWeapon = 1; SFX.click(); }
+  if (keys['3']) { keys['3'] = false; player.currentWeapon = 2; SFX.click(); }
+
+  // Attack
+  if (player.attackAnim > 0) {
+    player.attackAnim--;
+    if (player.attackAnim <= 0) player.attackType = null;
+  }
+
+  // Parry (right click with katana)
+  if (player.parryCooldown > 0) player.parryCooldown--;
+  if (player.parryTimer > 0) player.parryTimer--;
+  if (rightClicked && player.weapons[player.currentWeapon] === 'katana' && player.parryCooldown <= 0 && player.stamina >= 10) {
+    player.parryTimer = player.parryWindow + (player.unlockedSkills['ronin_1'] ? 6 : 0);
+    player.parryCooldown = 40;
+    player.stamina -= 10;
+    SFX.parry();
+  }
+
+  // Light attack
+  if (mouseClicked && player.attackAnim <= 0 && player.dodgeTimer <= 0 && state === STATES.MISSION) {
+    const wpnKey = player.weapons[player.currentWeapon];
+    const wpn = WEAPONS[wpnKey];
+
+    if (wpn.type === 'ranged') {
+      // Kunai throw
+      if (player.kunaiAmmo > 0 && player.stamina >= wpn.staminaCost) {
+        player.kunaiAmmo--;
+        player.stamina -= wpn.staminaCost;
+        player.attackAnim = 15;
+        player.attackType = 'ranged';
+        projectiles.push({
+          x: player.x, y: player.y,
+          vx: Math.cos(player.angle) * 6,
+          vy: Math.sin(player.angle) * 6,
+          damage: wpn.damage * (1 + (player.unlockedSkills['ronin_0'] ? 0.2 : 0)),
+          owner: 'player', life: 60,
+          silent: true
+        });
+        SFX.kunaiThrow();
+      }
+    } else {
+      // Melee attack
+      if (player.stamina >= wpn.staminaCost) {
+        player.stamina -= wpn.staminaCost;
+        player.attackAnim = Math.floor(20 / wpn.speed);
+        player.attackType = 'light';
+
+        // Check for stealth kill
+        let stealthKill = false;
+        for (const g of guards) {
+          if (g.dead) continue;
+          const d = dist(player, g);
+          if (d < wpn.range + 10) {
+            const angleDiff = Math.abs(normalizeAngle(angle(player, g) - player.angle));
+            if (g.state === 'patrol' && player.hidden && wpnKey === 'hidden_blade') {
+              // Stealth kill!
+              stealthKill = true;
+              g.hp = 0; g.dead = true; g.deathAnim = 30;
+              missionScore.stealthKills++;
+              addFloatingText(g.x, g.y - 20, 'STEALTH KILL!', '#6644cc');
+              addParticle(g.x, g.y, '#cc0000', 8, 2, 20);
+              SFX.stealthKill();
+              if (player.unlockedSkills['shadow_4']) {
+                player.hp = Math.min(player.maxHp, player.hp + 20);
+                addFloatingText(player.x, player.y - 30, '+20 HP', '#44cc44');
+              }
+              player.xp += 30;
+              break;
+            } else if (angleDiff < PI/3) {
+              // Normal melee hit
+              let dmg = wpn.damage * (1 + (player.unlockedSkills['ronin_0'] ? 0.2 : 0));
+              if (player.parrySuccess) { dmg *= 2; player.parrySuccess = false; }
+              g.hp -= dmg;
+              g.state = 'combat';
+              g.lastKnownPlayerPos = { x: player.x, y: player.y };
+              addFloatingText(g.x, g.y - 20, `-${Math.floor(dmg)}`, '#ff4444');
+              addParticle(g.x, g.y, '#cc0000', 5, 2, 15);
+              shakeTimer = 5; shakeIntensity = 3;
+              SFX.slash();
+              if (g.hp <= 0) {
+                g.dead = true; g.deathAnim = 30;
+                missionScore.kills++;
+                player.xp += 20;
+                SFX.death();
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Heavy attack (right click with hidden blade or hold attack)
+  if (rightClicked && player.weapons[player.currentWeapon] !== 'katana' && player.attackAnim <= 0 && player.stamina >= 20 && state === STATES.MISSION) {
+    const wpnKey = player.weapons[player.currentWeapon];
+    const wpn = WEAPONS[wpnKey];
+    if (wpn.type === 'melee') {
+      player.stamina -= 20;
+      player.attackAnim = 30;
+      player.attackType = 'heavy';
+      SFX.heavySlash();
+
+      // AoE if skill unlocked
+      const hitRange = wpn.range + 15;
+      for (const g of guards) {
+        if (g.dead) continue;
+        const d = dist(player, g);
+        if (d < hitRange) {
+          const angleDiff = Math.abs(normalizeAngle(angle(player, g) - player.angle));
+          if (angleDiff < (player.unlockedSkills['ronin_2'] ? PI : PI/2)) {
+            let dmg = wpn.damage * 1.8;
+            g.hp -= dmg;
+            g.state = 'combat';
+            g.stunTimer = 30;
+            g.lastKnownPlayerPos = { x: player.x, y: player.y };
+            addFloatingText(g.x, g.y - 20, `-${Math.floor(dmg)}`, '#ff6644');
+            addParticle(g.x, g.y, '#ff4400', 8, 3, 20);
+            shakeTimer = 8; shakeIntensity = 5;
+            if (g.hp <= 0) {
+              g.dead = true; g.deathAnim = 30;
+              missionScore.kills++;
+              player.xp += 20;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Vanish skill
+  if (keys['v'] && player.unlockedSkills['shadow_3'] && player.vanishCooldown <= 0) {
+    keys['v'] = false;
+    player.vanishTimer = 180;
+    player.vanishCooldown = 300;
+    SFX.smoke();
+    addParticle(player.x, player.y, '#6644cc44', 15, 2, 30);
+  }
+
+  // XP / Level up
+  const xpNeeded = player.level * 100;
+  if (player.xp >= xpNeeded) {
+    player.xp -= xpNeeded;
+    player.level++;
+    player.skillPoints = (player.skillPoints || 0) + 1;
+    player.maxHp += 5;
+    player.hp = player.maxHp;
+    addFloatingText(player.x, player.y - 40, `LEVEL ${player.level}!`, '#ffcc00');
+    SFX.levelUp();
+  }
+
+  // Clamp position
+  player.x = clamp(player.x, 10, MAP_W * TILE - 10);
+  player.y = clamp(player.y, 10, MAP_H * TILE - 10);
+}
+
+function normalizeAngle(a) {
+  while (a > PI) a -= TAU;
+  while (a < -PI) a += TAU;
+  return a;
+}
+
+// ── MISSION UPDATE ──
+function updateMission() {
+  updatePlayer();
+  updateGuards();
+  updateProjectiles();
+  updateParticles();
+  missionScore.time += dt;
+
+  // Check objective
+  if (currentMission) {
+    if (currentMission.target) {
+      // Assassination - check if target is dead
+      const target = guards.find(g => g.type === 'captain');
+      if (target && target.dead && !missionObjectiveComplete) {
+        missionObjectiveComplete = true;
+        addFloatingText(player.x, player.y - 40, 'TARGET ELIMINATED', '#ff4444');
+        addFloatingText(player.x, player.y - 60, 'Return to the gate to extract', '#44ff44');
+      }
+    }
+    if (currentMission.objective === 'steal') {
+      // Check if near the scroll location
+      if (!missionObjectiveComplete && dist(player, {x:24*TILE, y:7*TILE}) < 30) {
+        interactPrompt = 'Press E - Take Scrolls';
+        if (keys['e']) {
+          keys['e'] = false;
+          missionObjectiveComplete = true;
+          addFloatingText(player.x, player.y - 40, 'SCROLLS ACQUIRED', '#44ccff');
+          addFloatingText(player.x, player.y - 60, 'Return to the gate to extract', '#44ff44');
+        }
+      }
+    }
+    if (currentMission.objective === 'sabotage') {
+      if (!missionObjectiveComplete && dist(player, {x:20*TILE, y:22*TILE}) < 30) {
+        interactPrompt = 'Press E - Sabotage Bridge';
+        if (keys['e']) {
+          keys['e'] = false;
+          missionObjectiveComplete = true;
+          addFloatingText(player.x, player.y - 40, 'BRIDGE SABOTAGED', '#ff8844');
+          addFloatingText(player.x, player.y - 60, 'Return to the gate to extract', '#44ff44');
+          SFX.smoke();
+        }
+      }
+    }
+
+    // Extraction point
+    if (missionObjectiveComplete && player.y > (MAP_H - 2) * TILE) {
+      // Mission complete!
+      completeMission();
+    }
+  }
+
+  // Player death
+  if (player.hp <= 0) {
+    state = STATES.GAME_OVER;
+    SFX.death();
+  }
+
+  // Alert level management
+  if (globalAlertTimer > 0) globalAlertTimer--;
+  let maxGuardAlert = 0;
+  for (const g of guards) {
+    if (g.dead) continue;
+    if (g.state === 'combat') maxGuardAlert = 3;
+    else if (g.state === 'alert' && maxGuardAlert < 2) maxGuardAlert = 2;
+    else if (g.state === 'suspicious' && maxGuardAlert < 1) maxGuardAlert = 1;
+  }
+  alertLevel = maxGuardAlert;
+
+  // Pause
+  if (keys['escape']) { keys['escape'] = false; prevState = state; state = STATES.PAUSE; pauseSelection = 0; }
+}
+
+function updateGuards() {
+  for (const g of guards) {
+    if (g.dead) { if (g.deathAnim > 0) g.deathAnim--; continue; }
+    if (g.stunTimer > 0) { g.stunTimer--; continue; }
+
+    const playerDist = dist(g, player);
+    const angleToPlayer = angle(g, player);
+    const angleDiff = Math.abs(normalizeAngle(angleToPlayer - g.angle));
+
+    // Detection
+    let canSeePlayer = false;
+    if (playerDist < g.visionRange && angleDiff < g.visionAngle) {
+      // Check line of sight
+      canSeePlayer = hasLineOfSight(g.x, g.y, player.x, player.y, currentMap);
+      // Hidden check
+      if (canSeePlayer && player.hidden && playerDist > 40) canSeePlayer = false;
+      if (canSeePlayer && player.vanishTimer > 0) canSeePlayer = false;
+    }
+    // Close proximity detection (hear)
+    const noiseRange = player.crouching ? 25 : (player.moving ? 60 : 35);
+    const adjustedNoise = noiseRange * (player.unlockedSkills['shadow_0'] ? 0.5 : 1) * (player.unlockedSkills['shadow_2'] && player.crouching ? 0 : 1);
+    const canHearPlayer = playerDist < adjustedNoise && player.moving;
+
+    // Body discovery
+    for (const other of guards) {
+      if (other.dead && !other.bodyDiscovered && dist(g, other) < 50) {
+        other.bodyDiscovered = true;
+        g.state = 'alert';
+        g.alertTimer = 300;
+        g.lastKnownPlayerPos = { x: other.x, y: other.y };
+        SFX.alert();
+        missionScore.detected = true;
+        missionScore.ghostRating = false;
+        addFloatingText(g.x, g.y - 20, 'BODY FOUND!', '#ff4444');
+      }
+    }
+
+    switch(g.state) {
+      case 'patrol':
+        // Follow patrol route
+        if (g.patrol.length > 0) {
+          const target = g.patrol[g.patrolIdx];
+          const d = dist(g, target);
+          if (d < 5) {
+            g.patrolIdx = (g.patrolIdx + g.patrolDir);
+            if (g.patrolIdx >= g.patrol.length || g.patrolIdx < 0) {
+              g.patrolDir *= -1;
+              g.patrolIdx = clamp(g.patrolIdx, 0, g.patrol.length - 1);
+            }
+          } else {
+            const a = angle(g, target);
+            g.angle = a;
+            const nx = g.x + Math.cos(a) * g.speed;
+            const ny = g.y + Math.sin(a) * g.speed;
+            if (canMove(nx, ny, currentMap)) { g.x = nx; g.y = ny; }
+            else g.patrolIdx = (g.patrolIdx + g.patrolDir + g.patrol.length) % g.patrol.length;
+          }
+        }
+        if (canSeePlayer) {
+          g.state = 'suspicious';
+          g.suspicionTimer = 60;
+          SFX.detect();
+        } else if (canHearPlayer) {
+          g.state = 'suspicious';
+          g.suspicionTimer = 40;
+          g.lastKnownPlayerPos = { x: player.x, y: player.y };
+        }
+        break;
+
+      case 'suspicious':
+        g.angle = angleToPlayer;
+        g.suspicionTimer--;
+        if (canSeePlayer) {
+          g.suspicionTimer = Math.max(g.suspicionTimer, 30);
+          if (playerDist < 50) {
+            g.state = 'alert';
+            g.alertTimer = 180;
+            g.lastKnownPlayerPos = { x: player.x, y: player.y };
+            SFX.alert();
+            missionScore.detected = true;
+            missionScore.ghostRating = false;
+            addFloatingText(g.x, g.y - 20, 'ALERT!', '#ff4444');
+          }
+        }
+        if (g.suspicionTimer <= 0) g.state = 'patrol';
+        break;
+
+      case 'alert':
+        g.alertTimer--;
+        if (canSeePlayer) {
+          g.state = 'combat';
+          g.lastKnownPlayerPos = { x: player.x, y: player.y };
+        } else if (g.lastKnownPlayerPos) {
+          // Move to last known position
+          const d = dist(g, g.lastKnownPlayerPos);
+          if (d > 10) {
+            const a = angle(g, g.lastKnownPlayerPos);
+            g.angle = a;
+            const nx = g.x + Math.cos(a) * g.speed * 1.5;
+            const ny = g.y + Math.sin(a) * g.speed * 1.5;
+            if (canMove(nx, ny, currentMap)) { g.x = nx; g.y = ny; }
+          }
+        }
+        if (g.alertTimer <= 0) { g.state = 'patrol'; g.lastKnownPlayerPos = null; }
+        break;
+
+      case 'combat':
+        if (!canSeePlayer && !canHearPlayer) {
+          g.searchTimer++;
+          if (g.searchTimer > 180) {
+            g.state = 'alert';
+            g.alertTimer = 120;
+            g.searchTimer = 0;
+          }
+        } else {
+          g.searchTimer = 0;
+          g.lastKnownPlayerPos = { x: player.x, y: player.y };
+        }
+
+        // Chase and attack
+        g.angle = angleToPlayer;
+        if (playerDist > 30) {
+          const a = angleToPlayer;
+          const nx = g.x + Math.cos(a) * g.speed * 1.8;
+          const ny = g.y + Math.sin(a) * g.speed * 1.8;
+          if (canMove(nx, ny, currentMap)) { g.x = nx; g.y = ny; }
+        }
+
+        // Attack
+        g.attackTimer--;
+        if (g.attackTimer <= 0 && playerDist < 35) {
+          g.attackTimer = g.attackCooldown;
+          // Check parry
+          if (player.parryTimer > 0 && Math.abs(normalizeAngle(angle(player, g) - player.angle)) < PI/2) {
+            // Parried!
+            player.parrySuccess = true;
+            player.parryTimer = 0;
+            g.stunTimer = 45;
+            SFX.parry();
+            addFloatingText(player.x, player.y - 30, 'PARRY!', '#ffcc00');
+            addParticle((player.x+g.x)/2, (player.y+g.y)/2, '#ffcc00', 10, 3, 20);
+            shakeTimer = 6; shakeIntensity = 4;
+          } else if (player.invincible <= 0) {
+            // Hit player
+            player.hp -= g.damage;
+            addFloatingText(player.x, player.y - 20, `-${g.damage}`, '#ff0000');
+            addParticle(player.x, player.y, '#ff0000', 5, 2, 15);
+            shakeTimer = 5; shakeIntensity = 4;
+            SFX.hit();
+          }
+        }
+        break;
+    }
+  }
+}
+
+function hasLineOfSight(x1, y1, x2, y2, map) {
+  const steps = Math.ceil(Math.hypot(x2-x1, y2-y1) / (TILE/2));
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const px = lerp(x1, x2, t), py = lerp(y1, y2, t);
+    const tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+    if (tx >= 0 && tx < MAP_W && ty >= 0 && ty < MAP_H && map[ty][tx] === 1) return false;
+  }
+  return true;
+}
+
+function updateProjectiles() {
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.life--;
+
+    if (p.life <= 0 || isWall(p.x, p.y, currentMap)) {
+      projectiles.splice(i, 1); continue;
+    }
+
+    if (p.owner === 'player') {
+      for (const g of guards) {
+        if (g.dead) continue;
+        if (dist(p, g) < 15) {
+          g.hp -= p.damage;
+          addFloatingText(g.x, g.y - 20, `-${Math.floor(p.damage)}`, '#ff4444');
+          addParticle(g.x, g.y, '#cc0000', 5, 2, 15);
+          SFX.kunaiHit();
+          if (!p.silent) {
+            g.state = 'combat';
+            g.lastKnownPlayerPos = { x: player.x, y: player.y };
+          } else if (g.state === 'patrol') {
+            g.state = 'suspicious';
+            g.suspicionTimer = 60;
+          }
+          if (g.hp <= 0) {
+            g.dead = true; g.deathAnim = 30;
+            missionScore.kills++;
+            if (g.state !== 'combat' && g.state !== 'alert') missionScore.stealthKills++;
+            player.xp += 20;
+          }
+          projectiles.splice(i, 1);
+          break;
+        }
+      }
+    }
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 0.95; p.vy *= 0.95;
+    p.life--;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.y -= 0.5;
+    ft.life--;
+    if (ft.life <= 0) floatingTexts.splice(i, 1);
+  }
+  if (shakeTimer > 0) shakeTimer--;
+}
+
+function completeMission() {
+  if (currentMission) {
+    completedMissions.push(currentMission.id);
+    player.xp += currentMission.reward.xp;
+    player.gold += currentMission.reward.gold;
+  }
+  state = STATES.SCORE;
+  SFX.victory();
+}
+
+// ── DRAWING ──
+function drawGame() {
+  X.fillStyle = '#0a0a0f';
+  X.fillRect(0, 0, W, H);
+
+  // Camera
+  camera.x = player.x - W/2;
+  camera.y = player.y - H/2;
+  camera.x = clamp(camera.x, 0, MAP_W * TILE - W);
+  camera.y = clamp(camera.y, 0, MAP_H * TILE - H);
+
+  X.save();
+  // Screen shake
+  if (shakeTimer > 0) {
+    X.translate(rand(-shakeIntensity, shakeIntensity), rand(-shakeIntensity, shakeIntensity));
+  }
+  X.translate(-camera.x, -camera.y);
+
+  // Draw map
+  drawMap();
+
+  // Draw guards
+  drawGuards();
+
+  // Draw projectiles
+  for (const p of projectiles) {
+    X.fillStyle = '#aaa';
+    X.save();
+    X.translate(p.x, p.y);
+    X.rotate(Math.atan2(p.vy, p.vx));
+    X.fillRect(-4, -1, 8, 2);
+    X.restore();
+  }
+
+  // Draw objective marker
+  if (state === STATES.MISSION && currentMission && !missionObjectiveComplete) {
+    let objX, objY;
+    if (currentMission.target) {
+      const target = guards.find(g => g.type === 'captain' && !g.dead);
+      if (target) { objX = target.x; objY = target.y - 25; }
+    } else if (currentMission.objective === 'steal') {
+      objX = 24*TILE; objY = 7*TILE - 10;
+    } else if (currentMission.objective === 'sabotage') {
+      objX = 20*TILE; objY = 22*TILE - 10;
+    }
+    if (objX !== undefined) {
+      X.fillStyle = '#ff4444';
+      X.globalAlpha = 0.5 + Math.sin(frameCount * 0.08) * 0.3;
+      X.beginPath();
+      X.moveTo(objX, objY - 12);
+      X.lineTo(objX - 6, objY - 4);
+      X.lineTo(objX + 6, objY - 4);
+      X.closePath(); X.fill();
+      X.beginPath(); X.arc(objX, objY, 4, 0, TAU); X.fill();
+      X.globalAlpha = 1;
+    }
+  }
+
+  // Draw extraction marker
+  if (missionObjectiveComplete && state === STATES.MISSION) {
+    const ex = 20*TILE+TILE/2, ey = (MAP_H-1)*TILE;
+    X.strokeStyle = '#44ff44';
+    X.lineWidth = 2;
+    X.globalAlpha = 0.5 + Math.sin(frameCount * 0.08) * 0.3;
+    X.beginPath(); X.arc(ex, ey, 15 + Math.sin(frameCount*0.05)*3, 0, TAU); X.stroke();
+    X.globalAlpha = 1;
+  }
+
+  // Draw player
+  drawPlayer();
+
+  // Draw particles
+  for (const p of particles) {
+    X.globalAlpha = p.life / p.maxLife;
+    X.fillStyle = p.color;
+    X.beginPath(); X.arc(p.x, p.y, p.size * (p.life/p.maxLife), 0, TAU); X.fill();
+  }
+  X.globalAlpha = 1;
+
+  // Floating texts
+  for (const ft of floatingTexts) {
+    X.globalAlpha = ft.life / ft.maxLife;
+    drawTextBold(ft.text, ft.x, ft.y, 12, ft.color);
+  }
+  X.globalAlpha = 1;
+
+  X.restore();
+
+  // ── HUD ──
+  drawHUD();
+
+  // Interact prompt
+  if (interactPrompt) {
+    X.fillStyle = 'rgba(10,10,30,0.8)';
+    X.beginPath(); X.roundRect(W/2 - 110, H - 80, 220, 30, 6); X.fill();
+    drawText(interactPrompt, W/2, H - 65, 12, '#ffcc00');
+  }
+
+  // Mobile controls
+  if (isMobile) drawMobileControls();
+}
+
+function drawMap() {
+  const startX = Math.max(0, Math.floor(camera.x / TILE));
+  const startY = Math.max(0, Math.floor(camera.y / TILE));
+  const endX = Math.min(MAP_W, Math.ceil((camera.x + W) / TILE) + 1);
+  const endY = Math.min(MAP_H, Math.ceil((camera.y + H) / TILE) + 1);
+
+  for (let y = startY; y < endY; y++) {
+    for (let x = startX; x < endX; x++) {
+      const t = currentMap[y][x];
+      const px = x * TILE, py = y * TILE;
+
+      switch(t) {
+        case 0: // Floor
+          X.fillStyle = ((x+y)%2===0) ? '#1a1a22' : '#181820';
+          X.fillRect(px, py, TILE, TILE);
+          break;
+        case 1: // Wall
+          X.fillStyle = '#2a2a3a';
+          X.fillRect(px, py, TILE, TILE);
+          X.fillStyle = '#333348';
+          X.fillRect(px+1, py+1, TILE-2, TILE-4);
+          X.fillStyle = '#222235';
+          X.fillRect(px+1, py+TILE-3, TILE-2, 3);
+          break;
+        case 2: // Water
+          X.fillStyle = `hsl(210, 40%, ${12 + Math.sin(frameCount*0.03 + x*0.5)*3}%)`;
+          X.fillRect(px, py, TILE, TILE);
+          break;
+        case 3: // Bush
+          X.fillStyle = ((x+y)%2===0) ? '#1a1a22' : '#181820';
+          X.fillRect(px, py, TILE, TILE);
+          X.fillStyle = '#1a3a1a';
+          X.beginPath(); X.arc(px+TILE/2, py+TILE/2, TILE/2-2, 0, TAU); X.fill();
+          X.fillStyle = '#2a4a2a';
+          X.beginPath(); X.arc(px+TILE/2-3, py+TILE/2-3, TILE/3, 0, TAU); X.fill();
+          break;
+        case 4: // Torch
+          X.fillStyle = ((x+y)%2===0) ? '#1a1a22' : '#181820';
+          X.fillRect(px, py, TILE, TILE);
+          // Torch base
+          X.fillStyle = '#4a3a2a';
+          X.fillRect(px+TILE/2-2, py+4, 4, TILE-8);
+          // Flame
+          const flicker = Math.sin(frameCount * 0.15 + x * 3) * 2;
+          X.fillStyle = '#ff8833';
+          X.beginPath(); X.arc(px+TILE/2+flicker, py+6, 5, 0, TAU); X.fill();
+          X.fillStyle = '#ffcc44';
+          X.beginPath(); X.arc(px+TILE/2+flicker, py+5, 3, 0, TAU); X.fill();
+          break;
+        case 5: // Door
+          X.fillStyle = '#3a2a1a';
+          X.fillRect(px, py, TILE, TILE);
+          X.fillStyle = '#4a3a2a';
+          X.fillRect(px+4, py+2, TILE-8, TILE-4);
+          break;
+        case 6: // Rooftop access
+          X.fillStyle = '#2a2a44';
+          X.fillRect(px, py, TILE, TILE);
+          X.strokeStyle = '#4a4a6a';
+          X.lineWidth = 1;
+          X.strokeRect(px+4, py+4, TILE-8, TILE-8);
+          drawText('^', px+TILE/2, py+TILE/2, 14, '#6a6a9a');
+          break;
+      }
+    }
+  }
+
+  // Torch light overlay
+  drawLighting();
+
+  // Vision cones for guards (in mission)
+  if (state === STATES.MISSION) {
+    for (const g of guards) {
+      if (g.dead) continue;
+      drawVisionCone(g);
+    }
+  }
+}
+
+function drawLighting() {
+  // Draw shadow overlay with cutouts for torches
+  X.save();
+
+  // Create dark overlay
+  const startX = Math.floor(camera.x);
+  const startY = Math.floor(camera.y);
+
+  // Semi-transparent darkness
+  X.fillStyle = 'rgba(0,0,10,0.55)';
+  X.fillRect(startX, startY, W, H);
+
+  // Cut out light circles using composite
+  X.globalCompositeOperation = 'destination-out';
+  for (const t of torches) {
+    const r = t.radius + Math.sin(frameCount * 0.05 + t.flicker) * 8;
+    const grd = X.createRadialGradient(t.x, t.y, 0, t.x, t.y, r);
+    grd.addColorStop(0, 'rgba(0,0,0,0.6)');
+    grd.addColorStop(0.7, 'rgba(0,0,0,0.3)');
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    X.fillStyle = grd;
+    X.beginPath(); X.arc(t.x, t.y, r, 0, TAU); X.fill();
+  }
+
+  // Player light (small)
+  const plGrd = X.createRadialGradient(player.x, player.y, 0, player.x, player.y, 35);
+  plGrd.addColorStop(0, 'rgba(0,0,0,0.3)');
+  plGrd.addColorStop(1, 'rgba(0,0,0,0)');
+  X.fillStyle = plGrd;
+  X.beginPath(); X.arc(player.x, player.y, 35, 0, TAU); X.fill();
+
+  X.globalCompositeOperation = 'source-over';
+  X.restore();
+
+  // Warm glow on top (additive-style)
+  X.save();
+  X.globalCompositeOperation = 'lighter';
+  for (const t of torches) {
+    const r = t.radius * 0.6 + Math.sin(frameCount * 0.05 + t.flicker) * 5;
+    const grd = X.createRadialGradient(t.x, t.y, 0, t.x, t.y, r);
+    grd.addColorStop(0, 'rgba(255,120,30,0.06)');
+    grd.addColorStop(1, 'rgba(255,80,10,0)');
+    X.fillStyle = grd;
+    X.beginPath(); X.arc(t.x, t.y, r, 0, TAU); X.fill();
+  }
+  X.globalCompositeOperation = 'source-over';
+  X.restore();
+}
+
+function drawVisionCone(g) {
+  const coneLen = g.visionRange;
+  const coneAngle = g.visionAngle;
+  let alpha = 0.08;
+  let color = '100,200,100';
+  if (g.state === 'suspicious') { alpha = 0.15; color = '255,200,50'; }
+  if (g.state === 'alert' || g.state === 'combat') { alpha = 0.2; color = '255,50,50'; }
+
+  X.save();
+  X.globalAlpha = alpha;
+  X.fillStyle = `rgb(${color})`;
+  X.beginPath();
+  X.moveTo(g.x, g.y);
+  X.arc(g.x, g.y, coneLen, g.angle - coneAngle, g.angle + coneAngle);
+  X.closePath();
+  X.fill();
+  X.globalAlpha = 1;
+  X.restore();
+}
+
+function drawGuards() {
+  for (const g of guards) {
+    if (g.dead) {
+      // Dead body
+      X.globalAlpha = g.deathAnim > 0 ? 1 : 0.6;
+      X.fillStyle = g.type === 'captain' ? '#8a2244' : '#4a2222';
+      X.save();
+      X.translate(g.x, g.y);
+      X.rotate(g.angle + PI/2);
+      X.fillRect(-6, -8, 12, 16);
+      X.restore();
+      X.globalAlpha = 1;
+
+      // Body indicator
+      if (!g.bodyDiscovered && g.deathAnim <= 0) {
+        X.fillStyle = '#ff000044';
+        X.beginPath(); X.arc(g.x, g.y, 8, 0, TAU); X.fill();
+      }
+      continue;
+    }
+
+    X.save();
+    X.translate(g.x, g.y);
+    X.rotate(g.angle);
+
+    // Body
+    X.fillStyle = g.type === 'captain' ? '#6a2244' : '#3a3a4a';
+    X.fillRect(-7, -7, 14, 14);
+
+    // Armor
+    X.fillStyle = g.type === 'captain' ? '#8a3355' : '#4a4a5a';
+    X.fillRect(-5, -5, 10, 10);
+
+    // Weapon
+    X.fillStyle = '#888';
+    X.fillRect(7, -1, 8, 2);
+
+    // Direction indicator
+    X.fillStyle = g.type === 'captain' ? '#ff4466' : '#aaa';
+    X.beginPath(); X.arc(8, 0, 2, 0, TAU); X.fill();
+
+    X.restore();
+
+    // State indicator
+    if (g.state === 'suspicious') {
+      drawText('?', g.x, g.y - 18, 14, '#ffcc00');
+    } else if (g.state === 'alert' || g.state === 'combat') {
+      drawText('!', g.x, g.y - 18, 16, '#ff4444');
+    }
+
+    // HP bar (if damaged)
+    if (g.hp < g.maxHp) {
+      X.fillStyle = '#333';
+      X.fillRect(g.x - 12, g.y - 22, 24, 3);
+      X.fillStyle = g.hp > g.maxHp * 0.5 ? '#44cc44' : '#cc4444';
+      X.fillRect(g.x - 12, g.y - 22, 24 * (g.hp / g.maxHp), 3);
+    }
+
+    // Captain marker
+    if (g.type === 'captain') {
+      X.fillStyle = '#ff4466';
+      X.beginPath();
+      X.moveTo(g.x, g.y - 28);
+      X.lineTo(g.x - 4, g.y - 24);
+      X.lineTo(g.x + 4, g.y - 24);
+      X.closePath(); X.fill();
+    }
+  }
+}
+
+function drawCharacterSprite(cx, cy, angle, look, scale) {
+  scale = scale || 1;
+  X.save();
+  X.translate(cx, cy);
+  X.rotate(angle);
+  X.scale(scale, scale);
+
+  // Body (torso)
+  X.fillStyle = look.bodyColor;
+  X.fillRect(-6, -6, 12, 12);
+
+  // Outer robe
+  X.fillStyle = look.accent;
+  X.fillRect(-7, -3, 2, 8);
+  X.fillRect(5, -3, 2, 8);
+
+  // Head
+  X.fillStyle = look.headColor;
+  X.beginPath(); X.arc(0, -2, 5, 0, TAU); X.fill();
+
+  // Mask
+  X.fillStyle = look.maskColor;
+  X.fillRect(-4, -1, 8, 3);
+
+  // Eyes
+  X.fillStyle = look.accent;
+  X.fillRect(-3, -1, 2, 1);
+  X.fillRect(1, -1, 2, 1);
+
+  // Weapon on back
+  X.fillStyle = '#555';
+  X.fillRect(5, -8, 2, 10);
+
+  X.restore();
+}
+
+function drawPlayer() {
+  if (!player) return;
+
+  X.save();
+  X.translate(player.x, player.y);
+
+  // Vanish effect
+  if (player.vanishTimer > 0) {
+    X.globalAlpha = 0.2 + Math.sin(frameCount * 0.2) * 0.1;
+  }
+
+  // Dodge trail
+  if (player.dodgeTimer > 0) {
+    X.globalAlpha = 0.3;
+    X.fillStyle = player.lookData.accent;
+    X.beginPath(); X.arc(-Math.cos(player.angle)*10, -Math.sin(player.angle)*10, 8, 0, TAU); X.fill();
+    X.globalAlpha = player.vanishTimer > 0 ? 0.2 : 1;
+  }
+
+  X.rotate(player.angle);
+
+  const look = player.lookData;
+
+  // Crouch indicator
+  if (player.crouching) {
+    X.save();
+    X.rotate(-player.angle);
+    X.fillStyle = 'rgba(100,100,200,0.15)';
+    X.beginPath(); X.arc(0, 0, 12, 0, TAU); X.fill();
+    X.restore();
+  }
+
+  // Body
+  const bodyScale = player.crouching ? 0.8 : 1;
+  X.scale(bodyScale, bodyScale);
+
+  X.fillStyle = look.bodyColor;
+  X.fillRect(-6, -6, 12, 12);
+
+  X.fillStyle = look.accent;
+  X.fillRect(-7, -3, 2, 8);
+  X.fillRect(5, -3, 2, 8);
+
+  X.fillStyle = look.headColor;
+  X.beginPath(); X.arc(0, -2, 5, 0, TAU); X.fill();
+
+  X.fillStyle = look.maskColor;
+  X.fillRect(-4, -1, 8, 3);
+
+  X.fillStyle = look.accent;
+  X.fillRect(-3, -1, 2, 1);
+  X.fillRect(1, -1, 2, 1);
+
+  // Weapon animation
+  if (player.attackAnim > 0) {
+    const progress = 1 - player.attackAnim / 20;
+    if (player.attackType === 'light') {
+      X.fillStyle = '#ccc';
+      X.save();
+      X.rotate(-0.5 + progress * 1.2);
+      X.fillRect(6, -1, 14, 2);
+      X.restore();
+    } else if (player.attackType === 'heavy') {
+      X.fillStyle = '#ff8844';
+      X.save();
+      X.rotate(-1.0 + progress * 2.0);
+      X.fillRect(5, -2, 16, 3);
+      X.restore();
+    } else if (player.attackType === 'ranged') {
+      X.fillStyle = '#aaa';
+      X.fillRect(8, -1, 6, 2);
+    }
+  } else {
+    // Idle weapon
+    X.fillStyle = '#888';
+    X.fillRect(6, -1, 8, 2);
+  }
+
+  // Parry stance
+  if (player.parryTimer > 0) {
+    X.strokeStyle = '#ffcc00';
+    X.lineWidth = 2;
+    X.beginPath(); X.arc(0, 0, 12, -0.5, 0.5); X.stroke();
+  }
+
+  X.restore();
+
+  // Hidden indicator
+  if (player.hidden && player.vanishTimer <= 0) {
+    X.strokeStyle = 'rgba(100,200,100,0.3)';
+    X.lineWidth = 1;
+    X.setLineDash([3, 3]);
+    X.beginPath(); X.arc(player.x, player.y, 14, 0, TAU); X.stroke();
+    X.setLineDash([]);
+  }
+}
+
+function drawHUD() {
+  // HP bar
+  const hpX = 10, hpY = 10, hpW = 150, hpH = 14;
+  X.fillStyle = 'rgba(0,0,0,0.6)';
+  X.beginPath(); X.roundRect(hpX-2, hpY-2, hpW+4, hpH+4, 4); X.fill();
+  X.fillStyle = '#333';
+  X.fillRect(hpX, hpY, hpW, hpH);
+  const hpPct = player.hp / player.maxHp;
+  X.fillStyle = hpPct > 0.5 ? '#44aa44' : (hpPct > 0.25 ? '#aaaa44' : '#aa4444');
+  X.fillRect(hpX, hpY, hpW * hpPct, hpH);
+  drawText(`HP ${Math.ceil(player.hp)}/${player.maxHp}`, hpX + hpW/2, hpY + hpH/2, 10, '#fff');
+
+  // Stamina bar
+  const stX = 10, stY = 30, stW = 150, stH = 10;
+  X.fillStyle = 'rgba(0,0,0,0.6)';
+  X.beginPath(); X.roundRect(stX-2, stY-2, stW+4, stH+4, 3); X.fill();
+  X.fillStyle = '#222';
+  X.fillRect(stX, stY, stW, stH);
+  X.fillStyle = '#4488cc';
+  X.fillRect(stX, stY, stW * (player.stamina / player.maxStamina), stH);
+
+  // XP bar
+  const xpW = 150, xpH = 6;
+  X.fillStyle = '#222';
+  X.fillRect(10, 46, xpW, xpH);
+  X.fillStyle = '#cc88ff';
+  X.fillRect(10, 46, xpW * (player.xp / (player.level * 100)), xpH);
+  drawText(`Lv.${player.level}`, 10 + xpW + 8, 49, 10, '#cc88ff', 'left');
+
+  // Current weapon
+  const wpn = WEAPONS[player.weapons[player.currentWeapon]];
+  X.fillStyle = 'rgba(0,0,0,0.6)';
+  X.beginPath(); X.roundRect(10, 58, 140, 24, 4); X.fill();
+  drawText(`${wpn.icon} ${wpn.name}`, 80, 70, 11, '#ddd');
+  if (wpn.type === 'ranged') {
+    drawText(`x${player.kunaiAmmo}`, 135, 70, 10, '#aaa');
+  }
+
+  // Weapon slots
+  for (let i = 0; i < 3; i++) {
+    const w = WEAPONS[player.weapons[i]];
+    const sx = 10 + i * 36, sy = 88;
+    X.fillStyle = i === player.currentWeapon ? 'rgba(100,68,204,0.4)' : 'rgba(0,0,0,0.4)';
+    X.strokeStyle = i === player.currentWeapon ? '#6644cc' : '#333';
+    X.lineWidth = 1;
+    X.beginPath(); X.roundRect(sx, sy, 30, 22, 4); X.fill(); X.stroke();
+    drawText(w.icon, sx+15, sy+11, 9, '#ccc');
+    drawText(`${i+1}`, sx+5, sy+5, 8, '#666', 'left', 'top');
+  }
+
+  // Status indicators
+  if (player.hidden) {
+    drawTextBold('HIDDEN', W - 60, 15, 12, '#44cc44');
+  }
+  if (player.crouching) {
+    drawText('Crouching', W - 55, 30, 10, '#8888aa');
+  }
+
+  // Detection indicator (in mission)
+  if (state === STATES.MISSION) {
+    let alertColor = '#44cc44', alertText = 'UNDETECTED';
+    if (alertLevel === 1) { alertColor = '#cccc44'; alertText = 'SUSPICIOUS'; }
+    if (alertLevel === 2) { alertColor = '#cc8844'; alertText = 'SEARCHING'; }
+    if (alertLevel === 3) { alertColor = '#cc4444'; alertText = 'COMBAT!'; }
+
+    X.fillStyle = 'rgba(0,0,0,0.6)';
+    X.beginPath(); X.roundRect(W/2 - 55, 5, 110, 22, 6); X.fill();
+    drawTextBold(alertText, W/2, 16, 11, alertColor);
+
+    // Mission objective
+    if (currentMission) {
+      X.fillStyle = 'rgba(0,0,0,0.5)';
+      X.beginPath(); X.roundRect(W/2 - 100, 30, 200, 18, 4); X.fill();
+      const objText = missionObjectiveComplete ? 'Extract at south gate' :
+        (currentMission.target ? `Eliminate ${currentMission.target}` : `${currentMission.objective === 'steal' ? 'Steal scrolls' : 'Sabotage bridge'}`);
+      drawText(objText, W/2, 39, 10, missionObjectiveComplete ? '#44ff44' : '#ffcc44');
+    }
+  }
+
+  // Gold
+  drawText(`Gold: ${player.gold}`, W - 55, H - 15, 11, '#ccaa44');
+
+  // Mini-map (top-right)
+  if (state === STATES.MISSION || state === STATES.VILLAGE) {
+    drawMiniMap();
+  }
+
+  // Skill points indicator
+  if (player.skillPoints > 0) {
+    X.fillStyle = 'rgba(100,68,204,0.3)';
+    X.beginPath(); X.roundRect(10, H-35, 130, 22, 4); X.fill();
+    drawText(`${player.skillPoints} Skill Point${player.skillPoints>1?'s':''}!`, 75, H-24, 11, '#cc88ff');
+  }
+}
+
+function drawMiniMap() {
+  const mmW = 100, mmH = 100;
+  const mmX = W - mmW - 10, mmY = 50;
+  const mmScale = mmW / (MAP_W * TILE);
+
+  X.fillStyle = 'rgba(0,0,0,0.7)';
+  X.beginPath(); X.roundRect(mmX-2, mmY-2, mmW+4, mmH+4, 6); X.fill();
+  X.strokeStyle = '#333'; X.lineWidth = 1;
+  X.strokeRect(mmX, mmY, mmW, mmH);
+
+  // Map tiles
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      const t = currentMap[y][x];
+      if (t === 1) {
+        X.fillStyle = '#3a3a5a';
+        X.fillRect(mmX + x * mmW/MAP_W, mmY + y * mmH/MAP_H, mmW/MAP_W+0.5, mmH/MAP_H+0.5);
+      } else if (t === 2) {
+        X.fillStyle = '#223355';
+        X.fillRect(mmX + x * mmW/MAP_W, mmY + y * mmH/MAP_H, mmW/MAP_W+0.5, mmH/MAP_H+0.5);
+      }
+    }
+  }
+
+  // Guards on minimap
+  for (const g of guards) {
+    if (g.dead) continue;
+    X.fillStyle = g.state === 'combat' ? '#ff4444' : (g.state === 'alert' ? '#ff8844' : '#ff0');
+    X.fillRect(mmX + g.x * mmScale - 1, mmY + g.y * mmScale - 1, 3, 3);
+  }
+
+  // Player on minimap
+  X.fillStyle = '#44ff44';
+  X.beginPath();
+  X.arc(mmX + player.x * mmScale, mmY + player.y * mmScale, 2, 0, TAU);
+  X.fill();
+}
+
+function drawMobileControls() {
+  // Virtual joystick
+  if (joyBase) {
+    X.globalAlpha = 0.3;
+    X.strokeStyle = '#6644cc';
+    X.lineWidth = 2;
+    X.beginPath(); X.arc(joyBase.x, joyBase.y, 50, 0, TAU); X.stroke();
+    X.fillStyle = '#6644cc';
+    if (joyKnob) {
+      X.beginPath(); X.arc(joyKnob.x, joyKnob.y, 20, 0, TAU); X.fill();
+    }
+    X.globalAlpha = 1;
+  }
+
+  // Action buttons
+  const btnSize = 35;
+  const bx = W - 55, by = H - 140;
+
+  // Attack button
+  X.fillStyle = 'rgba(204,68,68,0.3)';
+  X.beginPath(); X.arc(bx, by, btnSize, 0, TAU); X.fill();
+  drawText('ATK', bx, by, 11, '#cc4444');
+
+  // Dodge button
+  X.fillStyle = 'rgba(68,68,204,0.3)';
+  X.beginPath(); X.arc(bx - 60, by + 20, btnSize * 0.8, 0, TAU); X.fill();
+  drawText('DOD', bx - 60, by + 20, 10, '#4444cc');
+
+  // Crouch button
+  X.fillStyle = 'rgba(68,204,68,0.3)';
+  X.beginPath(); X.arc(bx, by + 65, btnSize * 0.7, 0, TAU); X.fill();
+  drawText('CRC', bx, by + 65, 9, '#44cc44');
+}
+
+// ── MISSION BRIEFING ──
+function updateMissionBrief() {
+  // handled in draw
+}
+
+function drawMissionBrief() {
+  X.fillStyle = '#0a0a0f'; X.fillRect(0, 0, W, H);
+
+  drawTextBold('MISSION BOARD', W/2, 30, 22, '#e0d0ff');
+  drawText('Shadow Crane Headquarters', W/2, 52, 12, '#666');
+
+  const availableMissions = MISSIONS.filter(m => !completedMissions.includes(m.id));
+  if (availableMissions.length === 0) {
+    drawText('No missions available. All completed!', W/2, H/2, 14, '#888');
+    drawText('More missions coming in Act 2...', W/2, H/2 + 25, 12, '#555');
+  } else {
+    for (let i = 0; i < availableMissions.length; i++) {
+      const m = availableMissions[i];
+      const bx = W/2 - 180, by = 80 + i * 120, bw = 360, bh = 105;
+      const hov = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
+
+      X.fillStyle = hov ? '#2a2a5e' : '#12122a';
+      X.strokeStyle = hov ? '#6644cc' : '#2a2a4a';
+      X.lineWidth = hov ? 2 : 1;
+      X.beginPath(); X.roundRect(bx, by, bw, bh, 10); X.fill(); X.stroke();
+
+      drawTextBold(m.name, bx + 15, by + 20, 15, '#e0d0ff', 'left');
+      drawText(m.area, bx + bw - 15, by + 20, 11, '#6644cc', 'right');
+
+      // Word wrap description
+      X.font = '11px Segoe UI, system-ui, sans-serif';
+      X.fillStyle = '#888';
+      X.textAlign = 'left';
+      const words = m.desc.split(' ');
+      let line = '', lineY = by + 42;
+      for (const word of words) {
+        const test = line + word + ' ';
+        if (X.measureText(test).width > bw - 30) {
+          X.fillText(line, bx + 15, lineY);
+          line = word + ' '; lineY += 15;
+        } else { line = test; }
+      }
+      X.fillText(line, bx + 15, lineY);
+
+      drawText(`Reward: ${m.reward.xp} XP, ${m.reward.gold} Gold`, bx + 15, by + bh - 15, 10, '#ccaa44', 'left');
+
+      if (hov && mouseClicked) {
+        SFX.menuSelect();
+        currentMission = m;
+        startMission(m);
+      }
+    }
+  }
+
+  if (drawBtn(W/2 - 60, H - 50, 120, 36, 'Back', false, '#2a1a1a', '#3a2a2a')) {
+    SFX.click(); state = STATES.VILLAGE;
+  }
+}
+
+function startMission(mission) {
+  state = STATES.MISSION;
+  currentMap = createCastleMap();
+  guards = createCastleGuards();
+  torches = getTorchPositions(currentMap);
+  projectiles = [];
+  particles = [];
+  floatingTexts = [];
+  alertLevel = 0;
+  missionObjectiveComplete = false;
+  missionScore = { kills: 0, stealthKills: 0, detected: false, time: 0, ghostRating: true };
+  interactPrompt = null;
+
+  // Adjust for non-assassination missions
+  if (!mission.target) {
+    // Remove the captain for non-assassinate missions
+    guards = guards.filter(g => g.type !== 'captain');
+  }
+
+  // Player start position (south gate)
+  player.x = 20 * TILE + TILE/2;
+  player.y = (MAP_H - 2) * TILE + TILE/2;
+  player.hp = player.maxHp;
+  player.stamina = player.maxStamina;
+  player.kunaiAmmo = 10;
+}
+
+// ── SCORE SCREEN ──
+function updateScore() {}
+
+function drawScore() {
+  X.fillStyle = '#0a0a0f'; X.fillRect(0, 0, W, H);
+
+  drawTextBold('MISSION COMPLETE', W/2, 50, 28, '#44cc44');
+  if (currentMission) drawText(currentMission.name, W/2, 80, 14, '#888');
+
+  // Rating
+  let rating = 'Ronin', ratingColor = '#cc4444', ratingDesc = 'Fought your way through';
+  if (missionScore.ghostRating && missionScore.kills === 0) {
+    rating = 'Ghost'; ratingColor = '#44ccff'; ratingDesc = 'Never seen, never heard';
+  } else if (!missionScore.detected && missionScore.stealthKills > 0) {
+    rating = 'Shadow'; ratingColor = '#6644cc'; ratingDesc = 'Silent but deadly';
+  } else if (missionScore.stealthKills > missionScore.kills / 2) {
+    rating = 'Shadow'; ratingColor = '#6644cc'; ratingDesc = 'Preferred the shadows';
+  }
+
+  X.save();
+  X.shadowColor = ratingColor;
+  X.shadowBlur = 20;
+  drawTextBold(rating, W/2, 130, 36, ratingColor);
+  X.restore();
+  drawText(ratingDesc, W/2, 160, 12, '#888');
+
+  // Stats
+  const sy = 200;
+  drawText(`Time: ${Math.floor(missionScore.time)}s`, W/2, sy, 14, '#aaa');
+  drawText(`Total Kills: ${missionScore.kills + missionScore.stealthKills}`, W/2, sy + 25, 14, '#aaa');
+  drawText(`Stealth Kills: ${missionScore.stealthKills}`, W/2, sy + 50, 14, '#6644cc');
+  drawText(`Detected: ${missionScore.detected ? 'Yes' : 'No'}`, W/2, sy + 75, 14, missionScore.detected ? '#cc4444' : '#44cc44');
+
+  // Rewards
+  if (currentMission) {
+    drawTextBold('Rewards', W/2, sy + 115, 16, '#ccaa44');
+    drawText(`+${currentMission.reward.xp} XP`, W/2, sy + 140, 14, '#cc88ff');
+    drawText(`+${currentMission.reward.gold} Gold`, W/2, sy + 160, 14, '#ccaa44');
+  }
+
+  if (drawBtn(W/2 - 80, H - 60, 160, 40, 'Return to Village', false, '#1a2a1a', '#2a3a2a')) {
+    SFX.menuSelect();
+    enterVillage();
+  }
+}
+
+// ── SKILL TREE ──
+function updateSkillTree() {}
+
+function drawSkillTree() {
+  X.fillStyle = '#0a0a0f'; X.fillRect(0, 0, W, H);
+
+  drawTextBold('DOJO - Skill Trees', W/2, 30, 22, '#e0d0ff');
+  drawText(`Skill Points: ${player.skillPoints || 0}`, W/2, 55, 13, '#cc88ff');
+
+  let treeY = 80;
+  for (const [treeKey, tree] of Object.entries(SKILL_TREES)) {
+    drawTextBold(tree.name, W/2, treeY, 16, tree.color);
+    drawText(tree.desc, W/2, treeY + 18, 11, '#666');
+    treeY += 35;
+
+    for (let i = 0; i < tree.skills.length; i++) {
+      const skill = tree.skills[i];
+      const skillKey = `${treeKey}_${i}`;
+      const unlocked = player.unlockedSkills[skillKey];
+      const canUnlock = !unlocked && player.skillPoints > 0 && skill.cost <= player.skillPoints &&
+        (skill.req === undefined || player.unlockedSkills[`${treeKey}_${skill.req}`]);
+
+      const bx = W/2 - 160, by = treeY, bw = 320, bh = 42;
+      const hov = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
+
+      X.fillStyle = unlocked ? 'rgba(68,120,68,0.2)' : (canUnlock && hov ? '#2a2a5e' : '#12122a');
+      X.strokeStyle = unlocked ? '#44aa44' : (canUnlock ? tree.color : '#222');
+      X.lineWidth = unlocked ? 2 : 1;
+      X.beginPath(); X.roundRect(bx, by, bw, bh, 6); X.fill(); X.stroke();
+
+      drawTextBold(skill.name, bx + 10, by + 14, 12, unlocked ? '#44aa44' : '#ccc', 'left');
+      drawText(skill.desc, bx + 10, by + 30, 10, '#777', 'left');
+      drawText(`Cost: ${skill.cost}`, bx + bw - 10, by + 14, 10, unlocked ? '#44aa44' : '#aaa', 'right');
+
+      if (unlocked) {
+        drawText('UNLOCKED', bx + bw - 10, by + 30, 9, '#44aa44', 'right');
+      } else if (!canUnlock && !unlocked) {
+        drawText('LOCKED', bx + bw - 10, by + 30, 9, '#555', 'right');
+      }
+
+      if (canUnlock && hov && mouseClicked) {
+        player.unlockedSkills[skillKey] = true;
+        player.skillPoints -= skill.cost;
+        SFX.levelUp();
+        addFloatingText(W/2, by, `${skill.name} unlocked!`, tree.color);
+
+        // Apply passive effects
+        if (skill.effect === 'maxHp') { player.maxHp += 30; player.hp += 30; }
+      }
+
+      treeY += 48;
+    }
+    treeY += 15;
+  }
+
+  // Floating texts in UI
+  for (const ft of floatingTexts) {
+    X.globalAlpha = ft.life / ft.maxLife;
+    drawTextBold(ft.text, ft.x, ft.y, 13, ft.color);
+    ft.y -= 0.5; ft.life--;
+  }
+  floatingTexts = floatingTexts.filter(ft => ft.life > 0);
+  X.globalAlpha = 1;
+
+  if (drawBtn(W/2 - 60, H - 45, 120, 36, 'Back', false, '#2a1a1a', '#3a2a2a')) {
+    SFX.click(); state = STATES.VILLAGE;
+  }
+}
+
+// ── DOJO ──
+function updateDojo() {}
+function drawDojo() { drawSkillTree(); }
+
+// ── PAUSE ──
+function updatePause() {
+  if (keys['escape']) { keys['escape'] = false; state = prevState; }
+}
+
+function drawPause() {
+  X.fillStyle = 'rgba(0,0,0,0.7)'; X.fillRect(0, 0, W, H);
+
+  drawTextBold('PAUSED', W/2, H/2 - 80, 28, '#e0d0ff');
+
+  if (drawBtn(W/2 - 80, H/2 - 40, 160, 36, 'Resume', false, '#1a1a3e', '#2a2a5e')) {
+    SFX.click(); state = prevState;
+  }
+  if (drawBtn(W/2 - 80, H/2 + 10, 160, 36, 'Save & Quit', false, '#1a1a3e', '#2a2a5e')) {
+    SFX.click(); saveGame(); enterVillage(); state = STATES.MENU;
+  }
+  if (state === STATES.PAUSE && prevState === STATES.MISSION) {
+    if (drawBtn(W/2 - 80, H/2 + 60, 160, 36, 'Abort Mission', false, '#2a1a1a', '#3a2a2a')) {
+      SFX.click(); enterVillage();
+    }
+  }
+}
+
+// ── GAME OVER ──
+function updateGameOver() {}
+
+function drawGameOver() {
+  X.fillStyle = 'rgba(10,0,0,0.85)'; X.fillRect(0, 0, W, H);
+
+  X.save();
+  X.shadowColor = '#cc0000';
+  X.shadowBlur = 30;
+  drawTextBold('YOU HAVE FALLEN', W/2, H/2 - 60, 28, '#cc4444');
+  X.restore();
+
+  drawText('The shadows claim another soul...', W/2, H/2 - 25, 13, '#666');
+
+  if (drawBtn(W/2 - 80, H/2 + 20, 160, 36, 'Retry Mission', false, '#2a1a1a', '#3a2a2a')) {
+    SFX.click();
+    if (currentMission) startMission(currentMission);
+    else enterVillage();
+  }
+  if (drawBtn(W/2 - 80, H/2 + 70, 160, 36, 'Return to Village', false, '#1a1a1a', '#2a2a2a')) {
+    SFX.click(); enterVillage();
+  }
+}
+
+// ── Village Labels ──
+const villageLabels = [
+  { x: 7, y: 2, text: 'DOJO', color: '#6644cc' },
+  { x: 26, y: 4, text: 'MISSION BOARD', color: '#cc4444' },
+  { x: 7, y: 24, text: 'SHOP', color: '#ccaa44' },
+];
+
+// Override drawGame for village labels
+const originalDrawGame = drawGame;
+
+// Add village-specific overlays after the main draw
+const _drawMap = drawMap;
+drawMap = function() {
+  _drawMap.call(this);
+  if (state === STATES.VILLAGE) {
+    for (const label of villageLabels) {
+      const lx = label.x * TILE + TILE/2, ly = label.y * TILE + TILE/2;
+      X.fillStyle = 'rgba(0,0,0,0.5)';
+      X.beginPath(); X.roundRect(lx - 45, ly - 8, 90, 16, 4); X.fill();
+      drawText(label.text, lx, ly, 10, label.color);
+    }
+
+    // Interaction zones glow
+    const dojoPos = {x:7*TILE+TILE/2, y:11*TILE+TILE/2};
+    const boardPos = {x:26*TILE+TILE/2, y:13*TILE+TILE/2};
+    const shopPos = {x:7*TILE+TILE/2, y:24*TILE+TILE/2};
+
+    for (const pos of [dojoPos, boardPos, shopPos]) {
+      X.strokeStyle = 'rgba(100,68,204,0.2)';
+      X.lineWidth = 1;
+      X.beginPath(); X.arc(pos.x, pos.y, 30 + Math.sin(frameCount*0.05)*3, 0, TAU); X.stroke();
+    }
+  }
+};
+
+// ── START ──
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
