@@ -230,6 +230,12 @@ const SFX={
   sukunaHeian(){this._tone(200,0.2,'sine',0.2);this._tone(400,0.2,'sine',0.18,0.1);this._tone(600,0.2,'sine',0.15,0.2);this._tone(800,0.3,'sine',0.25,0.3);this._tone(1000,0.2,'sawtooth',0.2,0.4);this._noise(0.2,0.15)},
   // Sukuna — World Cutting Slash
   sukunaWorldSlash(){this._tone(30,0.6,'sine',0.5);this._tone(60,0.5,'sine',0.4,0.05);this._tone(120,0.4,'sawtooth',0.3,0.1);this._noise(0.4,0.35);[200,400,600,800].forEach((f,i)=>this._tone(f,0.2,'square',0.15,0.15+i*0.05))},
+  // Dagon — Death Swarm (fish launch)
+  dagonSwarm(){this._tone(200,0.15,'sine',0.2);this._tone(400,0.1,'sine',0.15,0.05);this._noise(0.08,0.12)},
+  // Dagon — Tidal Surge (wave)
+  dagonTidal(){this._tone(80,0.25,'sine',0.25);this._tone(160,0.15,'sine',0.18,0.05);this._noise(0.1,0.15)},
+  // Dagon — Domain Expansion
+  dagonDomain(){[100,200,300,400,500].forEach((f,i)=>this._tone(f,0.3,'sine',0.2,i*0.08));this._noise(0.2,0.25);this._tone(50,0.4,'sine',0.3,0.4)},
 };
 
 // ============================================================
@@ -473,6 +479,14 @@ const CHARS=[
     baseAtkInterval:28,relicChargeRate:0.8,
     specialName:'MALEVOLENT SHRINE',
   },
+  {
+    id:'dagon',name:'Dagon',color:'#1a6b6b',
+    desc:'Aquatic cursed spirit. Fish shikigami swarm + tidal waves. Domain rains guaranteed-hit fish across the arena.',
+    playstyle:'Swarm & Domain',
+    stats:{hp:1100,atk:29,speed:3.6,range:140,def:9,crit:14},
+    baseAtkInterval:40,relicChargeRate:0.8,
+    specialName:'HORIZON OF THE CAPTIVATING SKANDHA',
+  },
 ];
 
 // ============================================================
@@ -591,6 +605,10 @@ const COMBO_EFFECTS={
   'sukuna_electric':'Faster slash rate + shorter Fuga cooldown',
   'sukuna_toxic':'Dismantles leave poison zones that linger',
   'sukuna_cryo':'Slashes freeze enemies briefly on hit',
+  'dagon_fire':'Boiling Swarm — fish leave steam burn DoT, domain fish create boiling puddles',
+  'dagon_electric':'Electric School — fish chain lightning arcs between them dealing AoE',
+  'dagon_toxic':'Abyssal Corruption — fish apply Pressure stacks. 4: -20% atk spd. 8: burst + reset',
+  'dagon_cryo':'Frozen Depths — Tidal Surge freezes ground, domain slows enemy 30%',
 };
 
 // ============================================================
@@ -605,7 +623,7 @@ const TIER_MAP={
   dabura:9, // S- (boss)
   higuruma:8, toji:8, kashimo:8, yuki:8, megumi:8, // A+
   sukuna:9, // S- (non-boss playable)
-  nanami:7, choso:7, naoya:7, mahito:7, jogo:7, // A
+  nanami:7, choso:7, naoya:7, mahito:7, jogo:7, dagon:7, // A
   sandy:3, // B- (cyberware implant, not a full fighter)
   mechamaru:6, // A-
   yuji:5, todo:5, // B+
@@ -1991,6 +2009,14 @@ function createFighter(charIdx,elemIdx,side){
     sukunaWorldSlashReady:false, // ONE World Cutting Slash available (Heian only)
     sukunaWorldSlashUsed:false, // already used the World Cutting Slash
     sukunaSlashProjectiles:[], // auto-cleave slashes [{x,y,timer,angle}]
+    // Dagon state — Aquatic Cursed Spirit
+    dagonTidalCD:0, // tidal surge cooldown
+    dagonDomainActive:false, // Horizon of the Captivating Skandha active
+    dagonDomainTimer:0, // domain duration
+    dagonFishActive:[], // active fish projectile tracking
+    dagonShellForm:true, // starts true, flips to false below 40% HP
+    dagonPressureStacks:0, // toxic element pressure tracker on enemy
+    dagonIcePatches:[], // cryo patches on ground
   };
 }
 
@@ -2271,6 +2297,8 @@ function dealDamage(attacker,defender,baseDmg,canCrit){
 
   attacker._lastHitCrit=isCrit; // track for Nanami element abilities
   if(attacker.elementActive&&attacker.elem.id!=='none')applyElementEffect(attacker,defender);
+  // Dagon Shell Form: 15% damage reduction (lost below 40% HP)
+  if(defender.char.id==='dagon'&&defender.dagonShellForm)dmg*=0.85;
   // Choso Flowing Red Scale: 20% damage reduction (disabled by Toji Inverted Spear)
   if(defender.chosoRedScaleActive&&!defender.tojiDmgTakenDebuff)dmg*=0.8;
   // Mechamaru Ultimate Shield: 50% damage reduction
@@ -4101,6 +4129,7 @@ function performWeaponAttack(f,enemy){
     case 'nobara':attackNobara(f,enemy,chaos);break;
     case 'jogo':attackJogo(f,enemy,chaos);break;
     case 'sukuna':attackSukuna(f,enemy,chaos);break;
+    case 'dagon':attackDagon(f,enemy,chaos);break;
   }
 }
 
@@ -6863,6 +6892,242 @@ function updatePrimeSukuna(f,enemy,dt){
   }
 }
 
+// ============================================================
+// DAGON — Aquatic Cursed Spirit (Swarm & Domain)
+// ============================================================
+function attackDagon(f,enemy,chaos){
+  f.weaponExtend=1;f.weaponFlash=8;
+  const d=dist(f,enemy);
+  const effectiveRange=f.range+enemy.radius+chaos*5;
+
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  const isPrime=f.primeMode;
+
+  // Death Swarm — fire 3-5 fish shikigami (6-8 in Prime)
+  const fishCount=isPrime?Math.floor(rand(6,9)):Math.floor(rand(3,6));
+  const baseAngle=angle(f,enemy);
+  const spreadAngle=0.6; // total spread in radians
+
+  SFX.dagonSwarm();
+
+  for(let i=0;i<fishCount;i++){
+    const fishAngle=baseAngle+(i/(fishCount-1||1)-0.5)*spreadAngle;
+    const fishSpd=6+Math.random()*2;
+    const fishDmg=f.atk*0.5*(isFireElem?1.2:1.0);
+    projectiles.push({
+      x:f.x+Math.cos(fishAngle)*f.radius,
+      y:f.y+Math.sin(fishAngle)*f.radius,
+      vx:Math.cos(fishAngle)*fishSpd,vy:Math.sin(fishAngle)*fishSpd,
+      owner:f,target:enemy,color:'#1a8888',life:45,radius:5,dmg:fishDmg,
+      homing:true,homingStrength:0.02,isDagonFish:true,
+    });
+    // Fire element: burn DoT
+    if(isFireElem){
+      f.dagonFishActive.push({target:enemy,burnTimer:60,dmgPerTick:f.atk*0.08});
+    }
+  }
+
+  // Toxic element: apply Pressure stacks
+  if(isToxicElem&&d<effectiveRange){
+    f.dagonPressureStacks++;
+    if(f.dagonPressureStacks>=8){
+      // Burst damage + reset
+      const burstDmg=f.atk*2.0;
+      dealDamage(f,enemy,burstDmg);
+      spawnBurst(enemy.x,enemy.y,'#aa44cc',20,8);
+      spawnDmgNum(enemy.x,enemy.y-20,'PRESSURE BURST!','#aa44cc',true);
+      f.dagonPressureStacks=0;
+    } else if(f.dagonPressureStacks>=4){
+      spawnDmgNum(enemy.x,enemy.y-15,'PRESSURE:'+f.dagonPressureStacks,'#aa44cc',false);
+    }
+  }
+
+  // Electric element: lightning arcs between active fish projectiles
+  if(isElecElem){
+    const activeFish=projectiles.filter(p=>p.isDagonFish&&p.owner===f);
+    if(activeFish.length>=2){
+      for(let i=0;i<activeFish.length-1;i++){
+        const a2=activeFish[i],b=activeFish[i+1];
+        const arcDist=Math.hypot(a2.x-b.x,a2.y-b.y);
+        if(arcDist<120){
+          // Lightning arc AoE damage to nearby enemies
+          fighters.forEach(t=>{
+            if(t.side===f.side||t.dead)return;
+            const mx=(a2.x+b.x)/2,my=(a2.y+b.y)/2;
+            if(Math.hypot(t.x-mx,t.y-my)<50){
+              dealDamage(f,t,f.atk*0.2,false);
+              spawnParticle(t.x,t.y,'#ffcc00',rand(-2,2),rand(-2,2),8,2);
+            }
+          });
+        }
+      }
+    }
+  }
+
+  // Normal melee hit if in range
+  if(d<effectiveRange){
+    dealDamage(f,enemy,f.atk*0.4);
+    spawnBurst(enemy.x,enemy.y,'#1a6b6b',6,3);
+  }
+}
+
+function relicDagon(f,enemy){
+  // HORIZON OF THE CAPTIVATING SKANDHA — Domain Expansion
+  SFX.dagonDomain();
+  SFX.megaExplosion();
+
+  f.dagonDomainActive=true;
+  f.dagonDomainTimer=300; // 5 seconds
+  f.specialTimer=300;
+
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+
+  // Initial burst of fish projectiles raining from top
+  for(let i=0;i<12;i++){
+    const fx=ARENA.x+Math.random()*ARENA.w;
+    const fy=ARENA.y+Math.random()*30;
+    const fishDmg=f.atk*0.4;
+    projectiles.push({
+      x:fx,y:fy,
+      vx:rand(-1,1),vy:3+Math.random()*3,
+      owner:f,target:enemy,color:'#1affff',life:80,radius:5,dmg:fishDmg,
+      homing:true,homingStrength:0.015,isDagonFish:true,isDagonDomainFish:true,
+    });
+  }
+
+  // Cryo: freeze arena, slow enemy
+  if(isCryoElem){
+    fighters.forEach(t=>{
+      if(t.side===f.side||t.dead)return;
+      t.slowTimer=Math.max(t.slowTimer||0,150);
+      spawnDmgNum(t.x,t.y-15,'FROZEN DEPTHS','#77ddff',true);
+    });
+  }
+
+  spawnBurst(f.x,f.y,'#1a6b6b',40,15);
+  spawnBurst(f.x,f.y,'#1affff',30,10);
+  triggerScreenFlash('#1a6b6b',15);
+  shakeTimer=20;shakeAmt=12;
+  spawnDmgNum(f.x,f.y-f.radius-30,'CAPTIVATING SKANDHA','#1affff',true);
+  addLog((f.side===0?'P1':'P2')+' HORIZON OF THE CAPTIVATING SKANDHA!');
+}
+
+function updateRelicDagon(f,enemy,dt){
+  if(!f.dagonDomainActive)return;
+  f.dagonDomainTimer-=dt;
+
+  const isFireElem=f.elementActive&&f.elem.id==='fire';
+  const isElecElem=f.elementActive&&f.elem.id==='electric';
+  const isToxicElem=f.elementActive&&f.elem.id==='toxic';
+  const isCryoElem=f.elementActive&&f.elem.id==='cryo';
+  const isPrime=f.primeMode;
+
+  // Domain visual: water/fish particles
+  if(battleTime%3<1){
+    const a=Math.random()*Math.PI*2;const r=Math.random()*250;
+    spawnParticle(f.x+Math.cos(a)*r,f.y+Math.sin(a)*r,pick(['#1a6b6b','#1a8888','#1affff']),rand(-1,1),rand(-1,1),20,2);
+  }
+
+  // Rain fish from top every ~30 frames (faster in prime)
+  const fishInterval=isPrime?15:30;
+  if(f.dagonDomainTimer%fishInterval===0&&f.dagonDomainTimer>0){
+    const numFish=isPrime?4:2;
+    for(let i=0;i<numFish;i++){
+      const fx=ARENA.x+Math.random()*ARENA.w;
+      const fy=ARENA.y+Math.random()*20;
+      const fishDmg=f.atk*(isPrime?0.35:0.3);
+      const fishSpd=isPrime?5:3.5;
+      projectiles.push({
+        x:fx,y:fy,
+        vx:rand(-0.5,0.5),vy:fishSpd+Math.random()*2,
+        owner:f,target:enemy,color:'#1affff',life:70,radius:5,dmg:fishDmg,
+        homing:true,homingStrength:0.02,isDagonFish:true,isDagonDomainFish:true,
+      });
+    }
+
+    // Fire element: boiling puddles on arena floor
+    if(isFireElem&&Math.random()<0.4){
+      const px=ARENA.x+Math.random()*ARENA.w;
+      const py=ARENA.y+ARENA.h*0.6+Math.random()*ARENA.h*0.3;
+      // Use fish active array to track puddles
+      f.dagonFishActive.push({isPuddle:true,x:px,y:py,timer:180,radius:30,dmgPerTick:f.atk*0.15});
+    }
+
+    // Prime: Drowning DoT
+    if(isPrime){
+      fighters.forEach(t=>{
+        if(t.side===f.side||t.dead)return;
+        if(!t._dagonDrowning){t._dagonDrowning=0;t._dagonDrownDmg=0;}
+        t._dagonDrowning=3; // 3 turns of drowning
+        t._dagonDrownDmg=10;
+      });
+    }
+  }
+
+  // Guaranteed-hit domain damage every 60 frames
+  if(f.dagonDomainTimer%60===0&&f.dagonDomainTimer>0){
+    fighters.forEach(t=>{
+      if(t.side===f.side||t.dead)return;
+      const domDmg=f.atk*0.5;
+      const savedDef=t.def;
+      t.def=0;
+      dealDamage(f,t,domDmg);
+      t.def=savedDef;
+      spawnDmgNum(t.x,t.y-15,'DOMAIN HIT','#1affff',false);
+      spawnBurst(t.x,t.y,'#1a8888',8,4);
+    });
+    SFX.dagonSwarm();
+    shakeTimer=3;shakeAmt=2;
+  }
+
+  // Cryo domain: continuous slow
+  if(isCryoElem&&f.dagonDomainTimer%60===0){
+    fighters.forEach(t=>{
+      if(t.side===f.side||t.dead)return;
+      t.slowTimer=Math.max(t.slowTimer||0,90);
+    });
+  }
+
+  if(f.dagonDomainTimer<=0){
+    f.dagonDomainActive=false;
+    addLog((f.side===0?'P1':'P2')+' domain faded');
+  }
+}
+
+function updatePrimeDagon(f,enemy,dt){
+  // Prime: Abyssal Tide — enhanced swarm + tidal
+  const chaos=getChaosLevel(f);
+
+  // Tidal Surge fires 2x more often in prime (handled via CD reduction)
+  if(f.dagonTidalCD>0)f.dagonTidalCD-=dt*0.5; // extra reduction = 2x rate
+
+  // Drowning DoT tick
+  fighters.forEach(t=>{
+    if(t.side===f.side||t.dead)return;
+    if(t._dagonDrowning>0&&battleTime%60===0){
+      dealDamage(f,t,t._dagonDrownDmg||10,false);
+      spawnDmgNum(t.x,t.y-10,'DROWNING','#1a8888',false);
+      spawnParticle(t.x,t.y,'#1affff',0,-1,12,2);
+      t._dagonDrowning--;
+    }
+  });
+
+  // Element effects doubled: extra pressure stacks in toxic
+  if(f.elementActive&&f.elem.id==='toxic'&&battleTime%90===0){
+    f.dagonPressureStacks=Math.min(8,f.dagonPressureStacks+1);
+  }
+
+  // Visual: abyssal particles
+  if(battleTime%4<1){
+    const a=Math.random()*Math.PI*2;
+    spawnParticle(f.x+Math.cos(a)*(f.radius+5),f.y+Math.sin(a)*(f.radius+5),
+      pick(['#1a6b6b','#1affff','#0a4a4a']),Math.cos(a)*0.5,-1,15,2);
+  }
+}
+
 function relicYuki(f,enemy){
   // STAR RAGE — BLACK HOLE
   SFX.relicActivate();
@@ -8833,6 +9098,7 @@ function useSpecial(f,enemy){
     case 'nobara':relicNobara(f,enemy);break;
     case 'jogo':relicJogo(f,enemy);break;
     case 'sukuna':relicSukuna(f,enemy);break;
+    case 'dagon':relicDagon(f,enemy);break;
   }
 }
 
@@ -11140,6 +11406,7 @@ function updatePrimeAbility(f,enemy,dt){
     case 'nobara': updatePrimeNobara(f,enemy,dt);break;
     case 'jogo': updatePrimeJogo(f,enemy,dt);break;
     case 'sukuna': updatePrimeSukuna(f,enemy,dt);break;
+    case 'dagon': updatePrimeDagon(f,enemy,dt);break;
   }
 }
 
@@ -12210,6 +12477,7 @@ function updateBattle(dt){
         case 'nobara':updateRelicNobara(f,enemy,dt);break;
         case 'jogo':updateRelicJogo(f,enemy,dt);break;
         case 'sukuna':updateRelicSukuna(f,enemy,dt);break;
+        case 'dagon':updateRelicDagon(f,enemy,dt);break;
       }
     }
 
@@ -12283,6 +12551,80 @@ function updateBattle(dt){
         }
         if(battleTime%8<1){
           spawnParticle(lp.x+rand(-lp.radius/2,lp.radius/2),lp.y+rand(-5,5),'#ff6600',0,-1,15,2);
+        }
+      }
+    }
+    // Dagon passive updates — tidal surge, shell form, ice patches, fire puddles
+    if(f.char.id==='dagon'){
+      if(f.dagonTidalCD>0)f.dagonTidalCD-=dt;
+      // Shell Form check
+      if(f.dagonShellForm&&f.hp<f.maxHp*0.4){
+        f.dagonShellForm=false;
+        f.atk*=1.25;
+        f.speed*=1.15;
+        spawnDmgNum(f.x,f.y-f.radius-20,'TRUE FORM!','#1affff',true);
+        spawnBurst(f.x,f.y,'#1a6b6b',25,10);
+      }
+      // Tidal Surge passive
+      if(f.dagonTidalCD<=0){
+        f.dagonTidalCD=180; // 3 seconds
+        // Find enemy
+        const tidalEnemy=fighters.find(t=>t.side!==f.side&&t.alive);
+        if(tidalEnemy){
+          const waveDmg=f.atk*0.6;
+          dealDamage(f,tidalEnemy,waveDmg);
+          spawnBurst(tidalEnemy.x,tidalEnemy.y,'#1a8888',12,5);
+          spawnDmgNum(tidalEnemy.x,tidalEnemy.y-15,'TIDAL SURGE','#1affff',false);
+          SFX.dagonTidal();
+          // Cryo element: leave ice patch
+          if(f.elementActive&&f.elem.id==='cryo'){
+            f.dagonIcePatches.push({x:tidalEnemy.x,y:tidalEnemy.y,timer:240,radius:35});
+          }
+        }
+      }
+      // Ice patches
+      for(let i=f.dagonIcePatches.length-1;i>=0;i--){
+        const ip=f.dagonIcePatches[i];
+        ip.timer-=dt;
+        if(ip.timer<=0){f.dagonIcePatches.splice(i,1);continue;}
+        if(battleTime%30===0){
+          fighters.forEach(t=>{
+            if(t.side===f.side||t.dead)return;
+            if(Math.hypot(t.x-ip.x,t.y-ip.y)<ip.radius){
+              t.freezeTimer=Math.max(t.freezeTimer||0,30);
+              spawnParticle(t.x,t.y,'#77ddff',0,-1,10,2);
+            }
+          });
+        }
+        if(battleTime%8<1){
+          spawnParticle(ip.x+rand(-ip.radius/2,ip.radius/2),ip.y+rand(-5,5),'#77ddff',0,-0.5,15,2);
+        }
+      }
+      // Fire puddles (boiling puddles from domain fire element)
+      for(let i=f.dagonFishActive.length-1;i>=0;i--){
+        const fa=f.dagonFishActive[i];
+        if(fa.isPuddle){
+          fa.timer-=dt;
+          if(fa.timer<=0){f.dagonFishActive.splice(i,1);continue;}
+          if(battleTime%30===0){
+            fighters.forEach(t=>{
+              if(t.side===f.side||t.dead)return;
+              if(Math.hypot(t.x-fa.x,t.y-fa.y)<fa.radius){
+                applyDotDamage(t,fa.dmgPerTick,f);
+                spawnParticle(t.x,t.y,'#ff6600',0,-1,10,2);
+              }
+            });
+          }
+          if(battleTime%8<1){
+            spawnParticle(fa.x+rand(-fa.radius/2,fa.radius/2),fa.y+rand(-3,3),'#ff880088',0,-1,12,2);
+          }
+        } else if(fa.burnTimer){
+          // Burn DoT from fire fish
+          fa.burnTimer-=dt;
+          if(fa.burnTimer<=0){f.dagonFishActive.splice(i,1);continue;}
+          if(battleTime%20===0&&fa.target&&fa.target.alive){
+            applyDotDamage(fa.target,fa.dmgPerTick,f);
+          }
         }
       }
     }
@@ -13319,7 +13661,7 @@ function updateBattle(dt){
     // Weapon attack — PLS fires on interval only, others need facing
     // Throw char keeps normal attack cycle during Optical Camo (no machine gun)
     // Berserk + Smasher keep attacking during relic
-    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='yuji'||f.char.id==='mahoraga'||f.char.id==='dabura'||f.char.id==='todo'||f.char.id==='yuki'||f.char.id==='megumi'||f.char.id==='mahito'||f.char.id==='nobara'||f.char.id==='jogo'||f.char.id==='sukuna'){
+    if(!f.specialActive||f.char.id==='gorilla'||f.char.id==='throw'||f.char.id==='berserk'||f.char.id==='smasher'||f.char.id==='gojo'||f.char.id==='higuruma'||f.char.id==='naoya'||f.char.id==='yuta'||f.char.id==='yuji'||f.char.id==='mahoraga'||f.char.id==='dabura'||f.char.id==='todo'||f.char.id==='yuki'||f.char.id==='megumi'||f.char.id==='mahito'||f.char.id==='nobara'||f.char.id==='jogo'||f.char.id==='sukuna'||f.char.id==='dagon'){
       // Smasher: skip attacks while airborne; Gojo: skip during domain or reviving
       if(f.char.id==='smasher'&&f.smasherAirborne){/* airborne */}
       else if(f.char.id==='gojo'&&(f.gojoDomainActive||f.gojoReviving)){/* domain/revive */}
@@ -17661,6 +18003,43 @@ function drawBall(f){
     X.restore();
   }
 
+  // Dagon face — aquatic cursed spirit
+  if(f.char.id==='dagon'){
+    X.save();
+    const hx=f.x,hy=f.y,r=f.radius;
+    const shellMode=f.dagonShellForm;
+    if(shellMode){
+      // Shell form — dark rough circle
+      X.fillStyle='#0a4a4a';
+      X.beginPath();X.arc(hx,hy,r*0.9,0,Math.PI*2);X.fill();
+      // Shell texture lines
+      X.strokeStyle='#063030';X.lineWidth=1;
+      for(let i=0;i<4;i++){const a=i*Math.PI/2+battleTime*0.001;X.beginPath();X.arc(hx,hy,r*(0.4+i*0.15),a,a+1);X.stroke();}
+    } else {
+      // True form — skin tone
+      X.fillStyle='#8ab4b4';
+      X.beginPath();X.arc(hx,hy,r*0.55,0,Math.PI*2);X.fill();
+    }
+    // Single eye
+    const eyeR=r*0.25;
+    X.fillStyle='#ffffff';X.beginPath();X.arc(hx,hy-r*0.1,eyeR,0,Math.PI*2);X.fill();
+    X.fillStyle='#000000';X.beginPath();X.arc(hx,hy-r*0.1,eyeR*0.5,0,Math.PI*2);X.fill();
+    // Eye highlight
+    X.fillStyle='#ffffff';X.beginPath();X.arc(hx-eyeR*0.2,hy-r*0.1-eyeR*0.2,eyeR*0.15,0,Math.PI*2);X.fill();
+    // Mouth
+    X.strokeStyle=shellMode?'#0a4a4a':'#1a6b6b';X.lineWidth=2;
+    X.beginPath();X.arc(hx,hy+r*0.3,r*0.3,0.2,Math.PI-0.2);X.stroke();
+    // True form glow
+    if(!shellMode){
+      X.globalAlpha=0.2+Math.sin(battleTime*0.08)*0.1;
+      const dg=X.createRadialGradient(hx,hy,r*0.3,hx,hy,r*0.7);
+      dg.addColorStop(0,'rgba(26,107,107,0.3)');dg.addColorStop(1,'rgba(26,255,255,0)');
+      X.fillStyle=dg;X.beginPath();X.arc(hx,hy,r*0.7,0,Math.PI*2);X.fill();
+      X.globalAlpha=1;
+    }
+    X.restore();
+  }
+
   // Todo cursed energy papers
   if(f.char.id==='todo'&&f.todoPapers){
     f.todoPapers.forEach(p=>{
@@ -18642,6 +19021,7 @@ function drawBall(f){
       const dis=f.sukunaDismantleActive?'DISMNTL ':'';
       X.fillText(dom+heian+dis+'SLASH',f.x,statY);
       break;}
+    case 'dagon':{const dom=f.dagonDomainActive?'DOMAIN ':'';const shell=f.dagonShellForm?'SHELL':'TRUE';X.fillText(dom+shell,f.x,statY);break;}
   }
 
   // Mahito charge soul marks on this fighter
@@ -18743,6 +19123,7 @@ function drawWeapon(f){
     case 'nobara':drawNobaraWeapon(r,ext,flash,f);break;
     case 'jogo':drawJogoWeapon(r,ext,flash,f);break;
     case 'sukuna':drawSukunaWeapon(r,ext,flash,f);break;
+    case 'dagon':drawDagonWeapon(r,ext,flash,f);break;
   }
   X.restore();
 }
@@ -19589,6 +19970,51 @@ function drawSukunaWeapon(r,ext,flash,f){
       X.stroke();
       X.globalAlpha=1;
     }
+    X.restore();
+  }
+}
+
+function drawDagonWeapon(r,ext,flash,f){
+  // Fish shikigami orbiting Dagon
+  const extend=ext*6;
+  const col=flash?'#ffffff':'#1a8888';
+  const numFish=3;
+  const t=battleTime*0.08;
+  X.save();
+  X.rotate(-f.weaponAngle); // counter-rotate to world space
+  for(let i=0;i<numFish;i++){
+    const a=t+i*Math.PI*2/numFish;
+    const fx=Math.cos(a)*(r+10+extend);
+    const fy=Math.sin(a)*(r*0.5);
+    // Fish body
+    X.fillStyle=col;
+    X.beginPath();
+    X.ellipse(fx,fy,6,3,a,0,Math.PI*2);
+    X.fill();
+    // Fish tail
+    X.beginPath();
+    X.moveTo(fx-Math.cos(a)*5,fy-Math.sin(a)*5);
+    X.lineTo(fx-Math.cos(a)*10+Math.sin(a)*3,fy-Math.sin(a)*10-Math.cos(a)*3);
+    X.lineTo(fx-Math.cos(a)*10-Math.sin(a)*3,fy-Math.sin(a)*10+Math.cos(a)*3);
+    X.closePath();X.fill();
+    // Eye
+    X.fillStyle='#ffffff';
+    X.beginPath();X.arc(fx+Math.cos(a)*3,fy+Math.sin(a)*3,1.5,0,Math.PI*2);X.fill();
+  }
+  X.restore();
+  // Flash glow
+  if(flash){
+    X.shadowColor='#1affff';X.shadowBlur=12;
+    X.beginPath();X.arc(r+8+extend,0,8,0,Math.PI*2);X.fillStyle='#1affff44';X.fill();
+    X.shadowBlur=0;
+  }
+  // Domain active: water aura
+  if(f&&f.dagonDomainActive){
+    X.save();X.rotate(-f.weaponAngle);
+    const pulse=Math.sin(battleTime*0.12)*5+8;
+    X.strokeStyle='#1affff';X.lineWidth=2.5;X.globalAlpha=0.4;
+    X.beginPath();X.arc(0,0,f.radius+pulse,0,Math.PI*2);X.stroke();
+    X.globalAlpha=1;
     X.restore();
   }
 }
@@ -21159,6 +21585,17 @@ function drawMiniWeapon(cx,cy,charId,size){
       X.beginPath();X.moveTo(-4,-6);X.lineTo(12,0);X.lineTo(-4,6);X.stroke();
       X.strokeStyle='#ff440066';X.lineWidth=1.5;
       X.beginPath();X.moveTo(0,-8);X.lineTo(14,-2);X.stroke();
+      break;
+    case 'dagon':
+      // Fish shikigami
+      X.fillStyle='#1a8888';
+      X.beginPath();X.ellipse(4,0,7,3,0,0,Math.PI*2);X.fill();
+      X.beginPath();X.moveTo(-3,0);X.lineTo(-8,4);X.lineTo(-8,-4);X.closePath();X.fill();
+      X.fillStyle='#fff';X.beginPath();X.arc(8,0,1.5,0,Math.PI*2);X.fill();
+      // Second fish behind
+      X.globalAlpha=0.5;X.fillStyle='#1a6b6b';
+      X.beginPath();X.ellipse(0,5,5,2.5,0.3,0,Math.PI*2);X.fill();
+      X.globalAlpha=1;
       break;
   }
   X.restore();
@@ -23208,6 +23645,29 @@ function drawCharIntroAnim(charId,cx,cy,t,fs,color){
       }
       if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(10*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#8b0000';X.fillText('MALEVOLENT SHRINE',cx,cy+50*s);}
       break;}
+    case 'dagon':{
+      // Fish swarm raining from top + tidal wave
+      const numFish=Math.min(10,Math.floor(t/4));
+      for(let i=0;i<numFish;i++){
+        const ft=t-i*4;const fa=0.5+i*1.2;
+        const fx=cx+Math.sin(fa)*30*s;const fy=Math.min(cy+20*s,ft*2*s-20*s);
+        X.globalAlpha=Math.min(0.8,ft/5);X.fillStyle='#1a8888';
+        X.beginPath();X.ellipse(fx,fy,5*s,2.5*s,fa*0.3,0,Math.PI*2);X.fill();
+        // Fish tail
+        X.beginPath();X.moveTo(fx-3*s,fy);X.lineTo(fx-7*s,fy+3*s);X.lineTo(fx-7*s,fy-3*s);X.closePath();X.fill();
+      }
+      // Tidal wave at bottom
+      if(t>20){const wt=t-20;const ww=Math.min(60*s,wt*2*s);
+        X.globalAlpha=0.5;X.strokeStyle='#1affff';X.lineWidth=3*s;
+        X.beginPath();
+        for(let wx=-ww;wx<=ww;wx+=4*s){
+          const wy=cy+15*s+Math.sin(wx*0.1+wt*0.2)*5*s;
+          if(wx===-ww)X.moveTo(cx+wx,wy);else X.lineTo(cx+wx,wy);
+        }
+        X.stroke();
+      }
+      if(t>15&&t<70){X.globalAlpha=0.7;X.font='bold '+Math.round(9*s)+'px Consolas,monospace';X.textAlign='center';X.fillStyle='#1a6b6b';X.fillText('CAPTIVATING SKANDHA',cx,cy+50*s);}
+      break;}
     case 'yuki':{
       // Star Rage — expanding mass ring
       const massR=15*s+Math.sin(t*0.12)*8*s;X.globalAlpha=0.4;X.strokeStyle='#ff6688';X.lineWidth=3*s;
@@ -24366,6 +24826,27 @@ function drawBattle(){
       X.beginPath();X.arc(p.x,p.y,p.radius+5+Math.sin(battleTime*0.3)*2,0,Math.PI*2);X.stroke();
       X.globalAlpha=1;X.restore();
     }
+    // Dagon fish — fish-shaped projectile
+    if(p.isDagonFish){
+      X.save();
+      const fa=Math.atan2(p.vy,p.vx);
+      X.translate(p.x,p.y);X.rotate(fa);
+      // Fish body
+      X.fillStyle=p.isDagonDomainFish?'#1affff':'#1a8888';
+      X.beginPath();X.ellipse(0,0,7,3.5,0,0,Math.PI*2);X.fill();
+      // Fish tail
+      X.beginPath();X.moveTo(-5,0);X.lineTo(-10,4);X.lineTo(-10,-4);X.closePath();X.fill();
+      // Eye
+      X.fillStyle='#fff';X.beginPath();X.arc(3,0,1.5,0,Math.PI*2);X.fill();
+      X.fillStyle='#000';X.beginPath();X.arc(3,0,0.8,0,Math.PI*2);X.fill();
+      // Domain fish glow
+      if(p.isDagonDomainFish){
+        X.shadowColor='#1affff';X.shadowBlur=6;
+        X.beginPath();X.ellipse(0,0,8,4.5,0,0,Math.PI*2);X.strokeStyle='#1affff44';X.lineWidth=1.5;X.stroke();
+        X.shadowBlur=0;
+      }
+      X.restore();
+    }
     // Ryu cannon — fiery orange glow ring + smoke trail
     if(p.isRyuCannon){
       X.save();
@@ -24461,6 +24942,33 @@ function drawBattle(){
       for(let gy=-120;gy<=120;gy+=30){
         X.beginPath();X.moveTo(f.x-130,f.y+gy);X.lineTo(f.x+130,f.y+gy);X.stroke();
       }
+      X.restore();
+    }
+    // Dagon — Horizon of the Captivating Skandha domain overlay (underwater/ocean)
+    if(f.char.id==='dagon'&&f.dagonDomainActive){
+      X.save();
+      X.globalAlpha=0.12+Math.sin(battleTime*0.04)*0.04;
+      X.fillStyle='#0a2a3a';
+      X.fillRect(ARENA.x,ARENA.y,ARENA.w,ARENA.h);
+      // Underwater caustic light patterns
+      X.strokeStyle='rgba(26,255,255,0.15)';X.lineWidth=1.5;
+      for(let i=0;i<6;i++){
+        const cx2=ARENA.x+ARENA.w*0.2+i*ARENA.w*0.12;
+        const cy2=ARENA.y+ARENA.h*0.3+Math.sin(battleTime*0.03+i*1.5)*30;
+        X.beginPath();
+        X.moveTo(cx2-30,cy2);
+        X.quadraticCurveTo(cx2,cy2-20+Math.sin(battleTime*0.05+i)*10,cx2+30,cy2);
+        X.stroke();
+      }
+      // Bubble particles
+      for(let i=0;i<4;i++){
+        const bx=ARENA.x+((battleTime*0.5+i*137)%ARENA.w);
+        const by=ARENA.y+ARENA.h-((battleTime*0.8+i*97)%ARENA.h);
+        X.globalAlpha=0.2;
+        X.beginPath();X.arc(bx,by,3+Math.sin(battleTime*0.1+i)*1.5,0,Math.PI*2);
+        X.strokeStyle='#1affff';X.lineWidth=1;X.stroke();
+      }
+      X.globalAlpha=1;
       X.restore();
     }
   });
@@ -25264,6 +25772,7 @@ function drawFighterInfo(f,px,py,maxW,align){
     case 'nobara':{const doll=f.nobaraVoodooDoll?'DOLL:'+f.nobaraVoodooDoll.hp+'/'+f.nobaraVoodooDoll.maxHp+' ':'';const self=f.nobaraSelfDmgNext?'SELF ':'';statLine=doll+self+'NAIL';break;}
     case 'jogo':{const dom=f.jogoDomainActive?'DOMAIN ':'';const chg=f.jogoCharge.toFixed(1);const lvl=f.jogoCharge>=3?'METEOR':f.jogoCharge>=2?'PILLAR':f.jogoCharge>=1?'FIST':'---';statLine=dom+'CHG:'+chg+' '+lvl;break;}
     case 'sukuna':{const dom=f.sukunaDomainActive?'SHRINE ':'';const heian=f.sukunaHeian?'HEIAN ':'';const dis=f.sukunaDismantleActive?'DISMNTL ':'';const wcs=f.sukunaWorldSlashReady?'WCS ':'';statLine=dom+heian+dis+wcs+'SLASH';break;}
+    case 'dagon':{const dom=f.dagonDomainActive?'DOMAIN ':'';const shell=f.dagonShellForm?'SHELL':'TRUE';statLine=dom+shell;break;}
   }
   X.fillText(statLine,px+(isL?5:maxW-5),py+42);
 
