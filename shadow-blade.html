@@ -103,7 +103,13 @@ const keys = {};
 let mouseX = W/2, mouseY = H/2, mouseDown = false, mouseClicked = false, rightClicked = false;
 let touchJoy = null, touchBtns = [];
 
-addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; keys[e.code] = true; e.preventDefault(); });
+addEventListener('keydown', e => {
+  // Don't intercept keys when typing in the name input overlay
+  if (typeof mobileNameInput !== 'undefined' && document.activeElement === mobileNameInput) return;
+  // Don't intercept keys during character name entry (let the dedicated handler process them)
+  if (typeof state !== 'undefined' && state === STATES.CHAR_CREATE && charCreateStep === 0) return;
+  keys[e.key.toLowerCase()] = true; keys[e.code] = true; e.preventDefault();
+});
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.code] = false; });
 C.addEventListener('mousemove', e => { const p = gmp(e); mouseX = p.x; mouseY = p.y; });
 C.addEventListener('mousedown', e => { const p = gmp(e); mouseX = p.x; mouseY = p.y; if (e.button === 0) { mouseDown = true; mouseClicked = true; } if (e.button === 2) rightClicked = true; });
@@ -124,7 +130,27 @@ if (isMobile) {
         joyKnob = { x: p.x, y: p.y };
       } else {
         mouseX = p.x; mouseY = p.y;
-        mouseClicked = true; mouseDown = true;
+        // Check mobile action buttons (DOD, CRC, ACT, WPN)
+        const atkBtnX = W - 55, atkBtnY = H - 140;
+        const dodBtnX = W - 55 - 60, dodBtnY = H - 140 + 20;
+        const crcBtnX = W - 55, crcBtnY = H - 140 + 65;
+        const actBtnX = W - 55 - 60, actBtnY = H - 140 - 40;
+        const wpnBtnX = W - 55 + 10, wpnBtnY = H - 140 + 110;
+        if (Math.hypot(p.x - dodBtnX, p.y - dodBtnY) < 28) {
+          // Dodge button
+          keys[' '] = true;
+        } else if (Math.hypot(p.x - crcBtnX, p.y - crcBtnY) < 24.5) {
+          // Crouch toggle button
+          keys['c'] = true;
+        } else if (Math.hypot(p.x - actBtnX, p.y - actBtnY) < 28) {
+          // Interact button
+          keys['e'] = true;
+        } else if (Math.hypot(p.x - wpnBtnX, p.y - wpnBtnY) < 21) {
+          // Weapon switch button
+          keys['tab'] = true;
+        } else {
+          mouseClicked = true; mouseDown = true;
+        }
         touchBtns.push({ id: t.identifier, x: p.x, y: p.y });
       }
     }
@@ -145,6 +171,7 @@ if (isMobile) {
     }
   }, { passive: false });
   C.addEventListener('touchend', e => {
+    e.preventDefault();
     for (const t of e.changedTouches) {
       if (joyBase && t.identifier === joyBase.id) {
         joyBase = null; joyKnob = null; joyDist = 0;
@@ -500,6 +527,14 @@ function gameLoop(timestamp) {
   lastTime = timestamp;
   frameCount++;
 
+  // Hide name input overlay when not in character name entry
+  if (state !== STATES.CHAR_CREATE || charCreateStep !== 0) {
+    if (mobileNameInput.style.display !== 'none') {
+      mobileNameInput.style.display = 'none';
+      mobileNameInput.blur();
+    }
+  }
+
   X.save();
   X.scale(sc, sc);
 
@@ -636,16 +671,19 @@ mobileNameInput.maxLength = 16;
 mobileNameInput.autocomplete = 'off';
 mobileNameInput.autocapitalize = 'off';
 mobileNameInput.placeholder = 'Enter your name...';
-mobileNameInput.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:240px;padding:12px 16px;font-size:16px;background:#1a1a3e;color:#e0e0e0;border:2px solid #6644cc;border-radius:8px;outline:none;text-align:center;z-index:100;display:none;';
+mobileNameInput.style.cssText = 'position:fixed;top:30%;left:50%;transform:translate(-50%,-50%);width:240px;padding:12px 16px;font-size:16px;background:#1a1a3e;color:#e0e0e0;border:2px solid #6644cc;border-radius:8px;outline:none;text-align:center;z-index:100;display:none;';
 document.body.appendChild(mobileNameInput);
 mobileNameInput.addEventListener('input', function() {
   if (state !== STATES.CHAR_CREATE || charCreateStep !== 0) return;
   inputText = mobileNameInput.value.replace(/[^a-zA-Z0-9 _-]/g, '').slice(0, 16);
 });
 mobileNameInput.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter' && inputText.length >= 1) {
-    charName = inputText; charCreateStep = 1; SFX.menuSelect();
-    mobileNameInput.blur();
+  if (e.key === 'Enter') {
+    inputText = mobileNameInput.value.replace(/[^a-zA-Z0-9 _-]/g, '').slice(0, 16);
+    if (inputText.length >= 1) {
+      charName = inputText; charCreateStep = 1; SFX.menuSelect();
+      mobileNameInput.blur();
+    }
     e.preventDefault();
   }
 });
@@ -653,13 +691,15 @@ mobileNameInput.addEventListener('keydown', function(e) {
 function updateCharCreate() {
   nameCursorBlink++;
   if (charCreateStep === 0) {
-    // Show mobile input during name entry
-    if (isMobile && mobileNameInput.style.display === 'none') {
+    // Show the text input overlay during name entry (both mobile and desktop)
+    if (mobileNameInput.style.display === 'none') {
       mobileNameInput.style.display = 'block';
       mobileNameInput.value = inputText;
       setTimeout(() => mobileNameInput.focus(), 100);
     }
-    if (mobileNameInput.value !== inputText) mobileNameInput.value = inputText;
+    if (mobileNameInput.value !== inputText && document.activeElement !== mobileNameInput) mobileNameInput.value = inputText;
+    // Sync from input to game state
+    if (document.activeElement === mobileNameInput) inputText = mobileNameInput.value.replace(/[^a-zA-Z0-9 _-]/g, '').slice(0, 16);
   } else {
     // Hide mobile input when not on name step
     if (mobileNameInput.style.display !== 'none') {
@@ -688,14 +728,20 @@ function drawCharCreate() {
     // Name input
     drawTextBold('What is your name, Shadow?', W/2, 120, 16, '#aaa');
 
-    // Input box (tap to focus on mobile)
+    // Input hint text (the actual input is the HTML overlay)
     const bx = W/2 - 120, by = 150, bw = 240, bh = 40;
-    const inputHover = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
-    X.fillStyle = inputHover ? '#222266' : '#1a1a3e'; X.strokeStyle = '#6644cc'; X.lineWidth = 2;
-    X.beginPath(); X.roundRect(bx, by, bw, bh, 8); X.fill(); X.stroke();
-    if (inputHover && clicked) { mobileNameInput.value = inputText; mobileNameInput.style.display = 'block'; mobileNameInput.focus(); }
-    const cursor = nameCursorBlink % 60 < 30 ? '|' : '';
-    drawText(inputText.length > 0 ? inputText + cursor : (isMobile ? 'Tap here to type' + cursor : 'Type your name' + cursor), W/2, by + bh/2, 16, inputText.length > 0 ? '#e0e0e0' : '#666');
+    if (mobileNameInput.style.display === 'none') {
+      // Show canvas-drawn input box as fallback
+      const inputHover = mouseX >= bx && mouseX <= bx+bw && mouseY >= by && mouseY <= by+bh;
+      X.fillStyle = inputHover ? '#222266' : '#1a1a3e'; X.strokeStyle = '#6644cc'; X.lineWidth = 2;
+      X.beginPath(); X.roundRect(bx, by, bw, bh, 8); X.fill(); X.stroke();
+      if (inputHover && mouseClicked) { mobileNameInput.value = inputText; mobileNameInput.style.display = 'block'; mobileNameInput.focus(); }
+      const cursor = nameCursorBlink % 60 < 30 ? '|' : '';
+      drawText(inputText.length > 0 ? inputText + cursor : 'Click here to type', W/2, by + bh/2, 16, inputText.length > 0 ? '#e0e0e0' : '#666');
+    } else {
+      // Real input is showing -- draw a subtle label above it
+      drawText('Type your name in the box above', W/2, by + bh + 20, 12, '#555');
+    }
 
     if (inputText.length >= 1) {
       if (drawBtn(W/2 - 60, 210, 120, 36, 'Continue', false, '#2a1a4a', '#3a2a6a')) {
@@ -860,7 +906,7 @@ function createPlayer() {
   // Starting skill
   if (bs.skill === 'Silent Step') player.unlockedSkills['shadow_0'] = true;
   if (bs.skill === 'Iron Guard') player.unlockedSkills['ronin_0'] = true;
-  if (bs.skill === 'Spirit Sense') player.unlockedSkills['shadow_0'] = true;
+  if (bs.skill === 'Spirit Sense') player.unlockedSkills['spirit_0'] = true;
 }
 
 function enterVillage() {
@@ -1174,6 +1220,7 @@ function updateMission() {
   updateProjectiles();
   updateParticles();
   missionScore.time += dt;
+  interactPrompt = null;
 
   // Check objective
   if (currentMission) {
@@ -1294,6 +1341,8 @@ function updateGuards() {
             const nx = g.x + Math.cos(a) * g.speed;
             const ny = g.y + Math.sin(a) * g.speed;
             if (canMove(nx, ny, currentMap)) { g.x = nx; g.y = ny; }
+            else if (canMove(nx, g.y, currentMap)) { g.x = nx; }
+            else if (canMove(g.x, ny, currentMap)) { g.y = ny; }
             else g.patrolIdx = (g.patrolIdx + g.patrolDir + g.patrol.length) % g.patrol.length;
           }
         }
@@ -1433,8 +1482,11 @@ function updateProjectiles() {
           }
           if (g.hp <= 0) {
             g.dead = true; g.deathAnim = 30;
-            missionScore.kills++;
-            if (g.state !== 'combat' && g.state !== 'alert') missionScore.stealthKills++;
+            if (g.state !== 'combat' && g.state !== 'alert') {
+              missionScore.stealthKills++;
+            } else {
+              missionScore.kills++;
+            }
             player.xp += 20;
           }
           projectiles.splice(i, 1);
@@ -2097,11 +2149,23 @@ function drawMobileControls() {
   X.fillStyle = 'rgba(68,204,68,0.3)';
   X.beginPath(); X.arc(bx, by + 65, btnSize * 0.7, 0, TAU); X.fill();
   drawText('CRC', bx, by + 65, 9, '#44cc44');
+
+  // Interact button (shown when interact prompt is active)
+  if (interactPrompt) {
+    X.fillStyle = 'rgba(204,180,68,0.3)';
+    X.beginPath(); X.arc(bx - 60, by - 40, btnSize * 0.8, 0, TAU); X.fill();
+    drawText('ACT', bx - 60, by - 40, 10, '#ccb444');
+  }
+
+  // Weapon switch button
+  X.fillStyle = 'rgba(150,150,150,0.3)';
+  X.beginPath(); X.arc(bx + 10, by + 110, btnSize * 0.6, 0, TAU); X.fill();
+  drawText('WPN', bx + 10, by + 110, 8, '#aaa');
 }
 
 // ── MISSION BRIEFING ──
 function updateMissionBrief() {
-  // handled in draw
+  if (keys['escape']) { keys['escape'] = false; state = STATES.VILLAGE; SFX.click(); }
 }
 
 function drawMissionBrief() {
@@ -2183,7 +2247,10 @@ function startMission(mission) {
   player.y = (MAP_H - 2) * TILE + TILE/2;
   player.hp = player.maxHp;
   player.stamina = player.maxStamina;
-  player.kunaiAmmo = 10;
+  // Refill ammo for equipped ranged weapons
+  if (player.weapons.includes('kunai')) player.kunaiAmmo = WEAPONS.kunai.ammo;
+  if (player.weapons.includes('shuriken')) player.shurikenAmmo = WEAPONS.shuriken.ammo;
+  if (player.weapons.includes('yumi')) player.yumiAmmo = WEAPONS.yumi.ammo;
 }
 
 // ── SCORE SCREEN ──
@@ -2197,7 +2264,7 @@ function drawScore() {
 
   // Rating
   let rating = 'Ronin', ratingColor = '#cc4444', ratingDesc = 'Fought your way through';
-  if (missionScore.ghostRating && missionScore.kills === 0) {
+  if (missionScore.ghostRating && missionScore.kills === 0 && missionScore.stealthKills === 0) {
     rating = 'Ghost'; ratingColor = '#44ccff'; ratingDesc = 'Never seen, never heard';
   } else if (!missionScore.detected && missionScore.stealthKills > 0) {
     rating = 'Shadow'; ratingColor = '#6644cc'; ratingDesc = 'Silent but deadly';
@@ -2233,7 +2300,9 @@ function drawScore() {
 }
 
 // ── SKILL TREE ──
-function updateSkillTree() {}
+function updateSkillTree() {
+  if (keys['escape']) { keys['escape'] = false; state = STATES.VILLAGE; skillTreeScroll = 0; SFX.click(); }
+}
 
 function drawSkillTree() {
   X.fillStyle = '#0a0a0f'; X.fillRect(0, 0, W, H);
