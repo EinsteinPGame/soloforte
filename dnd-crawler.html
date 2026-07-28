@@ -657,6 +657,7 @@ function resolveConflict(choice) {
 function checkBossPhaseTransition(enemy) {
   if (!enemy.boss || !enemy.bossType) return false;
   if (enemy.phase2) return false;
+  if (!enemy.maxHp) enemy.maxHp = enemy.hp;
   if (enemy.hp > enemy.maxHp * 0.5) return false;
 
   enemy.phase2 = true;
@@ -2653,6 +2654,8 @@ function generateFloor(floorNum) {
         boss.py = room.y + Math.floor(room.h / 2);
         boss.id = Math.random().toString(36).substr(2, 9);
         boss.conditions = [];
+        if (!boss.maxHp) { boss.maxHp = boss.hp; }
+        boss.hp = boss.maxHp;
       } else {
         // Check for faction war bosses on specific floors when war arc is active
         let bossName = FLOOR_BOSSES[floorNum] || 'Shadow Demon';
@@ -4489,9 +4492,9 @@ function updateCombat(dt) {
   X.fillStyle = '#0a0a0f';
   X.fillRect(0, 0, canvasW, canvasH);
 
-  // Combat scene background
-  const sceneY = 60;
-  const sceneH = canvasH * 0.35;
+  // Combat scene background — scale down on small screens so buttons stay visible
+  const sceneY = isMobile ? 40 : 60;
+  const sceneH = canvasH < 500 ? canvasH * 0.25 : canvasH * 0.35;
 
   // Floor texture
   X.fillStyle = '#1a1a20';
@@ -4589,6 +4592,7 @@ function updateCombat(dt) {
     X.fillText(enemy.symbol, ex, ey + 1);
 
     // HP bar
+    if (!enemy.maxHp) enemy.maxHp = enemy.hp;
     const hpPct = enemy.hp / enemy.maxHp;
     const hpW = size * 2;
     X.fillStyle = '#400';
@@ -4658,7 +4662,7 @@ function updateCombat(dt) {
   // Combat log
   const logX = 10;
   const logY = sceneY + sceneH + 10;
-  const logH = isMobile ? 100 : 130;
+  const logH = canvasH < 500 ? 70 : (isMobile ? 100 : 130);
 
   X.fillStyle = 'rgba(0,0,0,0.8)';
   X.fillRect(logX, logY, canvasW - 20, logH);
@@ -4688,7 +4692,11 @@ function updateCombat(dt) {
     combatState.turnDelay -= dt;
     if (combatState.turnDelay <= 0) {
       const current = combatState.combatants[combatState.turnIndex];
-      companionTurn(current.entity);
+      try {
+        companionTurn(current.entity);
+      } catch(e) {
+        console.error('companionTurn error:', e);
+      }
       const alive = combatState.combatants.filter(c => c.type === 'enemy' && c.entity.hp > 0);
       if (alive.length === 0) { combatState.phase = 'victory'; }
       else nextTurn();
@@ -4702,7 +4710,12 @@ function updateCombat(dt) {
     combatState.turnDelay -= dt;
     if (combatState.turnDelay <= 0) {
       const current = combatState.combatants[combatState.turnIndex];
-      enemyTurn(current.entity);
+      try {
+        enemyTurn(current.entity);
+      } catch(e) {
+        console.error('enemyTurn error:', e);
+        nextTurn();
+      }
     }
     X.fillStyle = '#aaa';
     X.font = '14px Consolas, monospace';
