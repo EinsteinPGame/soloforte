@@ -50,7 +50,7 @@ canvas{display:block;touch-action:none}
 <!-- ============ NAME GATE ============ -->
 <div id="gate">
   <h1>Level Editor</h1>
-  <p>Design levels visually, export them as JSON for the games to read.</p>
+  <p>Design levels for any game. Place pieces, export as JSON.</p>
   <div class="row"><label>Your name</label><input id="who" placeholder="e.g. jk2e3" autocomplete="off"></div>
   <button class="primary" id="enter">Open my levels</button>
   <div class="notice">
@@ -96,7 +96,7 @@ canvas{display:block;touch-action:none}
     <div class="sec">
       <h4>Place</h4>
       <div class="pal" id="pal"></div>
-      <div class="hint" style="margin-top:7px">Click the grid to place. Click a piece to select it. Drag to move.</div>
+      <div class="hint" style="margin-top:7px">Click the grid to place. Click a piece to select it. Drag to move. Right-click a custom piece to remove it.</div>
     </div>
     <div class="sec">
       <h4>Selected</h4>
@@ -132,19 +132,39 @@ canvas{display:block;touch-action:none}
 const GRID = 40, CELL = 18;          // grid cells, px per cell at zoom 1
 
 /* ---- piece catalogue -------------------------------------------------- */
-const KINDS = {
+const BUILTIN = {
+  /* ---- structures: generic, usable by any game ---- */
   building : {label:'Building',  color:'#5a6478', cat:'struct', h:8,  w:3, d:3},
+  wall     : {label:'Wall',      color:'#6a7080', cat:'struct', h:3,  w:4, d:1},
+  tower    : {label:'Tower',     color:'#4f5a70', cat:'struct', h:16, w:2, d:2},
   rooftop  : {label:'Roof cover',color:'#7d8798', cat:'struct', h:1,  w:1, d:1},
+  cover    : {label:'Cover',     color:'#4a7a5c', cat:'struct', h:1,  w:1, d:1},
+  crate    : {label:'Crate',     color:'#8a7350', cat:'struct', h:1,  w:1, d:1},
+  barrel   : {label:'Barrel',    color:'#9a6a3a', cat:'struct', h:1,  w:1, d:1},
   bridge   : {label:'Bridge',    color:'#6b5a48', cat:'struct', h:2,  w:4, d:1},
+  road     : {label:'Road',      color:'#3c414c', cat:'struct', h:1,  w:6, d:2},
+  water    : {label:'Water',     color:'#2f5f8a', cat:'struct', h:1,  w:4, d:4},
+  tree     : {label:'Tree',      color:'#3f7a4a', cat:'struct', h:3,  w:1, d:1},
+  rock     : {label:'Rock',      color:'#6b6b6b', cat:'struct', h:2,  w:1, d:1},
   billboard: {label:'Billboard', color:'#8a6d9e', cat:'struct', h:5,  w:2, d:1},
   castle   : {label:'Castle',    color:'#6e6455', cat:'struct', h:12, w:5, d:5},
   gate     : {label:'Gate',      color:'#8a7a55', cat:'struct', h:6,  w:3, d:1},
-  cover    : {label:'Cover',     color:'#4a7a5c', cat:'struct', h:1,  w:1, d:1},
+  door     : {label:'Door',      color:'#9a8455', cat:'struct', h:2,  w:1, d:1},
+  ruin     : {label:'Ruin',      color:'#5c5348', cat:'struct', h:3,  w:3, d:3},
+  tent     : {label:'Tent',      color:'#7a6a4a', cat:'struct', h:2,  w:2, d:2},
+  vehicle  : {label:'Vehicle',   color:'#4a5a6a', cat:'struct', h:2,  w:2, d:1},
+  turret   : {label:'Turret',    color:'#7a4a4a', cat:'struct', h:2,  w:1, d:1},
+  trap     : {label:'Trap',      color:'#8a4a6a', cat:'struct', h:1,  w:1, d:1},
 
+  /* ---- markers ---- */
   spawn    : {label:'Player',    color:'#4da3ff', cat:'mark'},
   extract  : {label:'Extraction',color:'#4ecb8f', cat:'mark'},
   target   : {label:'Objective', color:'#ffd54d', cat:'mark'},
+  checkpt  : {label:'Checkpoint',color:'#4dd0e1', cat:'mark'},
+  loot     : {label:'Loot',      color:'#ffa64d', cat:'mark'},
+  ally     : {label:'Ally / NPC',color:'#7ee081', cat:'mark'},
 
+  /* ---- hostiles ---- */
   infantry : {label:'Infantry',  color:'#c94f4f', cat:'enemy'},
   sniper   : {label:'Sniper',    color:'#ff6b6b', cat:'enemy'},
   drone_op : {label:'Drone op',  color:'#e0704f', cat:'enemy'},
@@ -152,7 +172,39 @@ const KINDS = {
   armoured : {label:'Armoured',  color:'#a35c3a', cat:'enemy'},
   assassin : {label:'Assassin',  color:'#e04f8f', cat:'enemy'},
   spotter  : {label:'Spotter',   color:'#c44fd1', cat:'enemy'},
+  boss     : {label:'Boss',      color:'#b03060', cat:'enemy'},
 };
+/* Custom pieces are stored per user and merged in at sign-in, so the editor
+   is not tied to any one game — add whatever a future game needs. */
+let KINDS = Object.assign({}, BUILTIN);
+const customKey = ()=>'lvled:kinds:'+user;
+function loadCustom(){
+  KINDS = Object.assign({}, BUILTIN);
+  try{
+    const c=JSON.parse(localStorage.getItem(customKey()))||{};
+    for(const [k,v] of Object.entries(c)) KINDS[k]={...v, custom:true};
+  }catch(e){}
+}
+function addCustom(){
+  const label=prompt('Name for the new piece (e.g. "Watchtower")'); if(!label) return;
+  const cat=prompt('Category — type struct, mark, or enemy','struct');
+  if(!['struct','mark','enemy'].includes(cat)) return alert('Category must be struct, mark or enemy.');
+  const color=prompt('Colour (hex, e.g. #7a9ecb)','#7a9ecb')||'#7a9ecb';
+  const k='c_'+label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  if(!k||k==='c_') return alert('That name cannot be used.');
+  if(BUILTIN[k]) return alert('That name clashes with a built-in piece.');
+  let c={}; try{c=JSON.parse(localStorage.getItem(customKey()))||{}}catch(e){}
+  c[k]={label,color,cat,h:cat==='struct'?3:1,w:1,d:1};
+  localStorage.setItem(customKey(),JSON.stringify(c));
+  loadCustom(); tool=k; buildPalette();
+}
+function delCustom(k){
+  if(!KINDS[k]||!KINDS[k].custom) return;
+  if(!confirm('Remove the "'+KINDS[k].label+'" piece type? Levels already using it keep their pieces.')) return;
+  let c={}; try{c=JSON.parse(localStorage.getItem(customKey()))||{}}catch(e){}
+  delete c[k]; localStorage.setItem(customKey(),JSON.stringify(c));
+  loadCustom(); if(tool===k) tool='building'; buildPalette(); draw();
+}
 const ROUNDS = ['fire','poison','lightning','penetration','reflection','earth','ice'];
 
 /* ---- built-in levels -------------------------------------------------- */
@@ -189,23 +241,36 @@ $('enter').onclick=()=>{
   user=n; localStorage.setItem('lvled:last',n);
   $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
   $('whoLbl').textContent='signed in as '+user;
-  buildPalette(); refresh(); resize();
+  loadCustom(); buildPalette(); refresh(); resize();
 };
 $('who').onkeydown=e=>{if(e.key==='Enter')$('enter').click()};
 $('who').value=localStorage.getItem('lvled:last')||'';
 $('outBtn').onclick=()=>location.reload();
 
 /* ---- palette ---------------------------------------------------------- */
+const CATS=[['struct','Structures'],['mark','Markers'],['enemy','Hostiles']];
 function buildPalette(){
   const p=$('pal'); p.innerHTML='';
-  for(const [k,v] of Object.entries(KINDS)){
-    const b=document.createElement('button');
-    b.dataset.k=k;
-    b.innerHTML=`<span class="sw" style="background:${v.color}"></span>${v.label}`;
-    b.onclick=()=>{tool=k;[...p.children].forEach(c=>c.classList.toggle('on',c.dataset.k===k))};
-    if(k===tool) b.classList.add('on');
-    p.appendChild(b);
+  for(const [cat,title] of CATS){
+    const hd=document.createElement('div');
+    hd.style.cssText='grid-column:1/-1;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:6px 0 1px';
+    hd.textContent=title; p.appendChild(hd);
+    for(const [k,v] of Object.entries(KINDS)){
+      if(v.cat!==cat) continue;
+      const b=document.createElement('button');
+      b.dataset.k=k;
+      b.innerHTML=`<span class="sw" style="background:${v.color}"></span>${v.label}`;
+      b.onclick=()=>{tool=k;[...p.querySelectorAll('button')].forEach(c=>c.classList.toggle('on',c.dataset.k===k))};
+      if(v.custom) b.oncontextmenu=e=>{e.preventDefault();delCustom(k)};
+      if(v.custom) b.title='Custom piece — right-click to remove';
+      if(k===tool) b.classList.add('on');
+      p.appendChild(b);
+    }
   }
+  const add=document.createElement('button');
+  add.style.cssText='grid-column:1/-1;margin-top:8px';
+  add.textContent='+ New piece type';
+  add.onclick=addCustom; p.appendChild(add);
 }
 
 /* ---- level list ------------------------------------------------------- */
@@ -286,7 +351,10 @@ $('file').onchange=e=>{
   r.readAsText(f); e.target.value='';
 };
 function normalise(o){
-  const k=o.k||o.type; if(!KINDS[k]) return null;
+  const k=o.k||o.type; if(!k) return null;
+  // a level may use a piece type this user hasn't defined — keep it rather than
+  // silently deleting their work; show it as a neutral placeholder instead
+  if(!KINDS[k]) KINDS[k]={label:k,color:'#8892a4',cat:o.cat||'struct',h:2,w:1,d:1,custom:true,ghost:true};
   const d=KINDS[k];
   // exportShape writes the height as `height`; accept both on the way back in
   const h = o.height!==undefined ? o.height : o.h;
