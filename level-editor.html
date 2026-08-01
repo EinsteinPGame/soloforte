@@ -1,0 +1,443 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Level Editor — Soloforte</title>
+<style>
+:root{--bg:#0e1015;--panel:#171a22;--panel2:#1e222c;--line:#2a2f3b;--txt:#e6e9ef;--dim:#8b93a5;--acc:#4da3ff;--warn:#ffb454;--bad:#ff6b6b;--ok:#4ecb8f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel2);color:var(--txt);border-radius:6px;padding:6px 10px}
+button:hover{border-color:var(--acc)}
+button.primary{background:var(--acc);border-color:var(--acc);color:#06213f;font-weight:600}
+button.danger{border-color:#5a2b2b;color:var(--bad)}
+input,select{font:inherit;background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
+h1,h2,h3,h4{margin:0}
+.hidden{display:none!important}
+
+/* ---- gate ---- */
+#gate{max-width:520px;margin:8vh auto;padding:24px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+#gate h1{font-size:20px;margin-bottom:4px}
+#gate p{color:var(--dim);margin:8px 0 16px}
+.notice{background:#2a2313;border:1px solid #5c4a1e;color:var(--warn);padding:10px 12px;border-radius:8px;font-size:13px;margin:14px 0}
+
+/* ---- layout ---- */
+#app{display:grid;grid-template-columns:230px 1fr 260px;grid-template-rows:auto 1fr;height:100vh}
+header{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:15px;font-weight:600}
+header .who{color:var(--dim);font-size:12px}
+header .spacer{flex:1}
+aside{background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:10px}
+#right{border-right:0;border-left:1px solid var(--line)}
+main{position:relative;overflow:hidden;background:#0a0c10}
+canvas{display:block;touch-action:none}
+.sec{margin-bottom:16px}
+.sec>h4{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);margin-bottom:7px}
+.pal{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.pal button{display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 3px;font-size:10.5px;line-height:1.2}
+.pal button.on{border-color:var(--acc);background:#12283f}
+.pal .sw{width:100%;height:5px;border-radius:2px}
+.lvl{display:flex;align-items:center;gap:6px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;margin-bottom:5px;font-size:12.5px}
+.lvl span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.lvl.on{border-color:var(--acc);background:#12283f}
+.lvl button{padding:2px 6px;font-size:11px}
+.row{display:flex;gap:6px;align-items:center;margin-bottom:7px}
+.row label{width:72px;color:var(--dim);font-size:12px;flex-shrink:0}
+.hint{color:var(--dim);font-size:11.5px;line-height:1.45}
+#status{position:absolute;left:10px;bottom:10px;background:#000a;border:1px solid var(--line);border-radius:6px;padding:5px 9px;font-size:11.5px;color:var(--dim);pointer-events:none}
+#empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);text-align:center;padding:20px}
+@media(max-width:900px){#app{grid-template-columns:1fr;grid-template-rows:auto auto 46vh auto}aside{max-height:26vh;border-right:0;border-bottom:1px solid var(--line)}#right{border-left:0;border-top:1px solid var(--line)}}
+</style>
+
+<!-- ============ NAME GATE ============ -->
+<div id="gate">
+  <h1>Level Editor</h1>
+  <p>Design levels visually, export them as JSON for the games to read.</p>
+  <div class="row"><label>Your name</label><input id="who" placeholder="e.g. jk2e3" autocomplete="off"></div>
+  <button class="primary" id="enter">Open my levels</button>
+  <div class="notice">
+    <b>This is a filing system, not a lock.</b> There is no password — anyone who types the same
+    name sees the same levels, and they are stored in this browser only. Don't put anything here
+    you'd mind someone else opening, and use <b>Export</b> for anything you'd hate to lose.
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header>
+    <h1>Level Editor</h1>
+    <span class="who" id="whoLbl"></span>
+    <span class="spacer"></span>
+    <button id="newBtn">New</button>
+    <button id="saveBtn" class="primary">Save</button>
+    <button id="expBtn">Export</button>
+    <button id="impBtn">Import</button>
+    <input type="file" id="file" accept=".json" class="hidden">
+    <button id="outBtn">Switch user</button>
+  </header>
+
+  <aside id="left">
+    <div class="sec">
+      <h4>My levels</h4>
+      <div id="mine"></div>
+    </div>
+    <div class="sec">
+      <h4>Official levels</h4>
+      <div id="official"></div>
+      <div class="hint">Built-in levels. Opening one makes an editable copy in <i>My levels</i> — the original is never changed.</div>
+    </div>
+  </aside>
+
+  <main>
+    <canvas id="cv"></canvas>
+    <div id="status"></div>
+    <div id="empty">No level open.<br>Press <b>New</b>, or pick one on the left.</div>
+  </main>
+
+  <aside id="right">
+    <div class="sec">
+      <h4>Place</h4>
+      <div class="pal" id="pal"></div>
+      <div class="hint" style="margin-top:7px">Click the grid to place. Click a piece to select it. Drag to move.</div>
+    </div>
+    <div class="sec">
+      <h4>Selected</h4>
+      <div id="props"><div class="hint">Nothing selected.</div></div>
+    </div>
+    <div class="sec">
+      <h4>Level</h4>
+      <div class="row"><label>Name</label><input id="lvName"></div>
+      <div class="row"><label>Objective</label>
+        <select id="lvObj">
+          <option value="assassinate">Assassinate target</option>
+          <option value="protect">Protect ally</option>
+          <option value="destroy">Destroy equipment</option>
+          <option value="survive">Survive to extraction</option>
+          <option value="score">Score attack</option>
+          <option value="disarm">Non-lethal disarm</option>
+        </select>
+      </div>
+      <div class="row"><label>Chapter</label><input id="lvCh" type="number" min="1" max="4" value="1"></div>
+      <div id="counts" class="hint"></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* ============================================================
+   Level Editor — soloforte.ai
+   Top-down grid editor. Exports JSON consumed by the games.
+   Storage: localStorage, namespaced per typed name (NOT secure).
+   ============================================================ */
+'use strict';
+
+const GRID = 40, CELL = 18;          // grid cells, px per cell at zoom 1
+
+/* ---- piece catalogue -------------------------------------------------- */
+const KINDS = {
+  building : {label:'Building',  color:'#5a6478', cat:'struct', h:8,  w:3, d:3},
+  rooftop  : {label:'Roof cover',color:'#7d8798', cat:'struct', h:1,  w:1, d:1},
+  bridge   : {label:'Bridge',    color:'#6b5a48', cat:'struct', h:2,  w:4, d:1},
+  billboard: {label:'Billboard', color:'#8a6d9e', cat:'struct', h:5,  w:2, d:1},
+  castle   : {label:'Castle',    color:'#6e6455', cat:'struct', h:12, w:5, d:5},
+  gate     : {label:'Gate',      color:'#8a7a55', cat:'struct', h:6,  w:3, d:1},
+  cover    : {label:'Cover',     color:'#4a7a5c', cat:'struct', h:1,  w:1, d:1},
+
+  spawn    : {label:'Player',    color:'#4da3ff', cat:'mark'},
+  extract  : {label:'Extraction',color:'#4ecb8f', cat:'mark'},
+  target   : {label:'Objective', color:'#ffd54d', cat:'mark'},
+
+  infantry : {label:'Infantry',  color:'#c94f4f', cat:'enemy'},
+  sniper   : {label:'Sniper',    color:'#ff6b6b', cat:'enemy'},
+  drone_op : {label:'Drone op',  color:'#e0704f', cat:'enemy'},
+  shield   : {label:'Shield',    color:'#d18f4f', cat:'enemy'},
+  armoured : {label:'Armoured',  color:'#a35c3a', cat:'enemy'},
+  assassin : {label:'Assassin',  color:'#e04f8f', cat:'enemy'},
+  spotter  : {label:'Spotter',   color:'#c44fd1', cat:'enemy'},
+};
+const ROUNDS = ['fire','poison','lightning','penetration','reflection','earth','ice'];
+
+/* ---- built-in levels -------------------------------------------------- */
+const OFFICIAL = [{
+  name:'Rooftop Basics (demo)', objective:'assassinate', chapter:1,
+  objects:[
+    {k:'building',x:6, z:6, w:4,d:4,h:9},  {k:'building',x:14,z:5, w:3,d:5,h:12},
+    {k:'building',x:22,z:8, w:5,d:4,h:7},  {k:'building',x:9, z:18,w:4,d:4,h:14},
+    {k:'building',x:20,z:20,w:6,d:5,h:6},  {k:'bridge',  x:11,z:11,w:4,d:1,h:2},
+    {k:'cover',   x:7, z:5},               {k:'cover',   x:9, z:5},
+    {k:'rooftop', x:15,z:6},               {k:'billboard',x:18,z:12,w:2,d:1,h:5},
+    {k:'spawn',   x:7, z:7},               {k:'target',  x:23,z:22},
+    {k:'extract', x:4, z:24},
+    {k:'infantry',x:18,z:16},{k:'infantry',x:21,z:17},{k:'infantry',x:24,z:14},
+    {k:'sniper',  x:15,z:7 },{k:'spotter', x:22,z:21},{k:'drone_op',x:20,z:23},
+  ]
+}];
+
+/* ---- state ------------------------------------------------------------ */
+let user='', level=null, tool='building', sel=null, drag=null;
+let view={x:40,y:40,z:1};
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+const key=()=>'lvled:'+user;
+
+const load=()=>{try{return JSON.parse(localStorage.getItem(key()))||[]}catch(e){return[]}};
+const save=list=>localStorage.setItem(key(),JSON.stringify(list));
+const uid=()=>'l'+Math.random().toString(36).slice(2,9);
+
+/* ---- gate ------------------------------------------------------------- */
+$('enter').onclick=()=>{
+  const n=$('who').value.trim().toLowerCase().replace(/[^a-z0-9_-]/g,'');
+  if(!n) return $('who').focus();
+  user=n; localStorage.setItem('lvled:last',n);
+  $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('whoLbl').textContent='signed in as '+user;
+  buildPalette(); refresh(); resize();
+};
+$('who').onkeydown=e=>{if(e.key==='Enter')$('enter').click()};
+$('who').value=localStorage.getItem('lvled:last')||'';
+$('outBtn').onclick=()=>location.reload();
+
+/* ---- palette ---------------------------------------------------------- */
+function buildPalette(){
+  const p=$('pal'); p.innerHTML='';
+  for(const [k,v] of Object.entries(KINDS)){
+    const b=document.createElement('button');
+    b.dataset.k=k;
+    b.innerHTML=`<span class="sw" style="background:${v.color}"></span>${v.label}`;
+    b.onclick=()=>{tool=k;[...p.children].forEach(c=>c.classList.toggle('on',c.dataset.k===k))};
+    if(k===tool) b.classList.add('on');
+    p.appendChild(b);
+  }
+}
+
+/* ---- level list ------------------------------------------------------- */
+function refresh(){
+  const mine=load(), m=$('mine'); m.innerHTML='';
+  if(!mine.length) m.innerHTML='<div class="hint">None yet.</div>';
+  mine.forEach(l=>{
+    const d=document.createElement('div');
+    d.className='lvl'+(level&&level.id===l.id?' on':'');
+    d.innerHTML=`<span>${esc(l.name)}</span>`;
+    d.querySelector('span').onclick=()=>open_(l);
+    const del=document.createElement('button');
+    del.className='danger'; del.textContent='×'; del.title='Delete';
+    del.onclick=e=>{e.stopPropagation();
+      if(!confirm('Delete "'+l.name+'"? This cannot be undone.'))return;
+      save(load().filter(x=>x.id!==l.id));
+      if(level&&level.id===l.id){level=null;sel=null}
+      refresh(); draw();
+    };
+    d.appendChild(del); m.appendChild(d);
+  });
+  const o=$('official'); o.innerHTML='';
+  OFFICIAL.forEach(l=>{
+    const d=document.createElement('div'); d.className='lvl';
+    d.innerHTML=`<span>${esc(l.name)}</span>`;
+    d.querySelector('span').onclick=()=>{
+      const copy=JSON.parse(JSON.stringify(l));
+      copy.id=uid(); copy.name=l.name.replace(/ \(demo\)$/,'')+' (my copy)';
+      // seed data omits default sizes — fill them so the copy matches what the editor produces
+      copy.objects=copy.objects.map(normalise).filter(Boolean);
+      const list=load(); list.push(copy); save(list); open_(copy); refresh();
+    };
+    o.appendChild(d);
+  });
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function open_(l){
+  level=l; sel=null;
+  $('empty').classList.add('hidden');
+  $('lvName').value=l.name; $('lvObj').value=l.objective||'assassinate'; $('lvCh').value=l.chapter||1;
+  refresh(); props(); draw();
+}
+
+$('newBtn').onclick=()=>{
+  const l={id:uid(),name:'Untitled level',objective:'assassinate',chapter:1,objects:[]};
+  const list=load(); list.push(l); save(list); open_(l); refresh();
+};
+$('saveBtn').onclick=()=>{
+  if(!level) return;
+  level.name=$('lvName').value.trim()||'Untitled level';
+  level.objective=$('lvObj').value; level.chapter=+$('lvCh').value||1;
+  const list=load(), i=list.findIndex(x=>x.id===level.id);
+  if(i<0) list.push(level); else list[i]=level;
+  save(list); refresh(); flash('Saved');
+};
+$('expBtn').onclick=()=>{
+  if(!level) return flash('Open a level first');
+  $('saveBtn').click();
+  const blob=new Blob([JSON.stringify(exportShape(level),null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=level.name.replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.json';
+  a.click(); URL.revokeObjectURL(a.href); flash('Exported');
+};
+$('impBtn').onclick=()=>$('file').click();
+$('file').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      const l={id:uid(),name:(d.name||'Imported')+'',objective:d.objective||'assassinate',
+               chapter:d.chapter||1,objects:(d.objects||[]).map(normalise).filter(Boolean)};
+      const list=load(); list.push(l); save(list); open_(l); refresh(); flash('Imported');
+    }catch(err){ alert('That file could not be read as a level.\n\n'+err.message) }
+  };
+  r.readAsText(f); e.target.value='';
+};
+function normalise(o){
+  const k=o.k||o.type; if(!KINDS[k]) return null;
+  const d=KINDS[k];
+  // exportShape writes the height as `height`; accept both on the way back in
+  const h = o.height!==undefined ? o.height : o.h;
+  return {k,x:+o.x||0,z:+o.z||0,w:+o.w||d.w||1,d:+o.d||d.d||1,h:+h||d.h||1,
+          round:o.round||null,note:o.note||''};
+}
+function exportShape(l){
+  return {format:'soloforte-level/1', name:l.name, objective:l.objective, chapter:l.chapter,
+          grid:{w:GRID,h:GRID}, objects:l.objects.map(o=>{
+            const out={type:o.k,x:o.x,z:o.z};
+            if(KINDS[o.k].cat==='struct'){out.w=o.w;out.d=o.d;out.height=o.h}
+            if(o.round) out.round=o.round;
+            if(o.note)  out.note=o.note;
+            return out;
+          })};
+}
+
+/* ---- properties panel ------------------------------------------------- */
+function props(){
+  const el=$('props');
+  if(!sel){ el.innerHTML='<div class="hint">Nothing selected.</div>'; counts(); return }
+  const d=KINDS[sel.k]; let h=`<div class="row"><label>Type</label><b>${d.label}</b></div>`;
+  h+=`<div class="row"><label>X / Z</label><span class="hint">${sel.x}, ${sel.z}</span></div>`;
+  if(d.cat==='struct'){
+    h+=`<div class="row"><label>Width</label><input type="number" id="pw" min="1" max="12" value="${sel.w}"></div>`;
+    h+=`<div class="row"><label>Depth</label><input type="number" id="pd" min="1" max="12" value="${sel.d}"></div>`;
+    h+=`<div class="row"><label>Height</label><input type="number" id="ph" min="1" max="30" value="${sel.h}"></div>`;
+  }
+  if(d.cat==='enemy'){
+    h+=`<div class="row"><label>Weak to</label><select id="pr"><option value="">—</option>`+
+       ROUNDS.map(r=>`<option value="${r}"${sel.round===r?' selected':''}>${r}</option>`).join('')+`</select></div>`;
+  }
+  h+=`<div class="row"><label>Note</label><input id="pn" value="${esc(sel.note||'')}"></div>`;
+  h+=`<button class="danger" id="pdel" style="width:100%;margin-top:4px">Delete piece</button>`;
+  el.innerHTML=h;
+  const bind=(id,f)=>{const e=$(id); if(e) e.oninput=()=>{f(e.value);draw()}};
+  bind('pw',v=>sel.w=Math.max(1,+v||1)); bind('pd',v=>sel.d=Math.max(1,+v||1));
+  bind('ph',v=>sel.h=Math.max(1,+v||1)); bind('pn',v=>sel.note=v);
+  const r=$('pr'); if(r) r.onchange=()=>sel.round=r.value||null;
+  $('pdel').onclick=()=>{level.objects=level.objects.filter(o=>o!==sel);sel=null;props();draw()};
+  counts();
+}
+function counts(){
+  if(!level){$('counts').textContent='';return}
+  const n={}; level.objects.forEach(o=>{const c=KINDS[o.k].cat;n[c]=(n[c]||0)+1});
+  $('counts').textContent=`${level.objects.length} pieces — ${n.struct||0} structures, ${n.enemy||0} enemies, ${n.mark||0} markers`;
+}
+
+/* ---- canvas ----------------------------------------------------------- */
+function resize(){
+  const r=cv.parentElement.getBoundingClientRect(), dpr=devicePixelRatio||1;
+  cv.width=r.width*dpr; cv.height=r.height*dpr; cv.style.width=r.width+'px'; cv.style.height=r.height+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0); draw();
+}
+addEventListener('resize',resize);
+const toCell=(px,py)=>({x:Math.floor((px-view.x)/(CELL*view.z)),z:Math.floor((py-view.y)/(CELL*view.z))});
+const toPx  =(x,z)=>({px:view.x+x*CELL*view.z, py:view.y+z*CELL*view.z});
+
+function draw(){
+  const w=cv.clientWidth,h=cv.clientHeight,s=CELL*view.z;
+  ctx.clearRect(0,0,w,h);
+  if(!level) return;
+  // grid
+  ctx.strokeStyle='#1b2029'; ctx.lineWidth=1; ctx.beginPath();
+  for(let i=0;i<=GRID;i++){
+    const p=toPx(i,0), q=toPx(0,i);
+    ctx.moveTo(p.px,view.y); ctx.lineTo(p.px,view.y+GRID*s);
+    ctx.moveTo(view.x,q.py); ctx.lineTo(view.x+GRID*s,q.py);
+  }
+  ctx.stroke();
+  ctx.strokeStyle='#2f3644'; ctx.strokeRect(view.x,view.y,GRID*s,GRID*s);
+
+  // structures first, then markers/enemies on top
+  const order=o=>KINDS[o.k].cat==='struct'?0:1;
+  [...level.objects].sort((a,b)=>order(a)-order(b)).forEach(o=>{
+    const d=KINDS[o.k], {px,py}=toPx(o.x,o.z);
+    if(d.cat==='struct'){
+      const ww=(o.w||1)*s, dd=(o.d||1)*s;
+      const shade=Math.min(1,.35+(o.h||1)/26);
+      ctx.globalAlpha=shade; ctx.fillStyle=d.color; ctx.fillRect(px,py,ww,dd); ctx.globalAlpha=1;
+      ctx.strokeStyle=o===sel?'#fff':'#0008'; ctx.lineWidth=o===sel?2:1; ctx.strokeRect(px,py,ww,dd);
+      if(s>13&&o.h){ctx.fillStyle='#0b0e13';ctx.font='600 10px system-ui';ctx.textAlign='center';
+        ctx.fillText(o.h,px+ww/2,py+dd/2+3.5)}
+    }else{
+      const r=s*.36, cx=px+s/2, cy=py+s/2;
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.fillStyle=d.color; ctx.fill();
+      ctx.strokeStyle=o===sel?'#fff':'#0009'; ctx.lineWidth=o===sel?2:1; ctx.stroke();
+      if(d.cat==='enemy'&&o.round&&s>13){ctx.fillStyle='#fff';ctx.font='700 8px system-ui';
+        ctx.textAlign='center';ctx.fillText(o.round[0].toUpperCase(),cx,cy+3)}
+    }
+  });
+  $('status').textContent=`${GRID}×${GRID} grid · ${level.objects.length} pieces · scroll to zoom, right-drag to pan`;
+}
+
+/* ---- interaction ------------------------------------------------------ */
+function hit(x,z){
+  for(let i=level.objects.length-1;i>=0;i--){
+    const o=level.objects[i], d=KINDS[o.k];
+    const w=d.cat==='struct'?(o.w||1):1, dep=d.cat==='struct'?(o.d||1):1;
+    if(x>=o.x&&x<o.x+w&&z>=o.z&&z<o.z+dep) return o;
+  }
+  return null;
+}
+cv.addEventListener('pointerdown',e=>{
+  if(!level) return;
+  const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  if(e.button===2){ drag={pan:true,mx,my,vx:view.x,vy:view.y}; return }
+  const c=toCell(mx,my);
+  if(c.x<0||c.z<0||c.x>=GRID||c.z>=GRID) return;
+  const h=hit(c.x,c.z);
+  if(h){ sel=h; drag={o:h,ox:c.x-h.x,oz:c.z-h.z}; }
+  else {
+    const d=KINDS[tool];
+    const o={k:tool,x:c.x,z:c.z,w:d.w||1,d:d.d||1,h:d.h||1,round:null,note:''};
+    level.objects.push(o); sel=o; drag={o,ox:0,oz:0};
+  }
+  cv.setPointerCapture(e.pointerId); props(); draw();
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  if(drag.pan){ view.x=drag.vx+(mx-drag.mx); view.y=drag.vy+(my-drag.my); draw(); return }
+  const c=toCell(mx,my);
+  const nx=Math.max(0,Math.min(GRID-1,c.x-drag.ox)), nz=Math.max(0,Math.min(GRID-1,c.z-drag.oz));
+  if(nx!==drag.o.x||nz!==drag.o.z){ drag.o.x=nx; drag.o.z=nz; props(); draw() }
+});
+addEventListener('pointerup',()=>{drag=null});
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  const before=toCell(mx,my);
+  view.z=Math.max(.4,Math.min(3,view.z*(e.deltaY<0?1.12:1/1.12)));
+  const after=toCell(mx,my);
+  view.x+=(after.x-before.x)*CELL*view.z; view.y+=(after.z-before.z)*CELL*view.z;
+  draw();
+},{passive:false});
+addEventListener('keydown',e=>{
+  if(!level) return;
+  if(document.activeElement&&/INPUT|SELECT/.test(document.activeElement.tagName)) return;
+  if((e.key==='Delete'||e.key==='Backspace')&&sel){
+    e.preventDefault(); level.objects=level.objects.filter(o=>o!==sel); sel=null; props(); draw();
+  }
+  if(e.key.toLowerCase()==='s'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); $('saveBtn').click() }
+});
+
+let flashT;
+function flash(msg){
+  clearTimeout(flashT); const s=$('status'); s.textContent=msg;
+  flashT=setTimeout(draw,1200);
+}
+</script>
+<script src="auth.js"></script>
+<script src="back-btn.js"></script>
