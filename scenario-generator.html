@@ -500,12 +500,28 @@ function showEffectToasts(effects) {
   setTimeout(() => container.remove(), 2500);
 }
 
+// A choice can point at a node that was planned but never written. Previously
+// goToNode() just returned, so the button did nothing at all and the game
+// looked frozen. Show an explicit "to be continued" instead.
+function showUnwrittenBranch(nodeId) {
+  const existing = document.querySelector('.tbc-toast');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.className = 'effect-toast tbc-toast';
+  el.innerHTML = '<div class="effect-toast-item neutral" style="max-width:22rem;text-align:center;line-height:1.4">'
+    + '<strong>To be continued</strong><br>This branch has not been written yet. Pick another choice.'
+    + '</div>';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+  console.warn('[scenario] unwritten branch:', STATE.scenario, '->', nodeId);
+}
+
 function goToNode(nodeId) {
   if (nodeId === '_menu') { STATE.screen = 'menu'; render(); return; }
   const scenario = SCENARIOS[STATE.scenario];
   if (!scenario) return;
   const node = scenario.nodes[nodeId];
-  if (!node) return;
+  if (!node) { showUnwrittenBranch(nodeId); return; }
   STATE.currentNode = nodeId;
   STATE.history.push(nodeId);
   if (node.effects) { applyEffects(node.effects); showEffectToasts(node.effects); }
@@ -661,7 +677,7 @@ goToNode = function(nodeId) {
   const scenario = SCENARIOS[STATE.scenario];
   if (!scenario) return;
   const node = scenario.nodes[nodeId];
-  if (!node) return;
+  if (!node) { showUnwrittenBranch(nodeId); return; }
   if (node.cutscene && node.cutscene.length) {
     // Set state first so sidebar updates
     STATE.currentNode = nodeId;
