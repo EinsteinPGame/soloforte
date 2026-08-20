@@ -1,5 +1,5 @@
 // SoloForte Service Worker — offline support
-const CACHE_NAME = 'soloforte-v10.37.1';
+const CACHE_NAME = 'soloforte-v10.38.0';
 const PAGES = [
   '/',
   '/index.html',
@@ -20,6 +20,9 @@ const PAGES = [
   '/gat-practice.html',
   '/study-notes.html',
   '/wheel-of-faith.html',
+  // El Centaur is cached, but it pulls Three.js from a CDN — offline it shows its
+  // own "no signal" screen rather than a black canvas.
+  '/sniper-el-centaur.html',
   '/chat.html',
   '/admin.html',
 ];

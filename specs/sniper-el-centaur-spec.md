@@ -1,6 +1,22 @@
 # El Centaur — Sniper/Grapple FPS
-**Status:** Design spec. Not built. Requires Kyle's go + Ys's heavy-work approval.
-**Last updated:** 2026-08-01
+**Status:** Playable core built and live at `sniper-el-centaur.html` (2026-08-20). Ys approved, Kyle gave the go.
+**Last updated:** 2026-08-20
+
+## Build state — what is in the core
+In: rooftop city (deterministic 5x5 grid, hand-set heights for sightlines), bolt-action
+sniping with hit locations (head/body/limb), ADS with 4x/7x/10x zoom, sway and breath
+hold, five enemy types (infantry, sniper with glint tell, spotter, shield, armoured),
+the HVT, shot-driven detection with the last-known-position rule, spotter artillery,
+fall damage, extraction win condition, and **both** grapple feels (gravity pull and
+pendulum swing, toggled with `G`) so the feel question can be answered by playing.
+
+Not in yet: drones and operator relinking, the other four rounds (Poison, Lightning,
+Reflection, Earth), ground level, the 4x5 mission chapter structure, level-editor JSON
+import, non-lethal disarm.
+
+**Open question for Kyle:** section 1 of this spec calls the grapple "pull-to-point",
+section 3 calls it "Insomniac-style single-point swing". Both are implemented; the spec
+should be narrowed to whichever he picks.
 
 ## 1. Premise
 First-person 3D. You are a master sniper of the **El Centaur**, an alien machine species at war.

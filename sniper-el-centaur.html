@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>El Centaur — Sniper</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#05070c;color:#dfe6f0;overflow:hidden;height:100vh;width:100vw;user-select:none;-webkit-user-select:none;touch-action:none}
+canvas{display:block}
+#wrap{position:fixed;inset:0}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;inset:0;pointer-events:none;font-size:13px;letter-spacing:.5px}
+.panel{position:absolute;background:rgba(6,10,18,.62);border:1px solid rgba(120,160,220,.22);border-radius:8px;padding:8px 12px;backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+#hpPanel{left:14px;bottom:14px;min-width:190px}
+#ammoPanel{right:14px;bottom:14px;min-width:190px;text-align:right}
+#alertPanel{left:50%;top:14px;transform:translateX(-50%);text-align:center;min-width:230px}
+#objPanel{left:14px;top:14px;max-width:290px;line-height:1.5}
+.lbl{font-size:10px;text-transform:uppercase;color:#6d7e96;letter-spacing:1.4px;margin-bottom:3px}
+.bar{height:6px;background:rgba(255,255,255,.09);border-radius:3px;overflow:hidden;margin-top:5px}
+.bar>i{display:block;height:100%;width:100%;border-radius:3px;transition:width .12s linear}
+#hpFill{background:linear-gradient(90deg,#2ecc71,#7bffb0)}
+#hpNum{font-size:20px;font-weight:700}
+#ammoNum{font-size:20px;font-weight:700}
+#roundName{color:#ffc65c;font-weight:600}
+#pips{display:flex;gap:5px;justify-content:center;margin-top:6px}
+#pips>i{width:38px;height:5px;border-radius:2px;background:rgba(255,255,255,.13)}
+#pips>i.on{background:#ff5a4d;box-shadow:0 0 8px rgba(255,90,77,.7)}
+#alertText{font-weight:700;font-size:14px;color:#8fa6c4}
+#alertText.a1{color:#ffe066}#alertText.a2{color:#ffa94d}#alertText.a3{color:#ff5a4d}
+#boltWrap{margin-top:5px}
+#boltFill{background:linear-gradient(90deg,#4d8dff,#9cc4ff)}
+
+/* ---------- crosshair / scope ---------- */
+#cross{position:fixed;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none}
+#cross:before,#cross:after{content:'';position:absolute;background:rgba(220,235,255,.75)}
+#cross:before{left:10px;top:0;width:2px;height:22px}
+#cross:after{top:10px;left:0;height:2px;width:22px}
+#scope{position:fixed;inset:0;pointer-events:none;display:none}
+#scope .dark{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,rgba(0,0,0,0) 27%,rgba(0,0,0,.93) 34%)}
+#scope .ring{position:absolute;left:50%;top:50%;width:56vmin;height:56vmin;margin:-28vmin 0 0 -28vmin;border-radius:50%;border:2px solid rgba(150,200,255,.28);box-shadow:inset 0 0 60px rgba(80,140,220,.15)}
+#scope .retV,#scope .retH{position:absolute;background:rgba(190,225,255,.5)}
+#scope .retV{left:50%;top:22%;width:1px;height:56%;margin-left:-.5px}
+#scope .retH{top:50%;left:22%;height:1px;width:56%;margin-top:-.5px}
+#scope .mil{position:absolute;left:50%;width:11px;height:1px;background:rgba(190,225,255,.45);margin-left:-5.5px}
+#scope .zoom{position:absolute;left:50%;bottom:19%;transform:translateX(-50%);font-size:11px;color:rgba(160,205,255,.75);letter-spacing:2px}
+#hitmark{position:fixed;left:50%;top:50%;width:34px;height:34px;margin:-17px 0 0 -17px;pointer-events:none;opacity:0}
+#hitmark div{position:absolute;width:11px;height:2px;background:#fff}
+#dmgFlash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle at 50% 50%,rgba(255,0,0,0) 40%,rgba(200,20,20,.55) 100%);opacity:0;transition:opacity .25s}
+#toast{position:fixed;left:50%;top:22%;transform:translateX(-50%);text-align:center;pointer-events:none;font-weight:700;font-size:19px;text-shadow:0 2px 12px #000;opacity:0;transition:opacity .3s}
+#log{position:fixed;left:14px;bottom:120px;pointer-events:none;font-size:12px;line-height:1.7;color:#9db4d0}
+#log div{opacity:.9}
+
+/* ---------- menus ---------- */
+.screen{position:fixed;inset:0;background:linear-gradient(160deg,#070b14,#0d1524 60%,#0a0f1a);display:flex;align-items:center;justify-content:center;padding:22px;overflow:auto;z-index:50}
+.card{max-width:680px;width:100%;background:rgba(10,16,28,.85);border:1px solid rgba(110,150,215,.25);border-radius:14px;padding:26px 28px}
+h1{font-size:26px;letter-spacing:3px;margin-bottom:4px;background:linear-gradient(90deg,#7ec8ff,#c8a2ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:#7f93ad;font-size:12px;letter-spacing:2.6px;text-transform:uppercase;margin-bottom:18px}
+h2{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#8fb4dd;margin:18px 0 8px}
+p{color:#b6c4d6;font-size:13.5px;line-height:1.65;margin-bottom:9px}
+.rounds{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px}
+.rd{border:1px solid rgba(120,160,220,.22);border-radius:9px;padding:10px 12px;cursor:pointer;background:rgba(255,255,255,.02);transition:.15s}
+.rd:hover{border-color:rgba(140,200,255,.6)}
+.rd.sel{border-color:#ffc65c;background:rgba(255,198,92,.08)}
+.rd b{display:block;color:#ffd98a;font-size:13px;margin-bottom:3px}
+.rd span{font-size:11.5px;color:#94a6bd;line-height:1.45}
+.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 16px;font-size:12.5px;color:#9fb2c8}
+.keys b{color:#dfe9f5;font-family:ui-monospace,monospace}
+button{margin-top:20px;width:100%;padding:13px;border:0;border-radius:10px;font-size:14px;font-weight:700;letter-spacing:2.5px;cursor:pointer;background:linear-gradient(135deg,#3f7fd8,#8f5ce0);color:#fff}
+button:hover{filter:brightness(1.15)}
+button.ghost{background:rgba(255,255,255,.07);color:#cfe0f2;margin-top:9px;letter-spacing:1.4px}
+.stat{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:13px}
+.stat span:last-child{color:#ffd98a;font-weight:700}
+.note{font-size:11.5px;color:#71839a;line-height:1.6;margin-top:14px;border-left:2px solid rgba(120,160,220,.3);padding-left:10px}
+.tog{display:inline-flex;gap:0;border:1px solid rgba(120,160,220,.28);border-radius:8px;overflow:hidden;margin-top:6px}
+.tog div{padding:7px 16px;font-size:12px;cursor:pointer;color:#95a8bf}
+.tog div.on{background:rgba(120,180,255,.16);color:#cfe6ff;font-weight:700}
+
+/* ---------- mobile ---------- */
+#touch{position:fixed;inset:0;pointer-events:none;display:none;z-index:20}
+#stick{position:absolute;left:20px;bottom:20px;width:120px;height:120px;border-radius:50%;border:1px solid rgba(140,180,240,.28);background:rgba(10,18,30,.35);pointer-events:auto}
+#stickNub{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(150,200,255,.28)}
+.tbtn{position:absolute;pointer-events:auto;border:1px solid rgba(140,180,240,.3);background:rgba(12,20,34,.55);border-radius:12px;color:#cfe2f7;font-size:11px;font-weight:700;letter-spacing:1px;display:flex;align-items:center;justify-content:center;text-align:center}
+#bFire{right:20px;bottom:104px;width:88px;height:88px;border-radius:50%}
+#bAds{right:118px;bottom:150px;width:66px;height:56px}
+#bGrap{right:118px;bottom:34px;width:66px;height:56px}
+#bRel{right:20px;bottom:34px;width:88px;height:56px}
+#bRound{left:20px;bottom:150px;width:88px;height:48px}
+</style>
+</head>
+<body>
+<script src="auth.js"></script>
+<script src="back-btn.js"></script>
+
+<div id="wrap"></div>
+
+<div id="hud" style="display:none">
+  <div class="panel" id="objPanel">
+    <div class="lbl">Objective</div>
+    <div id="objText">Eliminate the High Value Target</div>
+    <div id="objSub" style="color:#8fa6c4;font-size:11.5px;margin-top:4px"></div>
+  </div>
+  <div class="panel" id="alertPanel">
+    <div class="lbl">Enemy Awareness</div>
+    <div id="alertText">UNAWARE</div>
+    <div id="pips"><i></i><i></i><i></i></div>
+  </div>
+  <div class="panel" id="hpPanel">
+    <div class="lbl">Armour Integrity</div>
+    <div><span id="hpNum">100</span><span style="color:#6d7e96;font-size:12px"> / 100</span></div>
+    <div class="bar"><i id="hpFill"></i></div>
+  </div>
+  <div class="panel" id="ammoPanel">
+    <div class="lbl">Chamber</div>
+    <div><span id="ammoNum">5</span><span style="color:#6d7e96;font-size:12px"> / <span id="ammoMax">5</span></span></div>
+    <div id="roundName">STANDARD</div>
+    <div class="bar" id="boltWrap"><i id="boltFill" style="width:100%"></i></div>
+  </div>
+  <div id="log"></div>
+</div>
+
+<div id="cross" style="display:none"></div>
+<div id="scope">
+  <div class="dark"></div>
+  <div class="ring"></div>
+  <div class="retV"></div><div class="retH"></div>
+  <div class="mil" style="top:56%"></div><div class="mil" style="top:60%"></div><div class="mil" style="top:64%"></div>
+  <div class="zoom" id="zoomTxt">4x</div>
+</div>
+<div id="hitmark">
+  <div style="left:0;top:8px;transform:rotate(45deg)"></div>
+  <div style="right:0;top:8px;transform:rotate(-45deg)"></div>
+  <div style="left:0;bottom:8px;transform:rotate(-45deg)"></div>
+  <div style="right:0;bottom:8px;transform:rotate(45deg)"></div>
+</div>
+<div id="dmgFlash"></div>
+<div id="toast"></div>
+<div id="pauseHint" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(4,7,12,.72);z-index:30;pointer-events:none">
+  <div style="text-align:center">
+    <div style="font-size:22px;font-weight:700;letter-spacing:3px;color:#cfe6ff">PAUSED</div>
+    <div style="font-size:13px;color:#8fa6c4;margin-top:8px">Click to retake the scope</div>
+  </div>
+</div>
+
+<div id="touch">
+  <div id="stick"><div id="stickNub"></div></div>
+  <div class="tbtn" id="bFire">FIRE</div>
+  <div class="tbtn" id="bAds">SCOPE</div>
+  <div class="tbtn" id="bGrap">GRAPPLE</div>
+  <div class="tbtn" id="bRel">RELOAD</div>
+  <div class="tbtn" id="bRound">ROUND</div>
+</div>
+
+<div class="screen" id="brief">
+  <div class="card">
+    <h1>EL CENTAUR</h1>
+    <div class="sub">Rooftop Contract &mdash; Playable Core</div>
+    <p>You are a master sniper of the <b>El Centaur</b>, a machine species at war. Armour keeps you alive; the gravity grapple keeps you invisible.</p>
+    <p><b>The loop:</b> shoot from a rooftop &rarr; they begin working out where you are &rarr; grapple away before they finish &rarr; fire from a new angle. Every shot is a choice: one more kill from here, or move first.</p>
+    <p style="color:#ff9d8a"><b>Three shots from the same roof and you are located.</b> Snipers aim, and the spotter calls artillery on your last known position &mdash; so make sure that is not where you are standing.</p>
+
+    <h2>Imbued Rounds &mdash; pick two</h2>
+    <div class="rounds" id="roundPick"></div>
+
+    <h2>Grapple Feel &mdash; which one?</h2>
+    <p style="margin-bottom:2px">Both are built. Swap any time in-game with <b style="font-family:monospace;color:#dfe9f5">G</b>. Tell me which one feels right.</p>
+    <div class="tog" id="grapTog"><div data-m="pull" class="on">GRAVITY PULL</div><div data-m="swing">PENDULUM SWING</div></div>
+
+    <h2>Controls</h2>
+    <div class="keys">
+      <div><b>W A S D</b> &nbsp;move</div>
+      <div><b>Shift</b> &nbsp;sprint / hold breath</div>
+      <div><b>Space</b> &nbsp;jump</div>
+      <div><b>Left click</b> &nbsp;fire</div>
+      <div><b>Right click</b> &nbsp;scope (hold)</div>
+      <div><b>Mouse wheel</b> &nbsp;zoom 4x&ndash;10x</div>
+      <div><b>E</b> &nbsp;grapple</div>
+      <div><b>R</b> &nbsp;reload</div>
+      <div><b>1 2 3</b> &nbsp;switch round</div>
+      <div><b>G</b> &nbsp;toggle grapple mode</div>
+    </div>
+    <button id="startBtn">BEGIN CONTRACT</button>
+    <div class="note">Core build. In: rooftop city, bolt-action sniping with hit locations, five enemy types, shot-driven detection with last-known-position, artillery, both grapple modes. Not in yet: drones and operator relinking, the other four rounds, ground level, mission chapters.</div>
+  </div>
+</div>
+
+<div class="screen" id="endScreen" style="display:none">
+  <div class="card">
+    <h1 id="endTitle">EXTRACTED</h1>
+    <div class="sub" id="endSub">Contract complete</div>
+    <div id="endStats"></div>
+    <button id="againBtn">RUN IT AGAIN</button>
+    <a href="index.html"><button class="ghost">BACK TO SOLOFORTE</button></a>
+  </div>
+</div>
+
+<div class="screen" id="loadFail" style="display:none">
+  <div class="card">
+    <h1>NO SIGNAL</h1>
+    <div class="sub">3D library failed to load</div>
+    <p>El Centaur pulls the Three.js renderer from a CDN. Something blocked it &mdash; usually a school/network filter or being offline.</p>
+    <p>Try again on a normal connection. Everything else on SoloForte works offline.</p>
+    <a href="index.html"><button class="ghost">BACK TO SOLOFORTE</button></a>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+
+<script>
+// If the module never boots (CDN blocked / offline), say so plainly instead of a black screen.
+setTimeout(function(){ if(!window.__EC_BOOTED){ document.getElementById('brief').style.display='none'; document.getElementById('loadFail').style.display='flex'; } }, 8000);
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+window.__EC_BOOTED = true;
+
+// ============================================================
+// EL CENTAUR — Sniper / Grapple. Playable core, v0.1
+// Spec: specs/sniper-el-centaur-spec.md
+// ============================================================
+
+// ---------------- TUNING (everything worth arguing about lives here) ----------
+const T = {
+  // movement
+  walk: 6.2, sprint: 10.4, accel: 46, friction: 11, airControl: 0.28,
+  gravity: -30, jump: 9.4, playerRadius: 0.55, eyeHeight: 1.62,
+  // fallSafe: impact speed you walk off. -32 ≈ a three-storey drop for free.
+  fallSafe: -32, fallScale: 2.2, fallMaxDmg: 60,
+  // weapon
+  boltTime: 1.05, reloadTime: 2.6, magSize: 5,
+  swayAmp: 0.0022, swaySpeed: 1.7, breathHoldMult: 0.18, breathMax: 4.0,
+  fovHip: 76, fovAds: [19, 11, 7.6], zoomLabels: ['4x','7x','10x'],
+  dmgHead: 400, dmgBody: 120, dmgLimb: 45,
+  // grapple
+  grappleRange: 105,
+  pullSpeed: 46, pullArrive: 3.4, pullMax: 3.0,
+  swingGravity: -22, swingReelSpeed: 16, swingBoost: 1.06, swingMaxLen: 105,
+  // detection
+  relocateDist: 26,      // move this far from your perch and the triangulation resets
+  decayTime: 15,         // seconds of quiet before awareness drops a step
+  sniperWindup: 1.75, sniperDmg: 30, sniperRange: 190,
+  infantryRange: 78, infantryDmg: 6, infantryCadence: 1.5,
+  spotterCallTime: 3.2, artilleryDelay: 4.4, artilleryRadius: 15, artilleryDmg: 78,
+  // mission
+  killQuota: 7,
+};
+
+// ---------------- rounds ----------------
+const ROUNDS = {
+  standard: { name:'STANDARD', mag: 5, reserve: Infinity, silent:false, pierce:false, explosive:false,
+              desc:'Reliable. Beats fodder, snipers and spotters. Nothing special against armour.' },
+  pierce:   { name:'PENETRATION', mag: 3, reserve: 9, silent:true, pierce:true, explosive:false,
+              desc:'Passes through walls and shields. Silent — does not advance their triangulation.' },
+  fire:     { name:'FIRE', mag: 3, reserve: 9, silent:false, pierce:false, explosive:true,
+              desc:'Detonates on contact. The only thing that opens an armoured chassis.' },
+  ice:      { name:'ICE', mag: 3, reserve: 9, silent:false, pierce:false, explosive:false, freeze:true,
+              desc:'Freezes the ground. Assassins and runners slip and stall. (Assassins land in phase 2.)' },
+};
+
+// ---------------- scene ----------------
+const wrap = document.getElementById('wrap');
+const renderer = new THREE.WebGLRenderer({ antialias: window.devicePixelRatio < 2 });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+wrap.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b1220);
+scene.fog = new THREE.Fog(0x0b1220, 130, 420);
+
+const camera = new THREE.PerspectiveCamera(T.fovHip, innerWidth/innerHeight, 0.1, 900);
+
+scene.add(new THREE.HemisphereLight(0x8ea8d0, 0x1a2030, 0.85));
+const sun = new THREE.DirectionalLight(0xffd9b0, 1.05);
+sun.position.set(-90, 130, 60);
+scene.add(sun);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------------- city ----------------
+// buildings[] is both the render list and the collision list. AABB, no rotation —
+// keeps collision honest and the raycast cheap.
+const buildings = [];
+const solidMeshes = [];   // what blocks bullets and line of sight
+
+function addBuilding(cx, cz, w, d, h, tint) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mat = new THREE.MeshLambertMaterial({ color: tint });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(cx, h/2, cz);
+  scene.add(mesh);
+  const b = {
+    cx, cz, w, d, h,
+    minX: cx - w/2, maxX: cx + w/2,
+    minZ: cz - d/2, maxZ: cz + d/2,
+    mesh,
+  };
+  mesh.userData.building = b;
+  buildings.push(b);
+  solidMeshes.push(mesh);
+  // Parapet — four thin walls, not one slab, or you stand knee-deep in your own roof.
+  // Purely cosmetic: not in solidMeshes and not in collision, so it never eats a
+  // bullet the player thought was clear.
+  const lipMat = new THREE.MeshLambertMaterial({ color: 0x2c3648 });
+  const lipH = 0.9, t = 0.5;
+  for (const [lw, ld, lx, lz] of [
+    [w + t, t, 0, -d/2], [w + t, t, 0, d/2],
+    [t, d + t, -w/2, 0], [t, d + t, w/2, 0],
+  ]) {
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(lw, lipH, ld), lipMat);
+    lip.position.set(cx + lx, h + lipH/2, cz + lz);
+    scene.add(lip);
+  }
+  return b;
+}
+
+function buildCity() {
+  // ground
+  const g = new THREE.Mesh(new THREE.PlaneGeometry(900, 900),
+                           new THREE.MeshLambertMaterial({ color: 0x14181f }));
+  g.rotation.x = -Math.PI/2;
+  scene.add(g);
+  solidMeshes.push(g);
+
+  // 5x5 block grid, 46u pitch, footprints 26-32, heights 16-58.
+  // Deterministic layout: a sniper level is about sightlines, and sightlines you
+  // cannot reason about are not a level. Hand-tuned heights, no RNG.
+  const H = [
+    [34, 22, 46, 18, 30],
+    [26, 52, 20, 40, 24],
+    [44, 18, 36, 26, 50],
+    [22, 38, 28, 54, 20],
+    [30, 24, 42, 22, 34],
+  ];
+  const tints = [0x232b3a, 0x1e2532, 0x28313f, 0x1b212c, 0x2a3444];
+  for (let i = 0; i < 5; i++) {
+    for (let j = 0; j < 5; j++) {
+      const cx = (i - 2) * 46, cz = (j - 2) * 46;
+      const w = 26 + ((i * 3 + j) % 3) * 3;
+      const d = 26 + ((i + j * 2) % 3) * 3;
+      addBuilding(cx, cz, w, d, H[i][j], tints[(i + j) % tints.length]);
+    }
+  }
+  // Low connector roofs so the grapple has mid-height options. Placed in the OUTER
+  // streets (x/z = 69) — the inner streets at +/-23 are patrol routes, and a building
+  // dropped on a route makes patrols bounce off it.
+  addBuilding(69, 0, 12, 30, 12, 0x1d2430);
+  addBuilding(0, 69, 30, 12, 14, 0x1d2430);
+}
+buildCity();
+
+function buildingAt(x, z) {
+  for (const b of buildings) {
+    if (x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ) return b;
+  }
+  return null;
+}
+function roofTopAt(x, z) { const b = buildingAt(x, z); return b ? b.h : 0; }
+
+// ---------------- player ----------------
+const player = {
+  pos: new THREE.Vector3(-92, 34, -92),   // starting perch: the NW tower
+  vel: new THREE.Vector3(),
+  yaw: Math.PI * 0.75, pitch: -0.12,
+  hp: 100, alive: true,
+  onGround: false,
+  ads: false, zoom: 0, breath: T.breathMax, holdingBreath: false,
+  mag: T.magSize, reserve: {}, roundKey: 'standard',
+  bolt: 0, reloading: 0,
+  grapple: { mode: 'pull', state: 'idle', anchor: new THREE.Vector3(), len: 0, t: 0 },
+};
+
+const mission = {
+  running: false, kills: 0, headshots: 0, shots: 0, hits: 0,
+  relocations: 0, time: 0, hvtDown: false, extractReady: false, extract: null,
+};
+
+// ---------------- detection ----------------
+const detect = {
+  level: 0,                                  // 0 unaware, 1 confused, 2 direction, 3 located
+  perchShots: 0,
+  perchAnchor: new THREE.Vector3().copy(player.pos),
+  lastKnown: new THREE.Vector3().copy(player.pos),
+  hasLastKnown: false,
+  quiet: 0,
+  artillery: null,                           // {t, pos, warned}
+};
+const ALERT_WORDS = ['UNAWARE', 'CONFUSED', 'DIRECTION KNOWN', 'LOCATED'];
+
+function noteLoudShot() {
+  detect.perchShots++;
+  detect.quiet = 0;
+  detect.hasLastKnown = true;
+  // they hear the shot, they do not have your exact tile — error shrinks as they close in
+  const err = detect.perchShots === 1 ? 22 : detect.perchShots === 2 ? 9 : 0;
+  detect.lastKnown.set(
+    player.pos.x + (err ? (Math.sin(player.pos.z * 3.1) * err) : 0),
+    player.pos.y,
+    player.pos.z + (err ? (Math.cos(player.pos.x * 2.7) * err) : 0)
+  );
+  const lvl = Math.min(3, detect.perchShots);
+  if (lvl > detect.level) {
+    detect.level = lvl;
+    if (lvl === 1) toast('SHOT HEARD — SOURCE UNKNOWN', '#ffe066');
+    if (lvl === 2) toast('THEY HAVE YOUR DIRECTION — MOVE SOON', '#ffa94d');
+    if (lvl === 3) toast('LOCATED. GET OFF THIS ROOF.', '#ff5a4d');
+  }
+}
+
+function checkRelocation() {
+  if (!detect.hasLastKnown) { detect.perchAnchor.copy(player.pos); return; }
+  if (player.pos.distanceTo(detect.perchAnchor) > T.relocateDist) {
+    detect.perchAnchor.copy(player.pos);
+    if (detect.perchShots > 0) {
+      detect.perchShots = 0;
+      detect.level = Math.min(detect.level, 1);
+      mission.relocations++;
+      logLine('Repositioned. They are converging on where you <i>were</i>.');
+      toast('POSITION LOST — THEY HOLD THE OLD ONE', '#8fd6ff');
+    }
+  }
+}
+
+// ---------------- enemies ----------------
+const enemies = [];
+const hitboxes = [];   // meshes the bullet raycast can hit
+
+const TYPE = {
+  infantry: { hp: 100, color: 0x8a95a6, speed: 3.0, label: 'INFANTRY' },
+  sniper:   { hp: 100, color: 0xcf6a5a, speed: 2.2, label: 'SNIPER' },
+  spotter:  { hp: 100, color: 0xd8c05a, speed: 3.2, label: 'SPOTTER' },
+  shield:   { hp: 100, color: 0x5a9ccf, speed: 2.4, label: 'SHIELD' },
+  armour:   { hp: 260, color: 0x6f7f8f, speed: 1.8, label: 'ARMOURED' },
+  hvt:      { hp: 100, color: 0xc47bff, speed: 2.6, label: 'HIGH VALUE TARGET' },
+};
+
+function makeEnemy(type, waypoints, opts = {}) {
+  const spec = TYPE[type];
+  const grp = new THREE.Group();
+
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.42, 1.0, 4, 8),
+    new THREE.MeshLambertMaterial({ color: spec.color }));
+  body.position.y = 1.0;
+  grp.add(body);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 8),
+    new THREE.MeshLambertMaterial({ color: 0xe8dcc8 }));
+  head.position.y = 1.78;
+  grp.add(head);
+
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.9, 0.36),
+    new THREE.MeshLambertMaterial({ color: 0x4a5261 }));
+  legs.position.y = 0.45;
+  grp.add(legs);
+
+  const e = {
+    type, spec, hp: spec.hp, alive: true,
+    pos: new THREE.Vector3(waypoints[0].x, waypoints[0].y, waypoints[0].z),
+    grp, body, head, legs,
+    waypoints, wp: 1, state: 'patrol',
+    aimT: 0, fireCd: 0, callT: 0, frozen: 0,
+    isHVT: type === 'hvt',
+    shield: type === 'shield', armoured: type === 'armour',
+    glint: null, marker: null,
+  };
+
+  // shield plate — Penetration only. A visible slab so the counter reads on sight.
+  if (e.shield) {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.7, 0.16),
+      new THREE.MeshLambertMaterial({ color: 0x3d6f9c }));
+    plate.position.set(0, 1.15, 0.5);
+    grp.add(plate);
+    e.plate = plate;
+    plate.userData = { enemy: e, part: 'plate' };
+    hitboxes.push(plate);
+  }
+  if (e.armoured) {
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(1.25, 1.7, 0.95),
+      new THREE.MeshLambertMaterial({ color: 0x555f6d }));
+    shell.position.y = 1.1;
+    grp.add(shell);
+    e.shell = shell;
+    shell.userData = { enemy: e, part: 'shell' };
+    hitboxes.push(shell);
+  }
+  // enemy snipers must have a tell, or dying to them is just unfair
+  if (type === 'sniper') {
+    e.glint = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: glintTexture(), color: 0xbfe4ff, transparent: true, opacity: 0.0, depthWrite: false,
+    }));
+    e.glint.scale.set(2.4, 2.4, 1);
+    e.glint.position.y = 1.8;
+    grp.add(e.glint);
+  }
+  if (e.isHVT) {
+    e.marker = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: markerTexture(), color: 0xc47bff, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false,
+    }));
+    e.marker.scale.set(2.0, 2.0, 1);
+    e.marker.position.y = 3.1;
+    grp.add(e.marker);
+  }
+
+  head.userData = { enemy: e, part: 'head' };
+  body.userData = { enemy: e, part: 'body' };
+  legs.userData = { enemy: e, part: 'limb' };
+  hitboxes.push(head, body, legs);
+
+  grp.position.copy(e.pos);
+  scene.add(grp);
+  enemies.push(e);
+  return e;
+}
+
+function glintTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.25, 'rgba(180,225,255,0.75)');
+  g.addColorStop(1, 'rgba(120,200,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+}
+function markerTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d');
+  x.strokeStyle = '#fff'; x.lineWidth = 5;
+  x.beginPath(); x.moveTo(12, 18); x.lineTo(32, 46); x.lineTo(52, 18); x.stroke();
+  return new THREE.CanvasTexture(c);
+}
+
+// roof patrol route: a rectangle inset from the parapet
+function roofRoute(b, inset = 5) {
+  const y = b.h;
+  return [
+    new THREE.Vector3(b.minX + inset, y, b.minZ + inset),
+    new THREE.Vector3(b.maxX - inset, y, b.minZ + inset),
+    new THREE.Vector3(b.maxX - inset, y, b.maxZ - inset),
+    new THREE.Vector3(b.minX + inset, y, b.maxZ - inset),
+  ];
+}
+// street patrol: a line down the gap between blocks
+function streetRoute(x1, z1, x2, z2) {
+  return [new THREE.Vector3(x1, 0, z1), new THREE.Vector3(x2, 0, z2)];
+}
+
+function populate() {
+  const B = (i, j) => buildings[i * 5 + j];
+
+  // HVT on the tallest central-east roof, with a bodyguard pair
+  makeEnemy('hvt', roofRoute(B(3, 3), 6));
+  makeEnemy('shield', roofRoute(B(3, 3), 10));
+  makeEnemy('armour', roofRoute(B(2, 4), 7));
+
+  // counter-snipers on high roofs — these are what kill you
+  makeEnemy('sniper', roofRoute(B(1, 1), 6));
+  makeEnemy('sniper', roofRoute(B(4, 2), 6));
+
+  // spotter — the anti-camping mechanic
+  makeEnemy('spotter', roofRoute(B(2, 2), 6));
+
+  // fodder on the streets, and one roof patrol to punish lazy relocation
+  makeEnemy('infantry', streetRoute(-70, -23, 70, -23));
+  makeEnemy('infantry', streetRoute(-23, 70, -23, -70));
+  makeEnemy('infantry', streetRoute(23, -70, 23, 70));
+  makeEnemy('infantry', roofRoute(B(0, 3), 6));
+  makeEnemy('infantry', roofRoute(B(4, 4), 6));
+  makeEnemy('shield', streetRoute(70, 23, -70, 23));
+}
+populate();
+
+// ---------------- HUD helpers ----------------
+const el = id => document.getElementById(id);
+const hud = el('hud'), cross = el('cross'), scopeEl = el('scope');
+
+let logLines = [];
+function logLine(html) {
+  logLines.push(html);
+  if (logLines.length > 4) logLines.shift();
+  el('log').innerHTML = logLines.map(l => `<div>${l}</div>`).join('');
+}
+let toastT = 0;
+function toast(txt, color) {
+  const t = el('toast');
+  t.textContent = txt; t.style.color = color || '#fff'; t.style.opacity = 1;
+  toastT = 2.2;
+}
+function hitMarker(kind) {
+  const h = el('hitmark');
+  h.style.opacity = 1;
+  h.querySelectorAll('div').forEach(d => d.style.background = kind === 'head' ? '#ff4d4d' : kind === 'block' ? '#7fa8cc' : '#ffffff');
+  setTimeout(() => h.style.opacity = 0, 160);
+}
+function damageFlash() {
+  const d = el('dmgFlash');
+  d.style.opacity = 1;
+  setTimeout(() => d.style.opacity = 0, 120);
+}
+
+function updateHUD() {
+  el('hpNum').textContent = Math.max(0, Math.round(player.hp));
+  el('hpFill').style.width = Math.max(0, player.hp) + '%';
+  el('hpFill').style.background = player.hp > 55 ? 'linear-gradient(90deg,#2ecc71,#7bffb0)'
+    : player.hp > 25 ? 'linear-gradient(90deg,#e2b93b,#ffe08a)' : 'linear-gradient(90deg,#d23b3b,#ff8080)';
+
+  const rd = ROUNDS[player.roundKey];
+  el('ammoNum').textContent = player.mag;
+  el('ammoMax').textContent = rd.mag;
+  const res = player.reserve[player.roundKey];
+  el('roundName').textContent = rd.name + (res === Infinity ? '' : `  (${res} left)`);
+
+  const boltPct = player.reloading > 0 ? (1 - player.reloading / T.reloadTime)
+    : player.bolt > 0 ? (1 - player.bolt / T.boltTime) : 1;
+  el('boltFill').style.width = (boltPct * 100) + '%';
+
+  const at = el('alertText');
+  at.textContent = ALERT_WORDS[detect.level];
+  at.className = detect.level ? 'a' + detect.level : '';
+  const pips = el('pips').children;
+  for (let i = 0; i < 3; i++) pips[i].className = i < detect.level ? 'on' : '';
+
+  el('objText').textContent = mission.extractReady ? 'Reach the extraction beacon'
+    : mission.hvtDown ? `Thin them out — ${Math.max(0, T.killQuota - mission.kills)} more` : 'Eliminate the High Value Target';
+  el('objSub').textContent = `Kills ${mission.kills}/${T.killQuota}  ·  Relocations ${mission.relocations}  ·  ${mission.time.toFixed(0)}s`;
+}
+
+// ---------------- weapon ----------------
+const raycaster = new THREE.Raycaster();
+raycaster.far = 500;
+const tracers = [];
+
+function currentRound() { return ROUNDS[player.roundKey]; }
+
+function resetAmmo() {
+  player.reserve = {};
+  for (const k of loadout) player.reserve[k] = ROUNDS[k].reserve;
+  player.reserve.standard = Infinity;
+  player.roundKey = 'standard';
+  player.mag = ROUNDS.standard.mag;
+}
+
+function switchRound(key) {
+  if (!loadout.includes(key)) return;
+  if (key === player.roundKey) return;
+  if (player.reserve[key] !== Infinity && player.reserve[key] <= 0) { toast('NO ' + ROUNDS[key].name + ' ROUNDS', '#ff8f6a'); return; }
+  player.roundKey = key;
+  player.mag = Math.min(ROUNDS[key].mag, player.reserve[key] === Infinity ? ROUNDS[key].mag : player.reserve[key]);
+  player.bolt = Math.max(player.bolt, 0.45);
+  logLine(`Chambered <b style="color:#ffd98a">${ROUNDS[key].name}</b>`);
+}
+
+function startReload() {
+  const rd = currentRound();
+  if (player.reloading > 0 || player.mag >= rd.mag) return;
+  if (player.reserve[player.roundKey] !== Infinity && player.reserve[player.roundKey] <= 0) return;
+  player.reloading = T.reloadTime;
+}
+
+function fire() {
+  if (!mission.running || !player.alive) return;
+  if (player.bolt > 0 || player.reloading > 0) return;
+  if (player.mag <= 0) { startReload(); return; }
+
+  const rd = currentRound();
+  player.mag--;
+  if (player.reserve[player.roundKey] !== Infinity) player.reserve[player.roundKey]--;
+  player.bolt = T.boltTime;
+  mission.shots++;
+  camKick = 0.055;
+
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const origin = camera.getWorldPosition(new THREE.Vector3());
+
+  raycaster.set(origin, dir);
+  const targets = rd.pierce ? hitboxes : hitboxes.concat(solidMeshes);
+  const hits = raycaster.intersectObjects(targets, false)
+    .filter(h => !(rd.pierce && h.object.userData.part === 'plate'))   // pierce goes through shields
+    .sort((a, b) => a.distance - b.distance);
+
+  let endPoint = origin.clone().add(dir.clone().multiplyScalar(400));
+  if (hits.length) {
+    const h = hits[0];
+    endPoint = h.point.clone();
+    resolveHit(h, rd, endPoint);
+  }
+  spawnTracer(origin, endPoint);
+
+  if (!rd.silent) noteLoudShot();
+  else logLine('Silent round — they heard nothing.');
+}
+
+function resolveHit(h, rd, point) {
+  const ud = h.object.userData;
+
+  if (rd.explosive) { explode(point, 9, 150); hitMarker('hit'); return; }
+
+  if (!ud.enemy) { hitMarker('block'); return; }   // hit geometry
+  const e = ud.enemy;
+  if (!e.alive) return;
+
+  if (ud.part === 'plate') { hitMarker('block'); logLine('<span style="color:#7fa8cc">Shield held. Penetration round required.</span>'); alertEnemy(e); return; }
+  if (ud.part === 'shell') { hitMarker('block'); logLine('<span style="color:#7fa8cc">Armour held. That chassis needs Fire.</span>'); alertEnemy(e); return; }
+
+  mission.hits++;
+  const dmg = ud.part === 'head' ? T.dmgHead : ud.part === 'body' ? T.dmgBody : T.dmgLimb;
+  hitMarker(ud.part === 'head' ? 'head' : 'hit');
+  if (ud.part === 'head') mission.headshots++;
+  applyDamage(e, dmg, ud.part === 'head');
+}
+
+function applyDamage(e, dmg, wasHead) {
+  e.hp -= dmg;
+  if (e.hp <= 0) { killEnemy(e, wasHead); }
+  else { alertEnemy(e); }
+}
+
+function alertEnemy(e) {
+  if (detect.level < 1) { detect.level = 1; detect.hasLastKnown = true; detect.lastKnown.copy(player.pos); }
+  e.state = 'converge';
+}
+
+function killEnemy(e, wasHead) {
+  e.alive = false;
+  e.grp.rotation.z = Math.PI / 2.1;
+  e.grp.position.y = Math.max(0.35, e.pos.y + 0.35);
+  if (e.glint) e.glint.material.opacity = 0;
+  if (e.marker) e.marker.material.opacity = 0;
+  for (const m of [e.head, e.body, e.legs, e.plate, e.shell]) {
+    if (!m) continue;
+    const i = hitboxes.indexOf(m);
+    if (i >= 0) hitboxes.splice(i, 1);
+  }
+  mission.kills++;
+  logLine(`${e.spec.label} down${wasHead ? ' — <b style="color:#ff8f8f">headshot</b>' : ''}`);
+  if (e.isHVT) {
+    mission.hvtDown = true;
+    toast('HIGH VALUE TARGET ELIMINATED', '#c47bff');
+  }
+  checkObjectives();
+}
+
+function checkObjectives() {
+  if (mission.extractReady) return;
+  if (mission.hvtDown && mission.kills >= T.killQuota) openExtraction();
+}
+
+function openExtraction() {
+  mission.extractReady = true;
+  // extraction on the far corner roof from where the player is now — forces one last move
+  let best = null, bestD = -1;
+  for (const b of buildings) {
+    const d = Math.hypot(b.cx - player.pos.x, b.cz - player.pos.z);
+    if (d > bestD) { bestD = d; best = b; }
+  }
+  mission.extract = new THREE.Vector3(best.cx, best.h, best.cz);
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.6, 2.6, 60, 14, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x63e6ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })
+  );
+  beam.position.set(best.cx, best.h + 30, best.cz);
+  scene.add(beam);
+  mission.beam = beam;
+  toast('EXTRACTION OPEN — GET TO THE BEACON', '#63e6ff');
+  logLine('Extraction beacon live.');
+}
+
+function spawnTracer(a, b) {
+  const geo = new THREE.BufferGeometry().setFromPoints([a.clone(), b.clone()]);
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+    color: 0xfff0c0, transparent: true, opacity: 0.85, depthWrite: false }));
+  scene.add(line);
+  tracers.push({ line, t: 0.22 });
+}
+
+const blasts = [];
+function explode(pos, radius, dmg) {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffb257, transparent: true, opacity: 0.85, depthWrite: false }));
+  m.position.copy(pos);
+  scene.add(m);
+  blasts.push({ m, t: 0, life: 0.55, radius });
+
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    const d = e.pos.distanceTo(pos);
+    if (d < radius) {
+      const falloff = 1 - d / radius;
+      const before = e.hp;
+      e.hp -= dmg * falloff;
+      if (e.hp <= 0 && before > 0) killEnemy(e, false);
+      else alertEnemy(e);
+    }
+  }
+  const pd = player.pos.distanceTo(pos);
+  if (pd < radius) hurtPlayer((dmg * 0.35) * (1 - pd / radius), 'your own blast');
+}
+
+// ---------------- grapple ----------------
+function fireGrapple() {
+  if (!mission.running || !player.alive) return;
+  const g = player.grapple;
+  if (g.state !== 'idle') { releaseGrapple(); return; }
+
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const origin = camera.getWorldPosition(new THREE.Vector3());
+  raycaster.set(origin, dir);
+  raycaster.far = T.grappleRange;
+  const hits = raycaster.intersectObjects(solidMeshes, false);
+  raycaster.far = 500;
+  if (!hits.length) { toast('NO ANCHOR', '#8fa6c4'); return; }
+
+  g.anchor.copy(hits[0].point);
+  g.t = 0;
+  if (g.mode === 'pull') {
+    g.state = 'pull';
+  } else {
+    // rope length = where you actually are. Clamping it here would yank the player
+    // sideways the instant they fire, which reads as a teleport, not a swing.
+    g.len = player.pos.distanceTo(g.anchor);
+    g.state = 'swing';
+  }
+  showRope(true);
+}
+
+function releaseGrapple() {
+  const g = player.grapple;
+  if (g.state === 'swing') player.vel.multiplyScalar(T.swingBoost);
+  g.state = 'idle';
+  showRope(false);
+}
+
+let ropeLine = null;
+function showRope(on) {
+  if (on && !ropeLine) {
+    ropeLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
+      new THREE.LineBasicMaterial({ color: 0x7fd8ff, transparent: true, opacity: 0.8 })
+    );
+    scene.add(ropeLine);
+  }
+  if (ropeLine) ropeLine.visible = !!on;
+}
+function updateRope() {
+  if (!ropeLine || !ropeLine.visible) return;
+  const from = player.pos.clone(); from.y += T.eyeHeight - 0.35;
+  ropeLine.geometry.setFromPoints([from, player.grapple.anchor]);
+  ropeLine.geometry.attributes.position.needsUpdate = true;
+}
+
+// Land on the roof nearest the anchor. Without this snap, a pull that ends in
+// mid-air next to a parapet drops you into the street, which reads as a bug even
+// though it is "correct" physics.
+function arriveFromPull() {
+  const g = player.grapple;
+  const b = buildingAt(g.anchor.x, g.anchor.z) ||
+            buildings.find(bb => Math.abs(bb.h - g.anchor.y) < 3.5 &&
+              g.anchor.x > bb.minX - 1.2 && g.anchor.x < bb.maxX + 1.2 &&
+              g.anchor.z > bb.minZ - 1.2 && g.anchor.z < bb.maxZ + 1.2);
+  if (b && Math.abs(b.h - g.anchor.y) < 6) {
+    // nudge inward off the lip so you are standing on the roof, not clipping it
+    const inX = THREE.MathUtils.clamp(g.anchor.x, b.minX + 1.4, b.maxX - 1.4);
+    const inZ = THREE.MathUtils.clamp(g.anchor.z, b.minZ + 1.4, b.maxZ - 1.4);
+    player.pos.set(inX, b.h, inZ);
+    player.vel.set(0, 0, 0);
+    player.onGround = true;
+  } else {
+    // wall anchor — kill horizontal speed, let gravity take it
+    player.vel.multiplyScalar(0.25);
+  }
+  releaseGrapple();
+}
+
+function updateGrapple(dt) {
+  const g = player.grapple;
+  if (g.state === 'pull') {
+    g.t += dt;
+    const to = g.anchor.clone().sub(player.pos);
+    const dist = to.length();
+    if (dist < T.pullArrive || g.t > T.pullMax) { arriveFromPull(); return true; }
+    to.normalize();
+    player.pos.add(to.multiplyScalar(T.pullSpeed * dt));
+    player.vel.copy(to).multiplyScalar(T.pullSpeed * 0.4);
+    player.onGround = false;
+    return true;                        // grapple owns movement this frame
+  }
+  if (g.state === 'swing') {
+    player.vel.y += T.swingGravity * dt;
+    if (keys['KeyW']) g.len = Math.max(6, g.len - T.swingReelSpeed * dt);
+    if (keys['KeyS']) g.len = Math.min(T.swingMaxLen, g.len + T.swingReelSpeed * dt);
+
+    player.pos.addScaledVector(player.vel, dt);
+    const rel = player.pos.clone().sub(g.anchor);
+    const d = rel.length();
+    if (d > g.len) {
+      rel.multiplyScalar(g.len / d);
+      player.pos.copy(g.anchor).add(rel);
+      const n = rel.normalize();
+      const radial = player.vel.dot(n);
+      if (radial > 0) player.vel.addScaledVector(n, -radial);   // strip outward velocity
+    }
+    // touching down ends the swing
+    const floor = roofTopAt(player.pos.x, player.pos.z);
+    if (player.pos.y <= floor + 0.05 && player.vel.y <= 0) {
+      player.pos.y = floor;
+      releaseGrapple();
+      player.vel.y = 0;
+      player.onGround = true;
+    }
+    return true;
+  }
+  return false;
+}
+
+// ---------------- player movement ----------------
+let wasOnGround = true;
+function movePlayer(dt) {
+  if (updateGrapple(dt)) return;
+
+  const wish = new THREE.Vector3();
+  const fwd = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+  if (keys['KeyW'] || touchMove.y < -0.25) wish.add(fwd);
+  if (keys['KeyS'] || touchMove.y > 0.25) wish.sub(fwd);
+  if (keys['KeyA'] || touchMove.x < -0.25) wish.sub(right);
+  if (keys['KeyD'] || touchMove.x > 0.25) wish.add(right);
+  if (wish.lengthSq() > 0) wish.normalize();
+
+  const sprinting = (keys['ShiftLeft'] || keys['ShiftRight']) && !player.ads && player.onGround;
+  const target = wish.multiplyScalar(sprinting ? T.sprint : player.ads ? T.walk * 0.45 : T.walk);
+  const ctrl = player.onGround ? 1 : T.airControl;
+  player.vel.x += (target.x - player.vel.x) * Math.min(1, T.accel * ctrl * dt / 6);
+  player.vel.z += (target.z - player.vel.z) * Math.min(1, T.accel * ctrl * dt / 6);
+  if (player.onGround && wish.lengthSq() === 0) {
+    const f = Math.max(0, 1 - T.friction * dt);
+    player.vel.x *= f; player.vel.z *= f;
+  }
+  player.vel.y += T.gravity * dt;
+
+  // --- horizontal collision, axis at a time. Buildings we are standing on top of
+  //     are skipped so you can walk off a roof.
+  const R = T.playerRadius;
+  let nx = player.pos.x + player.vel.x * dt;
+  for (const b of buildings) {
+    if (b.h <= player.pos.y + 0.06) continue;
+    if (nx > b.minX - R && nx < b.maxX + R && player.pos.z > b.minZ - R && player.pos.z < b.maxZ + R) {
+      nx = nx > b.cx ? b.maxX + R : b.minX - R;
+      player.vel.x = 0;
+    }
+  }
+  player.pos.x = nx;
+
+  let nz = player.pos.z + player.vel.z * dt;
+  for (const b of buildings) {
+    if (b.h <= player.pos.y + 0.06) continue;
+    if (player.pos.x > b.minX - R && player.pos.x < b.maxX + R && nz > b.minZ - R && nz < b.maxZ + R) {
+      nz = nz > b.cz ? b.maxZ + R : b.minZ - R;
+      player.vel.z = 0;
+    }
+  }
+  player.pos.z = nz;
+
+  // --- vertical
+  const prevY = player.pos.y;
+  const impact = player.vel.y;          // captured before any landing zeroes it
+  player.pos.y += player.vel.y * dt;
+  player.onGround = false;
+  if (player.pos.y <= 0) { player.pos.y = 0; player.vel.y = 0; player.onGround = true; }
+  for (const b of buildings) {
+    const inside = player.pos.x > b.minX - 0.2 && player.pos.x < b.maxX + 0.2 &&
+                   player.pos.z > b.minZ - 0.2 && player.pos.z < b.maxZ + 0.2;
+    if (!inside) continue;
+    if (prevY >= b.h - 0.001 && player.pos.y <= b.h) {
+      player.pos.y = b.h; player.vel.y = 0; player.onGround = true;
+    } else if (player.pos.y < b.h && prevY < b.h) {
+      // squeezed inside geometry (edge case) — pop to the roof rather than trap the player
+      player.pos.y = b.h; player.vel.y = 0; player.onGround = true;
+    }
+  }
+
+  // Fall damage. Without it, stepping off a 54u tower is a free relocation and the
+  // grapple has no reason to exist. Capped below 100 on purpose: one bad landing must
+  // never be an instant death in a game whose whole loop is throwing yourself off roofs.
+  if (player.onGround && !wasOnGround && impact < T.fallSafe) {
+    const d = Math.min(T.fallMaxDmg, (-impact - Math.abs(T.fallSafe)) * T.fallScale);
+    logLine(`Hard landing — <span style="color:#ff9d8a">${Math.round(d)}</span> armour.`);
+    hurtPlayer(d, 'the fall');
+  }
+  wasOnGround = player.onGround;
+
+  if (player.onGround && (keys['Space'] || wantJump)) {
+    player.vel.y = T.jump;
+    player.onGround = false;
+  }
+  wantJump = false;
+}
+
+// ---------------- enemy AI ----------------
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3();
+
+function hasLOS(fromPos, toPos, eyeA = 1.7, eyeB = T.eyeHeight) {
+  _v1.set(fromPos.x, fromPos.y + eyeA, fromPos.z);
+  _v2.set(toPos.x, toPos.y + eyeB, toPos.z);
+  const dir = _v2.clone().sub(_v1);
+  const dist = dir.length();
+  if (dist < 0.001) return true;
+  dir.normalize();
+  raycaster.set(_v1, dir);
+  raycaster.far = dist - 0.4;
+  const blocked = raycaster.intersectObjects(solidMeshes, false).length > 0;
+  raycaster.far = 500;
+  return !blocked;
+}
+
+function stepToward(e, dest, dt, speed) {
+  const to = dest.clone().sub(e.pos);
+  to.y = 0;
+  const d = to.length();
+  if (d < 0.6) return true;
+  to.normalize().multiplyScalar(Math.min(speed * dt, d));
+  const nx = e.pos.x + to.x, nz = e.pos.z + to.z;
+  // enemies walk on their own surface; do not let them stroll off a roof into the void
+  const surface = roofTopAt(nx, nz);
+  if (Math.abs(surface - e.pos.y) > 1.6) return true;   // treat as arrived, they hold position
+  e.pos.x = nx; e.pos.z = nz;
+  return false;
+}
+
+function updateEnemies(dt) {
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    if (e.frozen > 0) { e.frozen -= dt; e.grp.position.copy(e.pos); continue; }
+
+    const dist = e.pos.distanceTo(player.pos);
+    const canSee = detect.level >= 2 && dist < 220 && hasLOS(e.pos, player.pos);
+
+    // ---- state selection
+    if (detect.level >= 2 && detect.hasLastKnown) {
+      e.state = (detect.level >= 3 && canSee) ? 'engage' : 'converge';
+    } else if (detect.level === 1 && detect.hasLastKnown) {
+      e.state = 'search';
+    } else {
+      e.state = 'patrol';
+    }
+
+    // ---- behaviour
+    if (e.state === 'patrol') {
+      const dest = e.waypoints[e.wp];
+      if (stepToward(e, dest, dt, e.spec.speed)) e.wp = (e.wp + 1) % e.waypoints.length;
+    } else if (e.state === 'search' || e.state === 'converge') {
+      const speed = e.state === 'converge' ? e.spec.speed * 1.35 : e.spec.speed;
+      stepToward(e, detect.lastKnown, dt, speed);
+    }
+
+    // ---- shooting
+    if (e.type === 'sniper') {
+      if (e.state === 'engage' && dist < T.sniperRange) {
+        e.aimT += dt;
+        if (e.glint) e.glint.material.opacity = 0.25 + 0.75 * Math.min(1, e.aimT / T.sniperWindup);
+        if (e.aimT >= T.sniperWindup) {
+          e.aimT = 0;
+          if (hasLOS(e.pos, player.pos)) {
+            spawnTracer(_v1.clone().set(e.pos.x, e.pos.y + 1.7, e.pos.z),
+                        _v2.clone().set(player.pos.x, player.pos.y + T.eyeHeight, player.pos.z));
+            hurtPlayer(T.sniperDmg, 'a counter-sniper');
+          } else {
+            logLine('A sniper shot where you <i>were</i>.');
+          }
+        }
+      } else {
+        e.aimT = Math.max(0, e.aimT - dt * 0.6);
+        if (e.glint) {
+          // idle glint still pulses — the tell exists before he is shooting at you
+          const base = detect.level >= 2 ? 0.30 : 0.16;
+          e.glint.material.opacity = base + Math.sin(mission.time * 2.3 + e.pos.x) * 0.1;
+        }
+      }
+    } else if (e.type === 'spotter') {
+      if (e.state === 'engage' && dist < 260) {
+        e.callT += dt;
+        if (e.callT >= T.spotterCallTime && !detect.artillery) {
+          e.callT = 0;
+          detect.artillery = { t: T.artilleryDelay, pos: detect.lastKnown.clone(), warned: false };
+          toast('SPOTTER CALLED IT IN — MOVE', '#ff5a4d');
+          logLine('<b style="color:#ff8f6a">Artillery inbound on your last known position.</b>');
+        }
+      } else e.callT = Math.max(0, e.callT - dt);
+    } else if (e.type === 'infantry' || e.type === 'shield' || e.type === 'hvt') {
+      e.fireCd -= dt;
+      if (e.state === 'engage' && dist < T.infantryRange && e.fireCd <= 0) {
+        e.fireCd = T.infantryCadence;
+        hurtPlayer(T.infantryDmg, 'small arms');
+      }
+    }
+
+    // face travel direction / the player
+    const look = (e.state === 'engage' || e.state === 'converge') ? player.pos : e.waypoints[e.wp];
+    e.grp.rotation.y = Math.atan2(look.x - e.pos.x, look.z - e.pos.z);
+    e.grp.position.copy(e.pos);
+    if (e.marker) e.marker.material.rotation = mission.time * 0.9;
+  }
+}
+
+function updateArtillery(dt) {
+  const a = detect.artillery;
+  if (!a) return;
+  a.t -= dt;
+  if (a.t < 1.6 && !a.warned) {
+    a.warned = true;
+    const d = player.pos.distanceTo(a.pos);
+    if (d < T.artilleryRadius * 1.6) toast('INCOMING — RUN', '#ff3b3b');
+  }
+  if (a.t <= 0) {
+    explode(a.pos, T.artilleryRadius, T.artilleryDmg);
+    // their own strike catches their own people if they converged on the old spot —
+    // deliberate: it rewards leaving a hot position for them to crowd into
+    detect.artillery = null;
+    logLine('Artillery landed on the old position.');
+  }
+}
+
+function hurtPlayer(dmg, source) {
+  if (!player.alive) return;
+  player.hp -= dmg;
+  damageFlash();
+  if (player.hp <= 0) {
+    player.hp = 0; player.alive = false;
+    endMission(false, `Killed by ${source}.`);
+  }
+}
+
+// ---------------- camera ----------------
+let camKick = 0, swayT = 0;
+function updateCamera(dt) {
+  swayT += dt * T.swaySpeed;
+  camera.position.set(player.pos.x, player.pos.y + T.eyeHeight, player.pos.z);
+
+  let sway = 0, swayV = 0;
+  if (player.ads) {
+    const mult = player.holdingBreath && player.breath > 0 ? T.breathHoldMult : 1;
+    const amp = T.swayAmp * (T.fovHip / T.fovAds[player.zoom]) * mult;
+    sway = Math.sin(swayT) * amp;
+    swayV = Math.sin(swayT * 0.63 + 1.1) * amp * 0.7;
+  }
+
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y = player.yaw + sway;
+  camera.rotation.x = player.pitch + swayV - camKick;
+  camera.rotation.z = 0;
+  camKick = Math.max(0, camKick - dt * 0.28);
+
+  const wantFov = player.ads ? T.fovAds[player.zoom] : T.fovHip;
+  camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 14);
+  camera.updateProjectionMatrix();
+}
+
+function setAds(on) {
+  if (player.ads === on) return;
+  player.ads = on;
+  scopeEl.style.display = on ? 'block' : 'none';
+  cross.style.display = on ? 'none' : 'block';
+  el('zoomTxt').textContent = T.zoomLabels[player.zoom];
+}
+
+// ---------------- input ----------------
+const keys = {};
+let wantJump = false;
+const isMobile = (() => {
+  const ua = navigator.userAgent || '';
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(ua) || ('ontouchstart' in window && innerWidth < 900);
+})();
+const touchMove = { x: 0, y: 0 };
+
+addEventListener('keydown', ev => {
+  keys[ev.code] = true;
+  if (!mission.running) return;
+  if (ev.code === 'Space') { wantJump = true; ev.preventDefault(); }
+  if (ev.code === 'KeyR') startReload();
+  if (ev.code === 'KeyE') fireGrapple();
+  if (ev.code === 'Digit1') switchRound('standard');
+  if (ev.code === 'Digit2') switchRound(loadout[1]);
+  if (ev.code === 'Digit3') switchRound(loadout[2]);
+  if (ev.code === 'KeyG') {
+    const g = player.grapple;
+    g.mode = g.mode === 'pull' ? 'swing' : 'pull';
+    releaseGrapple();
+    toast('GRAPPLE: ' + (g.mode === 'pull' ? 'GRAVITY PULL' : 'PENDULUM SWING'), '#8fd6ff');
+  }
+  if (ev.code === 'ShiftLeft' || ev.code === 'ShiftRight') player.holdingBreath = player.ads;
+});
+addEventListener('keyup', ev => {
+  keys[ev.code] = false;
+  if (ev.code === 'ShiftLeft' || ev.code === 'ShiftRight') player.holdingBreath = false;
+});
+
+renderer.domElement.addEventListener('mousedown', ev => {
+  if (!mission.running) return;
+  if (document.pointerLockElement !== renderer.domElement) { renderer.domElement.requestPointerLock(); return; }
+  if (ev.button === 0) fire();
+  if (ev.button === 2) setAds(true);
+});
+addEventListener('mouseup', ev => { if (ev.button === 2) setAds(false); });
+addEventListener('contextmenu', ev => ev.preventDefault());
+
+addEventListener('mousemove', ev => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  const base = 0.0022;
+  const zoomScale = player.ads ? T.fovAds[player.zoom] / T.fovHip : 1;
+  player.yaw   -= ev.movementX * base * zoomScale;
+  player.pitch -= ev.movementY * base * zoomScale;
+  player.pitch = THREE.MathUtils.clamp(player.pitch, -1.45, 1.45);
+});
+
+addEventListener('wheel', ev => {
+  if (!player.ads) return;
+  player.zoom = THREE.MathUtils.clamp(player.zoom + (ev.deltaY > 0 ? -1 : 1), 0, T.fovAds.length - 1);
+  el('zoomTxt').textContent = T.zoomLabels[player.zoom];
+}, { passive: true });
+
+// ---- touch
+function bindHold(id, down, up) {
+  const n = el(id);
+  n.addEventListener('touchstart', e => { e.preventDefault(); down(); }, { passive: false });
+  n.addEventListener('touchend',   e => { e.preventDefault(); if (up) up(); }, { passive: false });
+}
+function setupTouch() {
+  el('touch').style.display = 'block';
+  const stick = el('stick'), nub = el('stickNub');
+  let sid = null, sc = { x: 0, y: 0 };
+  stick.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const t = e.changedTouches[0]; sid = t.identifier;
+    const r = stick.getBoundingClientRect();
+    sc.x = r.left + r.width/2; sc.y = r.top + r.height/2;
+  }, { passive: false });
+  addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === sid) {
+        const dx = THREE.MathUtils.clamp((t.clientX - sc.x) / 46, -1, 1);
+        const dy = THREE.MathUtils.clamp((t.clientY - sc.y) / 46, -1, 1);
+        touchMove.x = dx; touchMove.y = dy;
+        nub.style.transform = `translate(${dx*34}px,${dy*34}px)`;
+      } else if (t.identifier === lookId) {
+        const zoomScale = player.ads ? T.fovAds[player.zoom] / T.fovHip : 1;
+        player.yaw   -= (t.clientX - lookLast.x) * 0.005 * zoomScale;
+        player.pitch -= (t.clientY - lookLast.y) * 0.005 * zoomScale;
+        player.pitch = THREE.MathUtils.clamp(player.pitch, -1.45, 1.45);
+        lookLast.x = t.clientX; lookLast.y = t.clientY;
+      }
+    }
+  }, { passive: false });
+  addEventListener('touchend', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === sid) { sid = null; touchMove.x = touchMove.y = 0; nub.style.transform = ''; }
+      if (t.identifier === lookId) lookId = null;
+    }
+  });
+
+  // look = drag anywhere not on a control
+  renderer.domElement.addEventListener('touchstart', e => {
+    const t = e.changedTouches[0];
+    lookId = t.identifier; lookLast.x = t.clientX; lookLast.y = t.clientY;
+  }, { passive: true });
+
+  bindHold('bFire', () => fire());
+  bindHold('bAds', () => setAds(!player.ads));
+  bindHold('bGrap', () => fireGrapple());
+  bindHold('bRel', () => startReload());
+  bindHold('bRound', () => {
+    const i = loadout.indexOf(player.roundKey);
+    switchRound(loadout[(i + 1) % loadout.length]);
+  });
+}
+let lookId = null; const lookLast = { x: 0, y: 0 };
+
+// ---------------- loadout / flow ----------------
+let loadout = ['standard', 'pierce', 'fire'];
+
+function buildRoundPicker() {
+  const host = el('roundPick');
+  host.innerHTML = '';
+  for (const key of ['pierce', 'fire', 'ice']) {
+    const r = ROUNDS[key];
+    const d = document.createElement('div');
+    d.className = 'rd' + (loadout.includes(key) ? ' sel' : '');
+    d.innerHTML = `<b>${r.name}</b><span>${r.desc}</span>`;
+    d.onclick = () => {
+      const picked = loadout.slice(1);
+      if (picked.includes(key)) {
+        if (picked.length <= 1) return;                 // always keep one special
+        loadout = ['standard', ...picked.filter(k => k !== key)];
+      } else {
+        if (picked.length >= 2) picked.shift();
+        loadout = ['standard', ...picked, key];
+      }
+      buildRoundPicker();
+    };
+    host.appendChild(d);
+  }
+}
+buildRoundPicker();
+
+el('grapTog').addEventListener('click', ev => {
+  const t = ev.target.closest('[data-m]');
+  if (!t) return;
+  player.grapple.mode = t.dataset.m;
+  [...el('grapTog').children].forEach(c => c.className = c === t ? 'on' : '');
+});
+
+function startMission() {
+  el('brief').style.display = 'none';
+  el('endScreen').style.display = 'none';
+  hud.style.display = 'block';
+  cross.style.display = 'block';
+  resetAmmo();
+  mission.running = true;
+  player.alive = true;
+  logLine('Contract live. HVT is on a central roof — find him through the scope.');
+  if (isMobile) setupTouch();
+  else renderer.domElement.requestPointerLock();
+}
+
+function endMission(won, reason) {
+  mission.running = false;
+  setAds(false);
+  if (document.pointerLockElement) document.exitPointerLock();
+  hud.style.display = 'none';
+  cross.style.display = 'none';
+  el('endTitle').textContent = won ? 'EXTRACTED' : 'CONTRACT FAILED';
+  el('endTitle').style.background = won ? 'linear-gradient(90deg,#7ec8ff,#8affc8)' : 'linear-gradient(90deg,#ff8a8a,#ffcf8a)';
+  el('endTitle').style.webkitBackgroundClip = 'text';
+  el('endTitle').style.backgroundClip = 'text';
+  el('endSub').textContent = reason;
+  const acc = mission.shots ? Math.round(100 * mission.hits / mission.shots) : 0;
+  el('endStats').innerHTML = `
+    <div class="stat"><span>Kills</span><span>${mission.kills}</span></div>
+    <div class="stat"><span>Headshots</span><span>${mission.headshots}</span></div>
+    <div class="stat"><span>Shots fired</span><span>${mission.shots}</span></div>
+    <div class="stat"><span>Accuracy</span><span>${acc}%</span></div>
+    <div class="stat"><span>Relocations</span><span>${mission.relocations}</span></div>
+    <div class="stat"><span>Time</span><span>${mission.time.toFixed(1)}s</span></div>
+    <div class="stat"><span>HVT</span><span>${mission.hvtDown ? 'ELIMINATED' : 'ALIVE'}</span></div>`;
+  el('endScreen').style.display = 'flex';
+}
+
+el('startBtn').onclick = startMission;
+el('againBtn').onclick = () => location.reload();
+
+document.addEventListener('pointerlockchange', () => {
+  if (mission.running && !document.pointerLockElement && !isMobile) setAds(false);
+});
+
+// ---------------- loop ----------------
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  // Losing pointer lock (Esc, alt-tab) must stop the world. Otherwise snipers keep
+  // firing at a player who cannot turn their head.
+  const paused = mission.running && player.alive && !isMobile && !document.pointerLockElement;
+  el('pauseHint').style.display = paused ? 'flex' : 'none';
+
+  if (mission.running && player.alive && !paused) {
+    mission.time += dt;
+
+    // bolt / reload
+    if (player.bolt > 0) player.bolt = Math.max(0, player.bolt - dt);
+    if (player.reloading > 0) {
+      player.reloading -= dt;
+      if (player.reloading <= 0) {
+        player.reloading = 0;
+        const rd = currentRound();
+        const res = player.reserve[player.roundKey];
+        player.mag = res === Infinity ? rd.mag : Math.min(rd.mag, res);
+        logLine('Reloaded.');
+      }
+    }
+    // breath
+    if (player.holdingBreath && player.ads) player.breath = Math.max(0, player.breath - dt);
+    else player.breath = Math.min(T.breathMax, player.breath + dt * 0.6);
+    if (player.breath <= 0) player.holdingBreath = false;
+
+    movePlayer(dt);
+    checkRelocation();
+    updateEnemies(dt);
+    updateArtillery(dt);
+
+    // awareness decay
+    detect.quiet += dt;
+    if (detect.quiet > T.decayTime && detect.level > 0) {
+      detect.quiet = 0;
+      detect.level--;
+      detect.perchShots = Math.max(0, detect.perchShots - 1);
+      if (detect.level === 0) { detect.hasLastKnown = false; logLine('They have given up looking.'); }
+    }
+
+    // extraction
+    if (mission.extractReady && mission.extract &&
+        Math.hypot(player.pos.x - mission.extract.x, player.pos.z - mission.extract.z) < 5 &&
+        Math.abs(player.pos.y - mission.extract.y) < 3) {
+      endMission(true, 'Clean exfil. The El Centaur remembers this one.');
+    }
+
+    updateCamera(dt);
+    updateRope();
+    updateHUD();
+  }
+
+  // fx
+  for (let i = tracers.length - 1; i >= 0; i--) {
+    const t = tracers[i];
+    t.t -= dt;
+    t.line.material.opacity = Math.max(0, t.t / 0.22) * 0.85;
+    if (t.t <= 0) { scene.remove(t.line); t.line.geometry.dispose(); t.line.material.dispose(); tracers.splice(i, 1); }
+  }
+  for (let i = blasts.length - 1; i >= 0; i--) {
+    const b = blasts[i];
+    b.t += dt;
+    const k = b.t / b.life;
+    b.m.scale.setScalar(0.4 + k * b.radius);
+    b.m.material.opacity = Math.max(0, 0.85 * (1 - k));
+    if (k >= 1) { scene.remove(b.m); b.m.geometry.dispose(); b.m.material.dispose(); blasts.splice(i, 1); }
+  }
+  if (toastT > 0) {
+    toastT -= dt;
+    if (toastT <= 0) el('toast').style.opacity = 0;
+  }
+  if (mission.beam) mission.beam.rotation.y += dt * 0.4;
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// first frame so the brief screen has a lit city behind it if it is ever dismissed early
+updateCamera(0.016);
+</script>
+</body>
+</html>
