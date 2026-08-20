@@ -111,3 +111,104 @@ object prefixes. No `length = 0` assignment exists.
 
 Nothing here has been changed. Items 4 and 5 in particular alter difficulty, and
 BBA balance needs sign-off.
+
+---
+
+# Round 2 — shadowed declarations, dead functions, site health
+
+Same date. Three more sweeps. **One of them is a game-breaking crash.**
+
+## CRITICAL — D&D Crawler crashes when combat starts
+
+`dnd-crawler.html` declares `calcAC()` twice at top level, at lines 2363 and 7579.
+The second one is a deliberate decorator, added by the romance patch at the end of
+the file:
+
+    7578:  const _origCalcAC = calcAC;
+    7579:  function calcAC() {
+    7580:    let ac = _origCalcAC();
+             ... + 1 if the beloved is in the party
+
+The intent is right, the mechanism is not. **Function declarations hoist**, so both
+`calcAC` declarations are bound before any line runs, and the later one wins. By the
+time line 7578 executes, `calcAC` already *is* the decorator — so `_origCalcAC`
+points at the decorator, and calling it recurses into itself forever.
+
+Reduced to its essentials and run:
+
+    function calcAC() { return 10; }
+    const _origCalcAC = calcAC;
+    function calcAC() { return _origCalcAC() + 1; }
+
+    _origCalcAC === calcAC ?  true
+    calcAC()               →  RangeError: Maximum call stack size exceeded
+
+**Reachability** — this is not latent. There are 5 call sites, and two are core:
+- line 768 — the attack roll, `totalRoll >= calcAC()`
+- line 4647 — the HUD, `AC: ${calcAC()}`, inside `updateCombat(dt)` (line 4489),
+  which is called from the state machine at line 9156 under `case STATE.COMBAT`
+
+So it should throw the moment combat begins.
+
+### Fix — one line
+
+Make the patch an assignment instead of a declaration, so only the original is
+hoisted:
+
+    - function calcAC() {
+    + calcAC = function () {
+
+(and close with `};`). Verified on the reduced case: `_origCalcAC === calcAC` becomes
+false and the result is original + bonus, which is what the patch wanted.
+
+**Honest limit:** the semantics are proven and the call path is traced by reading,
+but I did not execute the game itself — there is no browser on this machine. Opening
+D&D Crawler and entering combat with the console open should show the RangeError
+immediately. If it does not, my reachability reading is wrong and I want to know.
+
+## Other shadowed declarations
+
+Same class, no crash — just silently dead code, because the earlier definition is
+discarded:
+
+| Game | Function | Declared | Dead | Wins |
+|---|---|---|---|---|
+| Emblem Fury | `gameLoop()` | 2x | 2589 | 3857 |
+| Emblem Fury | `setDifficulty()` | 2x | 662 | 3047 |
+| Emblem Fury | `setupMobileControls()` | 2x | 2699 | 2798 |
+| Emblem Fury | `spawnBoss()` | 2x | 1353 | 2560 |
+
+Four shadowed functions — including the **main game loop** — plus six functions in
+the same file that are never referenced at all (`clamp`, `getEmblemPerk`,
+`getTierClass`, `spawnEnemies`, `updateEnemy`, `updateMobileButtons`), all of them
+early in the file. Emblem Fury looks like two generations of the game living in one
+file, with much of the earlier one unreachable. That is also the most likely
+explanation for the three dead reward flags in Round 1: the reward layer probably
+belongs to the generation that lost.
+
+Worth confirming before anyone edits Emblem Fury — a fix aimed at the dead copy will
+appear to do nothing.
+
+## Never-referenced functions (low priority)
+
+14 across 6 files. Mostly refactoring leftovers, not missing features. Checked the
+one with real user impact: `playerUseItem()` in D&D Crawler is never called, but item
+use works through `useConsumable()` and `useItemOutOfCombat()`, so it is superseded
+rather than broken. Full list from `soloforte-testkit/deadcode.py`.
+
+**Detector caveat, learned the hard way:** the first version of that tool reported
+`buildCharSelect` and `migrateSaves` as dead. Both are named IIFEs —
+`(function name(){...})()` — which do run. The tool now skips them. Any similar
+finding should be eyeballed for that shape before acting on it.
+
+## Site health — clean
+
+All 25 pages: every inline `<script>` parses (checked as module or classic per its
+own type), script tags balanced, and the live copy on soloforte.ai is byte-identical
+to the repo. Nothing broken, nothing undeployed, no drift.
+
+This was worth checking because it has bitten before — a stray `</script>` inside a
+JS string once killed the whole learn-to-code page (7a44203). HTTP 200 says nothing
+about whether a page runs.
+
+Tool: `soloforte-testkit/sitecheck.py`.
