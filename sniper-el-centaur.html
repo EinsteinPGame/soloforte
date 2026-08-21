@@ -233,6 +233,11 @@ const T = {
   gravity: -30, jump: 9.4, playerRadius: 0.55, eyeHeight: 1.62,
   // fallSafe: impact speed you walk off. -32 ≈ a three-storey drop for free.
   fallSafe: -32, fallScale: 2.2, fallMaxDmg: 60,
+  // Play-area edge. The ground plane is 900 units wide and IS a valid grapple
+  // anchor, so without this you can hop out of the city and wander empty space -
+  // a headless run reached x=-448 doing exactly that. Outer buildings sit at
+  // +/-92 with footprints up to 32 wide, so the city ends near +/-108.
+  bound: 124,
   // weapon
   boltTime: 1.05, reloadTime: 2.6, magSize: 5,
   swayAmp: 0.0022, swaySpeed: 1.7, breathHoldMult: 0.18, breathMax: 4.0,
@@ -823,6 +828,14 @@ function fireGrapple() {
   raycaster.far = 500;
   if (!hits.length) { toast('NO ANCHOR', '#8fa6c4'); return; }
 
+  // Refuse anchors outside the block. The ground plane extends far past the city,
+  // so without this you can grapple out of the level and into empty space.
+  const p = hits[0].point;
+  if (Math.abs(p.x) > T.bound || Math.abs(p.z) > T.bound) {
+    toast('OUT OF SECTOR', '#8fa6c4');
+    return;
+  }
+
   g.anchor.copy(hits[0].point);
   g.t = 0;
   if (g.mode === 'pull') {
@@ -928,7 +941,9 @@ function updateGrapple(dt) {
 // ---------------- player movement ----------------
 let wasOnGround = true;
 function movePlayer(dt) {
-  if (updateGrapple(dt)) return;
+  // The grapple owns movement while it is active and returns early, so the
+  // boundary has to be enforced on that path too, not just on foot.
+  if (updateGrapple(dt)) { clampToPlayArea(); return; }
 
   const wish = new THREE.Vector3();
   const fwd = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
@@ -1006,6 +1021,17 @@ function movePlayer(dt) {
     player.onGround = false;
   }
   wantJump = false;
+
+  clampToPlayArea();
+}
+
+// The contract is a rooftop block, not an open world. Keep the player inside it.
+function clampToPlayArea() {
+  const b = T.bound;
+  if (player.pos.x < -b) { player.pos.x = -b; if (player.vel.x < 0) player.vel.x = 0; }
+  if (player.pos.x >  b) { player.pos.x =  b; if (player.vel.x > 0) player.vel.x = 0; }
+  if (player.pos.z < -b) { player.pos.z = -b; if (player.vel.z < 0) player.vel.z = 0; }
+  if (player.pos.z >  b) { player.pos.z =  b; if (player.vel.z > 0) player.vel.z = 0; }
 }
 
 // ---------------- enemy AI ----------------
