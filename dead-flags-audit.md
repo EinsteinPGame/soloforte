@@ -288,3 +288,72 @@ Emblem Fury itself. The two broken ones are slips, not a misunderstanding.
 whatever the original `gameLoop` body did that the replacement does not do simply
 stopped happening. That is a behaviour question for whoever wrote it, not something
 to guess at.
+
+---
+
+# Round 4 — corrections to my own Round-1 recommendations
+
+Round 1 sorted these into "straight bugs, easy" and "balance calls". Digging into what
+the code actually does shows **two of the "easy" ones were not bugs at all**, and the
+dead-value list was incomplete.
+
+## The Emblem Fury dead buff layer is 5 values, not 3
+
+`allStatsBuff` and `weaponDmgBuff` belong on the list. Both are consumed by the damage
+maths — `dmg = baseDmg + player.atk * (1 + player.allStatsBuff)` (717),
+`dmg *= (1 + player.weaponDmgBuff)` (718), and crit rolls at 814/823 — and their only
+assignment anywhere is the **reset to 0** at 2764. They are never set to a nonzero
+value, so every one of those multipliers is permanently `× 1`.
+
+My first pass missed them because that tool only looked for flags read in a
+*condition*. These are read in *arithmetic*. Same defect, different syntax. Tool fixed.
+
+## Kill streaks are half-built, not missing
+
+Round 1 said "the whole kill-streak system is dead". More precisely: the **tracking
+works** — line 941 increments `killStreakCount` and 942 sets `killStreakTimer = 3000`.
+What is missing is only the `killStreakActive` gate, which nothing ever sets true, so
+the *effects* at 2627 and 3930 never fire.
+
+That makes it a narrow, clearly-intended fix (decide the threshold at which a streak
+becomes "active" and set the flag) rather than building a system from nothing.
+
+## RETRACTED: "Ryu's beam is a straight bug — copy the Choso pattern"
+
+Wrong, and acting on it would have produced a meaningless change.
+
+- Both `ryuBeamActive` read sites are **purely decorative** — a pulsing glow ring
+  (16535) and a charge indicator (19530). No gameplay logic reads it.
+- `ryuBeamTimer`, which the charge indicator divides by, is **also never set**.
+- Ryu's actual special ("DESSERT IS SERVED.", 9497) is a slow projectile blast that
+  splits into homing beams. It works. **It is not a beam mode.**
+
+So `ryuBeamActive`/`ryuBeamTimer` are leftovers from an abandoned design, not a broken
+feature. Wiring the flag up would light a permanent glow that decays through a timer
+nothing decrements. The sane options are delete them, or treat "give Ryu a beam mode"
+as a new feature — not a fix.
+
+## RETRACTED: "RPS Legends — music can never be on"
+
+Misleading as phrased. The game *does* have an audio engine (`AudioContext`,
+oscillators, gain nodes at 36–50). But **nothing anywhere consults `musicOn`** — it
+appears only in its own declaration and the no-op line. It is a settings field that
+controls nothing, so switching it on would change nothing. Deleting it or wiring it to
+the audio engine is a choice, not a bug fix.
+
+## A limitation of these tools, worth knowing before trusting them
+
+Broadening the flag detector to arithmetic reads initially produced a wave of nonsense
+— `shrink`, `margin`, `gradient` — because it was scanning raw HTML and reading CSS
+(`flex-shrink: 0`) as assignments. Fixed by analysing only `<script>` bodies with
+strings blanked.
+
+Even then, three candidates that looked dead are **false positives**: emblem-fury
+`gold`, and rps-legends `goldMult` and `luck`. All three are purchasable meta-upgrades
+whose values arrive either from `localStorage` or through a dynamic write
+(`S.eternals[key]`), which a name-based scan cannot see. The `player.*` findings above
+are safe from this — there are no `player[...] =` writes in either game, which I
+checked specifically.
+
+**Rule of thumb:** these tools find *candidates*. Anything reached through
+`obj[key]` or restored from a save needs a human look before it counts.
