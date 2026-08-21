@@ -357,3 +357,69 @@ checked specifically.
 
 **Rule of thumb:** these tools find *candidates*. Anything reached through
 `obj[key]` or restored from a save needs a human look before it counts.
+
+---
+
+# Round 5 — the Emblem Fury buff layer, diagnosed properly
+
+Round 1 said "an entire reward layer is unwired" and I later guessed it was
+"probably one missing hookup". Both are wrong. Here is what is actually going on.
+
+## The perk works. Its descriptions lie.
+
+The **Blood Frenzy** perk is described to the player as:
+
+| tier | description shown |
+|---|---|
+| 0 | +15% atk speed after kill |
+| 1 | **Kill stacks: each kill +5% atk for 10s** |
+| 2 | **100 kill stacks: berserk mode** |
+
+Its implementation (line 1416):
+
+    case 'Blood Frenzy':
+      if (tier===0) player.bloodFrenzy = true;
+      if (tier===1) player.bloodRage = true;
+      if (tier===2) { player.atkSpdMult *= 1.2; player.bloodLord = true; }
+
+Every one of those flags is live and does something:
+- `bloodFrenzy` → on kill sets `bloodFrenzyTimer=5000` (969), which gives `dmg*=1.1` (722)
+- `bloodRage` → `if (bloodRage && hp < maxHp*0.5) dmg *= 1.3` (721)
+- `bloodLord` → feeds the lifesteal branch (979)
+
+So the perk is **not** broken. But tiers 1 and 2 deliver something completely
+different from what they promise:
+
+- tier 1 promises a **stacking per-kill attack buff**; it actually grants a
+  **low-HP damage bonus**
+- tier 2 promises **berserk mode at 100 stacks**; it actually grants **+20% attack
+  speed and lifesteal**
+
+## Which is what the dead values were for
+
+`killStackMult`, `killStackTimer`, `allStatsBuff` and `weaponDmgBuff` are the
+*abandoned implementation of the described behaviour*. Line 949 —
+`if (player.killStackMult > 0) player.killStackTimer = 15000;` — is the stack timer
+waiting for a stack counter that nothing increments. `allStatsBuff` and
+`weaponDmgBuff` are already wired into the damage maths (717, 718, 814, 823), ready
+to receive exactly this kind of temporary multiplier.
+
+So the machinery for "each kill +5% atk for 10s" is *present and plumbed*. Only the
+part that raises the value is missing.
+
+## Two options, and they are very different sizes
+
+**(a) Fix the text — minutes, zero gameplay change.** Rewrite the two descriptions to
+say what the perk actually does. The player stops being misinformed. Nothing rebalances.
+
+**(b) Implement the described behaviour — real work, changes balance.** Increment
+`killStackMult` on kill, feed it into `allStatsBuff`, let `killStackTimer` expire it,
+and gate `killStreakActive` on a stack threshold. The plumbing exists; the balance
+consequences do not (a stacking attack buff on a kill-heavy game is a big lever).
+
+Worth noting for either path: tier 1's *actual* effect (low-HP damage bonus) overlaps
+**Berserker Rage** tiers 0-1 ("Below 30%/50% HP: +40% damage"), so two perks currently
+do close to the same thing.
+
+**Not touched.** Which way this goes is a design call, and (b) in particular is a
+balance decision, not a bug fix.
