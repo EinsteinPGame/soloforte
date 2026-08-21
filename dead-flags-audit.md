@@ -1,4 +1,83 @@
-# Dead flags audit — features that can never fire
+# Dead flags audit — soloforte games
+
+**Five rounds, 2026-08-20 to 21. Nothing in any game file has been changed.**
+
+---
+
+# ⚠️ CURRENT STATUS — read this before anything below
+
+The rounds below are kept in the order they were written, so **the early sections
+contain conclusions that later rounds overturned.** This section is the only one that
+reflects what I actually believe now.
+
+## 1. One thing is urgent and proven
+
+**D&D Crawler crashes when combat starts.** `calcAC()` recurses infinitely — proven by
+executing the real file, not by reading it (`_origCalcAC === calcAC` is `true`;
+`calcAC()` throws `RangeError`). Reachable from the attack roll and the combat HUD.
+**A verified one-line fix is ready to apply: `fix-dnd-calcac.patch`** (`git apply` it;
+`git apply --check` passes). Not applied — waiting on your word.
+
+## 2. Real, worth doing, and cheap
+
+| what | size | why |
+|---|---|---|
+| **Blood Frenzy tiers 1 & 2 describe effects they do not have** (Round 5) | minutes | Players are told "kill stacks, +5% atk each" and get "+30% dmg below 50% HP". Rewriting the two descriptions costs nothing and changes no balance. |
+| Two perks overlap — Blood Frenzy tier 1's real effect ≈ Berserker Rage tiers 0-1 | your call | Both give a low-HP damage bonus. |
+
+## 3. RETRACTED — do NOT act on these
+
+- ~~"Ryu's beam mode is a straight bug, copy the Choso pattern"~~ — **wrong.** Both
+  read sites are cosmetic only, `ryuBeamTimer` is also never set, and Ryu's real
+  special is a projectile blast, not a beam. Wiring the flag up would light a
+  permanent glow driven by a timer nothing decrements. Delete, or treat "give Ryu a
+  beam mode" as a new feature.
+- ~~"RPS Legends: music can never be turned on"~~ — **misleading.** The game has a
+  working audio engine; nothing consults `musicOn`. It is a vestigial setting, not
+  broken music.
+- ~~"Emblem Fury's dead flags live in the losing copy of `gameLoop`"~~ — **false.**
+  `killStreakActive` is in both copies; the other two are in neither.
+- ~~"Emblem Fury is two generations of the game in one file"~~ — too loose. What is
+  true: for each duplicated name the later declaration wins and the earlier body is
+  orphaned. **Emblem Fury does not crash** (`gameLoop(0)` returns cleanly).
+- ~~"An entire reward layer is unwired"~~ — superseded by Round 5. The perk works;
+  its descriptions are wrong. See section 2.
+
+## 4. Genuine design decisions, not bugs
+
+- **Implementing the stacking kill-buff for real** (`killStackMult` → `allStatsBuff`).
+  The plumbing is already wired into the damage maths; only the increment is missing.
+  But a stacking attack buff in a kill-heavy game is a significant balance lever.
+- **Restoring three guards that currently never engage** — Seraphina's once-per-run
+  limit (D&D), BBA's reform guard, and Emblem Fury's deflect-while-moving penalty.
+  All three make the game *harder*.
+- **Four shadowed function declarations in Emblem Fury** (incl. `gameLoop`): the
+  earlier body of each is dead. Anyone editing that file should know, or a
+  correct-looking fix aimed at the dead copy will appear to do nothing.
+
+## 5. Clean — checked, nothing to do
+
+- All 25 pages: every inline script parses, live matches the repo byte-for-byte.
+- Duplicate object keys across every game: one hit, harmless (`chosoBloodHits`, both `0`).
+- The `const _orig = fn` decorator idiom: correct 6 times, wrong twice (the D&D crash,
+  and Emblem Fury's benign `_origGameLoop`).
+
+## 6. How much to trust these tools
+
+They find **suspects, not verdicts**. Across five rounds they produced one proven
+crash and one real idiom bug — and also two false theories, two batches of
+false positives, and two bad recommendations I had to withdraw. Specific known blind
+spots: values set via `obj[key]` or restored from `localStorage` look dead and are not
+(`gold`, `goldMult`, `luck`); CSS read as JS produced nonsense until the scanner was
+restricted to script bodies; and named IIFEs looked like uncalled functions.
+
+---
+
+# Round 1 — the original sweep
+
+> **⚠️ PARTLY SUPERSEDED.** The Ryu beam, RPS `musicOn` and "entire reward layer"
+> findings below were overturned in Rounds 4 and 5, and the "Recommended order" at the
+> end of this round is obsolete. Kept for provenance. See CURRENT STATUS above.
 
 **Date:** 2026-08-20
 **Scope:** every `.html` / `.js` in the soloforte repo
@@ -97,7 +176,7 @@ object prefixes. No `length = 0` assignment exists.
 
 ---
 
-## Recommended order
+## Recommended order  — ⚠️ OBSOLETE, superseded by CURRENT STATUS
 
 1. **Emblem Fury's three reward systems** — biggest gameplay impact, and probably
    one missing hookup rather than three separate fixes.
