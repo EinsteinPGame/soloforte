@@ -225,3 +225,66 @@ JS string once killed the whole learn-to-code page (7a44203). HTTP 200 says noth
 about whether a page runs.
 
 Tool: `soloforte-testkit/sitecheck.py`.
+
+
+---
+
+# Round 3 — the decorator idiom, and two corrections to Round 2
+
+Everything below was checked by **executing** the games headlessly
+(`soloforte-testkit/rungame.mjs`), not by reading them.
+
+## Two things I got wrong in Round 2
+
+**1. "Emblem Fury's dead reward layer probably lives in the copy of `gameLoop` that
+lost." — Wrong.** Tested directly: `killStreakActive` appears in *both* copies of
+`gameLoop`, and `doubleXPTimer` and `killStackMult` appear in *neither*. The three
+dead reward flags have nothing to do with the shadowing. They are still dead — that
+part of Round 1 stands — but the explanation I offered for them was invented and
+does not survive contact with the code.
+
+**2. "Emblem Fury looks like two generations of the game in one file." — Too loose.**
+What is actually true, confirmed by running it: for each duplicated name the later
+declaration wins, so the *earlier body* is orphaned.
+
+| function | declarations | runtime uses |
+|---|---|---|
+| `setDifficulty` | 2 | the later one |
+| `setupMobileControls` | 2 | the later one |
+| `spawnBoss` | 2 | the later one |
+| `gameLoop` | 2 + a reassignment | the reassignment |
+
+**Emblem Fury does not crash.** I called `gameLoop(0)` in the sandbox: it returns
+without throwing. No RangeError anywhere in that file.
+
+## The real pattern: a decorator idiom that is right 6 times and wrong twice
+
+These files patch behaviour by aliasing a function then replacing it. That is only
+correct when the replacement is an **assignment**:
+
+    const _origFoo = foo;
+    foo = function () { ... _origFoo() ... };     // correct - only one declaration hoists
+
+Written as a **declaration**, both hoist, the later wins before any line runs, and
+the alias ends up pointing at the replacement:
+
+    const _origFoo = foo;
+    function foo () { ... _origFoo() ... }        // broken - alias captured itself
+
+Sweep of every game (`soloforte-testkit/decorators.py`):
+
+| site | verdict |
+|---|---|
+| `dnd-crawler.html:7578` `_origCalcAC` | **BROKEN, alias is called → proven RangeError** |
+| `emblem-fury.html:3856` `_origGameLoop` | **BROKEN, but alias is never called** → no crash; instead the original `gameLoop` body is orphaned rather than wrapped |
+| `emblem-fury.html:4585` `_dPrevGameLoop` | resolves to the same function as `_origGameLoop` (verified: `_dPrevGameLoop === _origGameLoop` is `true`), and calling it is safe |
+| 6 others — `_origTriggerDeath`, `_origKillEnemy`, `_dOrigSelectChar`, `_dOrigTriggerDeath`, `_dOrigOnEnemyKill`, `scenario-generator` `_origGoToNode`, `shadow-blade` `_drawMap` | correct form |
+
+So the author knew the right pattern — it is used correctly six times, twice in
+Emblem Fury itself. The two broken ones are slips, not a misunderstanding.
+
+**The consequence worth acting on in Emblem Fury:** the patch at 3856 clearly
+*intended* to wrap the original loop (why else capture it?) but never calls it. So
+whatever the original `gameLoop` body did that the replacement does not do simply
+stopped happening. That is a behaviour question for whoever wrote it, not something
+to guess at.
