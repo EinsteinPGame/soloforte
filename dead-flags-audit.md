@@ -1,6 +1,6 @@
 # Dead flags audit — soloforte games
 
-**Five rounds, 2026-08-20 to 21. Nothing in any game file has been changed.**
+**Six rounds, 2026-08-20 to 22. Nothing in any game file has been changed.**
 
 ---
 
@@ -57,10 +57,15 @@ executing the real file, not by reading it (`_origCalcAC === calcAC` is `true`;
 
 ## 5. Clean — checked, nothing to do
 
-- All 25 pages: every inline script parses, live matches the repo byte-for-byte.
+- All 25 pages: every inline script parses, live matches the repo byte-for-byte, and
+  (Round 6) all 25 main scripts run to completion headlessly — no page is dead on load.
+- **No second crash exists.** 1,671 blind no-arg calls across 25 files flagged exactly
+  one function, `calcAC` — the crash already known. Round 6.
+- Every inline `onclick=` on all 15 checkable pages resolves to a real function. Round 6.
 - Duplicate object keys across every game: one hit, harmless (`chosoBloodHits`, both `0`).
 - The `const _orig = fn` decorator idiom: correct 6 times, wrong twice (the D&D crash,
-  and Emblem Fury's benign `_origGameLoop`).
+  and Emblem Fury's benign `_origGameLoop`). Re-checked in Round 6 with a tool that
+  splits "correct" into 8 hoist-safe expression patches vs 8 never-called dead aliases.
 
 ## 6. How much to trust these tools
 
@@ -502,3 +507,105 @@ do close to the same thing.
 
 **Not touched.** Which way this goes is a design call, and (b) in particular is a
 balance decision, not a bug fix.
+
+---
+
+# Round 6 — a blind execution sweep, to find out what rounds 1-5 missed
+
+**2026-08-22. Nothing in any game file changed. Mostly a negative result, which is
+the point.**
+
+Rounds 1-5 all worked the same way: read the code, form a theory, then try to confirm
+it. That is how two false theories and two bad recommendations got as far as being
+written down. Round 6 inverts it — run everything blind, with no theory, and see what
+the machine finds on its own.
+
+## What was run
+
+Four new tools in `soloforte-testkit/`, over all 25 pages:
+
+| tool | question | result |
+|---|---|---|
+| `sweep.mjs` | does the main script finish executing at all? | **25/25 execute.** No page is dead on load. |
+| `recursion-scan.mjs` | call every global function with no args — anything blow the stack? | 1,671 calls. **Exactly one hit: `calcAC`.** |
+| `deadhandlers.mjs` | does every inline `onclick=` resolve to a real function? | 15 checkable pages, **0 dead handlers.** |
+| `refscan.mjs` | any `ReferenceError: x is not defined`? | **1 hit, investigated, benign** (below). |
+
+## The result that matters
+
+`recursion-scan.mjs` was told nothing about D&D Crawler. It called 1,671 functions
+across 25 files and flagged one: **`calcAC`**. That is now the third independent
+confirmation of the crash, and the first one that did not know where to look.
+
+The useful half is the silence everywhere else: **there is no second crash of this
+class hiding in another game.** The one-line `fix-dnd-calcac.patch` is not the first
+of a series — it is the whole job.
+
+## The one ReferenceError, and why it is not a bug
+
+`emblem-fury.html` — `selectedChar` is **never declared anywhere in the file**. It is
+assigned twice (3035, 3203, both inside character-card click handlers) and read three
+times (3498, 3551, 3759) as `selectedChar?.color` / `?.name`.
+
+Worth being clear about two things that look alarming and are not:
+
+- The `?.` gives no protection here. Optional chaining guards against `null`, not
+  against an *undeclared identifier* — the read throws `ReferenceError` regardless.
+- It still cannot fire in practice. Both readers (`renderMotorcycle`,
+  `renderStoryVictory`) are gated behind `storyActive`, and the only line that sets
+  `storyActive = true` is the same click handler that assigns `selectedChar` two lines
+  earlier. There is no resume-from-save path into those states — the only
+  `localStorage` use in the file is meta progression (`ef_meta`: soul essence and
+  permanent upgrades), not a mid-run restore.
+
+So: **not a bug, and not worth a code change.** It is one `'use strict'` away from
+becoming a fatal one, since the assignment at 3035 relies on sloppy-mode implicit
+global creation. Recorded so nobody adds that directive and wonders why character
+select broke.
+
+## Alias idiom, re-checked with a stricter tool
+
+`aliasscan.mjs` classifies every `const _orig = fn` into RECURSION / DEAD / OK /
+OK-EXPR. It agrees with Round 5 and sharpens it:
+
+- **RECURSION: 1** — `dnd-crawler.html:7578`, the known crash.
+- **OK-EXPR: 8** — the target is reassigned as a function *expression*, so nothing
+  hoists and the wrap is correct. This is the distinction that matters: the idiom is
+  safe with `foo = function(){}` and fatal with `function foo(){}`, and the two are a
+  keyword apart.
+- **DEAD: 8** — alias assigned, never called. Includes `emblem-fury.html:3856`
+  (`_origGameLoop`), which *is* the fatal shape (hoisted `function gameLoop` at 3857)
+  and is harmless only because nothing calls it. A landmine, not a bug: the first
+  person to call `_origGameLoop()` gets an instant stack overflow. Also
+  `shadow-blade.html:2442` (`originalDrawGame`) and five copies of `const M = isMobile`
+  in `rps-legends.html`.
+
+Caveat on that tool: the DEAD and OK buckets contain non-function noise, because
+"is this identifier a function" is decided by regex (`ball-battle-arena.html:23428`
+`tgtY = cy` is two numbers, not an alias). The RECURSION bucket is the one built to be
+precise, and it has exactly one entry.
+
+## Two harness traps that cost real time — added to the trap list
+
+Both produced a **confidently clean result that was wrong**, which is the worst
+failure mode a test tool has.
+
+1. **`instanceof` does not cross a `vm` realm.** The first version of
+   `recursion-scan.mjs` caught each call and re-threw only `if (e instanceof
+   RangeError)`. Errors thrown *inside* the vm context are instances of that context's
+   `RangeError`, not the one this file injected — so the check was always false and
+   every hit was swallowed. It reported dnd-crawler, the known positive, as **clean**.
+   Classify errors outside the vm, by message, never by `instanceof`.
+2. **Mask string literals before pulling identifiers out of code.** The first
+   `deadhandlers.mjs` reported 5 dead handlers. Four were its own fault: `rgba(...)`
+   inside a CSS string read as a missing function, and `.remove()` / `.indexOf()` on an
+   expression result read as missing globals. Mask strings, and refuse any target
+   preceded by `.` — only the *root* of a chain has to exist on `window`.
+
+The fifth was a harness gap too: `admin.html` bails at its `window.sfAuth` admin guard
+because the external `auth.js` is never executed, so `revokeUser` is never assigned.
+Real total: zero.
+
+**Standing lesson, now three rounds old: when a probe reports clean, distrust it until
+it has reproduced a bug you already know about.** Every tool here is now checked
+against `calcAC` first.
