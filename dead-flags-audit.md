@@ -161,10 +161,23 @@ hoisted:
 (and close with `};`). Verified on the reduced case: `_origCalcAC === calcAC` becomes
 false and the result is original + bonus, which is what the patch wanted.
 
-**Honest limit:** the semantics are proven and the call path is traced by reading,
-but I did not execute the game itself — there is no browser on this machine. Opening
-D&D Crawler and entering combat with the console open should show the RangeError
-immediately. If it does not, my reachability reading is wrong and I want to know.
+**UPDATE — no longer inferred, executed.** The earlier version of this section said
+I could not run the game. I since built a headless harness
+(`soloforte-testkit/rungame.mjs`) that loads the real 432KB inline script against a
+Proxy-stubbed DOM, ran the actual file, and called the function:
+
+| | `_origCalcAC === calcAC` | `calcAC()` |
+|---|---|---|
+| live file | `true` | `RangeError: Maximum call stack size exceeded` |
+| with the one-line fix | `false` | `12` |
+
+`12` is the correct answer for the test character: base 10 plus the DEX 14 modifier
+(+2). So the bug is confirmed on the real file, and the fix is confirmed to restore
+correct behaviour on the real file.
+
+Two of the harness's intermediate failures were my own stub having the wrong shape
+(`equipment` vs the game's `equipped`), not game bugs — worth remembering when
+reading its output.
 
 ## Other shadowed declarations
 
