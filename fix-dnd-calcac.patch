@@ -1,0 +1,40 @@
+Fix: dnd-crawler calcAC() recursed infinitely, crashing combat.
+
+The romance patch aliases calcAC then redeclares it with a *function declaration*.
+Both declarations hoist, so the later one wins before any line executes and
+_origCalcAC ends up pointing at the wrapper -- which then calls itself.
+
+Proven by executing the real file headlessly (soloforte-testkit/rungame.mjs):
+  before:  _origCalcAC === calcAC -> true,   calcAC() -> RangeError
+  after:   _origCalcAC === calcAC -> false,  calcAC() -> 12  (base 10 + DEX 14 mod)
+
+Apply:   git apply fix-dnd-calcac.patch
+Verify:  node --stack-size=2000 ../soloforte-testkit/rungame.mjs
+
+diff --git a/dnd-crawler.html b/dnd-crawler.html
+index 8e5b680..2efc7d0 100644
+--- a/dnd-crawler.html
++++ b/dnd-crawler.html
+@@ -7573,20 +7573,20 @@ function getChatLines(comp) {
+ 
+ // ============================================================
+ // AC BONUS FOR ROMANCE
+ // ============================================================
+ // Patch calcAC to include beloved's shield
+ const _origCalcAC = calcAC;
+-function calcAC() {
++calcAC = function () {
+   let ac = _origCalcAC();
+   if (player && player.belovedShield && player.romanced) {
+     const belovedInParty = (player.squad || []).some(c => c.name === player.romanced && c.hp > 0);
+     if (belovedInParty) ac += 1;
+   }
+   return ac;
+-}
++};
+ 
+ // ============================================================
+ // WAR ARC SYSTEM
+ // ============================================================
+ 
+ // --- War Arc States ---
