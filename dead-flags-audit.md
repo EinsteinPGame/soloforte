@@ -18,6 +18,27 @@ executing the real file, not by reading it (`_origCalcAC === calcAC` is `true`;
 **A verified one-line fix is ready to apply: `fix-dnd-calcac.patch`** (`git apply` it;
 `git apply --check` passes). Not applied — waiting on your word.
 
+## 1b. All three pending patches have been rehearsed TOGETHER (2026-08-22)
+
+Applied to a scratch copy in sequence — `fix-dnd-calcac.patch`,
+`fix-ef-bloodfrenzy-desc.patch`, `apply-wof-all-groups.patch` — and run through the
+whole toolkit. They touch three different files and do not conflict.
+
+| check | before | after |
+|---|---|---|
+| `calcAC()` | `RangeError` | **returns 12**, alias no longer self-referential |
+| recursion scan, 25 games | 1 hit | **0 hits** |
+| all pages execute | 25/25 | 25/25 |
+| WoF sub-wheels that never fire | 25 | **0** |
+| WoF unreachable outcomes | 181 | **0** |
+| dead inline handlers | 1 known artefact | unchanged |
+| corrupted-save resilience | 2 latent | unchanged, no regression |
+| syntax, all three files | — | OK |
+
+So applying all three is one sequence of `git apply` with no ordering constraint and no
+surprises. The WoF `"null"`-save gap from Round 8 is deliberately still present — that
+patch does not touch save code, and fixing it is a separate call.
+
 ## 2. Real, worth doing, and cheap
 
 | what | size | why |
