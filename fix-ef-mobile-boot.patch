@@ -1,0 +1,36 @@
+From: Zylos <audit>
+Subject: [PATCH] emblem-fury: stop the stale mobile-detect line from killing the page on phones
+
+Round 10, domrun.mjs. On any mobile user agent the top-level detect block threw
+TypeError on a null #mobile-overlay -- an id this page no longer defines -- before
+the bootstrap 'load' listener at the bottom of the file was ever registered. So
+showCharacterSelect() and requestAnimationFrame(gameLoop) never ran: the game was
+dead on every phone, not merely missing its touch controls.
+
+Nothing of value is removed. Visibility is CSS (@media max-width:800px,
+(pointer:coarse) on .mobile-controls-container), and the load handler already
+calls setupMobileControls() with a broader condition ('ontouchstart' in window).
+The block was a leftover from before the mobile layer was rewritten -- the
+surviving setupMobileControls() at line 2798 already uses the correct ids and
+guards them.
+
+Verified: mobile 'load' listener count 0 -> 1; click/keydown wiring now matches
+desktop exactly (2/4 on both). No desktop change.
+
+--- a/emblem-fury.html
++++ b/emblem-fury.html
+@@ -2743,11 +2743,9 @@
+   document.getElementById('btn-pause')?.addEventListener('click',togglePause);
+ }
+ 
+-// Detect mobile
+-if(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)){
+-  document.getElementById('mobile-overlay').style.display='block';
+-  setupMobileControls();
+-}
++// Mobile detection intentionally lives in the load handler at the bottom of this
++// file. The container is revealed by CSS (@media max-width:800px,(pointer:coarse)),
++// so there is nothing for JS to show here.
+ 
+ // ── INIT + START GAME ─────────────────────────────────────────────────────────
+ function initGame(){

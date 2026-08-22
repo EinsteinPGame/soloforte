@@ -1,12 +1,48 @@
-# Start here — 4 decisions, everything else is detail
+# Start here — 5 decisions, everything else is detail
 
-Kyle: there are ~1,400 lines of audit notes and proposals in this repo. **You should not
+Kyle: there are ~1,500 lines of audit notes and proposals in this repo. **You should not
 have to read them.** This page is the whole thing. Detail links at the bottom if you want
 them.
 
 Nothing has been applied to any game file. Every patch below has been tested, and all
-three have been rehearsed applied *together* — they touch different files, don't
+**five** have been rehearsed applied *together* — they touch three files, don't
 conflict, and need no particular order.
+
+---
+
+## 0. Emblem Fury doesn't run on phones. Also one line. ← new, 2026-08-23
+
+One stale line kills the whole game on mobile:
+
+```js
+document.getElementById('mobile-overlay').style.display='block';   // #mobile-overlay
+                                                                   // doesn't exist
+```
+
+It's guarded by a phone user-agent test, so on any phone it throws before the script
+finishes — and the bootstrap `load` handler 1,900 lines below (the one that calls
+`showCharacterSelect()` and starts the game loop) **never registers**. Measured: on a
+mobile UA the `load` listener count is **0**; on desktop it's 1. The page paints and then
+nothing happens.
+
+The line is leftover from before you rewrote the mobile layer. The rewrite is fine — the
+joysticks are shown by CSS media query and wired by the *other* `setupMobileControls()`,
+which uses the correct ids and null-guards them. So deleting the line loses nothing.
+
+- **Verified**: mobile `load` listener 0 → 1; click/keydown wiring becomes identical to
+  desktop. Desktop untouched.
+- **Why it hid for nine rounds**: every runtime tool in the kit reported
+  `navigator.userAgent = 'node'`, so the mobile branch had literally never been run.
+
+→ **Recommend: yes.** `git apply fix-ef-mobile-boot.patch`
+
+**Bundled with it, same page, independent:** weapon fusion crashes. `fuseWeapons()` ends
+by re-rendering into `#inv-panel`, which doesn't exist either — so every FUSE click throws
+*after* the weapons were already merged. The fusion sticks, the panel doesn't refresh, and
+you keep seeing the old pair until you close and reopen the inventory. The call is
+redundant anyway (the button's own handler already re-renders).
+
+→ **Recommend: yes.** `git apply fix-ef-fuse-crash.patch`
 
 ---
 

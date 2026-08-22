@@ -21,11 +21,78 @@ executing the real file, not by reading it (`_origCalcAC === calcAC` is `true`;
 **A verified one-line fix is ready to apply: `fix-dnd-calcac.patch`** (`git apply` it;
 `git apply --check` passes). Not applied — waiting on your word.
 
-## 1b. All three pending patches have been rehearsed TOGETHER (2026-08-22)
+## 1a. Round 10 (2026-08-23) — Emblem Fury does not run on a phone at all
 
-Applied to a scratch copy in sequence — `fix-dnd-calcac.patch`,
-`fix-ef-bloodfrenzy-desc.patch`, `apply-wof-all-groups.patch` — and run through the
-whole toolkit. They touch three different files and do not conflict.
+New, and arguably worse than calcAC because it takes out a whole game rather than one
+screen. **Proven by execution, not by reading.**
+
+A stale top-level line does
+`document.getElementById('mobile-overlay').style.display='block'` behind a
+`/Mobi|Android|iPhone|iPad/` user-agent test. `#mobile-overlay` **appears nowhere in the
+file** — it is a leftover id from before the mobile layer was rewritten. On a phone that
+line throws `TypeError` at the top level, which stops the rest of the script, and the
+bootstrap `window.addEventListener('load', ...)` **1,900 lines further down never gets
+registered**. That handler is what calls `showCharacterSelect()` and
+`requestAnimationFrame(gameLoop)`.
+
+Measured, mobile UA vs desktop UA on the shipped file:
+
+| | desktop | mobile |
+|---|---|---|
+| bootstrap `load` listener | 1 | **0 — never registered** |
+| `click` listeners | 2 | 1 |
+| `keydown` listeners | 4 | 2 |
+
+So on any phone the page paints and then nothing happens: no character select, no game
+loop. Not "touch controls missing" — the game never starts.
+
+**Nothing of value is being deleted.** The rewritten mobile layer is already correct and
+already wired: visibility comes from CSS
+(`@media (max-width:800px),(pointer:coarse) { .mobile-controls-container{display:block} }`)
+and the surviving `setupMobileControls()` uses the real ids (`move-joystick`,
+`aim-joystick`, `move-thumb`, `aim-thumb`, `mobile-*-btn`) with proper null guards, called
+from that same load handler under a *broader* condition
+(`|| 'ontouchstart' in window`). The old block is pure leftover.
+
+Patch: **`fix-ef-mobile-boot.patch`**. Verified — mobile `load` listener 0 → 1, and
+click/keydown wiring becomes identical to desktop (2/4 on both). Desktop unchanged.
+
+Second, independent find in the same page: **weapon fusion crashes.** `fuseWeapons()`
+ended with `renderInventory()`, which does
+`document.getElementById('inv-panel').innerHTML=''` — and `#inv-panel` occurs exactly
+once in the file, at that lookup. Every FUSE click threw `TypeError` *after* the fusion
+was already committed to `player.weapons`, so the two weapons really are consumed and
+merged and then the handler dies before the refresh — the inventory keeps showing the old
+pair until it is closed and reopened. The call was redundant too: the FUSE button's own
+handler already re-renders via `renderInventoryInto(#inv-content)`.
+Patch: **`fix-ef-fuse-crash.patch`**. Verified — `fuseWeapons(0,1)` threw before, returns
+normally after, fusion still applied.
+
+Why nine earlier rounds missed both: every runtime tool in the kit stubs
+`navigator.userAgent` as `'node'`, so the mobile branch had **never been executed**, and
+`sweep.mjs` uses a permissive `document` Proxy where `getElementById` of a missing id
+returns a truthy stub instead of `null`, so the whole missing-element class was invisible.
+Two new tools close that gap: `domscan.mjs` (static) and `domrun.mjs` (runtime, truthful
+DOM, desktop + mobile UA).
+
+**Leaves behind, deliberately not fixed:** `renderInventory()` and its helper `tierClass()`
+become fully unreachable, ~110 lines of dead code, and the shadowed
+`setupMobileControls()` at line 2699 (the old-id copy) stays dead-but-present. Deleting
+either is your call, not a repair.
+
+## 1b. All FIVE pending patches have been rehearsed TOGETHER (2026-08-23)
+
+Applied to a scratch clone in sequence — `fix-dnd-calcac.patch`,
+`fix-ef-bloodfrenzy-desc.patch`, `apply-wof-all-groups.patch`,
+`fix-ef-mobile-boot.patch`, `fix-ef-fuse-crash.patch` — and run through the whole
+toolkit. They touch three files (two of the five both touch `emblem-fury.html` and still
+do not conflict), and need no particular order.
+
+Combined result: `dnd-crawler.html` 4 lines, `emblem-fury.html` 13, `wheel-of-faith.html`
+50. Post-rehearsal: **0 of 25 pages throw under a truthful DOM on either UA**, recursion
+scan clean, sweep clean on all three changed files.
+
+Earlier three-patch rehearsal (2026-08-22), still valid:
 
 | check | before | after |
 |---|---|---|

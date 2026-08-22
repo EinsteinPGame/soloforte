@@ -1,0 +1,34 @@
+From: Zylos <audit>
+Subject: [PATCH] emblem-fury: drop the redundant re-render that crashes weapon fusion
+
+Round 10, domrun.mjs. fuseWeapons() ended by calling renderInventory(), which
+does document.getElementById('inv-panel').innerHTML='' -- and #inv-panel appears
+exactly once in the file, at that lookup. It is null, so every FUSE click threw
+TypeError *after* the fusion had already been committed to player.weapons.
+
+Effect on the player: the two weapons really are consumed and merged, then the
+handler dies before the UI refreshes, so the inventory keeps showing the old
+pair until it is closed and reopened.
+
+The call is redundant as well as fatal: the FUSE button's own handler already
+re-renders via renderInventoryInto(#inv-content) once fuseWeapons returns.
+
+Verified: fuseWeapons(0,1) threw TypeError before, returns normally after, with
+the fusion still applied (2 weapons -> 1).
+
+Leaves renderInventory() (and tierClass, its only other caller) fully
+unreachable -- ~110 lines of dead code. Deleting it is a separate call, not
+made here.
+
+--- a/emblem-fury.html
++++ b/emblem-fury.html
+@@ -1459,7 +1459,8 @@
+   fusionSelectIndices=[];
+   playSound('pickupWeapon');
+   announceAbility('WEAPON FUSED!','#ff0');
+-  renderInventory();
++  // The caller re-renders (renderInventoryInto). renderInventory() targets
++  // #inv-panel, which this page no longer has.
+ }
+ 
+ // ── INVENTORY UI ────────────────────────────────────────────────────────────
