@@ -1,6 +1,6 @@
 # Dead flags audit — soloforte games
 
-**Eight rounds, 2026-08-20 to 22. Nothing in any game file has been changed.**
+**Nine rounds, 2026-08-20 to 22. Nothing in any game file has been changed.**
 
 ---
 
@@ -62,6 +62,8 @@ executing the real file, not by reading it (`_origCalcAC === calcAC` is `true`;
 - **No second crash exists.** 1,671 blind no-arg calls across 25 files flagged exactly
   one function, `calcAC` — the crash already known. Round 6.
 - Every inline `onclick=` on all 15 checkable pages resolves to a real function. Round 6.
+- No cross-game `localStorage` key collisions: 24 keys, every game namespaced, and the
+  2 shared keys are auth.js→admin.html producer/consumer pairs. Round 9.
 - 23 of 25 games survive a corrupted, stale or wrong-shaped save. The 2 that do not
   (`scenario-generator`, `wheel-of-faith`) need an outside cause to trigger — neither
   can write the bad value itself. Latent, not live. Round 8.
@@ -773,3 +775,50 @@ savedChars = Array.isArray(v) ? v : [];
 Not applied. It is defensive work on a path nothing currently reaches, and the standing
 rule is that no game file changes without Kyle's word. Worth doing next time either
 file is open anyway.
+
+---
+
+# Round 9 — do two games fight over the same save key?
+
+**2026-08-22. Nothing changed. Clean result, reached only after the tool lied twice.**
+
+Round 8 noted that all 25 games are served from one origin and therefore share one
+`localStorage`, and left it there. This checks it. It matters more than round 8's
+finding did: that one needed an outside cause and was latent, whereas a key collision
+needs nothing but a player who plays two games — game A writes `save` as an object,
+game B reads `save` expecting an array, and B is broken for everyone who touched A.
+
+**Result: no collisions. 24 keys across the shared origin, every game namespaced.**
+
+Two keys are shared and correctly *not* collisions: `sf_activity_log` and
+`sf_login_attempts` are written by `auth.js` and also read by `admin.html`. One writer,
+one extra reader — the admin panel displaying the auth log, working as intended.
+
+## The clean bill was wrong twice before it was right
+
+**First pass — blind.** The scanner only matched string literals like
+`getItem('ef_meta')`. But `auth.js` keeps its key names in constants:
+
+```js
+const SK_USER = 'sf_auth_user';
+const SK_LOG  = 'sf_activity_log';
+...
+localStorage.getItem(SK_LOG)
+```
+
+So `auth.js` — the one file that legitimately shares keys with another page —
+contributed **zero** keys, and "18 keys, no collisions" was an artefact of not seeing
+the data. Widening the scan from inline `<script>` to external `.js` did not help,
+because the blindness was the identifier pattern, not the file list. Resolving simple
+`const NAME = 'literal'` bindings raised the key count 18 → 24.
+
+**Second pass — over-eager.** With `auth.js` visible, it flagged those two keys as
+collisions and would have sent a false alarm. The definition was wrong: "used by more
+than one file, with a writer" also describes every normal producer/consumer pair. A
+real collision needs **two writers**. Corrected, those two reclassify as shared-by-design
+and the count returns to zero — this time meaning it.
+
+Both failures are the same shape as the `instanceof` bug in round 6: **a confident
+clean result produced by a tool that could not see the thing it was looking for.** The
+sequence that caught it was noticing the key count did not change after widening the
+scan, which it should have if `auth.js` were really being read.
