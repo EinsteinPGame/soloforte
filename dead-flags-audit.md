@@ -4,6 +4,9 @@
 
 ---
 
+> **If you just want the decisions, read `START-HERE-decisions.md` instead — one page,
+> four decisions, one command each. This file is the working detail behind it.**
+
 # ⚠️ CURRENT STATUS — read this before anything below
 
 The rounds below are kept in the order they were written, so **the early sections
