@@ -1,6 +1,6 @@
 # Dead flags audit — soloforte games
 
-**Six rounds, 2026-08-20 to 22. Nothing in any game file has been changed.**
+**Seven rounds, 2026-08-20 to 22. Nothing in any game file has been changed.**
 
 ---
 
@@ -22,7 +22,7 @@ executing the real file, not by reading it (`_origCalcAC === calcAC` is `true`;
 
 | what | size | why |
 |---|---|---|
-| **Blood Frenzy tiers 1 & 2 describe effects they do not have** (Round 5) | minutes | Players are told "kill stacks, +5% atk each" and get "+30% dmg below 50% HP". Rewriting the two descriptions costs nothing and changes no balance. |
+| **All THREE Blood Frenzy tier descriptions are wrong** (Round 5, corrected in Round 7) | minutes | Players are promised a kill-stacking mechanic that does not exist. Patch ready: `fix-ef-bloodfrenzy-desc.patch`. No balance change. Round 7 also found `bloodLord` is inert and the on-kill heal rounds to zero — both left alone, both balance calls. |
 | Two perks overlap — Blood Frenzy tier 1's real effect ≈ Berserker Rage tiers 0-1 | your call | Both give a low-HP damage bonus. |
 
 ## 3. RETRACTED — do NOT act on these
@@ -609,3 +609,91 @@ Real total: zero.
 **Standing lesson, now three rounds old: when a probe reports clean, distrust it until
 it has reproduced a bug you already know about.** Every tool here is now checked
 against `calcAC` first.
+
+---
+
+# Round 7 — preparing the two approved-pending fixes, and what that turned up
+
+**2026-08-22. Still nothing applied to any game file.** Both changes exist as verified
+patches only, waiting on Kyle's go:
+
+- `fix-ef-bloodfrenzy-desc.patch` — the Blood Frenzy descriptions
+- `apply-wof-group-a.patch` — Wheel of Faith Group A
+
+## Wheel of Faith Group A — measured, not estimated
+
+Applied to a copy and run through `wof-reachability.mjs`:
+
+| | before | after |
+|---|---|---|
+| sub-wheels that can NEVER fire | 25 | **13** |
+| sub-wheels that can fire | 287 | 299 |
+| items reachable behind sub-wheels | 2,324 | **2,411** |
+| items unreachable | 181 | 94 |
+
++12 wheels, exactly one per wheel remapped, and 87 previously unreachable items become
+reachable. The proposal's predicted 25 → 13 is confirmed by execution.
+
+Two things worth knowing about the patch itself: two `conquered` entries contain
+apostrophes (`Solo\'d`, `god\'s`) that must stay escaped or the file will not parse —
+verified with `node --check` — and six of the twelve wheels share one trigger set
+because they are all flavours of "you won by force". That six-way overlap is still a
+design question, unchanged from the proposal.
+
+## Blood Frenzy — it is THREE wrong descriptions, not two
+
+I had this recorded as two. Tracing all three tiers through `applyAbilityCard`
+(line 1416) and verifying by execution:
+
+| tier | description says | what it actually does |
+|---|---|---|
+| 0 | "+15% atk speed after kill" | **+10% damage for 5s** after a kill (`bloodFrenzyTimer=5000`, `dmg*=1.1`) |
+| 1 | "Kill stacks: each kill +5% atk for 10s" | **+30% damage below 50% HP** (`bloodRage`) |
+| 2 | "100 kill stacks: berserk mode" | **+20% attack speed**, which also shortens reloads |
+
+Wrong stat, wrong number, and two tiers promise a kill-stacking mechanic that does not
+exist anywhere in the file. The patch states only what the code does.
+
+## New finding: `bloodLord` does nothing at all
+
+Blood Frenzy tier 2 sets `atkSpdMult *= 1.2` **and** `bloodLord = true`. I had recorded
+tier 2 as "atk speed + lifesteal". The lifesteal half is false.
+
+`bloodLord` is never read for a value — its only appearance is widening a gate:
+
+```js
+if (player.bloodLifesteal > 0 || player.bloodLord) {
+  const healAmt = Math.floor((e.maxHp || 50) * 0.05 * player.bloodLifesteal);
+  if (healAmt > 0) { /* heal + blood-bat particles */ }
+}
+```
+
+The payload is scaled by `bloodLifesteal`, which tier 2 never sets. So `bloodLord`
+lets you through the door and then multiplies by zero. Proven by execution: tier 2 on
+a clean player, then a real `onEnemyKill` — **0 HP healed**.
+
+## And the on-kill heal is dead for realistic enemies anyway
+
+The control case was the surprise. Even *with* a lifesteal source the heal floors to
+zero, because the payload is `maxHp × 0.05 × bloodLifesteal`:
+
+| `bloodLifesteal` | source | enemy maxHp needed to heal even 1 HP |
+|---|---|---|
+| 0.03 | Blood emblem lv2 | **667** |
+| 0.10 | Berserker Rage tier 2 | 200 |
+| 0.13 | both | 154 |
+
+The blood-bat particles are inside the same `if (healAmt > 0)`, so on a normal enemy
+**the bats never fly either** — which is presumably why nobody noticed.
+
+Important scoping: `bloodLifesteal` is **not** dead. It feeds a separate, working
+on-hit lifesteal at line 888 (`floor(dmg * ls)`). It is specifically this on-kill
+*bonus* heal that rounds away. Not patched — changing it alters healing throughput,
+which is a balance call.
+
+## Also spotted, not patched
+
+`Berserker Blood` (line 4006) is described as "Below 40% HP: +50% damage" but sets
+`bloodRage`, which is **below 50% HP, +30% damage** — the same flag Blood Frenzy tier 1
+uses. Third description mismatch off the same underlying flag. Kyle approved rewriting
+Blood Frenzy's text, not this one, so it is left alone pending a word.
