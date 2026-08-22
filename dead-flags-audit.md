@@ -1,6 +1,6 @@
 # Dead flags audit — soloforte games
 
-**Seven rounds, 2026-08-20 to 22. Nothing in any game file has been changed.**
+**Eight rounds, 2026-08-20 to 22. Nothing in any game file has been changed.**
 
 ---
 
@@ -62,6 +62,9 @@ executing the real file, not by reading it (`_origCalcAC === calcAC` is `true`;
 - **No second crash exists.** 1,671 blind no-arg calls across 25 files flagged exactly
   one function, `calcAC` — the crash already known. Round 6.
 - Every inline `onclick=` on all 15 checkable pages resolves to a real function. Round 6.
+- 23 of 25 games survive a corrupted, stale or wrong-shaped save. The 2 that do not
+  (`scenario-generator`, `wheel-of-faith`) need an outside cause to trigger — neither
+  can write the bad value itself. Latent, not live. Round 8.
 - Duplicate object keys across every game: one hit, harmless (`chosoBloodHits`, both `0`).
 - The `const _orig = fn` decorator idiom: correct 6 times, wrong twice (the D&D crash,
   and Emblem Fury's benign `_origGameLoop`). Re-checked in Round 6 with a tool that
@@ -697,3 +700,76 @@ which is a balance call.
 `bloodRage`, which is **below 50% HP, +30% damage** — the same flag Blood Frenzy tier 1
 uses. Third description mismatch off the same underlying flag. Kyle approved rewriting
 Blood Frenzy's text, not this one, so it is left alone pending a word.
+
+---
+
+# Round 8 — what a returning player with a broken save gets
+
+**2026-08-22. Nothing changed. This round's honest headline is "two latent gaps, no
+live bug" — the caveat is the finding.**
+
+Every tool up to now tested these games as a **first-time visitor**: `localStorage`
+returns null, the game takes its default path. Returning players hit a completely
+different branch — the one that parses stored progress. `sweep.mjs` proving all 25
+pages load says nothing about that branch. `savescan.mjs` tests it by running each
+game five times against a different storage backing: `null` (baseline), invalid JSON,
+`{}`, `[]`, and the literal string `"null"`.
+
+**23 of 25 survive every shape.** Two do not:
+
+| game | breaks on | error |
+|---|---|---|
+| `scenario-generator.html` | `{}`, `"null"` | `idx.includes is not a function` |
+| `wheel-of-faith.html` | `"null"` | `Cannot read properties of null (reading 'length')` |
+
+## The interesting part: both are guarded, and the guard has a hole
+
+Neither is careless code. Both use the idiom that *looks* bulletproof:
+
+```js
+try { savedChars = JSON.parse(localStorage.getItem('wof2_chars') || '[]'); }
+catch(e) { savedChars = []; }
+```
+
+It defends against two things and misses a third:
+
+- storage empty → `|| '[]'` covers it
+- storage holds invalid JSON → `JSON.parse` throws, `catch` covers it
+- **storage holds valid JSON of the wrong type → nothing covers it.** `JSON.parse`
+  succeeds, so the `catch` never runs, and the wrong-typed value escapes into code
+  that assumes an array.
+
+The literal string `"null"` beats *both* guards at once: it is truthy, so `|| '[]'`
+does not fire, and it parses cleanly to `null`, so the `catch` does not fire either.
+
+## Why this is NOT being reported as a live bug
+
+I checked whether either game can write the triggering value itself. Neither can:
+
+- `savedChars` is only ever assigned `[]` or the parse result (2029, 2166) — writing
+  `"null"` would require the corruption to have already happened.
+- `setSaveIndex` is only ever called with `idx`, which comes from `getSaveIndex()` and
+  is always an array (753, 754, 804, 817).
+
+So this needs an outside cause: a future version writing a different shape to the same
+key, devtools, an extension, or partially-written storage. **All 25 games share one
+`localStorage` origin**, so a key collision is the realistic future route — the names
+`sg_saves` and `wof2_chars` are distinct today.
+
+One property does make it nastier than its likelihood suggests: the throw happens
+**during load**, before any code that could repair or reset the save runs. A player who
+hit it would be stuck on a blank page permanently, with no in-game way out and no
+reason to suspect "clear site data".
+
+## Not patched
+
+Hardening is small — validate the shape rather than trusting the parse:
+
+```js
+const v = JSON.parse(localStorage.getItem('wof2_chars') || '[]');
+savedChars = Array.isArray(v) ? v : [];
+```
+
+Not applied. It is defensive work on a path nothing currently reaches, and the standing
+rule is that no game file changes without Kyle's word. Worth doing next time either
+file is open anyway.
