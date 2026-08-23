@@ -80,6 +80,48 @@ become fully unreachable, ~110 lines of dead code, and the shadowed
 `setupMobileControls()` at line 2699 (the old-id copy) stays dead-but-present. Deleting
 either is your call, not a repair.
 
+## 1a-bis. Round 11 (2026-08-23) — the missing-element class is now bounded: no third bug
+
+Round 10 left an obvious worry: if two missing-element crashes were hiding in one game,
+how many more are in the other 24? Answered, and the answer is **none**.
+
+New tool `domcall.mjs` closes the gap between Round 10's two tools — `domscan.mjs` is
+static and cannot tell live code from a dead shadowed copy, `domrun.mjs` only executes
+load time and never clicks anything. The FUSE crash sat exactly between them and took
+hand-driving to find. `domcall.mjs` enumerates every global function the way
+`recursion-scan.mjs` does, but calls it against Round 10's truthful DOM, on desktop and
+mobile.
+
+**1,689 no-arg calls across 24 pages. One DOM-null hit: `renderInventory`, the bug already
+found and patched.** Six other candidates were raised and all six triaged out as
+artefacts:
+
+| page | function | why it is not a bug |
+|---|---|---|
+| learn-to-code | `runCode` | `#playground-code` is built by an `innerHTML` string; it exists once the lesson renders |
+| rage-platformer | `bindTouch` | `#touchLeft` **is** in the static markup — the hit came from calling with no `elemId`. Its mobile controls are fine |
+| scenario-generator | `tryUnlock` | `#unlock-code` lives inside a JS-built modal |
+| gat-practice | `showModal`, `attemptSubmit` | builds the overlay with `createElement`+`innerHTML`, then wires a child of it |
+| learn-guitar | `showTab` | `getElementById('tab-' + undefined)` — needs its tab argument |
+
+So the two Emblem Fury fixes are the whole job for this bug class, exactly as Round 6's
+1,671-call sweep bounded the crash class to `calcAC` alone.
+
+**Two filters had to be right for this to mean anything**, and the first version of the
+tool got the second one wrong:
+1. A missing *argument* is `undefined`; a failed DOM lookup is `null`. Filtering on
+   null-vs-undefined removes ~370 noise errors.
+2. But `null` has a second source — game state declared `let x = null` and read before a
+   game starts. v1 lumped the two together and confidently reported **23 "bugs" in
+   dnd-crawler** that were all just `renderUI()` reading `player.hp` with no player yet.
+   Only a null-deref on a *DOM member name* (`innerHTML`, `classList`, `onclick`, …) means
+   a lookup returned nothing. With that split: 7 DOM-nulls, 41 state-nulls, and the
+   state-nulls are not defects at all.
+
+Also worth recording as a clean negative: **`domrun.mjs` says every page except Emblem
+Fury runs fine under a mobile user agent.** The mobile problem was one game, not a
+library-wide pattern.
+
 ## 1b. All FIVE pending patches have been rehearsed TOGETHER (2026-08-23)
 
 Applied to a scratch clone in sequence — `fix-dnd-calcac.patch`,
