@@ -1,0 +1,27 @@
+From: Zylos <audit>
+Subject: [PATCH] emblem-fury: correct the Berserker Blood description
+
+Both numbers were wrong. The card promises 'Below 40% HP: +50% damage'. It sets
+bloodRage, and the only thing that reads bloodRage is line 721:
+
+    if(player.bloodRage&&player.hp<player.maxHp*0.5)dmg*=1.3;
+
+So the real effect is below 50% HP for +30% damage. Text-only, no balance change --
+the same treatment Kyle approved for the three Blood Frenzy descriptions.
+
+NOTE, not fixed here because it is a design call: bloodRage is a BOOLEAN, and four
+separate things set it -- this perk, Blood emblem lv4, Blood Frenzy tier 1, and
+Berserker Rage tier 1. Taking more than one of them grants nothing extra. A player
+who picks two is wasting a choice and has no way to know.
+
+--- a/emblem-fury.html
++++ b/emblem-fury.html
+@@ -4003,7 +4003,7 @@
+   {name:'Blazing Rounds',desc:'25% chance to burn on hit',tier:1,color:'#48f',icon:'\u{1F525}',apply:p=>{p.burnChance+=0.25;}},
+   {name:'Chain Reaction',desc:'Kills explode for AoE dmg',tier:1,color:'#48f',icon:'\u{1F4A5}',apply:p=>{p.chaosExplosion=true;}},
+   {name:'Life Tap',desc:'+12% Lifesteal',tier:1,color:'#48f',icon:'\u2764',apply:p=>{p.lifesteal+=0.12;}},
+-  {name:'Berserker Blood',desc:'Below 40% HP: +50% damage',tier:1,color:'#48f',icon:'\u{1F621}',apply:p=>{p.bloodRage=true;}},
++  {name:'Berserker Blood',desc:'Below 50% HP: +30% damage',tier:1,color:'#48f',icon:'\u{1F621}',apply:p=>{p.bloodRage=true;}},
+   {name:'Crystal Shield',desc:'+30% Max HP, +5 DEF',tier:1,color:'#48f',icon:'\u{1F48E}',apply:p=>{const b=Math.floor(p.maxHp*0.3);p.maxHp+=b;p.hp+=b;p.def+=5;}},
+   {name:'Storm Caller',desc:'Hits chain lightning to 3 enemies',tier:1,color:'#48f',icon:'\u{1F329}',apply:p=>{p.chainChance+=0.5;p.chainTargets=Math.max(p.chainTargets,3);}},
+   {name:'Shadow Strike',desc:'+35% Crit Damage',tier:1,color:'#48f',icon:'\u{1F311}',apply:p=>{p.critMult+=0.35;}},

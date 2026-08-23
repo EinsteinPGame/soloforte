@@ -1,12 +1,12 @@
-# Start here — 5 decisions, everything else is detail
+# Start here — 6 decisions, everything else is detail
 
 Kyle: there are ~1,500 lines of audit notes and proposals in this repo. **You should not
 have to read them.** This page is the whole thing. Detail links at the bottom if you want
 them.
 
 Nothing has been applied to any game file. Every patch below has been tested, and all
-**five** have been rehearsed applied *together* — they touch three files, don't
-conflict, and need no particular order.
+**six** have been rehearsed applied *together* — they touch three files, don't conflict,
+and need no particular order.
 
 ---
 
@@ -119,10 +119,57 @@ redo that part:
 
 ---
 
+## 5. Three balance calls — I've given each a recommended default
+
+These change behaviour or numbers, so they're yours, not mine. But "noted, no decision" has
+been sitting here for days, so each now has a default you can just approve.
+
+**(a) `Berserker Blood`'s card is wrong in both numbers.** It says "Below 40% HP: +50%
+damage". The code says below **50%** HP for **+30%** — I read the one line that consumes
+the flag. Same class as the Blood Frenzy descriptions you already approved.
+→ **Recommend: fix the text, not the behaviour.** Patch ready and rehearsed with the other
+five: `fix-ef-berserkerblood-desc.patch`. Zero balance change.
+
+**(b) Four different perks grant the identical effect, and stacking them does nothing.**
+New, found while checking (a). `bloodRage` is a **boolean**, and it's set by Berserker
+Blood, Blood emblem lv4, Blood Frenzy tier 1, *and* Berserker Rage tier 1. Pick two and
+the second is wasted — and nothing on screen tells the player that.
+→ **Recommend: make it stack** (e.g. +30% for the first source, +15% per extra) **or**
+differentiate the perks. I have not patched this; it's a genuine design decision and I
+don't want to pick your balance for you. Say which direction and I'll build it.
+
+**(c) The on-kill heal rounds to zero for every realistic enemy.** The payload is
+`maxHp × 0.05 × bloodLifesteal`, so it needs a **667 HP** enemy to heal a single point
+(200 HP if you have Berserker Rage tier 2). The blood-bat particles sit inside the same
+`if (healAmt > 0)`, so they never play either — which is probably why it went unnoticed.
+→ **Recommend: floor it at 1 HP when the player has any lifesteal.** That's the smallest
+change that matches what the effect and its visual were obviously meant to do. It does
+raise healing throughput slightly, hence your call.
+
+Scoping note so (c) isn't misread: `bloodLifesteal` is **not** broken. It drives a
+separate, working on-hit lifesteal. It's specifically the on-*kill* bonus that vanishes.
+
+---
+
+## Things I found and deliberately did NOT change
+- Wheel of Faith and the scenario generator would break on a corrupted save — but the
+  games can't produce the bad value themselves, so it's latent, not live.
+
+---
+
 ## Fastest path
 
-Reply **"do the recommended"** and I'll apply 1, 2 and 3 in order, push, verify live, and
-report back. Or answer any single one and I'll do just that.
+Reply **"do the recommended"** and I'll apply **0, 1, 2, 3 and 5(a)** — six patches across
+three files, all rehearsed together — then push, verify live, and report back. Or answer
+any single one and I'll do just that.
+
+Spelled out, because this line used to say "1, 2 and 3" before the phone bug turned up:
+- **Included** in "the recommended": the two Emblem Fury fixes in 0, the D&D crash in 1,
+  the descriptions in 2 and 5(a), and the Wheel of Faith remap in 3. Want the phone fixes
+  held back? Say "all except 0".
+- **Not included, still need a word from you**: 4 (two numbers), 5(b) (stack the duplicate
+  perks or differentiate them), 5(c) (floor the on-kill heal at 1 HP). I won't guess your
+  balance.
 
 ## Also waiting, whenever convenient
 - **A photo of your Moonlight 1st-movement sheet music.** Three notation problems need a
@@ -135,11 +182,3 @@ report back. Or answer any single one and I'll do just that.
   (rounds are in write order; later ones overturn earlier ones)
 - `wheel-of-faith-groups-c-d-PROPOSAL.md`, `wheel-of-faith-group-b-PROPOSAL.md`,
   `wheel-of-faith-sections-3-4-PROPOSAL.md`
-
-## Things I found and deliberately did NOT change
-Each alters balance or behaviour, which is your call, not a bug fix:
-- The Emblem Fury on-kill heal rounds to zero for normal enemies (needs a 667-HP enemy to
-  heal 1 point). The blood-bat visual is inside the same check, so it never plays either.
-- `Berserker Blood` says "Below 40% HP: +50% damage"; it's actually below 50% HP, +30%.
-- Wheel of Faith and the scenario generator would break on a corrupted save — but the
-  games can't produce the bad value themselves, so it's latent, not live.
