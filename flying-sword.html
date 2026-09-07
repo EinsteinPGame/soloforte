@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Flying Sword</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0a0a1a;overflow:hidden;
+    font:14px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:#e8e8f0;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+    touch-action:manipulation}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  canvas{display:block;touch-action:none}
+  .screen{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:18px;text-align:center;padding:24px;
+    background:rgba(6,6,18,0.86);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:20}
+  .screen.hidden{display:none}
+  h1{font-size:clamp(26px,7vw,44px);font-weight:800;letter-spacing:.5px;
+    background:linear-gradient(90deg,#9ad8ff,#7b68ee);-webkit-background-clip:text;
+    background-clip:text;color:transparent}
+  .sub{color:#8a8aa8;font-size:13px;max-width:22em}
+  .best{font-size:15px;color:#ffd479;font-weight:700}
+  .final{font-size:34px;font-weight:800;color:#fff}
+  button{appearance:none;border:1px solid #7b68ee;background:rgba(123,104,238,.16);
+    color:#cfc6ff;font:700 16px system-ui,sans-serif;padding:13px 34px;border-radius:11px;
+    cursor:pointer;min-width:170px}
+  button:active{transform:translateY(1px);background:rgba(123,104,238,.3)}
+  #newbest{color:#7bffb0;font-weight:700;font-size:14px;min-height:1.2em}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+
+<div id="home" class="screen">
+  <h1>FLYING SWORD</h1>
+  <div class="sub">Tap, click or press Space to rise.<br>The shields are solid &mdash; go around them.</div>
+  <div class="best">Best &middot; <span id="homeBest">0</span> m</div>
+  <button id="playBtn">PLAY</button>
+</div>
+
+<div id="over" class="screen hidden">
+  <div class="sub">You fell</div>
+  <div class="final"><span id="finalDist">0</span> m</div>
+  <div id="newbest"></div>
+  <div class="best">Best &middot; <span id="overBest">0</span> m</div>
+  <button id="againBtn">PLAY AGAIN</button>
+</div>
+
+<script src="back-btn.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  var cv = document.getElementById('cv');
+  var ctx = cv.getContext('2d');
+  var homeEl = document.getElementById('home');
+  var overEl = document.getElementById('over');
+  var homeBestEl = document.getElementById('homeBest');
+  var overBestEl = document.getElementById('overBest');
+  var finalEl = document.getElementById('finalDist');
+  var newBestEl = document.getElementById('newbest');
+  var playBtn = document.getElementById('playBtn');
+  var againBtn = document.getElementById('againBtn');
+
+  var BEST_KEY = 'fs_best';           // namespaced: no collision with other soloforte games
+  var W = 0, H = 0, DPR = 1;
+
+  // --- tuning -------------------------------------------------------------
+  // Constant scroll speed on purpose. Kyle ruled out the speed/slice mechanic:
+  // shields are solid and must be dodged, never cut through. Difficulty comes
+  // from the gap narrowing with distance, not from going faster.
+  var SPEED      = 2.9;
+  var GRAVITY    = 0.42;
+  var FLAP       = -7.0;
+  var MAX_FALL   = 8.5;
+  var GAP_START  = 190;
+  var GAP_MIN    = 132;
+  var GAP_SHRINK = 0.012;   // px of gap lost per px travelled
+  var SPACING    = 250;     // px between shield columns
+  var SWORD_W    = 46, SWORD_H = 15;
+
+  var state = 'home';       // home | playing | over
+  var sword, cols, dist, best, frame;
+
+  best = 0;
+  try { best = parseInt(localStorage.getItem(BEST_KEY) || '0', 10) || 0; } catch(e) { best = 0; }
+  homeBestEl.textContent = best;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function reset(){
+    sword = { x: Math.max(70, W * 0.24), y: H / 2, vy: 0 };
+    cols = [];
+    dist = 0; frame = 0;
+    var first = W + 140;
+    for (var i = 0; i < 4; i++) spawn(first + i * SPACING);
+  }
+
+  function gapAt(d){
+    var g = GAP_START - d * GAP_SHRINK;
+    return g < GAP_MIN ? GAP_MIN : g;
+  }
+
+  function spawn(x){
+    var gap = gapAt(dist);
+    var margin = 70;
+    var centre = margin + gap / 2 + Math.random() * (H - gap - margin * 2);
+    cols.push({ x: x, centre: centre, gap: gap, passed: false });
+  }
+
+  function flap(){
+    if (state === 'playing') { sword.vy = FLAP; }
+  }
+
+  function start(){
+    reset();
+    state = 'playing';
+    homeEl.classList.add('hidden');
+    overEl.classList.add('hidden');
+  }
+
+  function die(){
+    state = 'over';
+    var m = Math.floor(dist / 10);
+    finalEl.textContent = m;
+    if (m > best){
+      best = m;
+      try { localStorage.setItem(BEST_KEY, String(best)); } catch(e){}
+      newBestEl.textContent = 'NEW BEST';
+    } else {
+      newBestEl.textContent = '';
+    }
+    overBestEl.textContent = best;
+    homeBestEl.textContent = best;
+    overEl.classList.remove('hidden');
+  }
+
+  // --- drawing ------------------------------------------------------------
+  function drawSword(x, y, tilt){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(tilt);
+
+    // blade: hilt at the LEFT, blade running straight to the RIGHT
+    var g = ctx.createLinearGradient(-SWORD_W/2, 0, SWORD_W/2, 0);
+    g.addColorStop(0, '#8c8ca8'); g.addColorStop(.5, '#e6f0ff'); g.addColorStop(1, '#ffffff');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-SWORD_W/2 + 12, -3);
+    ctx.lineTo(SWORD_W/2 - 6, -2.5);
+    ctx.lineTo(SWORD_W/2, 0);           // point, to the right
+    ctx.lineTo(SWORD_W/2 - 6, 2.5);
+    ctx.lineTo(-SWORD_W/2 + 12, 3);
+    ctx.closePath(); ctx.fill();
+
+    ctx.fillStyle = '#c9a227';           // crossguard
+    ctx.fillRect(-SWORD_W/2 + 9, -6, 3.5, 12);
+    ctx.fillStyle = '#6b5a2a';           // grip
+    ctx.fillRect(-SWORD_W/2 + 1, -2.5, 8, 5);
+    ctx.fillStyle = '#c9a227';           // pommel
+    ctx.beginPath(); ctx.arc(-SWORD_W/2, 0, 3, 0, Math.PI*2); ctx.fill();
+
+    // rider, standing on the blade
+    ctx.fillStyle = '#2b2b44';
+    ctx.fillRect(0, -13, 3, 8);                       // legs
+    ctx.fillRect(4, -13, 3, 8);
+    ctx.fillStyle = '#7b68ee';
+    ctx.fillRect(-1, -21, 9, 9);                      // robe / body
+    ctx.fillStyle = '#f0d9b5';
+    ctx.beginPath(); ctx.arc(3.5, -24, 4, 0, Math.PI*2); ctx.fill();  // head
+    ctx.fillStyle = '#1a1a2e';
+    ctx.beginPath(); ctx.arc(3.5, -26, 4.2, Math.PI, 0); ctx.fill();  // hair
+
+    ctx.restore();
+  }
+
+  function drawShield(x, y, w, h){
+    // a single shield: flat top, tapering to a point at the bottom
+    ctx.beginPath();
+    ctx.moveTo(x - w/2, y);
+    ctx.lineTo(x + w/2, y);
+    ctx.lineTo(x + w/2, y + h * 0.55);
+    ctx.quadraticCurveTo(x + w/2, y + h, x, y + h);
+    ctx.quadraticCurveTo(x - w/2, y + h, x - w/2, y + h * 0.55);
+    ctx.closePath();
+    var g = ctx.createLinearGradient(x - w/2, 0, x + w/2, 0);
+    g.addColorStop(0, '#4a3a6b'); g.addColorStop(.45, '#6f5aa8'); g.addColorStop(1, '#3a2d55');
+    ctx.fillStyle = g; ctx.fill();
+    ctx.strokeStyle = '#9a86d8'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.beginPath();                                   // boss / centre stud
+    ctx.arc(x, y + h * 0.42, Math.min(7, w * 0.16), 0, Math.PI*2);
+    ctx.fillStyle = '#c9a227'; ctx.fill();
+  }
+
+  function drawColumn(c){
+    var w = 62, unit = 54;
+    var topEnd = c.centre - c.gap/2;
+    var botStart = c.centre + c.gap/2;
+    for (var y = topEnd - unit; y > -unit; y -= unit) drawShield(c.x, y, w, unit + 6);
+    for (var y2 = botStart; y2 < H + unit; y2 += unit) drawShield(c.x, y2, w, unit + 6);
+  }
+
+  var stars = [];
+  for (var s = 0; s < 60; s++) stars.push({ x: Math.random(), y: Math.random(), r: Math.random()*1.4 + .3 });
+
+  function drawBg(){
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0d0d24'); g.addColorStop(.6, '#141433'); g.addColorStop(1, '#1b1030');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    for (var i = 0; i < stars.length; i++){
+      var st = stars[i];
+      var px = (st.x * W - dist * 0.12) % W; if (px < 0) px += W;
+      ctx.globalAlpha = 0.25 + st.r * 0.35;
+      ctx.fillRect(px, st.y * H, st.r, st.r);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawHud(){
+    var m = Math.floor(dist / 10);
+    ctx.save();
+    ctx.font = '800 30px system-ui,sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.strokeText(m + ' m', W/2, 16);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(m + ' m', W/2, 16);
+    ctx.restore();
+  }
+
+  // --- loop ---------------------------------------------------------------
+  function hits(c){
+    // sword as an axis-aligned box; forgiving by a couple of px on purpose
+    var sx1 = sword.x - SWORD_W/2 + 3, sx2 = sword.x + SWORD_W/2 - 3;
+    var sy1 = sword.y - 22, sy2 = sword.y + 6;   // includes the rider standing on top
+    var cx1 = c.x - 31, cx2 = c.x + 31;
+    if (sx2 < cx1 || sx1 > cx2) return false;
+    var gapTop = c.centre - c.gap/2, gapBot = c.centre + c.gap/2;
+    return (sy1 < gapTop) || (sy2 > gapBot);
+  }
+
+  function step(){
+    frame++;
+    if (state === 'playing'){
+      sword.vy += GRAVITY;
+      if (sword.vy > MAX_FALL) sword.vy = MAX_FALL;
+      sword.y += sword.vy;
+      dist += SPEED;
+
+      for (var i = 0; i < cols.length; i++) cols[i].x -= SPEED;
+      if (cols.length && cols[0].x < -80){ cols.shift(); spawn(cols[cols.length-1].x + SPACING); }
+
+      if (sword.y - 22 < 0 || sword.y + 6 > H){ die(); }
+      else {
+        for (var j = 0; j < cols.length; j++){ if (hits(cols[j])){ die(); break; } }
+      }
+    }
+
+    drawBg();
+    if (state !== 'home'){
+      for (var k = 0; k < cols.length; k++) drawColumn(cols[k]);
+      var tilt = Math.max(-0.42, Math.min(0.85, sword.vy * 0.055));
+      drawSword(sword.x, sword.y, tilt);
+      drawHud();
+    }
+    requestAnimationFrame(step);
+  }
+
+  // --- input --------------------------------------------------------------
+  function onPress(e){
+    if (state === 'playing'){ if (e && e.cancelable) e.preventDefault(); flap(); }
+  }
+  cv.addEventListener('pointerdown', onPress);
+  cv.addEventListener('touchstart', onPress, { passive: false });
+  window.addEventListener('keydown', function(e){
+    if (e.code === 'Space' || e.key === ' '){
+      e.preventDefault();
+      if (state === 'playing') flap();
+      else if (state === 'home') start();
+      else if (state === 'over') start();
+    }
+  });
+  playBtn.addEventListener('click', start);
+  againBtn.addEventListener('click', start);
+
+  reset();
+  requestAnimationFrame(step);
+})();
+</script>
+</body>
+</html>
