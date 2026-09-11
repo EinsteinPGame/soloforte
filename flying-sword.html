@@ -107,13 +107,21 @@
 
   function gapAt(d){
     var g = GAP_START - d * GAP_SHRINK;
-    return g < GAP_MIN ? GAP_MIN : g;
+    if (g < GAP_MIN) g = GAP_MIN;
+    // Cap against the viewport, applied AFTER the floor so it wins on short screens.
+    // Without this, a landscape phone (H~390) or a small window (H~220) got a gap wider
+    // than the space available: the random range went negative and the gap slid off the
+    // top, so the upper shield column vanished and the obstacle stopped obstructing.
+    var maxG = H * 0.42;
+    return g > maxG ? maxG : g;
   }
 
   function spawn(x){
     var gap = gapAt(dist);
-    var margin = 70;
-    var centre = margin + gap / 2 + Math.random() * (H - gap - margin * 2);
+    var margin = Math.min(70, H * 0.12);      // scales down with the viewport
+    var range = H - gap - margin * 2;
+    if (range < 0) range = 0;                 // never let the gap start off-screen
+    var centre = margin + gap / 2 + Math.random() * range;
     cols.push({ x: x, centre: centre, gap: gap, passed: false });
   }
 
